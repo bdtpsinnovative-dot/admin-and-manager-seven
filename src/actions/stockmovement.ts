@@ -81,6 +81,79 @@ export async function getDetailedStockMovements(
   }
 }
 
+export interface MovementWithBalance {
+  id: number
+  type: string | null
+  qty: number
+  note: string | null
+  batch_ref: string | null
+  ref_type: string | null
+  created_at_ts: string
+  created_by_name: string | null
+  product_id_bigint: number | null
+  products: { name: string; sku: string | null; barcode: string | null; unit: string | null; image_url: string | null } | null
+  balance: number  // running balance คำนวณใน JS
+}
+
+export async function getManagerStockLog(params: {
+  branchId: number
+  productSearch?: string
+  dateFrom?: string
+  dateTo?: string
+  page?: number
+}) {
+  const { branchId, productSearch, dateFrom, dateTo, page = 1 } = params
+  const pageSize = 60
+
+  try {
+    let query = supabaseAdmin
+      .from("stock_movements")
+      .select(`
+        id, type, qty, note, batch_ref, ref_type,
+        created_at_ts, created_by_name, product_id_bigint,
+        products:product_id_bigint (name, sku, barcode, unit, image_url)
+      `, { count: "exact" })
+      .eq("branch_id", branchId)
+      .order("created_at_ts", { ascending: false })
+
+    if (productSearch) {
+      query = query.or(
+        `name.ilike.%${productSearch}%,sku.ilike.%${productSearch}%,barcode.ilike.%${productSearch}%`,
+        { referencedTable: "products" }
+      )
+    }
+    if (dateFrom) query = query.gte("created_at_ts", dateFrom)
+    if (dateTo)   query = query.lte("created_at_ts", dateTo + "T23:59:59+07:00")
+
+    const from = (page - 1) * pageSize
+    const { data, count, error } = await query.range(from, from + pageSize - 1)
+    if (error) throw error
+
+    // คำนวณ running balance — เรียงจากเก่าไปใหม่ก่อน แล้วกลับด้าน
+    const ordered = [...(data ?? [])].reverse()
+    let running = 0
+    const withBalance = ordered.map(m => {
+      running += Number(m.qty ?? 0)
+      return { ...m, balance: running }
+    })
+    withBalance.reverse()
+
+    // summary
+    const totalIn  = (data ?? []).filter(m => Number(m.qty) > 0).reduce((s, m) => s + Number(m.qty), 0)
+    const totalOut = (data ?? []).filter(m => Number(m.qty) < 0).reduce((s, m) => s + Number(m.qty), 0)
+
+    return {
+      data: withBalance as unknown as MovementWithBalance[],
+      totalCount: count ?? 0,
+      totalIn,
+      totalOut,
+      page,
+    }
+  } catch (err: any) {
+    return { data: [], totalCount: 0, totalIn: 0, totalOut: 0, page, error: err.message }
+  }
+}
+
 export async function getMyProfile() {
   const supabase = await createClient();
   try {

@@ -45,6 +45,17 @@ export default function UploadPropPage() {
             <input name="color" placeholder="Pink, Grey, Beige..." className="w-full p-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none font-medium transition-all" />
           </div>
 
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-gray-400 uppercase ml-1">URL รูปภาพ</label>
+            <input
+              name="image_url"
+              type="url"
+              placeholder="https://pub-258bd10e7e8c4a7690a74c54cfbdef93.r2.dev/original/..."
+              className="w-full p-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none font-medium transition-all text-sm"
+            />
+            <p className="text-[11px] text-gray-400 ml-1">วาง URL จาก R2 ได้เลยครับ (ถ้าไม่มีรูปก็เว้นว่างไว้ก่อนได้)</p>
+          </div>
+
           <div className="bg-gray-900 rounded-[2rem] p-8 text-white">
             <p className="text-[10px] font-bold text-gray-500 uppercase mb-4 text-center tracking-widest">Dimensions (Centimeters)</p>
             <div className="grid grid-cols-3 gap-6">

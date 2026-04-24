@@ -15,6 +15,7 @@ export interface ProductStock {
     sku: string | null
     barcode: string | null
     unit: string | null
+    image_url: string | null
   } | null
 }
 
@@ -59,10 +60,10 @@ export async function getStockList(
       .from('stock')
       .select(`
         id, product_id, qty, updated_at,
-        products!inner (name, sku, barcode, unit)
+        products!inner (name, sku, barcode, unit, image_url)
       `, { count: 'exact' })
       .eq('branch_id', branchId)
-      .order('updated_at', { ascending: false })
+      .order('qty', { ascending: false })
       .range(from, to)
 
     if (onlyNegative) query = query.lt('qty', 0)
@@ -93,5 +94,20 @@ export async function getStockStats(branchId: number): Promise<StockStats> {
     return { totalSku: totalSku || 0, negativeItems: negativeItems || 0 }
   } catch {
     return { totalSku: 0, negativeItems: 0 }
+  }
+}
+
+// ✅ 4. ยอดรวมชิ้นทั้งหมดในสาขา
+export async function getTotalQty(branchId: number): Promise<number> {
+  const supabase = await createClient()
+  try {
+    const { data } = await supabase
+      .from('stock')
+      .select('qty')
+      .eq('branch_id', branchId)
+      .gt('qty', 0)
+    return (data ?? []).reduce((sum, r) => sum + Number(r.qty), 0)
+  } catch {
+    return 0
   }
 }
