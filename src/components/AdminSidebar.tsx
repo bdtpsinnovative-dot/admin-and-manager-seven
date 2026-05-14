@@ -6,27 +6,30 @@ import { logoutAction } from "../actions/auth";
 import {
   LayoutDashboard, Box, PlusCircle, ShoppingCart,
   MapPin, Tag, LogOut, Users, Receipt,
-  BarChart3, History, Package, Settings, Frame
+  BarChart3, History, Package, Settings, Frame,
+  Layers, ShieldCheck
 } from "lucide-react";
 
 // 1. เมนูที่ใช้บ่อย (งานประจำวัน)
 const primaryItems = [
-  { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { name: "สต็อกทุกสาขา", href: "/stock-all", icon: Package },
-  { name: "ประวัติสต็อก", href: "/stockmovement", icon: History },
-  { name: "ขายสินค้า (Slab)", href: "/sale_slab", icon: ShoppingCart },
-  { name: "สินค้าทั้งหมด", href: "/inventory", icon: Box },
-  { name: "เพิ่มสินค้า", href: "/addproduct", icon: PlusCircle },
-  { name: "Props / Decor", href: "/props", icon: Frame },
+  { name: "Dashboard",       href: "/dashboard",    icon: LayoutDashboard },
+  { name: "สต็อกทุกสาขา",   href: "/stock-all",    icon: Package },
+  { name: "ประวัติสต็อก",    href: "/stockmovement",icon: History },
+  { name: "ขายสินค้า (Slab)",href: "/sale_slab",    icon: ShoppingCart },
+  { name: "สินค้าทั้งหมด",   href: "/inventory",    icon: Box },
+  { name: "เพิ่มสินค้า",     href: "/addproduct",   icon: PlusCircle },
+  { name: "Props / Decor",   href: "/props",        icon: Frame },
+  { name: "จัดการลอต",       href: "/lots",         icon: Layers },
 ];
 
 // 2. เมนูการจัดการและรายงาน
 const secondaryItems = [
-  { name: "จัดการสาขา", href: "/branches", icon: MapPin },
-  { name: "ส่วนลด", href: "/discounts", icon: Tag },
-  { name: "พนักงาน", href: "/employees", icon: Users },
-  { name: "ใบเสร็จ", href: "/receipts", icon: Receipt },
-  { name: "รายงานยอดขาย", href: "/sales-report", icon: BarChart3 },
+  { name: "จัดการสาขา",      href: "/branches",     icon: MapPin },
+  { name: "ส่วนลด",          href: "/discounts",    icon: Tag },
+  { name: "พนักงาน",         href: "/employees",    icon: Users },
+  { name: "ใบเสร็จ",         href: "/receipts",     icon: Receipt },
+  { name: "รายงานยอดขาย",    href: "/sales-report", icon: BarChart3 },
+  { name: "Backup & Restore", href: "/backup",       icon: ShieldCheck },
 ];
 
 interface UserData {

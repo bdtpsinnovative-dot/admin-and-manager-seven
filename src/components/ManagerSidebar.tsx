@@ -3,9 +3,10 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useState } from "react"
-import { 
-  LayoutDashboard, Package, LogOut, User, Menu, Store, 
-  Users, Receipt, BarChart3, Box, X, Settings // ✅ เพิ่ม Settings
+import {
+  LayoutDashboard, Package, LogOut, User, Menu, Store,
+  Users, Receipt, BarChart3, Box, X, Settings,
+  Tag, History, Layers, PackageCheck
 } from "lucide-react"
 import { logoutAction } from "../actions/auth" 
 
@@ -20,13 +21,15 @@ export default function ManagerSidebar({ userName, branchName, userAvatar }: Man
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
 
   const menuItems = [
-    { name: "ภาพรวม", href: "/manager/dashboard", icon: LayoutDashboard },
-    
-    { name: "สต็อกหน้าร้าน", href: "/manager/publicstock", icon: Box },
-    
-    { name: "ใบเสร็จ", href: "/manager/receipt", icon: Receipt },
-    { name: "รายงานยอดขาย", href: "/manager/sales-report", icon: BarChart3 },
-    { name: "ปิดยอดรายวัน", href: "/manager/closeday", icon: Store },
+    { name: "ภาพรวม",         href: "/manager/dashboard",   icon: LayoutDashboard },
+    { name: "สต็อกหน้าร้าน",  href: "/manager/publicstock", icon: Box },
+    { name: "รับสินค้า (ลอต)", href: "/manager/lots",          icon: Layers },
+    { name: "ตรวจสอบขาด/เกิน", href: "/manager/receive-check", icon: PackageCheck },
+    { name: "เช็ค Tag Props",  href: "/manager/tagcheck",    icon: Tag },
+    { name: "ประวัติสต็อก",    href: "/manager/stocklog",    icon: History },
+    { name: "ใบเสร็จ",         href: "/manager/receipt",     icon: Receipt },
+    { name: "รายงานยอดขาย",   href: "/manager/sales-report",icon: BarChart3 },
+    { name: "ปิดยอดรายวัน",   href: "/manager/closeday",    icon: Store },
   ]
 
   return (

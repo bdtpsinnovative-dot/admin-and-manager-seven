@@ -5,7 +5,14 @@
       "Bash(git commit -m 'fix: resolve module not found error and update dimension units to MM *)",
       "Bash(git push *)",
       "Bash(gh pr *)",
-      "Bash(npm install *)"
+      "Bash(npm install *)",
+      "Bash(grep -E \"\\\\.\\(ts|tsx\\)$\")",
+      "Bash(npx tsc *)",
+      "Bash(find \"C:\\\\the_best\\\\admin_and_manager/src\" -type f \\\\\\( -name \"*.tsx\" -o -name \"*.ts\" \\\\\\) -exec grep -l \"ReceiveScreen\\\\|receive\" {} \\\\;)",
+      "Bash(xargs grep *)",
+      "Bash(find \"C:\\\\the_best\\\\admin_and_manager/src\" -type f \\\\\\( -name \"*.tsx\" -o -name \"*.ts\" \\\\\\) -exec grep -l \"image\\\\|Image\\\\|img\\\\|load.*image\" {} \\\\;)",
+      "Bash(node -e \"const fs=require\\('fs'\\); const d=JSON.parse\\(fs.readFileSync\\('data/snapshots/latest.json','utf8'\\)\\); console.log\\(JSON.stringify\\(d.meta,null,2\\)\\)\")",
+      "PowerShell(Get-Command gh -ErrorAction SilentlyContinue)"
     ]
   }
 }
