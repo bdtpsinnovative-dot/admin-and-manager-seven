@@ -161,17 +161,48 @@ export async function deleteProduct(id: string | number) {
     revalidatePath('/inventory')
     return { success: true }
 }
-
+// src/actions/woodslab.ts
 
 export async function bulkCreateProducts(productsArray: any[]) {
   const supabase = await createClient()
   await checkAuth(supabase)
 
-  // ✅ เปลี่ยนจาก .insert() เป็น .upsert()
-  // onConflict: 'sku' บอกว่าถ้า sku ซ้ำ ให้ทำการ Update แทน
+  // 1. ⚡ ดึงรหัส Collection Group (ID) และ Product Sup ออกมาจาก Excel
+  const uniqueGroupsMap = new Map<string, any>()
+  
+  productsArray.forEach(p => {
+    if (p.collection_group_id) {
+      uniqueGroupsMap.set(p.collection_group_id, {
+        id: p.collection_group_id, // รหัสกลุ่ม เช่น FA-D2089
+        product_sup: p._temp_product_sup // ✅ คำหมวดหมู่ เช่น Doll Animal
+      })
+    }
+  })
+  
+  const uniqueGroups = Array.from(uniqueGroupsMap.values())
+
+  // 2. ⚡ บันทึกลงตาราง collection_groups (ถ้า ID ชน จะอัปเดตคำ product_sup ให้ใหม่)
+  if (uniqueGroups.length > 0) {
+    const { error: groupError } = await supabase
+      .from('collection_groups')
+      .upsert(uniqueGroups, { onConflict: 'id' }) 
+
+    if (groupError) {
+      console.error("Error upserting collection groups:", groupError.message)
+      return { error: "เกิดข้อผิดพลาดในการบันทึกหมวดหมู่สินค้า: " + groupError.message }
+    }
+  }
+
+  // 3. ⚡ ลบฟิลด์ _temp_product_sup ออกก่อนบันทึกลงตาราง Products หลัก
+  const cleanProductsArray = productsArray.map(p => {
+    const { _temp_product_sup, ...actualProductData } = p;
+    return actualProductData;
+  });
+
+  // 4. บันทึกข้อมูลสินค้าลงตาราง products
   const { data, error } = await supabase
-    .from(TABLE_NAME)
-    .upsert(productsArray, { onConflict: 'sku' }) 
+    .from('products')
+    .upsert(cleanProductsArray, { onConflict: 'sku' }) 
     .select()
 
   if (error) {
@@ -180,4 +211,39 @@ export async function bulkCreateProducts(productsArray: any[]) {
 
   revalidatePath('/inventory')
   return { success: true, count: data?.length }
+}
+// ✅ ฟังก์ชันใหม่ เอาไว้เช็คว่า SKU ไหนมีในระบบแล้วบ้าง (เพื่อทำ Preview)
+export async function checkExistingSkus(skus: string[]) {
+  const supabase = await createClient()
+  
+  const { data, error } = await supabase
+    .from(TABLE_NAME)
+    .select('sku')
+    .in('sku', skus) // ค้นหาเฉพาะ SKU ที่เราส่งไป
+
+  if (error) {
+    console.error("Error checking SKUs:", error)
+    return { existing: [] }
+  }
+  
+  // ส่งกลับไปเฉพาะรายชื่อ SKU ที่เจอในระบบ
+  return { existing: data.map((d: any) => d.sku) }
+}
+
+// ✅ ฟังก์ชันใหม่ เอาไว้เช็คว่า Collection Group ไหนมีในระบบแล้วบ้าง
+export async function checkExistingGroups(groupIds: string[]) {
+  if (!groupIds || groupIds.length === 0) return { existing: [] }
+  
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('collection_groups')
+    .select('id')
+    .in('id', groupIds) // ค้นหาเฉพาะรหัสกลุ่มที่ส่งไป
+
+  if (error) {
+    console.error("Error checking Groups:", error)
+    return { existing: [] }
+  }
+  
+  return { existing: data.map((d: any) => d.id) }
 }

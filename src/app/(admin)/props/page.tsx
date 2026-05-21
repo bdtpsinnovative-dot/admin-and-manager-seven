@@ -1,3 +1,5 @@
+//src/app/(admin)/props/page.tsx
+
 import { createClient } from "@/lib/supabase/server";
 import PropsClient from "./PropsClient";
 
