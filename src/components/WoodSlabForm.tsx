@@ -1,10 +1,8 @@
-//src/components/WoodSlabForm.tsx
 "use client"
 
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-// ❌ ลบ createBrowserClient ออก
-import { createInitialProduct, updateProduct, deleteProduct, uploadFile } from '../actions/woodslab' // ✅ เพิ่ม uploadFile
+import { createInitialProduct, updateProduct, deleteProduct, uploadFile } from '../actions/woodslab'
 import { 
   Loader2, UploadCloud, X, ArrowUp, ArrowDown, 
   PackagePlus, RotateCcw, Save, Image as ImageIcon, 
@@ -13,7 +11,7 @@ import {
 
 // --- CONFIG ---
 const BASE_FOLDER = "products"
-const FORCE_SKU_PREFIX = "WOODSLABS"
+// ลบ FORCE_SKU_PREFIX แบบตายตัวออก เพราะเราจะเช็คตาม Category แทน
 const UPLOAD_MAX_BYTES = 350 * 1024 
 const UPLOAD_MAX_DIM = 1600 
 
@@ -21,44 +19,37 @@ export default function WoodSlabForm({ initialData }: { initialData?: any }) {
   const router = useRouter()
   const isEditMode = !!initialData
 
-  // --- STATE ---
   const [loading, setLoading] = useState(false)
   const [loadingText, setLoadingText] = useState('')
   const [progress, setProgress] = useState(0)
   const [toast, setToast] = useState<{ title: string, msg: string, type: 'success'|'error'|'info' } | null>(null)
 
-  // Image States
   const [mainFile, setMainFile] = useState<File | null>(null)
   const [existingMainPath, setExistingMainPath] = useState<string | null>(null)
-
   const [extraFiles, setExtraFiles] = useState<{ file: File, id: number }[]>([])
   const [existingExtraImages, setExistingExtraImages] = useState<any[]>([])
 
-  // Refs
   const mainInputRef = useRef<HTMLInputElement>(null)
   const extraInputRef = useRef<HTMLInputElement>(null)
   const formRef = useRef<HTMLFormElement>(null)
 
-  // --- EFFECT: โหลดข้อมูลเก่า ---
   useEffect(() => {
     if (initialData) {
-      setExistingMainPath(initialData.image_url) // Server แปลงเป็น URL เต็มให้แล้ว
+      setExistingMainPath(initialData.image_url) 
       if (initialData.specs?.images) {
-        setExistingExtraImages(initialData.specs.images) // Server แปลงเป็น URL เต็มให้แล้ว
+        setExistingExtraImages(initialData.specs.images) 
       }
     }
   }, [initialData])
 
-  // --- UTILS ---
   const showToast = (title: string, msg: string, type: 'success'|'error'|'info' = 'info') => {
     setToast({ title, msg, type })
     setTimeout(() => setToast(null), 4000)
   }
 
-  // ✅ แก้ไข: ไม่ต้องต่อ String เองแล้ว เพราะข้อมูลเก่าเป็น URL เต็ม ส่วนข้อมูลใหม่เป็น Blob
   const getFullUrl = (path: string) => {
     if (!path) return ""
-    return path // ใช้ค่า path ตรงๆ ได้เลย (เพราะ Server จัดการให้แล้ว)
+    return path 
   }
 
   const parseDims = (sizeText: string) => {
@@ -114,7 +105,6 @@ export default function WoodSlabForm({ initialData }: { initialData?: any }) {
       })
   }
 
-  // ✅ แก้ไข: เปลี่ยนไปใช้ Server Action แทน Client SDK
   const uploadToStorage = async (path: string, blob: Blob) => {
     const formData = new FormData()
     formData.append('file', blob)
@@ -125,7 +115,6 @@ export default function WoodSlabForm({ initialData }: { initialData?: any }) {
     return true
   }
 
-  // --- HANDLERS (เหมือนเดิม) ---
   const handleMainFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.[0]) setMainFile(e.target.files[0])
   }
@@ -141,15 +130,6 @@ export default function WoodSlabForm({ initialData }: { initialData?: any }) {
 
   const removeExtraExisting = (index: number) => {
     setExistingExtraImages(prev => prev.filter((_, i) => i !== index))
-  }
-
-  const moveExtraNew = (index: number, dir: number) => {
-    const newExtras = [...extraFiles]
-    const target = index + dir
-    if (target >= 0 && target < newExtras.length) {
-      [newExtras[index], newExtras[target]] = [newExtras[target], newExtras[index]]
-      setExtraFiles(newExtras)
-    }
   }
 
   const handleDelete = async () => {
@@ -170,7 +150,6 @@ export default function WoodSlabForm({ initialData }: { initialData?: any }) {
     }
   }
 
-  // --- SUBMIT ---
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     
@@ -195,20 +174,25 @@ export default function WoodSlabForm({ initialData }: { initialData?: any }) {
       specsRaw.type = specsRaw.spec_type
       if(dims) {
         specsRaw.length_mm = dims.l; specsRaw.width_mm = dims.w; specsRaw.thickness_mm = dims.t
-        // ลบ field _cm เก่าออก (ถ้ามีจากข้อมูลเก่า)
         delete specsRaw.length_cm; delete specsRaw.width_cm; delete specsRaw.thickness_cm
       }
 
+      // 💡 ปรับแต่ง: เปลี่ยน Prefix ให้ตรงตามหมวดหมู่ที่เลือก
+      const categoryId = formData.get('category_id') as string || 'SLABS'
+      let skuPrefix = 'WOODSLABS'
+      if (categoryId === 'prop') skuPrefix = 'PROP'
+      else if (categoryId === 'rough_wood') skuPrefix = 'ROUGH'
+
       const rawSku = formData.get('sku') as string
       const sku = rawSku?.trim() 
-        ? (rawSku.toUpperCase().startsWith(FORCE_SKU_PREFIX) ? rawSku : `${FORCE_SKU_PREFIX}-${rawSku}`)
-        : `${FORCE_SKU_PREFIX}-${Date.now()}`
+        ? (rawSku.toUpperCase().startsWith(skuPrefix) ? rawSku : `${skuPrefix}-${rawSku}`)
+        : `${skuPrefix}-${Date.now()}`
 
       const payload = {
         name: formData.get('name'),
         barcode: formData.get('barcode'),
         sku: sku,
-        category_id: formData.get('category_id') || null,
+        category_id: categoryId,
         cost: Number(formData.get('cost') || 0),
         price: Number(formData.get('price') || 0),
         unit: formData.get('unit'),
@@ -227,16 +211,7 @@ export default function WoodSlabForm({ initialData }: { initialData?: any }) {
       }
 
       const timestamp = Date.now()
-
-      // Handle Main Image
-      // หมายเหตุ: ตรงนี้เราเก็บ Path สั้นลง DB เหมือนเดิม เพื่อให้ Backend จัดการแปลง URL ภายหลัง
-      let finalMainPath = initialData?.image_url // ค่าเดิม (อาจเป็น URL เต็มแล้ว)
-      
-      // ถ้าค่าเดิมเป็น URL เต็ม เราต้องดึงแค่ Path กลับมาเพื่อเซฟ? 
-      // ไม่จำเป็นครับ เพราะเราอัปโหลดรูปใหม่ทับไปเลย หรือถ้าไม่เปลี่ยนก็ใช้ค่าเดิม
-      // แต่เพื่อให้สะอาด ถ้าไม่ได้อัปโหลดใหม่ ให้ใช้ค่าเดิมที่ส่งมา (ซึ่งเป็น Full URL ก็ไม่เป็นไร Database เก็บ String)
-      // *Tip: ถ้าอยากเก็บแค่ Path สั้นใน DB ต้องแก้ Logic getProductById ให้ส่ง Path สั้นมาอีกฟิลด์
-      // แต่เพื่อความง่าย ให้เก็บ Path ใหม่ที่ได้จากการอัปโหลด
+      let finalMainPath = initialData?.image_url 
       
       if (mainFile) {
           setProgress(30)
@@ -244,20 +219,9 @@ export default function WoodSlabForm({ initialData }: { initialData?: any }) {
           const mainBlob = await blobToWebpSmart(mainFile)
           const path = `${BASE_FOLDER}/${productId}/main_${timestamp}.webp`
           await uploadToStorage(path, mainBlob)
-          finalMainPath = path // ใช้ Path ใหม่
-      } else if (isEditMode && initialData?.image_url) {
-          // ถ้าไม่ได้เปลี่ยนรูป และเป็นโหมดแก้ไข ให้รักษาค่าเดิมไว้ (แต่ค่าเดิมอาจเป็น Full URL จากการแปลง)
-          // วิธีแก้: เราต้องแน่ใจว่าถ้าเราส่ง Full URL กลับไป update มันจะไม่พัง
-          // Supabase Storage Public URL ใช้เก็บใน DB ได้ครับ ไม่มีปัญหา
-          // แต่ถ้าอยากเก็บ Path สั้น ต้อง Hack นิดนึง:
-          // เราจะใช้ finalMainPath เดิม ซึ่งถ้ามาจาก initialData มันคือ Full URL
-          // ถ้าเราไม่อยากแก้ DB ให้เป็น Full URL เราต้อง parse เอา Path ออกมา
-          // แต่เคสนี้ ง่ายสุดคือ: ถ้ามีการอัปโหลดใหม่ ค่อยอัปเดต field image_url
-          // ถ้าไม่มีการอัปโหลดใหม่ ก็ไม่ต้องส่ง image_url ไป update (ตัดออกจาก payload)
-      }
+          finalMainPath = path 
+      } 
 
-      // Handle Extra Images
-      // เราจะเก็บเฉพาะรูปเก่าที่ยังอยู่ (ซึ่งเป็น Full URL) 
       const finalExtraImages = [...existingExtraImages] 
 
       if (extraFiles.length > 0) {
@@ -271,14 +235,13 @@ export default function WoodSlabForm({ initialData }: { initialData?: any }) {
             await uploadToStorage(path, blob)
 
             finalExtraImages.push({
-                path: path, // รูปใหม่เก็บเป็น Path สั้น
+                path: path, 
                 sort: finalExtraImages.length + 1,
                 role: "extra"
             })
           }
       }
 
-      // Update Product
       setProgress(90)
       setLoadingText('บันทึกข้อมูลลงฐานข้อมูล...')
 
@@ -293,7 +256,6 @@ export default function WoodSlabForm({ initialData }: { initialData?: any }) {
           specs: finalSpecs
       }
 
-      // ถ้ามีการเปลี่ยนรูปหลัก ค่อยส่งไปอัปเดต
       if (mainFile) {
           (updatePayload as any).image_url = finalMainPath
       }
@@ -321,11 +283,9 @@ export default function WoodSlabForm({ initialData }: { initialData?: any }) {
     }
   }
 
-  // --- RENDER ---
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-800 pb-20">
       
-      {/* Toast & Loading UI (เหมือนเดิม) */}
       {toast && (
         <div className="fixed top-5 right-5 z-50 animate-[slideIn_0.3s_ease-out]">
           <div className={`bg-white border-l-4 p-4 rounded shadow-lg flex items-start gap-3 w-80 
@@ -356,7 +316,6 @@ export default function WoodSlabForm({ initialData }: { initialData?: any }) {
 
       <form ref={formRef} onSubmit={handleSubmit} className="max-w-6xl mx-auto px-4 py-8">
         
-        {/* ... Header Section (เหมือนเดิม) ... */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
           <div>
             <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
@@ -388,10 +347,8 @@ export default function WoodSlabForm({ initialData }: { initialData?: any }) {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-          {/* LEFT COLUMN: Images */}
           <div className="lg:col-span-1 space-y-6">
             
-            {/* Main Image */}
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
               <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
                 <h2 className="font-semibold text-slate-800 flex items-center gap-2 text-sm">
@@ -415,7 +372,6 @@ export default function WoodSlabForm({ initialData }: { initialData?: any }) {
                     </>
                   ) : existingMainPath ? (
                     <>
-                      {/* ✅ แก้: ใช้ getFullUrl ที่ปรับปรุงแล้ว (ซึ่งคืนค่า path ตรงๆ) */}
                       <img src={getFullUrl(existingMainPath)} className="w-full h-full object-cover" />
                       <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-2 backdrop-blur-[2px]">
                           <button type="button" className="bg-white/90 text-slate-800 px-3 py-1.5 rounded-lg text-xs font-bold shadow-lg">เปลี่ยนรูป</button>
@@ -433,7 +389,6 @@ export default function WoodSlabForm({ initialData }: { initialData?: any }) {
               </div>
             </div>
 
-            {/* Extra Images */}
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
               <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
                 <h2 className="font-semibold text-slate-800 flex items-center gap-2 text-sm">
@@ -456,23 +411,19 @@ export default function WoodSlabForm({ initialData }: { initialData?: any }) {
 
                 <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1">
                   
-                  {/* Loop รูปเก่า */}
                   {existingExtraImages.map((item, idx) => (
                     <div key={`old-${idx}`} className="flex items-center gap-3 bg-slate-50 p-2 border border-slate-200 rounded-lg shadow-sm">
                       <div className="w-12 h-12 bg-white rounded overflow-hidden flex-shrink-0 relative">
-                        {/* ✅ แก้: ใช้ getFullUrl */}
                         <img src={getFullUrl(item.path)} className="w-full h-full object-cover opacity-80" />
                         <div className="absolute inset-0 flex items-center justify-center bg-black/10"><span className="text-[8px] text-white bg-black/50 px-1 rounded">OLD</span></div>
                       </div>
                       <div className="flex-1 min-w-0">
-                        {/* แสดงแค่ชื่อไฟล์ท้ายสุดพอมองเห็น */}
                         <div className="text-xs font-medium text-slate-600 truncate">{item.path.split('/').pop()}</div>
                       </div>
                       <button type="button" onClick={() => removeExtraExisting(idx)} className="p-1 hover:bg-red-100 text-red-400 rounded"><X className="w-3 h-3" /></button>
                     </div>
                   ))}
 
-                  {/* Loop รูปใหม่ */}
                   {extraFiles.map((item, idx) => (
                     <div key={item.id} className="flex items-center gap-3 bg-white p-2 border border-blue-100 rounded-lg shadow-sm">
                       <div className="w-12 h-12 bg-slate-100 rounded overflow-hidden flex-shrink-0 border-2 border-blue-500">
@@ -493,7 +444,6 @@ export default function WoodSlabForm({ initialData }: { initialData?: any }) {
             </div>
           </div>
 
-          {/* RIGHT COLUMN: Data Forms (เหมือนเดิมเป๊ะ) */}
           <div className="lg:col-span-2 space-y-6">
             <div className="bg-white rounded-xl shadow-sm border border-slate-200">
               <div className="p-5 border-b border-slate-100 bg-slate-50/50">
@@ -512,10 +462,21 @@ export default function WoodSlabForm({ initialData }: { initialData?: any }) {
                   <label className="block text-xs font-bold text-slate-500 uppercase mb-1">SKU</label>
                   <input name="sku" defaultValue={initialData?.sku} placeholder="AUTO / Unique" className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 text-sm font-mono" />
                 </div>
+                
+                {/* 💡 แก้ไข: เปลี่ยนเป็น Dropdown ให้เลือกหมวดหมู่ได้ชัดเจน */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">หมวดหมู่ (Category ID)</label>
-                  <input name="category_id" defaultValue={initialData?.category_id} placeholder="เช่น wood_board" className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 text-sm" />
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">หมวดหมู่ (Category ID) <span className="text-red-500">*</span></label>
+                  <select 
+                    name="category_id" 
+                    defaultValue={initialData?.category_id || "SLABS"} 
+                    className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 text-sm bg-white"
+                  >
+                    <option value="SLABS">Wood Slabs (แผ่นไม้)</option>
+                    <option value="rough_wood">Rough Wood (ไม้ดิบ)</option>
+                    <option value="prop">Props (พร็อพ)</option>
+                  </select>
                 </div>
+
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase mb-1">สถานะ (Status)</label>
                   <select name="status" defaultValue={initialData?.status} className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 text-sm bg-white">

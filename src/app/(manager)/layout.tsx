@@ -52,18 +52,21 @@ export default async function ManagerLayout({ children }: { children: React.Reac
   // @ts-ignore
   const branchName = profile?.branches?.branch_name || "ไม่ระบุสาขา"
 
-  return (
-    <div className="flex min-h-screen bg-slate-50 font-sans text-slate-900">
+return (
+    <div className="flex min-h-screen bg-slate-50 font-sans text-slate-900 print:bg-white print:text-black">
       
-      {/* ✅ Pass the calculated URL */}
-      <ManagerSidebar 
-        userName={userName} 
-        branchName={branchName} 
-        userAvatar={avatarFullUrl} 
-      />
+      {/* 💡 1. สั่งซ่อน Sidebar ตัวป่วนทั้งหมดไม่ให้หลุดไปในกระดาษพริ้นท์ */}
+      <div className="print:hidden">
+        <ManagerSidebar 
+          userName={userName} 
+          branchName={branchName} 
+          userAvatar={avatarFullUrl} 
+        />
+      </div>
 
-      <main className="flex-1 md:ml-[88px] bg-slate-50/50 min-h-screen transition-all duration-300">
-        <div className="max-w-7xl mx-auto p-4 md:p-8">
+      {/* 💡 2. ปลดล็อกระยะเว้นขอบ (md:ml-[88px]) และ Padding ออกให้หมดตอนพริ้นท์ เพื่อให้ข้อมูลกางเต็มกระดาษ A4 สวยๆ */}
+      <main className="flex-1 md:ml-[88px] bg-slate-50/50 min-h-screen transition-all duration-300 print:ml-0 print:p-0 print:bg-white">
+        <div className="max-w-7xl mx-auto p-4 md:p-8 print:p-0 print:max-w-full">
             {children}
         </div>
       </main>

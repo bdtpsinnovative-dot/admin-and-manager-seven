@@ -33,26 +33,31 @@ export async function uploadFile(formData: FormData) {
   return { success: true }
 }
 
-export async function getProducts(category?: string, specType?: string) {
+// เปลี่ยนบรรทัดนี้ในไฟล์ actions/woodslab.ts
+export async function getProducts(category?: string, specType?: string, searchQuery?: string) {
   const supabase = await createClient()
 
-  // เริ่มต้น Query
   let query = supabase
     .from(TABLE_NAME)
     .select('*')
     .order('created_at', { ascending: false })
 
-  // ถ้าส่ง category มา ให้กรอง
   if (category) {
     query = query.eq('category_id', category)
   }
 
-  // ถ้าส่ง specType มา ให้กรองตาม specs->type
   if (specType) {
     query = query.eq('specs->>type', specType)
   }
 
+  // 💡 เพิ่มตรงนี้ครับ: ค้นหาจากชื่อ หรือ SKU
+  if (searchQuery) {
+    query = query.or(`sku.ilike.%${searchQuery}%,name.ilike.%${searchQuery}%`)
+  }
+
   const { data, error } = await query
+  
+  // ... โค้ดเดิมดึงรูปภาพด้านล่างปล่อยไว้เหมือนเดิมครับ ...
 
   if (error) {
     console.error("Error fetching products:", error)

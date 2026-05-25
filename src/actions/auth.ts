@@ -12,19 +12,36 @@ export async function login(formData: FormData) {
   const email = formData.get("email") as string;
   const password = formData.get("password") as string;
 
-  // ส่งข้อมูลไปตรวจสอบกับ Supabase Auth
-  const { error } = await supabase.auth.signInWithPassword({
-    email,
-    password,
-  });
+  try {
+    // ส่งข้อมูลไปตรวจสอบกับ Supabase Auth
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
 
-  if (error) {
-    console.error("Login Error:", error.message);
-    return { error: "อีเมลหรือรหัสผ่านไม่ถูกต้อง" };
+    if (error) {
+      console.error("Login Error:", error.message);
+      
+      // 🌟 แยกประเภท Error ให้ชัดเจน
+      if (error.message.includes('fetch failed') || error.message.includes('network') || error.message.includes('EAI_AGAIN')) {
+        return { error: "ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ โปรดตรวจสอบอินเทอร์เน็ตของคุณ" };
+      }
+      
+      // ถ้าเป็น Error อื่นๆ จากระบบ Auth
+      if (error.message.includes('Invalid login credentials')) {
+        return { error: "อีเมลหรือรหัสผ่านไม่ถูกต้อง" };
+      }
+
+      // Error ที่ไม่ได้คาดคิด
+      return { error: `เกิดข้อผิดพลาด: ${error.message}` };
+    }
+  } catch (err: any) {
+    // จับ Error ระดับ Network ที่อาจทำให้ระบบพังไปเลย (Crash)
+    console.error("Critical Login Error:", err);
+    return { error: "ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ โปรดตรวจสอบอินเทอร์เน็ตของคุณ" };
   }
 
   // ถ้า Login สำเร็จ ให้ Redirect ไปที่หน้า Dashboard
-  // (Middleware จะเป็นตัวตัดสินเองว่า Role ไหนควรไปหน้าไหนต่อ)
   redirect("/dashboard");
 }
 

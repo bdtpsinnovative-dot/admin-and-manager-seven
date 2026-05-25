@@ -2,9 +2,9 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { Edit, Package, AlertCircle } from "lucide-react"
+import { Edit, Package, AlertCircle, Hammer, Layers, Box } from "lucide-react"
 import RoughWoodForm from "./RoughWoodForm"
-import CategoryBadge from "./CategoryBadge"
+// 💡 ถอด CategoryBadge ออก แล้วใช้แบบ Inline ด้านล่างแทนเพื่อความแม่นยำครับ
 
 interface InventoryTableProps {
   products: any[]
@@ -12,19 +12,15 @@ interface InventoryTableProps {
 }
 
 export default function InventoryTable({ products, activeTab }: InventoryTableProps) {
-  // State สำหรับ Modal Edit
+  // State สำหรับ Modal Edit (ของไม้ดิบ)
   const [editingProduct, setEditingProduct] = useState<any | null>(null)
   const [isRoughModalOpen, setIsRoughModalOpen] = useState(false)
 
-  // ฟังก์ชันกดปุ่มแก้ไข
+  // ฟังก์ชันกดปุ่มแก้ไข (เหลือไว้ใช้เฉพาะหมวด ไม้ดิบ เพราะมันเป็น Modal)
   const handleEdit = (product: any) => {
     if (product.category_id === 'rough_wood') {
-      // 1. ถ้าเป็น Rough Wood ให้เปิด Modal
       setEditingProduct(product)
       setIsRoughModalOpen(true)
-    } else {
-      // 2. ถ้าเป็น Slab ให้ไปหน้า Edit ปกติ (Redirect)
-      // (ใช้ Link ใน JSX แทน เพื่อความเร็ว)
     }
   }
 
@@ -80,33 +76,51 @@ export default function InventoryTable({ products, activeTab }: InventoryTablePr
                         )}
                       </div>
                     </td>
+                    
+                    {/* 💡 ป้ายหมวดหมู่แบบใหม่ ฉลาดขึ้น เปลี่ยนสีตามประเภทได้เลย */}
                     <td className="p-4 align-top">
-                      <CategoryBadge product={item} />
+                      {item.category_id === 'rough_wood' ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold bg-orange-50 text-orange-600 border border-orange-200">
+                          <Hammer className="w-3 h-3" /> ไม้ดิบ
+                        </span>
+                      ) : item.category_id === 'prop' ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold bg-purple-50 text-purple-600 border border-purple-200">
+                          <Box className="w-3 h-3" /> พร็อพ
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold bg-blue-50 text-blue-600 border border-blue-200">
+                          <Layers className="w-3 h-3" /> แผ่นไม้ (Slab)
+                        </span>
+                      )}
                     </td>
+
                     <td className="p-4 align-top">
                       <div className="font-bold text-slate-700 text-sm">{formatCurrency(item.price)}</div>
                     </td>
-                    <td className="p-4 text-center">
+                    <td className="p-4 text-center align-top">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${item.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-500'}`}>
                         {item.status || 'Draft'}
                       </span>
                     </td>
-                    <td className="p-4 text-right">
-                      {/* ✅ จุดสำคัญ: ถ้าเป็น Slab ใช้ Link, ถ้าเป็น Rough ใช้ Button */}
-                      {item.category_id === 'SLABS' ? (
-                         <Link 
-                           href={`/inventory/${item.id}`} 
-                           className="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-blue-600 hover:text-white transition shadow-sm"
-                         >
-                           <Edit className="w-4 h-4" /> <span className="hidden sm:inline">แก้ไข</span>
-                         </Link>
-                      ) : (
+                    
+                    {/* 💡 แยกปุ่มกดแก้ไขใหม่ ถ้าเป็น Rough ใช้ Modal ถ้าเป็นอย่างอื่นให้ไปหน้าฟอร์มแก้ไข */}
+                    <td className="p-4 text-right align-top">
+                      {item.category_id === 'rough_wood' ? (
                          <button
                            onClick={() => handleEdit(item)}
                            className="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-orange-600 hover:text-white transition shadow-sm"
                          >
                            <Edit className="w-4 h-4" /> <span className="hidden sm:inline">แก้ไข</span>
                          </button>
+                      ) : (
+                         <Link 
+                           href={`/inventory/${item.id}`} 
+                           className={`inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-700 transition shadow-sm
+                              ${item.category_id === 'prop' ? 'hover:bg-purple-600 hover:text-white' : 'hover:bg-blue-600 hover:text-white'}
+                           `}
+                         >
+                           <Edit className="w-4 h-4" /> <span className="hidden sm:inline">แก้ไข</span>
+                         </Link>
                       )}
                     </td>
                   </tr>
@@ -117,14 +131,13 @@ export default function InventoryTable({ products, activeTab }: InventoryTablePr
         </div>
       </div>
 
-      {/* ✅ Modal Edit สำหรับ Rough Wood */}
       <RoughWoodForm 
         isOpen={isRoughModalOpen} 
         onClose={() => {
             setIsRoughModalOpen(false)
-            setEditingProduct(null) // Clear data เมื่อปิด
+            setEditingProduct(null)
         }}
-        initialData={editingProduct} // ส่งข้อมูลสินค้าไปให้ Modal
+        initialData={editingProduct}
         onSuccess={() => window.location.reload()}
       />
     </>
