@@ -2,31 +2,39 @@
 
 import { login } from '../../../actions/auth'
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 
 export default function LoginPage() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const router = useRouter()
 
   async function clientAction(formData: FormData) {
+    // 🌟 1. เปิดหน้าต่าง Loading ทันทีที่กดปุ่ม
     setLoading(true)
     setError(null)
 
-    // --- ✨ Logic เติม @gmail.com อัตโนมัติ ---
     let email = formData.get('email') as string
     
     // ถ้ามีค่า email และ ไม่มีเครื่องหมาย @ ให้เติม @gmail.com ต่อท้าย
     if (email && !email.includes('@')) {
       email = `${email.trim()}@gmail.com`
-      formData.set('email', email) // อัปเดตค่าใน FormData ก่อนส่งไป Server
+      formData.set('email', email)
     }
-    // ------------------------------------------
 
     try {
       const result = await login(formData)
       
       if (result?.error) {
         setError(result.error)
-        setLoading(false) // 🌟 ปิดโหลดแค่ตอนพัง ถ้าสำเร็จให้โหลดค้างไว้รอเปลี่ยนหน้า
+        setLoading(false) // ❌ ปิดโหลดแค่ตอนพัง (เพื่อให้กรอกใหม่)
+      } else if (result?.success) {
+        // ✅ 2. ล็อกอินผ่านแล้ว ไม่ต้องสั่ง setLoading(false) ให้มันโหลดค้างไว้เลย!
+        // 🌟 3. เพิ่มหน่วงเวลาเล็กน้อย (500ms) ให้คนใช้เห็น Spinner หมุนชัดเจนว่าระบบกำลังทำงาน
+        setTimeout(() => {
+          router.refresh() // รีเฟรชสถานะเผื่อเบราว์เซอร์จำค่าเก่า
+          router.push('/dashboard')
+        }, 500)
       }
     } catch (err) {
       setError("เกิดข้อผิดพลาดในการเชื่อมต่อ กรุณาลองใหม่อีกครั้ง")
@@ -41,7 +49,7 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4 font-sans relative">
       
-      {/* 🌟 LOADING OVERLAY */}
+      {/* 🌟 LOADING OVERLAY (หน้าต่างหมุนๆ กลางจอ) */}
       {loading && (
         <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-slate-900/40 backdrop-blur-sm transition-all duration-300">
           <div className="bg-white p-6 rounded-2xl shadow-2xl flex flex-col items-center">
@@ -50,7 +58,7 @@ export default function LoginPage() {
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
             <p className="text-slate-800 font-bold text-lg">กำลังเข้าสู่ระบบ...</p>
-            <p className="text-slate-500 text-sm mt-1">โปรดรอสักครู่</p>
+            <p className="text-slate-500 text-sm mt-1">โปรดรอสักครู่ ระบบกำลังพาคุณไปหน้าหลัก</p>
           </div>
         </div>
       )}
@@ -126,9 +134,16 @@ export default function LoginPage() {
             <button 
               type="submit" 
               disabled={loading}
-              className="w-full py-3.5 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 active:scale-[0.98] transition-all disabled:opacity-0 relative"
+              className="w-full py-3.5 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed relative flex justify-center items-center gap-2"
             >
-              เข้าสู่ระบบ
+              {/* 🌟 ถ้าโหลดอยู่ ให้โชว์ไอคอนหมุนๆ ในปุ่มด้วย */}
+              {loading && (
+                <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              )}
+              {loading ? "กำลังประมวลผล..." : "เข้าสู่ระบบ"}
             </button>
           </form>
         </div>

@@ -1,3 +1,5 @@
+//src/app/(admin)/inventory/import/page.tsx
+
 import BulkUploadProducts from "@/components/BulkUploadProducts" // เช็ค path ให้ตรงนะครับนาย
 import Link from "next/link"
 import { ArrowLeft } from "lucide-react"

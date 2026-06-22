@@ -4,6 +4,7 @@ import Link from "next/link";
 import JsBarcode from "jsbarcode";
 import QRCode from "qrcode";
 import { updatePropImageUrl } from "@/actions/props";
+import PropBoxCalculator from "./PropBoxCalculator";
 //asdasdasdasdasd
 function BarcodeSvg({ value }: { value: string }) {
   const ref = useRef<SVGSVGElement>(null);
@@ -271,6 +272,12 @@ const printQrPhoto = async () => {
             <p className="text-xs text-gray-400 mt-1 ml-1">พบ {filteredProducts.length} รายการ จาก {products.length} ทั้งหมด</p>
           )}
         </div>
+
+        <PropBoxCalculator
+          products={products}
+          filteredProducts={filteredProducts}
+          selectedProducts={selectedProducts}
+        />
 
         {/* Action Bar */}
         <div className="flex items-center gap-3 mb-6 bg-white p-3 rounded-2xl border border-gray-100 shadow-sm flex-wrap">

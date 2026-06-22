@@ -4,14 +4,47 @@ import React, { useState, useEffect } from "react"
 import {
   ShieldCheck, Camera, RotateCcw, Download, CheckCircle2,
   Loader2, AlertCircle, Package, RefreshCcw, AlertTriangle,
-  Clock, Square, CheckSquare, ChevronDown, ChevronUp,
+  Clock, Square, CheckSquare, ChevronDown, ChevronUp, Link2, FileText, History
 } from "lucide-react"
 import {
   getBackupTableStats, getSnapshotMeta, createSnapshot, restoreSnapshot, exportTable,
-  type TableInfo, type SnapshotMeta,
+  type TableInfo
 } from "@/actions/backup"
 
-const CRITICAL = ["products", "stock"]
+// ✅ 1. เพิ่มฟิลด์ id และ note เข้าไปใน Interface
+export interface SnapshotMeta {
+  id: string; // เช่น ชื่อไฟล์ snap_1716900000.json
+  created_at: string;
+  totalRows: number;
+  note?: string; // โน้ตที่พนักงานพิมพ์ไว้
+  tables: { key: string, rows: number }[];
+}
+
+const CRITICAL = ["products", "stock", "orders"]
+
+// ✅ 2. อัปเดต Table Relations ตาม Schema ล่าสุดที่นายให้มา
+const TABLE_RELATIONS: Record<string, string[]> = {
+  products: ["collection_groups"],
+  stock: ["products", "branches"],
+  stock_lots: ["branches", "profiles"],
+  stock_lot_items: ["stock_lots", "products"],
+  stock_movements: ["products", "branches", "stock_lots", "profiles"],
+  stock_receiving: ["products", "branches", "stock_lots"],
+  product_rfid_tags: ["products", "stock_lots"],
+  discount_rules: ["discounts", "branches", "products"],
+  reader_stock: ["products"],
+  reader_count_scans: ["products"],
+  stock_initial_counts: ["branches", "profiles"],
+  stock_initial_count_items: ["stock_initial_counts", "products"],
+  profiles: ["branches"],
+  orders: ["profiles", "branches", "customers"],
+  order_items: ["orders", "products", "branches"], // + fulfill_branch_id
+  cart_items: ["products"],
+  favorites: ["products"],
+  stock_transfers: ["branches", "profiles"], // ตารางใหม่
+  stock_transfer_items: ["stock_transfers", "products"], // ตารางใหม่
+  sale_dasbrode: ["branches"]
+}
 
 function downloadJSON(data: any, filename: string) {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" })
@@ -26,9 +59,13 @@ const fmtDT = (iso: string) =>
 
 export default function BackupPage() {
   const [tables,   setTables]   = useState<TableInfo[]>([])
-  const [snap,     setSnap]     = useState<SnapshotMeta | null>(null)
+  
+  // ✅ 3. เปลี่ยน State รองรับแบบ Array และตัวแปรเก็บ Snapshot ที่กำลังเลือกดู
+  const [snapshots,  setSnapshots]  = useState<SnapshotMeta[]>([])
+  const [activeSnapId, setActiveSnapId] = useState<string>("") 
+  const [memoText,   setMemoText]   = useState("") // State สำหรับพิมพ์โน้ต
+  
   const [loading,  setLoading]  = useState(true)
-
   const [snapBusy,    setSnapBusy]    = useState(false)
   const [restoreBusy, setRestoreBusy] = useState(false)
   const [exportBusy,  setExportBusy]  = useState<Record<string, boolean>>({})
@@ -42,12 +79,21 @@ export default function BackupPage() {
   const [successMsg,    setSuccessMsg]    = useState("")
 
   const restorableTables = tables.filter(t => t.restorable)
+  
+  // หา Snapshot ปัจจุบันที่กำลังแสดงผลบน UI
+  const activeSnap = snapshots.find(s => s.id === activeSnapId) || snapshots[0]
 
   const fetchAll = async () => {
     setLoading(true)
-    const [stats, meta] = await Promise.all([getBackupTableStats(), getSnapshotMeta()])
+    // *นายต้องไปแก้ getSnapshotMeta หลังบ้านให้ return เป็น Array SnapshotMeta[] นะครับ*
+    const [stats, metaArray] = await Promise.all([getBackupTableStats(), getSnapshotMeta()])
     setTables(stats)
-    setSnap(meta)
+    
+    // สมมติว่า metaArray คือ Array (เรียงจากใหม่สุดไปเก่าสุด)
+    if (Array.isArray(metaArray) && metaArray.length > 0) {
+      setSnapshots(metaArray)
+      if (!activeSnapId) setActiveSnapId(metaArray[0].id)
+    }
     setLoading(false)
   }
 
@@ -55,37 +101,48 @@ export default function BackupPage() {
 
   // ---- Snapshot ----
   const handleSnapshot = async () => {
-    if (!confirm("สร้าง Snapshot ตอนนี้เลยไหมครับ?\nจะบันทึกข้อมูลทุก table ไว้บน server")) return
+    if (!memoText.trim()) {
+      alert("รบกวนระบุโน้ตกันลืมหน่อยครับนาย จะได้รู้ว่าเซฟไว้ทำไม (เช่น ก่อนอัปเดตระบบโอนย้าย)")
+      return
+    }
+    if (!confirm(`สร้าง Snapshot พร้อมโน้ต: "${memoText}"\nยืนยันไหมครับ?`)) return
+    
     setSnapBusy(true); setErrorMsg(""); setSuccessMsg(""); setRestoreResult(null)
-    const res = await createSnapshot()
+    
+    // *นายต้องไปแก้ createSnapshot ให้รับ String (memoText) ด้วยนะ*
+    const res = await createSnapshot(memoText) 
+    
     if (!res.ok) {
       setErrorMsg("Snapshot ไม่สำเร็จ: " + res.error)
     } else {
-      setSnap(res.meta)
-      setSuccessMsg(`✅ Snapshot สำเร็จ! บันทึก ${res.meta.totalRows.toLocaleString()} rows ไว้แล้ว`)
-      fetchAll()
+      setSuccessMsg(`✅ Snapshot สำเร็จ! บันทึกพร้อมโน้ตเรียบร้อย`)
+      setMemoText("") // ล้างช่อง
+      fetchAll() // รีเฟรชลิสต์ใหม่
     }
     setSnapBusy(false)
   }
 
   // ---- Restore ----
   const handleRestore = async () => {
-    if (!snap) { setErrorMsg("ยังไม่มี Snapshot — กด 'สร้าง Snapshot' ก่อน"); return }
+    if (!activeSnap) { setErrorMsg("ไม่พบข้อมูล Snapshot ที่เลือก"); return }
     const keys = Array.from(selectedTables)
     if (keys.length === 0) { setErrorMsg("เลือกตารางที่ต้องการ Restore อย่างน้อย 1 ตาราง"); return }
 
     const tableLabels = keys.map(k => restorableTables.find(t => t.key === k)?.label ?? k).join(", ")
     if (!confirm(
-      `⚠️ Restore ตาราง: ${tableLabels}\n\nจะคืนค่ากลับไปตอน:\n${fmtDT(snap.created_at)}\n\nดำเนินการเลยไหมครับ?`
+      `⚠️ Restore กลับไปยังเซฟ: "${activeSnap.note || 'ไม่มีโน้ต'}"\nเวลา: ${fmtDT(activeSnap.created_at)}\nตาราง: ${tableLabels}\n\nดำเนินการเลยไหมครับ?`
     )) return
 
     setRestoreBusy(true); setErrorMsg(""); setSuccessMsg(""); setRestoreResult(null)
-    const res = await restoreSnapshot(keys)
+    
+    // *ตรงนี้นายอาจจะต้องส่ง activeSnap.id ไปด้วย เพื่อให้หลังบ้านรู้ว่าหยิบไฟล์ไหนมา Restore*
+    const res = await restoreSnapshot(activeSnap.id, keys) 
+    
     if (!res.ok) {
       setErrorMsg("Restore ไม่สำเร็จ: " + res.error)
     } else {
       setRestoreResult(res.restored)
-      setSuccessMsg(`✅ Restore สำเร็จ! คืนค่า ${keys.length} ตาราง เรียบร้อยแล้วครับ`)
+      setSuccessMsg(`✅ Restore สำเร็จ! คืนค่า ${keys.length} ตาราง จากรอบ "${activeSnap.note}" เรียบร้อยแล้วครับ`)
       fetchAll()
     }
     setRestoreBusy(false)
@@ -116,8 +173,9 @@ export default function BackupPage() {
     setExportBusy(p => ({ ...p, [key]: false }))
   }
 
+  // ✅ 4. ดึงข้อมูลจำนวน Row ของ Snapshot ที่เลือกมาคำนวณ Diff
   const snapRowMap: Record<string, number> = {}
-  for (const t of snap?.tables ?? []) snapRowMap[t.key] = t.rows
+  for (const t of activeSnap?.tables ?? []) snapRowMap[t.key] = t.rows
 
   const totalRows = tables.reduce((s, t) => s + t.count, 0)
 
@@ -131,7 +189,7 @@ export default function BackupPage() {
             <ShieldCheck className="w-7 h-7 text-emerald-600" />
             Backup & Restore
           </h1>
-          <p className="text-slate-500 text-sm mt-1">Snapshot ข้อมูลไว้ แล้วเลือก restore ทีละตารางได้</p>
+          <p className="text-slate-500 text-sm mt-1">เก็บบันทึกประวัติฐานข้อมูล พร้อมระบุโน้ตกันลืม</p>
         </div>
         <button onClick={fetchAll} disabled={loading}
           className="p-2 bg-white border border-slate-200 rounded-xl shadow-sm text-slate-400 hover:text-emerald-600 transition">
@@ -139,31 +197,39 @@ export default function BackupPage() {
         </button>
       </div>
 
-      {/* Snapshot button */}
-      <button
-        onClick={handleSnapshot}
-        disabled={snapBusy || restoreBusy}
-        className="w-full group relative bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-[2rem] p-6 flex items-center gap-4 transition shadow-lg shadow-indigo-200 text-left"
-      >
-        <div className="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center shrink-0">
-          {snapBusy ? <Loader2 className="w-6 h-6 animate-spin" /> : <Camera className="w-6 h-6" />}
-        </div>
-        <div className="flex-1">
-          <div className="text-lg font-black">📸 สร้าง Snapshot</div>
-          <div className="text-indigo-200 text-sm mt-0.5">
-            {snap
-              ? `Snapshot ล่าสุด: ${fmtDT(snap.created_at)} · ${snap.totalRows.toLocaleString()} rows`
-              : "บันทึกสถานะ DB ทั้งหมดไว้บน server ตอนนี้เลย"}
+      {/* ===== CREATION SECTION ===== */}
+      <div className="bg-white rounded-[1.5rem] border border-indigo-100 shadow-sm p-6 space-y-4">
+        <h2 className="text-sm font-black text-indigo-900 flex items-center gap-2">
+          <Camera className="w-5 h-5 text-indigo-500" />
+          สร้างจุดเซฟใหม่ (New Snapshot)
+        </h2>
+        <div className="flex flex-col md:flex-row gap-3">
+          <div className="flex-1 relative">
+            <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+              <FileText className="w-4 h-4 text-slate-400" />
+            </div>
+            <input
+              type="text"
+              value={memoText}
+              onChange={(e) => setMemoText(e.target.value)}
+              placeholder="ระบุเหตุผล (เช่น เซฟก่อนลบสินค้า, ก่อนขึ้นฟีเจอร์ใหม่...)"
+              className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:bg-white focus:ring-2 focus:ring-indigo-100 transition-all"
+            />
           </div>
+          <button
+            onClick={handleSnapshot}
+            disabled={snapBusy || restoreBusy || !memoText.trim()}
+            className="md:w-auto w-full group relative bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl px-6 py-3 font-bold text-sm flex items-center justify-center gap-2 transition shadow-md shadow-indigo-200 shrink-0"
+          >
+            {snapBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : "บันทึก Snapshot"}
+          </button>
         </div>
-        {snap && <CheckCircle2 className="w-5 h-5 text-indigo-300 shrink-0" />}
-      </button>
+      </div>
 
       {/* ===== RESTORE SECTION ===== */}
-      {snap && (
+      {snapshots.length > 0 && (
         <div className="bg-white rounded-[1.5rem] border-2 border-rose-200 shadow-sm overflow-hidden">
-
-          {/* Restore header toggle */}
+          
           <button
             onClick={() => setShowRestorePanel(v => !v)}
             className="w-full flex items-center gap-4 p-5 text-left hover:bg-rose-50/50 transition"
@@ -174,11 +240,8 @@ export default function BackupPage() {
             <div className="flex-1">
               <div className="font-black text-slate-800">🔄 Restore กลับมา</div>
               <div className="text-xs text-slate-400 mt-0.5 flex items-center gap-1">
-                <Clock className="w-3 h-3" />
-                จะคืนกลับไปตอน {fmtDT(snap.created_at)}
-                {selectedTables.size > 0 && (
-                  <span className="ml-2 font-black text-rose-600">· เลือก {selectedTables.size} ตาราง</span>
-                )}
+                <History className="w-3 h-3" />
+                มีจุดเซฟทั้งหมด {snapshots.length} รายการ
               </div>
             </div>
             {showRestorePanel
@@ -187,7 +250,31 @@ export default function BackupPage() {
           </button>
 
           {showRestorePanel && (
-            <div className="border-t border-slate-100 p-5 space-y-4">
+            <div className="border-t border-slate-100 p-5 space-y-5">
+
+              {/* ✅ Selector สำหรับเลือกจุดเซฟ */}
+              <div className="bg-rose-50/50 rounded-xl p-4 border border-rose-100 space-y-3">
+                <label className="text-xs font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-rose-500" />
+                  เลือกช่วงเวลาที่ต้องการย้อนกลับไป
+                </label>
+                <select
+                  value={activeSnapId}
+                  onChange={(e) => setActiveSnapId(e.target.value)}
+                  className="w-full bg-white border border-slate-200 text-slate-700 text-sm rounded-lg px-4 py-2.5 font-bold outline-none cursor-pointer focus:ring-2 focus:ring-rose-100"
+                >
+                  {snapshots.map(s => (
+                    <option key={s.id} value={s.id}>
+                      {fmtDT(s.created_at)} — {s.note || "ไม่มีโน้ต"} ({s.totalRows.toLocaleString()} rows)
+                    </option>
+                  ))}
+                </select>
+                {activeSnap && activeSnap.note && (
+                  <p className="text-xs text-slate-500 italic flex gap-1">
+                    <span className="font-bold text-slate-600">โน้ต:</span> {activeSnap.note}
+                  </p>
+                )}
+              </div>
 
               {/* Select all / clear */}
               <div className="flex items-center justify-between">
@@ -202,7 +289,7 @@ export default function BackupPage() {
                 </div>
               </div>
 
-              {/* Table checkboxes */}
+              {/* Table checkboxes (เปรียบเทียบกับ activeSnap) */}
               <div className="space-y-2">
                 {restorableTables.map(t => {
                   const isSelected  = selectedTables.has(t.key)
@@ -210,6 +297,7 @@ export default function BackupPage() {
                   const snapRows    = snapRowMap[t.key] ?? 0
                   const currentRows = t.count
                   const diff        = currentRows - snapRows
+                  const relations   = TABLE_RELATIONS[t.key] || []
 
                   return (
                     <button
@@ -233,19 +321,31 @@ export default function BackupPage() {
                           )}
                         </div>
                         <p className="text-[11px] text-slate-400 mt-0.5">{t.description}</p>
+                        
+                        {relations.length > 0 && (
+                          <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                            <Link2 className="w-3 h-3 text-slate-300" />
+                            <span className="text-[9px] text-slate-400 font-medium">อ้างอิง:</span>
+                            {relations.map(rel => (
+                              <span key={rel} className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-indigo-50/80 text-indigo-500 border border-indigo-100">
+                                {rel}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
 
                       {/* Snapshot vs Current */}
                       <div className="text-right text-[11px] shrink-0 space-y-0.5">
                         <div className="text-slate-500">
-                          Snapshot: <span className="font-black text-indigo-600">{snapRows.toLocaleString()}</span>
+                          ในเซฟนี้: <span className="font-black text-indigo-600">{snapRows.toLocaleString()}</span>
                         </div>
                         <div className="text-slate-500">
                           ปัจจุบัน: <span className="font-black text-slate-700">{currentRows.toLocaleString()}</span>
                         </div>
                         {diff !== 0 && (
                           <div className={`font-black ${diff > 0 ? "text-orange-500" : "text-blue-500"}`}>
-                            {diff > 0 ? `+${diff.toLocaleString()} เพิ่มมา` : `${diff.toLocaleString()} น้อยกว่า`}
+                            {diff > 0 ? `+${diff.toLocaleString()} เพิ่มมา` : `${Math.abs(diff).toLocaleString()} น้อยกว่า`}
                           </div>
                         )}
                         {diff === 0 && (
@@ -267,18 +367,14 @@ export default function BackupPage() {
                   ? <><Loader2 className="w-4 h-4 animate-spin" /> กำลัง Restore...</>
                   : selectedTables.size === 0
                   ? "เลือกตารางก่อนครับ"
-                  : `🔄 Restore ${selectedTables.size} ตาราง กลับไปตอน Snapshot`}
+                  : `🔄 Restore ${selectedTables.size} ตาราง (จากเซฟที่เลือก)`}
               </button>
-
-              <p className="text-[11px] text-slate-400 text-center">
-                ระบบจะ upsert ข้อมูลจาก Snapshot กลับมา และลบ rows ที่เพิ่มมาหลัง Snapshot
-              </p>
             </div>
           )}
         </div>
       )}
 
-      {/* Success / Error messages */}
+      {/* Success / Error messages (ส่วนนี้เหมือนเดิม แค่ย้ายตำแหน่งให้ดูเนียนขึ้น) */}
       {successMsg && (
         <div className="flex items-start gap-3 bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-emerald-800">
           <CheckCircle2 className="w-5 h-5 shrink-0 mt-0.5 text-emerald-600" />
@@ -292,7 +388,7 @@ export default function BackupPage() {
         </div>
       )}
 
-      {/* Restore result detail */}
+      {/* Restore result detail (เหมือนเดิม) */}
       {restoreResult && (
         <div className="bg-white rounded-[1.5rem] border border-emerald-200 shadow-sm p-5 space-y-3">
           <h3 className="text-sm font-black text-slate-700">ผล Restore</h3>
@@ -310,13 +406,12 @@ export default function BackupPage() {
         </div>
       )}
 
-      {/* ===== Export table list ===== */}
-      <div className="space-y-3">
+      {/* ===== Export table list (เหมือนเดิม) ===== */}
+      <div className="space-y-3 pt-6 border-t border-slate-200">
         <h2 className="text-xs font-black uppercase tracking-widest text-slate-400 px-1">
           Export ทีละ Table (ไฟล์ JSON)
           {!loading && <span className="ml-2 text-slate-300">· {totalRows.toLocaleString()} rows รวม</span>}
         </h2>
-
         {loading ? (
           <div className="py-12 flex items-center justify-center gap-3 text-slate-400">
             <Loader2 className="w-5 h-5 animate-spin" /><span className="text-sm">กำลังโหลด...</span>
@@ -326,6 +421,7 @@ export default function BackupPage() {
             const isCritical = CRITICAL.includes(t.key)
             const isBusy     = exportBusy[t.key]
             const isDone     = exportDone[t.key]
+            const relations  = TABLE_RELATIONS[t.key] || []
 
             return (
               <div key={t.key}
@@ -346,6 +442,18 @@ export default function BackupPage() {
                       : <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 uppercase">export only</span>}
                   </div>
                   <p className="text-[11px] text-slate-400 mt-0.5">{t.description} · {t.count.toLocaleString()} rows</p>
+                  
+                  {relations.length > 0 && (
+                    <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                      <Link2 className="w-3 h-3 text-slate-300" />
+                      <span className="text-[9px] text-slate-400 font-medium">อ้างอิง:</span>
+                      {relations.map(rel => (
+                        <span key={rel} className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-500 border border-slate-200">
+                          {rel}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <button
                   onClick={() => handleExport(t.key, t.label)}
@@ -367,16 +475,6 @@ export default function BackupPage() {
         )}
       </div>
 
-      {/* Warning note */}
-      <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3">
-        <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-        <div className="text-xs text-amber-800 space-y-1">
-          <p className="font-black">หมายเหตุ</p>
-          <p>Restore ทีละตาราง — เลือกเฉพาะที่ต้องการได้เลย ไม่ต้องคืนทั้งหมด</p>
-          <p><b>ไม่แตะ:</b> profiles, sales, sale_items (operational data)</p>
-          <p>Snapshot บันทึกไว้ที่ <code className="bg-amber-100 px-1 rounded font-mono">data/snapshots/latest.json</code></p>
-        </div>
-      </div>
     </div>
   )
 }

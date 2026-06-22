@@ -6,7 +6,8 @@ import { revalidatePath } from "next/cache"
 
 // ---- Types ----
 
-export type LotStatus = "DRAFT" | "SENT" | "RECEIVING" | "COMPLETED" | "PARTIAL"
+// ในไฟล์ actions/lots.ts
+export type LotStatus = "DRAFT" | "SENT" | "RECEIVING" | "COMPLETED" | "PARTIAL" | "SUCCESS"
 
 export interface StockLot {
   id: number
@@ -638,4 +639,88 @@ export async function getProductsByCodes(codes: string[]): Promise<{
   }
 
   return { found, notFound }
+}
+// ---- Rollback Preview (ดูรายละเอียดก่อนลบ) ----
+export async function getLotRollbackPreview(lotId: number) {
+  // 💡 ส่องจากตาราง stock_receiving ตรงๆ เลย เพราะเป็นตัวเก็บยอดรับเข้าที่แท้จริง
+  const { data: receives, error } = await supabaseAdmin
+    .from("stock_receiving")
+    .select("product_id, qty, products(name, sku)")
+    .eq("lot_id", lotId)
+
+  if (error || !receives) return []
+
+  // รวบรวมยอดแยกตามสินค้า เพื่อโชว์ในหน้า UI ว่าจะหักอะไรบ้าง
+  const previewMap: Record<number, { name: string; sku: string; total_qty: number }> = {}
+  for (const r of receives) {
+    const pid = r.product_id
+    if (!pid) continue
+    if (!previewMap[pid]) {
+      previewMap[pid] = {
+        name: (r.products as any)?.name || "Unknown",
+        sku: (r.products as any)?.sku || "-",
+        total_qty: 0,
+      }
+    }
+    previewMap[pid].total_qty += Number(r.qty)
+  }
+
+  return Object.values(previewMap)
+}
+
+// ---- Rollback & Delete Lot (ยกเลิกลอต, หักสต๊อก, ลบทุกตารางที่เกี่ยวข้อง) ----
+export async function rollbackAndDeleteLot(lotId: number) {
+  // 1. หาข้อมูลลอตก่อนว่าอยู่สาขาไหน
+  const { data: lot } = await supabaseAdmin
+    .from("stock_lots")
+    .select("branch_id, lot_code")
+    .eq("id", lotId)
+    .single()
+    
+  if (!lot) throw new Error("ไม่พบข้อมูลลอตนี้ในระบบ")
+
+  // 2. ดึงข้อมูลว่ารับอะไรเข้ามาบ้างจากตาราง stock_receiving
+  const { data: receives } = await supabaseAdmin
+    .from("stock_receiving")
+    .select("product_id, qty")
+    .eq("lot_id", lotId)
+
+  if (receives && receives.length > 0) {
+    const productIds = receives.map((r) => r.product_id)
+    
+    // ดึงสต๊อกหลักปัจจุบันของสาขานี้
+    const { data: currentStock } = await supabaseAdmin
+      .from("stock")
+      .select("id, product_id, qty")
+      .eq("branch_id", lot.branch_id)
+      .in("product_id", productIds)
+
+    const stockMap: Record<number, { id: number; qty: number }> = {}
+    for (const s of currentStock || []) stockMap[s.product_id] = { id: s.id, qty: Number(s.qty) }
+
+    // 3. ทยอยหักยอดสต๊อกหลักทีละตัว
+    for (const r of receives) {
+      const pid = r.product_id
+      const existing = stockMap[pid]
+      if (existing) {
+        // หักยอดออก (ป้องกันยอดติดลบด้วย Math.max)
+        const newQty = Math.max(0, existing.qty - Number(r.qty))
+        await supabaseAdmin.from("stock").update({ qty: newQty }).eq("id", existing.id)
+      }
+    }
+  }
+
+  // 4. ตามล้างตารางที่ผูกด้วย SET NULL (ต้องเคลียร์เอง)
+  // 4.1 ลบประวัติการรับเข้า (Movements) ของลอตนี้
+  await supabaseAdmin.from("stock_movements").delete().eq("lot_id", lotId)
+  
+  // 4.2 ลบ RFID Tags ที่ถูกยิงเข้ามาในลอตนี้ (ลบทิ้งไปเลยเพื่อความสะอาด)
+  await supabaseAdmin.from("product_rfid_tags").delete().eq("lot_id", lotId)
+
+  // 5. ลบหัวลอต (ตารางลูก stock_lot_items และ stock_receiving จะถูก CASCADE ลบตามอัตโนมัติ)
+  const { error } = await supabaseAdmin.from("stock_lots").delete().eq("id", lotId)
+  if (error) throw new Error(error.message)
+
+  revalidatePath("/lots")
+  return { ok: true }
 }

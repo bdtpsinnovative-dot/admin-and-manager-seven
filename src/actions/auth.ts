@@ -35,14 +35,15 @@ export async function login(formData: FormData) {
       // Error ที่ไม่ได้คาดคิด
       return { error: `เกิดข้อผิดพลาด: ${error.message}` };
     }
+
+    // ✅ ถ้าล็อกอินสำเร็จ ส่ง success: true กลับไปให้ Client เปลี่ยนหน้าเอง
+    return { success: true };
+
   } catch (err: any) {
     // จับ Error ระดับ Network ที่อาจทำให้ระบบพังไปเลย (Crash)
     console.error("Critical Login Error:", err);
     return { error: "ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ โปรดตรวจสอบอินเทอร์เน็ตของคุณ" };
   }
-
-  // ถ้า Login สำเร็จ ให้ Redirect ไปที่หน้า Dashboard
-  redirect("/dashboard");
 }
 
 /**

@@ -142,4 +142,4 @@ export default function InventoryTable({ products, activeTab }: InventoryTablePr
       />
     </>
   )
-}
+}   

@@ -43,6 +43,7 @@ export async function getInitialProfile() {
 }
 
 // ✅ 2. ฟังก์ชันเดิม ปรับการเรียกใช้ supabase
+// ✅ 2. ฟังก์ชันที่แก้ไขแล้ว (ไม่ต้องสนว่าเป็นตัวเลขหรือตัวอักษร ให้ค้นหาคลุมให้หมด)
 export async function getStockList(
   branchId: number,
   page: number = 1,
@@ -50,7 +51,7 @@ export async function getStockList(
   search: string = "",
   onlyNegative: boolean = false
 ) {
-  const supabase = await createClient() // ✅ ปลอดภัยเพราะรันบน Server เท่านั้น
+  const supabase = await createClient() 
   
   try {
     const from = (page - 1) * pageSize
@@ -63,18 +64,16 @@ export async function getStockList(
         products!inner (name, sku, barcode, unit, image_url)
       `, { count: 'exact' })
       .eq('branch_id', branchId)
-      .order('qty', { ascending: false })
-      .range(from, to)
 
     if (onlyNegative) query = query.lt('qty', 0)
 
+    // 🌟 นำกับดักตัวเลขออก ให้ค้นหาจาก ชื่อ, SKU, Barcode ไปเลยตรงๆ
     if (search) {
-      if (/^\d+$/.test(search)) {
-        query = query.eq('product_id', parseInt(search))
-      } else {
-        query = query.or(`name.ilike.%${search}%,sku.ilike.%${search}%,barcode.ilike.%${search}%`, { foreignTable: 'products' })
-      }
+      query = query.or(`name.ilike.%${search}%,sku.ilike.%${search}%,barcode.ilike.%${search}%`, { foreignTable: 'products' })
     }
+
+    // จัดเรียงและแบ่งหน้า
+    query = query.order('qty', { ascending: false }).range(from, to)
 
     const { data, count, error } = await query
     if (error) throw error

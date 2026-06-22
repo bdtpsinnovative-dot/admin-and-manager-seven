@@ -26,8 +26,12 @@ export default function BulkUploadProducts() {
   // ✅ State ไว้เก็บ SKU ที่ซ้ำกับในระบบ
   const [existingSkus, setExistingSkus] = useState<Set<string>>(new Set()) 
   const [newGroupCount, setNewGroupCount] = useState<number>(0) 
-  // ✅ State เก็บรายชื่อ Group ID (Product Sup) ที่ชนกันในระบบ
+  // ✅ State เก็บรายชื่อ Group ID ที่ชนกันในระบบ
   const [existingGroupIds, setExistingGroupIds] = useState<string[]>([])
+  
+  // ✅ State เก็บรายชื่อกลุ่มใหม่ที่จะสร้างเพื่อเอาไปโชว์พรีวิว
+  const [newGroupsPreview, setNewGroupsPreview] = useState<{id: string, product_sup: string}[]>([]) 
+  
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState<{ type: 'success' | 'error' | 'info', msg: string } | null>(null)
 
@@ -49,23 +53,24 @@ export default function BulkUploadProducts() {
     return { l: nums[0], w: nums.length > 3 ? Math.max(...nums.slice(1, -1)) : nums[1], t: nums[nums.length - 1] }
   }
 
-  const downloadTemplate = () => {
+const downloadTemplate = () => {
     const wb = XLSX.utils.book_new();
 
     if (selectedType === 'prop') {
       const propTemplate = [{
-        "Stock": 1,
         "Item NO.": "3D102672W06",
         "Factory": "Merlin",
         "Name Product": "Ceramic Handmade vase",
         "Group Sisz": "L",
+        "Picture": "",
         "Link Picture": "https://pub-258bd10e7e8c4a7690a74c54cfbdef93.r2.dev/original/...",
         "Description": "",
-        "Collection": "3D1026",
-        "Product Sup": "Vase",
+        "Collection Group": "3D1026",
+        "Product Sup": "Vase Normal",
         "Material": "Ceramic",
         "Color": "White",
-        "CODE/SKU": "ML-VA-CR-3D102672W06",
+        "SKU": "TR-VA-ML3D102672W06",
+        "BARCODE": "ML-VA-CR-3D102672W06",
         "W": 21.5,
         "D": 21.5,
         "H": 30,
@@ -121,44 +126,53 @@ export default function BulkUploadProducts() {
         const rawJson = XLSX.utils.sheet_to_json(ws)
         
         const processed = rawJson.map((row: any, idx: number) => {
-         // --- Props mode ---
+        // --- Props mode ---
           if (selectedType === 'prop') {
-            const itemNo = row["Item NO."]?.toString() || row["item_no"]?.toString() || `PROP-${Date.now()}-${idx}`
-            const codeSku = row["CODE/SKU"]?.toString() || row["code_sku"]?.toString() || ""
             
-            const w = row["W"] != null ? Number(row["W"]) : null
-            const d = row["D"] != null ? Number(row["D"]) : null
-            const h = row["H"] != null ? Number(row["H"]) : null
-            const stockNum = row["Stock"] != null ? Number(row["Stock"]) : 0
+            // 🌟 ท่าไม้ตาย: ลบช่องว่างทั้งหมดทิ้งก่อนเทียบหาคอลัมน์ (รองรับทั้งแบบมีและไม่มีเว้นวรรคใน Excel)
+            const getVal = (searchKey: string) => {
+              const cleanSearch = searchKey.replace(/\s+/g, '').toLowerCase();
+              const actualKey = Object.keys(row).find(k => k.replace(/\s+/g, '').toLowerCase() === cleanSearch);
+              return actualKey ? row[actualKey] : null;
+            };
+
+            const itemNo = getVal("Item NO")?.toString() || "";
+            const sheetSku = getVal("SKU")?.toString() || `PROP-${Date.now()}-${idx}`;
+            const sheetBarcode = getVal("BARCODE")?.toString() || "";
+            
+            const w = getVal("W") != null ? Number(getVal("W")) : null;
+            const d = getVal("D") != null ? Number(getVal("D")) : null;
+            const h = getVal("H") != null ? Number(getVal("H")) : null;
             
             // จัดการตัวเลขที่อาจมีลูกน้ำ (,) ติดมา
-            const rawCostTh = row["Cost TH"] || row["cost_th"] || 0;
+            const rawCostTh = getVal("Cost TH") || 0;
             const costTh = Number(rawCostTh.toString().replace(/,/g, ''));
             
-            const rawPrice = row["Price"] || row["ราคาตั้งปัดเศษ"] || 0;
+            const rawPrice = getVal("Price") || 0;
             const priceRounded = Number(rawPrice.toString().replace(/,/g, ''));
 
-            // รองรับ Header ใหม่ (ใช้ || ดักของเก่าไว้ด้วยเผื่อมีคนใช้ฟอร์แมตเดิม)
-            const collectionGroupId = row["Collection"]?.toString() || row["Collection Group"]?.toString() || null
-            const productSupValue = row["Product Sup"]?.toString() || null 
-            const factoryName = row["Factory"]?.toString() || row["ชื่อโรงงาน"]?.toString() || null
-            const productName = row["Name Product"]?.toString() || row["name"]?.toString() || `Prop - ${itemNo}`
+            // ดึงข้อมูลผ่าน getVal ไม่ว่า Excel จะเขียน CollectionGroup หรือ Collection Group ก็หาเจอชัวร์!
+            const collectionGroupId = getVal("Collection Group")?.toString() || null;
+            const productSupValue = getVal("Product Sup")?.toString() || null;
+            const factoryName = getVal("Factory")?.toString() || null;
+            const productName = getVal("Name Product")?.toString() || `Prop - ${sheetSku}`;
 
             return {
               name: productName, 
-              sku: itemNo, 
-              barcode: codeSku, 
-              color: row["Color"]?.toString() || row["color"]?.toString() || null,
+              sku: sheetSku,
+              barcode: sheetBarcode,
+              color: getVal("Color")?.toString() || null,
               category_id: "prop",
-              image_url: row["Link Picture"]?.toString() || (codeSku ? `https://pub-258bd10e7e8c4a7690a74c54cfbdef93.r2.dev/props/${codeSku}.png` : null),
+              image_url: getVal("Link Picture")?.toString() || null,
               status: "active",
               cost: costTh,
               price: priceRounded,
               weight: 0,
               unit: "ชิ้น",
-              description: row["Description"]?.toString() || null,
+              description: getVal("Description")?.toString() || null,
               
               collection_group_id: collectionGroupId, 
+              factory_name: itemNo, 
               _temp_product_sup: productSupValue, 
               
               specs: {
@@ -166,10 +180,8 @@ export default function BulkUploadProducts() {
                 length_cm: d,
                 thickness_cm: h,
                 brand: factoryName,
-                group_size: row["Group Sisz"]?.toString() || row["Group Size"]?.toString() || null,
-                product_sup: productSupValue, 
-                material: row["Material"]?.toString() || null,
-                stock: stockNum, 
+                group_size: getVal("Group Sisz")?.toString() || getVal("Group Size")?.toString() || null,
+                material: getVal("Material")?.toString() || null,
               }
             }
           }
@@ -246,25 +258,36 @@ export default function BulkUploadProducts() {
         const { existing } = await checkExistingSkus(skusToCheck);
         setExistingSkus(new Set(existing));
 
-        // ✅ เช็คคอลัมน์กลุ่มสินค้า (Product Sup) ที่ซ้ำ/ชนกันในระบบ
-        const uniqueGroups = Array.from(
-          new Set(
-            uniqueData
-              .map(item => item.collection_group_id)
-              .filter(id => id != null && id !== '')
-          )
-        );
+        // ---------------------------------------------------------
+        // ✅ เช็คคอลัมน์กลุ่มสินค้า (Product Sup) 
+        // ---------------------------------------------------------
+        const uniqueGroupsMap = new Map<string, string>();
+        uniqueData.forEach(item => {
+          if (item.collection_group_id) {
+            // เก็บ รหัสกลุ่ม เป็น Key และ ชื่อ product_sup เป็น Value
+            uniqueGroupsMap.set(item.collection_group_id, item._temp_product_sup || 'ไม่มีชื่อหมวดหมู่');
+          }
+        });
+        
+        // แปลง Map กลับเป็น Array
+        const allExtractedGroups = Array.from(uniqueGroupsMap.entries()).map(([id, sup]) => ({ id, product_sup: sup }));
 
-        if (uniqueGroups.length > 0) {
-          const { existing: existingGroups } = await checkExistingGroups(uniqueGroups);
-          // จำนวนกลุ่มที่จะสร้างใหม่จริงๆ
-          setNewGroupCount(uniqueGroups.length - existingGroups.length);
-          // ✅ เก็บรายชื่อคำหมวดหมู่ที่ชน (เช่น Vase, Doll Animal) เอาไปแสดงในกล่องเตือนแอดมิน
+        if (allExtractedGroups.length > 0) {
+          const groupIdsOnly = allExtractedGroups.map(g => g.id);
+          const { existing: existingGroups } = await checkExistingGroups(groupIdsOnly);
+          
+          // คัดกรองเอาเฉพาะ "กลุ่มใหม่" ที่ยังไม่มีในระบบ
+          const newGroups = allExtractedGroups.filter(g => !existingGroups.includes(g.id));
+
+          setNewGroupCount(newGroups.length);
           setExistingGroupIds(existingGroups);
+          setNewGroupsPreview(newGroups); // เก็บเข้า State เพื่อไปโชว์
         } else {
           setNewGroupCount(0);
           setExistingGroupIds([]);
+          setNewGroupsPreview([]);
         }
+        // ---------------------------------------------------------
 
         setData(uniqueData)
       } catch (err) {
@@ -289,7 +312,17 @@ export default function BulkUploadProducts() {
       setData([])
       setExistingSkus(new Set())
       setExistingGroupIds([])
+      setNewGroupsPreview([]) // เคลียร์ Preview หลังเซฟ
     }
+  }
+
+  const handleClearData = () => {
+    setData([]); 
+    setStatus(null); 
+    setExistingSkus(new Set()); 
+    setExistingGroupIds([]); 
+    setNewGroupsPreview([]); // เคลียร์ Preview
+    setFilterMode('ALL');
   }
 
   // คำนวณจำนวนที่สร้างใหม่ และ อัปเดต
@@ -454,7 +487,7 @@ export default function BulkUploadProducts() {
                 🔄 อัปเดตของเดิม: {updatedItemsCount} รายการ
               </button>
             </div>
-            <button onClick={() => {setData([]); setStatus(null); setExistingSkus(new Set()); setExistingGroupIds([]); setFilterMode('ALL');}} className="px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg flex items-center gap-2 transition mt-3 sm:mt-0">
+            <button onClick={handleClearData} className="px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg flex items-center gap-2 transition mt-3 sm:mt-0">
               <Trash2 className="w-4 h-4" /> ล้างข้อมูล
             </button>
           </div>
@@ -481,6 +514,27 @@ export default function BulkUploadProducts() {
                     + มีอีก {existingGroupIds.length - 15} รายการที่ซ้ำ
                   </span>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* ✅ กล่อง UI โชว์ Preview กลุ่มใหม่ที่จะสร้าง */}
+          {newGroupsPreview.length > 0 && (
+            <div className="w-full mt-3 px-4 py-3 bg-purple-50 border border-purple-200 rounded-xl text-purple-800 text-sm shadow-sm animate-in fade-in duration-300">
+              <p className="font-bold flex items-center gap-2 text-purple-700">
+                ✨ ระบบจะสร้างหมวดหมู่ใหม่ทั้งหมด {newGroupsPreview.length} รายการ
+              </p>
+              
+              {/* ตาราง/กล่อง เล็กๆ เอาไว้โชว์รายการ */}
+              <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                {newGroupsPreview.map((g) => (
+                  <div key={g.id} className="bg-white p-2 rounded-lg border border-purple-100 shadow-sm flex flex-col gap-1">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">ID: <span className="text-purple-600">{g.id}</span></span>
+                    <span className="text-xs font-medium text-slate-700 truncate" title={g.product_sup}>
+                      {g.product_sup}
+                    </span>
+                  </div>
+                ))}
               </div>
             </div>
           )}

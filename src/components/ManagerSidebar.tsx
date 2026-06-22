@@ -6,7 +6,8 @@ import { useState } from "react"
 import {
   LayoutDashboard, Package, LogOut, User, Menu, Store,
   Users, Receipt, BarChart3, Box, X, Settings,
-  Tag, History, Layers, PackageCheck
+  Tag, History, Layers, PackageCheck, ShoppingCart,
+  Truck, FileText, SearchCode // 🔴 ✨ เพิ่มไอคอน SearchCode สำหรับใช้เช็คยอดเปรียบเทียบครับนาย
 } from "lucide-react"
 import { logoutAction } from "../actions/auth" 
 
@@ -22,14 +23,17 @@ export default function ManagerSidebar({ userName, branchName, userAvatar }: Man
 
   const menuItems = [
     { name: "ภาพรวม",         href: "/manager/dashboard",   icon: LayoutDashboard },
+    { name: "ขายสินค้า (POS)",  href: "/manager/pos",         icon: Store }, 
     { name: "สต็อกหน้าร้าน",  href: "/manager/publicstock", icon: Box },
-    { name: "รับสินค้า (ลอต)", href: "/manager/lots",          icon: Layers },
-    { name: "ตรวจสอบขาด/เกิน", href: "/manager/receive-check", icon: PackageCheck },
-    { name: "เช็ค Tag Props",  href: "/manager/tagcheck",    icon: Tag },
+   //  { name: "รับสินค้า (ลอต)", href: "/manager/lots",          icon: Layers },
+    { name: "(lotการรับเข้า)", href: "/manager/receive-check", icon: PackageCheck },
+    
+    // 🔴 ✨ เพิ่มเมนูตรวจสอบยอด RFID ชนสต๊อกจริง ลิงก์ตรงไปที่โฟลเดอร์ stock-compare ของนายเลยครับ
+    { name: "ตรวจสอบยอด RFID", href: "/manager/stock-compare", icon: SearchCode },
+
     { name: "ประวัติสต็อก",    href: "/manager/stocklog",    icon: History },
-    { name: "ใบเสร็จ",         href: "/manager/receipt",     icon: Receipt },
-    { name: "รายงานยอดขาย",   href: "/manager/sales-report",icon: BarChart3 },
-    { name: "ปิดยอดรายวัน",   href: "/manager/closeday",    icon: Store },
+    { name: "ตรวจสอบใบโอน",    href: "/manager/receive-check1",    icon: FileText }, 
+    { name: "มอนิเตอร์ค้างส่ง",   href: "/manager/vanguard-dispatch", icon: Truck },
   ]
 
   return (
@@ -88,7 +92,7 @@ export default function ManagerSidebar({ userName, branchName, userAvatar }: Man
                 </p>
              </div>
 
-             {/* ✅ Group Settings and Logout button */}
+             {/* Group Settings and Logout button */}
              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all duration-300 delay-100">
                 <Link href="/manager/profiles" className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="โปรไฟล์/ตั้งค่า">
                    <Settings className="w-4 h-4" />
