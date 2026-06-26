@@ -33,7 +33,16 @@ export default function LoginPage() {
         // 🌟 3. เพิ่มหน่วงเวลาเล็กน้อย (500ms) ให้คนใช้เห็น Spinner หมุนชัดเจนว่าระบบกำลังทำงาน
         setTimeout(() => {
           router.refresh() // รีเฟรชสถานะเผื่อเบราว์เซอร์จำค่าเก่า
-          router.push('/dashboard')
+          const role = result.role
+          if (role === 'admin') {
+            router.push('/dashboard')
+          } else if (role === 'manager') {
+            router.push('/manager/dashboard')
+          } else if (role === 'sale') {
+            router.push('/sale/pos')
+          } else {
+            router.push('/dashboard')
+          }
         }, 500)
       }
     } catch (err) {

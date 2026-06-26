@@ -1,5 +1,4 @@
-
-//src/app/(manager)/manager/vanguard-dispatch
+//src/app/(sale)/sale/vanguard-dispatch/page.tsx
 "use client"
 
 import { useState, useEffect, useMemo } from 'react'
@@ -22,7 +21,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 
-export default function DispatchMonitorPage() {
+export default function SaleDispatchMonitorPage() {
   const [activeTab, setActiveTab] = useState<'overview' | 'my_tasks' | 'follow_ups' | 'completed'>('overview')
   const [tasks, setTasks] = useState<{ myTasks: any[]; followUpTasks: any[]; completedTasks: any[] }>({ 
     myTasks: [], 
@@ -113,7 +112,7 @@ export default function DispatchMonitorPage() {
   }
 
   const handlePrintSlip = (orderCode: string) => {
-    window.open(`/manager/print/dispatch/${orderCode}`, '_blank')
+    window.open(`/sale/print/dispatch/${orderCode}`, '_blank')
   }
 
   const currentData = useMemo(() => {
@@ -155,7 +154,7 @@ export default function DispatchMonitorPage() {
           </button>
           <button
             onClick={() => setActiveTab('my_tasks')}
-            className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 text-sm font-bold rounded-md transition-colors ${activeTab === 'my_tasks' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}
+            className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 text-sm font-bold rounded-md transition-colors ${activeTab === 'my_tasks' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}
           >
             <Package className="w-4 h-4" /> คลังเราต้องจัดส่ง ({tasks.myTasks.length})
           </button>
@@ -183,7 +182,6 @@ export default function DispatchMonitorPage() {
             currentData.map((order: any, index: number) => {
               const isExpanded = expandedOrders.includes(order.id)
               
-              // ✨ แก้ไขตรรกะใหม่: ถ้าระบุพิกัดมา จะถือว่าเป็นการจัดส่ง (หรือมีข้อมูลให้ดู) ทันที
               const hasCoordinates = order.latitude && order.longitude;
               const isStorefrontTakeaway = (!order.shipping_address && !hasCoordinates) || (order.shipping_address?.includes('[รับหน้าร้าน]') && !hasCoordinates);
               const isMyTask = tasks.myTasks.some(t => t.id === order.id)
@@ -202,14 +200,14 @@ export default function DispatchMonitorPage() {
                     className="flex flex-wrap md:flex-nowrap items-center justify-between p-4 cursor-pointer hover:bg-slate-50 transition-colors"
                   >
                     <div className="flex items-center gap-4 min-w-0">
-                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 border ${isStorefrontTakeaway ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : 'bg-blue-50 text-blue-600 border-blue-100'}`}>
+                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 border ${isStorefrontTakeaway ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : 'bg-emerald-50 text-emerald-600 border-emerald-100'}`}>
                         <Package className="w-5 h-5" />
                       </div>
                       <div>
                         <span className="text-sm font-bold text-slate-800 block">
                           เลขที่บิล: {order.order_code} 
                           {activeTab === 'overview' && (
-                            <span className={`ml-2 text-[10px] px-2 py-0.5 rounded border ${isMyTask ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-amber-50 text-amber-600 border-amber-100'}`}>
+                            <span className={`ml-2 text-[10px] px-2 py-0.5 rounded border ${isMyTask ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-amber-50 text-amber-600 border-amber-100'}`}>
                               {isMyTask ? 'คลังเราแพ็ค' : 'สาขาอื่นแพ็ค'}
                             </span>
                           )}
@@ -277,7 +275,7 @@ export default function DispatchMonitorPage() {
                                   </div>
                                   <div className="text-right">
                                     <span className={`text-sm font-bold block ${isOutOfStock ? 'text-slate-400' : 'text-slate-800'}`}>x{item.qty}</span>
-                                    <span className={`text-[11px] font-bold block ${isOutOfStock ? 'text-slate-400' : 'text-blue-600'}`}>{Number(item.price_at_sale).toLocaleString()} ฿</span>
+                                    <span className={`text-[11px] font-bold block ${isOutOfStock ? 'text-slate-400' : 'text-emerald-600'}`}>{Number(item.price_at_sale).toLocaleString()} ฿</span>
                                   </div>
                                 </div>
                               )
@@ -299,7 +297,7 @@ export default function DispatchMonitorPage() {
                             ) : (
                               <>
                                 <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3 pb-2 border-b border-slate-100 flex items-center gap-1.5">
-                                  <Truck className="w-4 h-4 text-blue-500" /> ข้อมูลจัดส่งลูกค้า
+                                  <Truck className="w-4 h-4 text-emerald-500" /> ข้อมูลจัดส่งลูกค้า
                                 </h3>
                                 <div className="space-y-3 text-sm text-slate-600">
                                   <p><span className="font-semibold text-slate-700">ชื่อผู้รับ:</span> {order.shipping_name || '-'}</p>
@@ -309,14 +307,12 @@ export default function DispatchMonitorPage() {
                                     {order.shipping_address || '-'}
                                   </p>
 
-                                  {/* ✨ ส่วนแสดงพิกัด GPS และ Mini Map (ถ้ามีการปักหมุด) */}
                                   {hasCoordinates && (
                                     <div className="mt-3 pt-3 border-t border-dashed border-slate-200">
                                       <p className="font-semibold text-slate-700 text-xs mb-2 flex items-center gap-1">
-                                        <MapPin className="w-3.5 h-3.5 text-blue-500" /> แผนที่และพิกัดจัดส่ง
+                                        <MapPin className="w-3.5 h-3.5 text-emerald-500" /> แผนที่และพิกัดจัดส่ง
                                       </p>
                                       
-                                      {/* กล่อง Mini Map ตัวเล็ก */}
                                       <div className="w-full h-32 bg-slate-100 rounded-lg overflow-hidden border border-slate-200 mb-2 relative shadow-inner">
                                         <iframe
                                           title="Mini Map Preview"
@@ -329,15 +325,15 @@ export default function DispatchMonitorPage() {
                                         />
                                       </div>
 
-                                      <div className="bg-blue-50 border border-blue-100 p-2.5 rounded-lg flex flex-col gap-2">
-                                        <p className="text-[10px] text-blue-700 font-mono font-medium text-center truncate">
+                                      <div className="bg-emerald-50 border border-emerald-100 p-2.5 rounded-lg flex flex-col gap-2">
+                                        <p className="text-[10px] text-emerald-700 font-mono font-medium text-center truncate">
                                           {order.latitude}, {order.longitude}
                                         </p>
                                         <a 
                                           href={`https://www.google.com/maps/dir/?api=1&destination=${order.latitude},${order.longitude}`} 
                                           target="_blank" 
                                           rel="noopener noreferrer"
-                                          className="w-full py-2 bg-blue-600 text-white rounded text-xs font-bold hover:bg-blue-700 transition-colors flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+                                          className="w-full py-2 bg-emerald-600 text-white rounded text-xs font-bold hover:bg-emerald-700 transition-colors flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
                                         >
                                           <Navigation className="w-3.5 h-3.5" /> นำทาง (Google Maps)
                                         </a>
@@ -349,7 +345,7 @@ export default function DispatchMonitorPage() {
                             )}
                           </div>
 
-                          {/* Action Buttons (ปุ่มการทำงานต่างๆ เรียงสวยงาม) */}
+                          {/* Action Buttons */}
                           <div className="space-y-2 pt-2">
                             {activeTab === 'completed' || order.status === 'COMPLETED' ? (
                               <div className="w-full py-3 bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-lg text-sm font-bold flex items-center justify-center gap-2 shadow-sm cursor-not-allowed">
@@ -381,7 +377,7 @@ export default function DispatchMonitorPage() {
                                 <button 
                                   onClick={() => handleCompleteOrder(order.id, order.order_code, order.order_items)}
                                   disabled={processingId === order.id || order.status === 'PENDING'}
-                                  className={`w-full py-2.5 text-white rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2 shadow-sm mt-2 ${order.status === 'PENDING' ? 'bg-slate-300 cursor-not-allowed' : (!isMyTask ? 'bg-slate-800 hover:bg-slate-900' : (isStorefrontTakeaway ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-blue-600 hover:bg-blue-700'))}`}
+                                  className={`w-full py-2.5 text-white rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2 shadow-sm mt-2 ${order.status === 'PENDING' ? 'bg-slate-300 cursor-not-allowed' : (!isMyTask ? 'bg-slate-800 hover:bg-slate-900' : (isStorefrontTakeaway ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-emerald-600 hover:bg-emerald-700'))}`}
                                 >
                                   <CheckCircle className="w-4 h-4" /> 
                                   {processingId === order.id ? 'กำลังอัปเดต...' : 

@@ -32,9 +32,10 @@ export async function middleware(request: NextRequest) {
                       path.startsWith('/branches') ||
                       path.startsWith('/inventory')
   const isManagerPath = path.startsWith('/manager')
+  const isSalePath = path.startsWith('/sale')
 
   // 1. ถ้ายังไม่ Login แต่จะเข้าหน้าหวงห้าม -> ไป Login
-  if (!user && (isAdminPath || isManagerPath)) {
+  if (!user && (isAdminPath || isManagerPath || isSalePath)) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 
@@ -49,25 +50,31 @@ export async function middleware(request: NextRequest) {
     
     const role = profile?.role
 
-    // ✅ [เพิ่ม] ถ้า Login แล้วแต่อยู่หน้า Login -> ดีดไปหน้า Dashboard ตาม Role
+    // ✅ ถ้า Login แล้วแต่อยู่หน้า Login -> ดีดไปหน้า Dashboard ตาม Role
     if (isLoginPage) {
         if (role === 'admin') return NextResponse.redirect(new URL('/dashboard', request.url))
         if (role === 'manager') return NextResponse.redirect(new URL('/manager/dashboard', request.url))
+        if (role === 'sale') return NextResponse.redirect(new URL('/sale/pos', request.url))
     }
 
     // ⛔ Admin Path Check
     if (isAdminPath && role !== 'admin') {
       if (role === 'manager') return NextResponse.redirect(new URL('/manager/dashboard', request.url))
+      if (role === 'sale') return NextResponse.redirect(new URL('/sale/pos', request.url))
       return NextResponse.redirect(new URL('/login', request.url))
     }
 
     // ⛔ Manager Path Check
     if (isManagerPath && role !== 'manager') {
-       if (role === 'admin') {
-           // Admin เข้า Manager ได้ไหม? ถ้าได้ให้ลบบรรทัดนี้
-           // ถ้าไม่ได้ (Separate Concern) ให้ Redirect กลับ Admin Dashboard
-           return NextResponse.redirect(new URL('/dashboard', request.url)) 
-       }
+       if (role === 'admin') return NextResponse.redirect(new URL('/dashboard', request.url)) 
+       if (role === 'sale') return NextResponse.redirect(new URL('/sale/pos', request.url))
+       return NextResponse.redirect(new URL('/login', request.url))
+    }
+
+    // ⛔ Sale Path Check
+    if (isSalePath && role !== 'sale') {
+       if (role === 'admin') return NextResponse.redirect(new URL('/dashboard', request.url))
+       if (role === 'manager') return NextResponse.redirect(new URL('/manager/dashboard', request.url))
        return NextResponse.redirect(new URL('/login', request.url))
     }
   }
@@ -82,6 +89,7 @@ export const config = {
     '/employees/:path*', 
     '/branches/:path*',
     '/manager/:path*',
+    '/sale/:path*',
     '/login'
   ],
 };

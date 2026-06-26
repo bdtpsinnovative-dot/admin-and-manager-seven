@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { getSalesHistory } from '@/actions/sales-check'
+import { toast } from 'sonner'
 
 interface RemoteDetail {
   branch_name: string;
@@ -37,7 +38,7 @@ export default function SalesCheckPage() {
     if (res.success && res.data) {
       setSales(res.data)
     } else {
-      alert("โหลดข้อมูลยอดขายล้มเหลว: " + res.error)
+      toast.error("โหลดข้อมูลยอดขายล้มเหลว: " + res.error)
     }
     setLoading(false)
   }

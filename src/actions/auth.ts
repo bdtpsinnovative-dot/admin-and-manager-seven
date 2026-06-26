@@ -11,10 +11,9 @@ export async function login(formData: FormData) {
 
   const email = formData.get("email") as string;
   const password = formData.get("password") as string;
-
   try {
     // ส่งข้อมูลไปตรวจสอบกับ Supabase Auth
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
@@ -36,9 +35,19 @@ export async function login(formData: FormData) {
       return { error: `เกิดข้อผิดพลาด: ${error.message}` };
     }
 
-    // ✅ ถ้าล็อกอินสำเร็จ ส่ง success: true กลับไปให้ Client เปลี่ยนหน้าเอง
-    return { success: true };
+    // ✅ ดึงข้อมูล Role จาก profiles
+    let role = null;
+    if (data?.user) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("user_id", data.user.id)
+        .single();
+      role = profile?.role || null;
+    }
 
+    // ✅ ถ้าล็อกอินสำเร็จ ส่ง success: true และ role กลับไปให้ Client
+    return { success: true, role };
   } catch (err: any) {
     // จับ Error ระดับ Network ที่อาจทำให้ระบบพังไปเลย (Crash)
     console.error("Critical Login Error:", err);

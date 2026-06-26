@@ -36,6 +36,7 @@ export async function getSalesHistory() {
         price_at_sale,
         total_item_amount,
         fulfill_branch_id,
+        products:products!order_items_product_fk ( name, sku, image_url ),
         branches:fulfill_branch_id ( branch_name )
       )
     `)
@@ -62,17 +63,29 @@ export async function getSalesHistory() {
       }
     })
 
+    const items = order.order_items?.map((item: any) => ({
+      id: item.id,
+      qty: item.qty,
+      priceAtSale: item.price_at_sale,
+      totalItemAmount: item.total_item_amount,
+      productName: item.products?.name || 'ไม่พบสินค้า',
+      productSku: item.products?.sku || '',
+      imageUrl: item.products?.image_url || null,
+      fulfillBranchName: item.branches?.branch_name || 'สาขาหลัก'
+    })) || []
+
     return {
       id: order.id,
       orderCode: order.order_code,
       createdAt: order.created_at,
-      saleName: order.profiles?.full_name || 'ไม่ระบุชื่อ', // ✨ แก้ตรงนี้ให้ดึงจาก full_name ด้วยครับนาย
+      saleName: order.profiles?.full_name || 'ไม่ระบุชื่อ',
       totalAmount: order.total_amount,
       status: order.status,
       shippingName: order.shipping_name,
       myBranchRevenue,      
       otherBranchRevenue,   
-      remoteDetails         
+      remoteDetails,
+      items
     }
   })
   return { success: true, data: formattedSales }

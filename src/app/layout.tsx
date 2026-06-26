@@ -1,6 +1,7 @@
 // src/app/layout.tsx
 import "./globals.css"; 
 import { Inter } from "next/font/google";
+import { Toaster } from "sonner";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -15,6 +16,7 @@ export default function RootLayout({
           ไม่ต้องตกใจถ้ามี Extension มาเติมค่าใน body */}
       <body className={inter.className} suppressHydrationWarning>
         {children}
+        <Toaster position="top-right" richColors />
       </body>
     </html>
   );

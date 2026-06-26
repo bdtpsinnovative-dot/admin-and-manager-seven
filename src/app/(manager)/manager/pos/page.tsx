@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react'
 import dynamic from 'next/dynamic'
 import { getPosData, processCheckout, CheckoutPayload, getNearbyStock } from '@/actions/pos'
-import { FolderOpen, Store, Truck, Receipt, MapPin, Save, AlertTriangle, X, Plus, Minus, FileText } from 'lucide-react'
+import { FolderOpen, Store, Truck, Receipt, MapPin, Save, AlertTriangle, X, Plus, Minus, FileText, Trash2 } from 'lucide-react'
+import { toast } from 'sonner'
 
 // โหลด Component แผนที่แบบไม่ทำ SSR
 const MapPicker = dynamic(() => import('@/components/MapPicker'), { ssr: false })
@@ -51,14 +52,40 @@ export default function ManagerPOSPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [cart, setCart] = useState<CartItem[]>([])
   const [submitting, setSubmitting] = useState(false)
+  const [isConfirmingClear, setIsConfirmingClear] = useState(false)
 
   const [saleMode, setSaleMode] = useState<'TAKE_AWAY' | 'DELIVERY'>('TAKE_AWAY')
 
   // ✨ State สำหรับฟอร์มลูกค้า
-  const [shippingName, setShippingName] = useState('')
-  const [shippingPhone, setShippingPhone] = useState('')
-  const [shippingAddress, setShippingAddress] = useState('')
+  const [shippingName, setShippingName] = useState('ลูกค้าทั่วไป (หน้าร้าน)')
+  const [shippingPhone, setShippingPhone] = useState('-')
+  const [shippingAddress, setShippingAddress] = useState('รับของเองที่สาขา')
   const [isCustomerFormOpen, setIsCustomerFormOpen] = useState(false) // ซ่อนฟอร์มไว้ก่อน ประหยัดที่!
+
+  const handleSaleModeChange = (mode: 'TAKE_AWAY' | 'DELIVERY') => {
+    setSaleMode(mode)
+    if (mode === 'TAKE_AWAY') {
+      if (!shippingName || shippingName.trim() === '') {
+        setShippingName('ลูกค้าทั่วไป (หน้าร้าน)')
+      }
+      if (!shippingPhone || shippingPhone.trim() === '') {
+        setShippingPhone('-')
+      }
+      if (!shippingAddress || shippingAddress.trim() === '') {
+        setShippingAddress('รับของเองที่สาขา')
+      }
+    } else {
+      if (shippingName === 'ลูกค้าทั่วไป (หน้าร้าน)') {
+        setShippingName('')
+      }
+      if (shippingPhone === '-') {
+        setShippingPhone('')
+      }
+      if (shippingAddress === 'รับของเองที่สาขา') {
+        setShippingAddress('')
+      }
+    }
+  }
 
   // ✨ State สำหรับพิกัดลูกค้า
   const [latitude, setLatitude] = useState<number | null>(null)
@@ -101,7 +128,7 @@ export default function ManagerPOSPage() {
         setSelectedLocation(res.branchId) 
       }
     } else {
-      alert("โหลดข้อมูลล้มเหลว: " + res.error)
+      toast.error("โหลดข้อมูลล้มเหลว: " + res.error)
     }
     setLoadingDb(false)
   }
@@ -156,7 +183,7 @@ export default function ManagerPOSPage() {
         setNearbyModal({ isOpen: true, product, nearbyStocks: res.data, isLoading: false })
       } else {
         setNearbyModal({ isOpen: false, product: null, nearbyStocks: [], isLoading: false })
-        alert('สินค้านี้สต็อกหมดทุกสาขาครับ!')
+        toast.warning('สินค้านี้สต็อกหมดทุกสาขาครับ!')
       }
       return
     }
@@ -193,7 +220,7 @@ export default function ManagerPOSPage() {
       const existing = prevCart.find(item => item.cartItemId === cartItemId)
       
       if (existing && existing.quantity >= maxQty) {
-        alert(`สต็อกของ ${fulfillBranchName} ถูกหยิบลงตะกร้าหมดแล้วครับ!`)
+        toast.warning(`สต็อกของ ${fulfillBranchName} ถูกหยิบลงตะกร้าหมดแล้วครับ!`)
         return prevCart
       }
 
@@ -238,8 +265,12 @@ export default function ManagerPOSPage() {
   const handleCheckout = async () => {
     if (cart.length === 0) return
 
-    if (!shippingName || !shippingPhone || !shippingAddress) {
-      alert("รบกวนกรอก ชื่อ เบอร์โทร และที่อยู่ลูกค้า สำหรับออกเอกสารด้วยครับ")
+    const finalName = shippingName.trim() || (saleMode === 'TAKE_AWAY' ? 'ลูกค้าทั่วไป (หน้าร้าน)' : '')
+    const finalPhone = shippingPhone.trim() || (saleMode === 'TAKE_AWAY' ? '-' : '')
+    const finalAddressText = shippingAddress.trim() || (saleMode === 'TAKE_AWAY' ? 'รับของเองที่สาขา' : '')
+
+    if (saleMode === 'DELIVERY' && (!finalName || !finalPhone || !finalAddressText)) {
+      toast.warning("รบกวนกรอก ชื่อ เบอร์โทร และที่อยู่ลูกค้า สำหรับออกเอกสารจัดส่งด้วยครับ")
       // บังคับเปิดฟอร์มลูกค้าให้กรอก
       setIsCustomerFormOpen(true)
       return
@@ -250,8 +281,8 @@ export default function ManagerPOSPage() {
       const checkoutBranchId = myBranchId
 
       const finalAddress = saleMode === 'TAKE_AWAY' 
-        ? `[รับหน้าร้าน] ${shippingAddress}` 
-        : shippingAddress;
+        ? `[รับหน้าร้าน] ${finalAddressText}` 
+        : finalAddressText;
 
       const payload: any = { 
         branchId: checkoutBranchId, 
@@ -259,8 +290,8 @@ export default function ManagerPOSPage() {
         discountAmount: totalDiscountAmount, 
         totalAmount: totalFinalPrice, 
         saleMode, 
-        shippingName: shippingName,
-        shippingPhone: shippingPhone,
+        shippingName: finalName,
+        shippingPhone: finalPhone,
         shippingAddress: finalAddress,
         latitude: latitude,   
         longitude: longitude, 
@@ -278,18 +309,19 @@ export default function ManagerPOSPage() {
       
       const result = await processCheckout(payload)
       if (result.success) {
-        alert(`ออกใบขายสำเร็จ! รหัสบิล: ${result.orderCode}`)
+        toast.success(`ออกใบขายสำเร็จ! รหัสบิล: ${result.orderCode}`)
         setCart([])
-        setShippingName('')
-        setShippingPhone('')
-        setShippingAddress('')
+        setIsConfirmingClear(false)
+        setShippingName('ลูกค้าทั่วไป (หน้าร้าน)')
+        setShippingPhone('-')
+        setShippingAddress('รับของเองที่สาขา')
         setLatitude(null)  
         setLongitude(null) 
         setSaleMode('TAKE_AWAY')
         setIsCustomerFormOpen(false) // หดฟอร์มกลับ
         await loadData()
       } else {
-        alert(`เกิดข้อผิดพลาด: ${result.error}`)
+        toast.error(`เกิดข้อผิดพลาด: ${result.error}`)
       }
     } finally {
       setSubmitting(false)
@@ -455,13 +487,13 @@ export default function ManagerPOSPage() {
           
           <div className="p-3 bg-slate-50 border-b border-slate-100 grid grid-cols-2 gap-2 relative">
             <button 
-              onClick={() => setSaleMode('TAKE_AWAY')} 
+              onClick={() => handleSaleModeChange('TAKE_AWAY')} 
               className={`py-2 text-xs font-black rounded-xl transition-all flex items-center justify-center gap-1.5 ${saleMode === 'TAKE_AWAY' ? 'bg-[#1E293B] text-white shadow-xs' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'}`}
             >
               <Store className="w-4 h-4" /> รับหน้าร้าน
             </button>
             <button 
-              onClick={() => setSaleMode('DELIVERY')} 
+              onClick={() => handleSaleModeChange('DELIVERY')} 
               className={`py-2 text-xs font-black rounded-xl transition-all flex items-center justify-center gap-1.5 ${saleMode === 'DELIVERY' ? 'bg-blue-600 text-white shadow-xs' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'}`}
             >
               <Truck className="w-4 h-4" /> ให้ร้านส่งให้
@@ -473,6 +505,38 @@ export default function ManagerPOSPage() {
               <Receipt className="w-4 h-4" /> รายการใบสรุปขาย
               <span className="bg-blue-50 text-blue-600 font-bold text-[10px] px-2 py-0.5 rounded-full">{cart.length} รายการ</span>
             </h2>
+            {cart.length > 0 && (
+              <div className="flex items-center gap-1">
+                {!isConfirmingClear ? (
+                  <button
+                    onClick={() => setIsConfirmingClear(true)}
+                    className="text-[11px] text-red-500 hover:text-red-700 font-bold flex items-center gap-1 transition-colors px-2 py-1 rounded-lg hover:bg-red-50 cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> ลบทั้งหมด
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-1 bg-red-50 p-1 rounded-lg border border-red-100 animate-fade-in">
+                    <span className="text-[9px] text-red-700 font-bold px-1">ลบทั้งหมด?</span>
+                    <button
+                      onClick={() => {
+                        setCart([])
+                        setIsConfirmingClear(false)
+                        toast.success('ลบสินค้าทั้งหมดออกจากรายการขายแล้ว')
+                      }}
+                      className="text-[9px] bg-red-600 hover:bg-red-700 text-white font-bold px-1.5 py-0.5 rounded transition-colors cursor-pointer"
+                    >
+                      ใช่
+                    </button>
+                    <button
+                      onClick={() => setIsConfirmingClear(false)}
+                      className="text-[9px] bg-white hover:bg-slate-100 text-slate-600 border border-slate-200 font-bold px-1.5 py-0.5 rounded transition-colors cursor-pointer"
+                    >
+                      ไม่
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
           
           <div className="flex-1 overflow-y-auto px-4 py-2 min-h-[180px]">
@@ -494,8 +558,8 @@ export default function ManagerPOSPage() {
                     )}
                     <div className="flex justify-between items-start">
                       <p className="text-xs font-bold text-slate-700 truncate w-44" title={item.name}>{item.name}</p>
-                      <button onClick={() => removeFromCart(item.cartItemId)} className="text-slate-300 hover:text-red-500 transition-colors">
-                        <X className="w-3.5 h-3.5" />
+                      <button onClick={() => removeFromCart(item.cartItemId)} className="text-slate-400 hover:text-red-500 transition-colors" title="ลบรายการนี้">
+                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
                     <div className="flex items-center justify-between mt-0.5">
