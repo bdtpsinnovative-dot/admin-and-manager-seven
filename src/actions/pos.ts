@@ -147,6 +147,29 @@ export async function processCheckout(payload: CheckoutPayload) {
     const usedDiscounts = payload.items
       .filter(item => item.discountId)
       .map(item => ({ id: item.discountId, name: item.discountName, amount_per_piece: item.discountAmountPerPiece }))
+    // ✨ 0. เช็คสต็อกล่วงหน้ากันเหนียว (เวลาขายชนกัน)
+    const outOfStockItems: string[] = []
+    for (const item of payload.items) {
+      const { data: stockCheck } = await supabase
+        .from('stock')
+        .select('qty')
+        .eq('product_id', item.productId)
+        .eq('branch_id', item.fulfillBranchId)
+        .single()
+        
+      if (!stockCheck || stockCheck.qty < item.qty) {
+        // ใส่ cartItemId เข้าไปใน list (ฝั่ง client ใช้ id เป็น string หรือ number)
+        outOfStockItems.push(item.productId.toString())
+      }
+    }
+
+    if (outOfStockItems.length > 0) {
+      return { 
+        success: false, 
+        error: "สินค้าบางรายการสต็อกไม่พอ (อาจถูกซื้อตัดหน้า) ระบบได้อัปเดตสถานะในตะกร้าแล้ว", 
+        outOfStockProductIds: outOfStockItems 
+      }
+    }
     
     // ✨ 1. เช็คหลังบ้านเลยว่า บิลนี้มีการดึงของสาขาอื่นมาด้วยไหม?
     const hasCrossBranchItems = payload.items.some(item => item.fulfillBranchId !== payload.branchId)

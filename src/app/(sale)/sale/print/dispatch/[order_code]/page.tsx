@@ -1,13 +1,16 @@
 "use client"
 
 import { useEffect, useState } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { getPrintDispatchData } from '@/actions/dispatch'
 import { Printer, ArrowLeft } from 'lucide-react'
 
 export default function PrintQuotationPage() {
   const params = useParams()
+  const searchParams = useSearchParams()
+  const isEmbedQuery = searchParams.get('embed') === 'true'
+
   const orderCode = params.order_code as string
   
   const [data, setData] = useState<any>(null)
@@ -47,10 +50,16 @@ export default function PrintQuotationPage() {
 
   const grandTotal = calculateTotal();
 
+  const isEmbed = isEmbedQuery || (typeof window !== 'undefined' && window.location.search.includes('embed=true'))
+
   return (
-    <div className="min-h-screen bg-[#F9F9F9] p-4 sm:p-8 font-sans text-neutral-900">
+    <div className={`min-h-screen bg-[#F9F9F9] p-4 sm:p-8 font-sans text-neutral-900 ${isEmbed ? 'p-0 sm:p-4' : ''}`}>
       
       <style dangerouslySetInnerHTML={{__html: `
+        ${isEmbed ? `
+          .print\\:hidden, aside, nav, header { display: none !important; }
+          main { margin-left: 0 !important; padding: 0 !important; }
+        ` : ''}
         @media print {
           body { background-color: white !important; }
           body * { visibility: hidden; }
@@ -76,17 +85,20 @@ export default function PrintQuotationPage() {
         }
       `}} />
 
-      <div className="max-w-[850px] mx-auto mb-6 flex justify-between items-center print:hidden">
-        <Link href="/sale/vanguard-dispatch" className="flex items-center gap-2 text-neutral-500 hover:text-black font-medium text-sm transition-colors">
-          <ArrowLeft className="w-4 h-4" /> Back to System
-        </Link>
-        <button 
-          onClick={() => window.print()} 
-          className="flex items-center gap-2 px-6 py-2.5 bg-neutral-900 text-white rounded-full font-medium text-sm hover:bg-black transition-all shadow-md hover:shadow-lg"
-        >
-          <Printer className="w-4 h-4" /> Print Document
-        </button>
-      </div>
+      {/* เมนูควบคุม (ไม่แสดงตอน Print) */}
+      {!isEmbed && (
+        <div className="max-w-[850px] mx-auto mb-6 flex justify-between items-center print:hidden">
+          <Link href="/sale/vanguard-dispatch" className="flex items-center gap-2 text-neutral-500 hover:text-black font-medium text-sm transition-colors">
+            <ArrowLeft className="w-4 h-4" /> Back to System
+          </Link>
+          <button 
+            onClick={() => window.print()} 
+            className="flex items-center gap-2 px-6 py-2.5 bg-neutral-900 text-white rounded-full font-medium text-sm hover:bg-black transition-all shadow-md hover:shadow-lg"
+          >
+            <Printer className="w-4 h-4" /> Print Document
+          </button>
+        </div>
+      )}
 
       <div id="print-section" className="max-w-[850px] mx-auto bg-white px-8 py-6 shadow-[0_0_40px_rgba(0,0,0,0.05)] flex flex-col min-h-[1122px]">
         
@@ -111,7 +123,7 @@ export default function PrintQuotationPage() {
               <p className="font-bold text-neutral-800 uppercase">Operated by TPS GARDEN FURNITURE CO., LTD</p>
               <p>351/7-8 Soi Bangkok-Nonthaburi 13, Bangkok-Nonthaburi Road,</p>
               <p>Bang Sue Subdistrict, Bang Sue District, Bangkok 10800</p>
-              <p className="mt-0.5 text-neutral-400">TAX ID: 010555XXXXXXX &nbsp;|&nbsp; TEL: 02-XXX-XXXX</p>
+              <p className="mt-0.5 text-neutral-400">TAX ID: 0105541075911</p>
             </div>
           </div>
           

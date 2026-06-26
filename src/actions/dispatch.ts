@@ -44,7 +44,7 @@ export async function getGroupedDispatches() {
       )
     `)
     .eq('order_items.fulfill_branch_id', myBranchId)
-    .eq('order_items.item_status', 'PENDING_SHIPMENT')
+    .in('order_items.item_status', ['PENDING_SHIPMENT', 'SHIPPED'])
     .order('created_at', { ascending: false })
 
   // 2. บิลที่เราขาย แต่ฝากสาขาอื่นส่ง
@@ -76,7 +76,7 @@ export async function getGroupedDispatches() {
     `)
     .eq('branch_id', myBranchId)
     .neq('order_items.fulfill_branch_id', myBranchId)
-    .eq('order_items.item_status', 'PENDING_SHIPMENT')
+    .in('order_items.item_status', ['PENDING_SHIPMENT', 'SHIPPED'])
     .order('created_at', { ascending: false })
 
   // 3. ประวัติบิลที่จัดส่งหรือขายเสร็จสมบูรณ์แล้ว (ดึง 50 รายการล่าสุด)
@@ -148,7 +148,7 @@ export async function markOrderItemsShipped(orderId: number, itemIds: number[], 
     .from('order_items')
     .select('id')
     .eq('order_id', orderId)
-    .eq('item_status', 'PENDING_SHIPMENT')
+    .in('item_status', ['PENDING_SHIPMENT', 'SHIPPED'])
     
   if (remainingItems && remainingItems.length === 0) {
     await supabase.from('orders').update({ status: 'COMPLETED' }).eq('id', orderId)
@@ -215,7 +215,12 @@ export async function approveAndCutStock(orderId: number, orderCode: string, ite
   if (!user) return { success: false, error: "Unauthorized" }
 
   try {
-    const { data: order } = await supabase.from('orders').select('status').eq('id', orderId).single()
+    const { data: order } = await supabase
+      .from('orders')
+      .select('status, latitude, longitude, shipping_address')
+      .eq('id', orderId)
+      .single()
+      
     if (order?.status !== 'PENDING') {
       return { success: false, error: "ออเดอร์นี้ถูกอนุมัติไปแล้ว ไม่สามารถตัดสต็อกซ้ำได้" }
     }
@@ -257,7 +262,14 @@ export async function approveAndCutStock(orderId: number, orderCode: string, ite
       })
     }
 
-    await supabase.from('orders').update({ status: 'PROCESSING' }).eq('id', orderId)
+    const isStorefrontTakeaway = order.shipping_address?.startsWith('[รับหน้าร้าน]')
+
+    if (isStorefrontTakeaway) {
+      await supabase.from('orders').update({ status: 'COMPLETED' }).eq('id', orderId)
+      await supabase.from('order_items').update({ item_status: 'DELIVERED' }).eq('order_id', orderId)
+    } else {
+      await supabase.from('orders').update({ status: 'PROCESSING' }).eq('id', orderId)
+    }
 
     return { success: true }
   } catch (error: any) {

@@ -23,6 +23,7 @@ interface CartItem extends Product {
   quantity: number;
   fulfill_branch_id: number;
   fulfill_branch_name: string;
+  isOutOfStockError?: boolean;
 }
 
 interface NestedCategory {
@@ -61,6 +62,10 @@ export default function ManagerPOSPage() {
   const [shippingPhone, setShippingPhone] = useState('-')
   const [shippingAddress, setShippingAddress] = useState('รับของเองที่สาขา')
   const [isCustomerFormOpen, setIsCustomerFormOpen] = useState(false) // ซ่อนฟอร์มไว้ก่อน ประหยัดที่!
+  
+  // ✨ State สำหรับ Modal ยืนยันและการพิมพ์
+  const [isConfirmCheckoutOpen, setIsConfirmCheckoutOpen] = useState(false)
+  const [successPrintUrl, setSuccessPrintUrl] = useState<string | null>(null)
   
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
 
@@ -116,7 +121,27 @@ export default function ManagerPOSPage() {
     if (savedCart) {
       try { setCart(JSON.parse(savedCart)) } catch (e) { console.error("โหลดตะกร้าเก่าไม่สำเร็จ", e) }
     }
+
+    // ✨ โหลดข้อมูลลูกค้าที่กรอกค้างไว้
+    const savedCustomer = localStorage.getItem('pos_customer_info')
+    if (savedCustomer) {
+      try { 
+        const info = JSON.parse(savedCustomer)
+        if (info.saleMode) setSaleMode(info.saleMode)
+        if (info.shippingName) setShippingName(info.shippingName)
+        if (info.shippingPhone) setShippingPhone(info.shippingPhone)
+        if (info.shippingAddress) setShippingAddress(info.shippingAddress)
+        if (info.latitude) setLatitude(info.latitude)
+        if (info.longitude) setLongitude(info.longitude)
+      } catch (e) { console.error("โหลดข้อมูลลูกค้าไม่สำเร็จ", e) }
+    }
   }, [])
+
+  // ✨ บันทึกข้อมูลลูกค้าลง Local Storage ทุกครั้งที่มีการเปลี่ยนแปลง
+  useEffect(() => {
+    const customerInfo = { saleMode, shippingName, shippingPhone, shippingAddress, latitude, longitude }
+    localStorage.setItem('pos_customer_info', JSON.stringify(customerInfo))
+  }, [saleMode, shippingName, shippingPhone, shippingAddress, latitude, longitude])
 
   useEffect(() => {
     if (cart.length > 0) {
@@ -125,6 +150,19 @@ export default function ManagerPOSPage() {
       localStorage.removeItem('pos_cart')
     }
   }, [cart])
+
+  // ✨ เช็คป้องกันบั๊ก: โหลดใหม่แล้วมีของต่างสาขา แต่ดันค้างโหมดรับหน้าร้าน
+  useEffect(() => {
+    if (cart.length > 0 && myBranchId) {
+      const hasCrossBranch = cart.some(item => item.fulfill_branch_id !== myBranchId)
+      if (hasCrossBranch && saleMode === 'TAKE_AWAY') {
+        setSaleMode('DELIVERY')
+        setShippingName('')
+        setShippingPhone('')
+        setShippingAddress('')
+      }
+    }
+  }, [cart, myBranchId, saleMode])
 
   async function loadData(isInitial = false) {
     setLoadingDb(true)
@@ -304,7 +342,7 @@ export default function ManagerPOSPage() {
       setShippingPhone('')
       setShippingAddress('')
       toast.info('เปลี่ยนเป็นโหมด "ให้ร้านส่งให้" อัตโนมัติ เนื่องจากมีรายการดึงสต็อกข้ามสาขา')
-      setIsCustomerFormOpen(true) // เปิดฟอร์มให้กรอกเลย
+      // setIsCustomerFormOpen(true) // เอาออกเพื่อไม่ให้เด้งขึ้นมากวนตอนกำลังขาย
     }
   }
 
@@ -330,6 +368,22 @@ export default function ManagerPOSPage() {
   const totalFinalPrice = cart.reduce((sum, item) => sum + item.price * item.quantity, 0)
   const totalDiscountAmount = totalOriginalPrice - totalFinalPrice
 
+  const handlePreCheckout = () => {
+    if (cart.length === 0) return
+
+    const finalName = shippingName.trim() || (saleMode === 'TAKE_AWAY' ? 'ลูกค้าทั่วไป (หน้าร้าน)' : '')
+    const finalPhone = shippingPhone.trim() || (saleMode === 'TAKE_AWAY' ? '-' : '')
+    const finalAddressText = shippingAddress.trim() || (saleMode === 'TAKE_AWAY' ? 'รับของเองที่สาขา' : '')
+
+    if (saleMode === 'DELIVERY' && (!finalName || !finalPhone || !finalAddressText || finalAddressText === 'รับของเองที่สาขา')) {
+      toast.warning("รบกวนกรอก ชื่อ เบอร์โทร และที่อยู่ลูกค้า สำหรับออกเอกสารด้วยครับ")
+      setIsCustomerFormOpen(true)
+      return
+    }
+
+    setIsConfirmCheckoutOpen(true)
+  }
+
   const handleCheckout = async () => {
     if (cart.length === 0) return
 
@@ -337,12 +391,7 @@ export default function ManagerPOSPage() {
     const finalPhone = shippingPhone.trim() || (saleMode === 'TAKE_AWAY' ? '-' : '')
     const finalAddressText = shippingAddress.trim() || (saleMode === 'TAKE_AWAY' ? 'รับของเองที่สาขา' : '')
 
-    if (saleMode === 'DELIVERY' && (!finalName || !finalPhone || !finalAddressText)) {
-      toast.warning("รบกวนกรอก ชื่อ เบอร์โทร และที่อยู่ลูกค้า สำหรับออกเอกสารจัดส่งด้วยครับ")
-      // บังคับเปิดฟอร์มลูกค้าให้กรอก
-      setIsCustomerFormOpen(true)
-      return
-    }
+    setIsConfirmCheckoutOpen(false)
 
     setSubmitting(true)
     try {
@@ -379,20 +428,13 @@ export default function ManagerPOSPage() {
       if (result.success) {
         const isSaleRole = window.location.pathname.startsWith('/sale')
         const printUrl = isSaleRole
-          ? `/sale/print/dispatch/${result.orderCode}`
-          : `/manager/print/dispatch/${result.orderCode}`
+          ? `/sale/print/dispatch/${result.orderCode}?embed=true`
+          : `/manager/print/dispatch/${result.orderCode}?embed=true`
 
-        toast.success(
-          <div className="flex flex-col gap-1.5 py-0.5">
-            <span className="font-bold text-slate-800 text-xs">ออกใบขายสำเร็จ! รหัสบิล: {result.orderCode}</span>
-            <button
-              onClick={() => window.open(printUrl, '_blank')}
-              className="mt-1.5 bg-slate-900 hover:bg-slate-800 text-white font-bold py-1.5 px-3 rounded-lg text-[10px] self-start transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm"
-            >
-              <Printer className="w-3.5 h-3.5" /> พิมพ์ใบเสนอราคา
-            </button>
-          </div>
-        )
+        toast.success(`ออกใบขายสำเร็จ! รหัสบิล: ${result.orderCode}`)
+        
+        // เด้ง Modal พิมพ์บิลแทนการเปิดแท็บใหม่
+        setSuccessPrintUrl(printUrl)
         setCart([])
         setIsConfirmingClear(false)
         setShippingName('ลูกค้าทั่วไป (หน้าร้าน)')
@@ -405,6 +447,13 @@ export default function ManagerPOSPage() {
         await loadData()
       } else {
         toast.error(`เกิดข้อผิดพลาด: ${result.error}`)
+        if (result.outOfStockProductIds && result.outOfStockProductIds.length > 0) {
+          await loadData() // Re-fetch products to reflect actual stock
+          setCart(prev => prev.map(item => ({
+            ...item,
+            isOutOfStockError: result.outOfStockProductIds.includes(item.id.toString())
+          })))
+        }
       }
     } finally {
       setSubmitting(false)
@@ -649,8 +698,15 @@ export default function ManagerPOSPage() {
                 {cart.map((item, index) => (
                   <div
                     key={`${item.cartItemId}-${index}`}
-                    className="flex gap-2 p-2 bg-slate-50/70 border border-slate-100 rounded-2xl hover:bg-slate-50 transition-colors relative items-center"
+                    className={`flex gap-2 p-2 border rounded-2xl transition-colors relative items-center ${
+                      item.isOutOfStockError ? 'bg-red-50/70 border-red-200 shadow-sm' : 'bg-slate-50/70 border-slate-100 hover:bg-slate-50'
+                    }`}
                   >
+                    {item.isOutOfStockError && (
+                       <span className="absolute -top-2 -right-1 bg-red-600 text-white text-[9px] px-2 py-0.5 rounded-full font-bold shadow-md z-10 animate-bounce">
+                         สต็อกหมด (โดนซื้อตัดหน้า)
+                       </span>
+                    )}
                     {item.fulfill_branch_id !== myBranchId && (
                       <span className="absolute -top-2 -left-1 bg-orange-100 text-orange-700 border border-orange-200 text-[8px] px-1.5 py-0.5 rounded-md font-bold shadow-2xs z-10">
                         ดึง: {item.fulfill_branch_name}
@@ -727,7 +783,7 @@ export default function ManagerPOSPage() {
 
 
               <button
-                onClick={handleCheckout}
+                onClick={handlePreCheckout}
                 disabled={submitting || cart.length === 0}
                 className="w-full py-3.5 bg-[#1E293B] text-white rounded-xl font-bold text-xs hover:bg-slate-800 transition-all shadow-md shadow-slate-200 disabled:opacity-40 disabled:shadow-none cursor-pointer flex items-center justify-center gap-1.5"
               >
@@ -808,8 +864,14 @@ export default function ManagerPOSPage() {
             </div>
             
             <div className="p-4 bg-slate-50 border-t border-slate-100 rounded-b-3xl">
-              <button onClick={() => setIsCustomerFormOpen(false)} className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs transition-colors shadow-md shadow-blue-200 cursor-pointer">
-                บันทึกข้อมูลจัดส่ง
+              <button 
+                onClick={() => {
+                  setIsCustomerFormOpen(false)
+                  setTimeout(() => handlePreCheckout(), 100)
+                }} 
+                className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs transition-colors shadow-md shadow-blue-200 cursor-pointer"
+              >
+                บันทึกข้อมูลและดำเนินการต่อ
               </button>
             </div>
           </div>
@@ -870,6 +932,76 @@ export default function ManagerPOSPage() {
               <button onClick={() => setNearbyModal({ isOpen: false, product: null, nearbyStocks: [], isLoading: false })} className="flex-1 py-2.5 bg-white border border-slate-200 text-slate-600 rounded-xl font-bold text-xs hover:bg-slate-100 transition-all cursor-pointer">
                 ปิดหน้าต่าง
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ✨ Modal ยืนยันการสร้างใบเสนอราคา */}
+      {isConfirmCheckoutOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
+          <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden flex flex-col p-6 items-center text-center">
+            <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mb-4">
+              <FileText className="w-8 h-8" />
+            </div>
+            <h3 className="font-bold text-slate-800 text-lg mb-2">ยืนยันสร้างใบเสนอราคา?</h3>
+            <p className="text-slate-500 text-xs mb-6 px-4 leading-relaxed">
+              กรุณาตรวจสอบรายการสินค้าและยอดเงินให้ถูกต้องก่อนกดยืนยัน ระบบจะทำการบันทึกบิลและตัดสต็อกทันที
+            </p>
+            <div className="flex gap-3 w-full">
+              <button
+                onClick={() => setIsConfirmCheckoutOpen(false)}
+                className="flex-1 py-3 bg-white border border-slate-200 text-slate-600 rounded-xl font-bold text-xs hover:bg-slate-50 transition-all cursor-pointer"
+              >
+                ยกเลิก
+              </button>
+              <button
+                onClick={handleCheckout}
+                disabled={submitting}
+                className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs transition-all cursor-pointer shadow-md shadow-blue-200 flex items-center justify-center gap-1.5"
+              >
+                {submitting ? 'กำลังบันทึก...' : <><Save className="w-4 h-4" /> ยืนยันสร้าง</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ✨ Modal แสดงใบเสนอราคาแบบ Iframe กลางจอ */}
+      {successPrintUrl && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 md:p-8">
+          <div className="bg-white w-full max-w-4xl h-full max-h-[90vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col">
+            <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+              <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
+                <Printer className="w-4 h-4 text-blue-600" /> เอกสารการขาย
+              </h3>
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={() => {
+                    const iframe = document.getElementById('print-iframe') as HTMLIFrameElement;
+                    if (iframe && iframe.contentWindow) {
+                      iframe.contentWindow.print();
+                    }
+                  }}
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-1.5 px-4 rounded-lg text-xs transition-colors flex items-center gap-1.5 shadow-sm"
+                >
+                  <Printer className="w-3.5 h-3.5" /> สั่งพิมพ์
+                </button>
+                <button 
+                  onClick={() => setSuccessPrintUrl(null)} 
+                  className="text-slate-400 hover:text-red-500 font-bold bg-white w-8 h-8 rounded-full flex items-center justify-center shadow-sm border border-slate-100 transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 w-full bg-slate-200 overflow-hidden relative">
+              <iframe 
+                id="print-iframe"
+                src={successPrintUrl} 
+                className="w-full h-full absolute inset-0 border-none"
+                title="Print Preview"
+              />
             </div>
           </div>
         </div>

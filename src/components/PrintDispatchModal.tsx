@@ -148,7 +148,7 @@ export default function PrintDispatchModal({ orderCode, onClose }: PrintDispatch
                 <p className="font-bold text-neutral-800 uppercase">Operated by TPS GARDEN FURNITURE CO., LTD</p>
                 <p>351/7-8 Soi Bangkok-Nonthaburi 13, Bangkok-Nonthaburi Road,</p>
                 <p>Bang Sue Subdistrict, Bang Sue District, Bangkok 10800</p>
-                <p className="mt-0.5 text-neutral-400">TAX ID: 010555XXXXXXX &nbsp;|&nbsp; TEL: 02-XXX-XXXX</p>
+                <p className="mt-0.5 text-neutral-400">TAX ID: 0105541075911</p>
               </div>
             </div>
             
