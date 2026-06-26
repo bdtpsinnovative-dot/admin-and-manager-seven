@@ -34,7 +34,7 @@ export async function uploadFile(formData: FormData) {
 }
 
 // เปลี่ยนบรรทัดนี้ในไฟล์ actions/woodslab.ts
-export async function getProducts(category?: string, specType?: string, searchQuery?: string) {
+export async function getProducts(category?: string, specType?: string, searchQuery?: string, statusFilter?: string) {
   const supabase = await createClient()
 
   let query = supabase
@@ -48,6 +48,14 @@ export async function getProducts(category?: string, specType?: string, searchQu
 
   if (specType) {
     query = query.eq('specs->>type', specType)
+  }
+
+  if (statusFilter) {
+    if (statusFilter === 'active') {
+      query = query.or('status.eq.active,status.is.null')
+    } else {
+      query = query.eq('status', statusFilter)
+    }
   }
 
   // 💡 เพิ่มตรงนี้ครับ: ค้นหาจากชื่อ หรือ SKU

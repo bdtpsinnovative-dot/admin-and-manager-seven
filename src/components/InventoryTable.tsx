@@ -98,8 +98,11 @@ export default function InventoryTable({ products, activeTab }: InventoryTablePr
                       <div className="font-bold text-slate-700 text-sm">{formatCurrency(item.price)}</div>
                     </td>
                     <td className="p-4 text-center align-top">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${item.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-500'}`}>
-                        {item.status || 'Draft'}
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${
+                        !item.status || item.status === 'active' ? 'bg-green-100 text-green-800' : 
+                        item.status === 'paused' ? 'bg-yellow-100 text-yellow-800' :
+                        'bg-slate-100 text-slate-500'}`}>
+                        {item.status === 'paused' ? 'Paused' : item.status === 'inactive' ? 'Inactive' : item.status === 'draft' ? 'Draft' : 'Active'}
                       </span>
                     </td>
                     

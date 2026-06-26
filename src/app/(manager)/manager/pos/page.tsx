@@ -65,6 +65,14 @@ export default function ManagerPOSPage() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
 
   const handleSaleModeChange = (mode: 'TAKE_AWAY' | 'DELIVERY') => {
+    if (mode === 'TAKE_AWAY') {
+      const hasCrossBranch = cart.some(item => item.fulfill_branch_id !== myBranchId);
+      if (hasCrossBranch) {
+        toast.warning("ไม่สามารถเลือก 'รับหน้าร้าน' ได้ เนื่องจากมีสินค้าดึงจากสาขาอื่น ต้องจัดส่งเท่านั้นครับ");
+        return;
+      }
+    }
+
     setSaleMode(mode)
     if (mode === 'TAKE_AWAY') {
       if (!shippingName || shippingName.trim() === '') {
@@ -162,10 +170,51 @@ export default function ManagerPOSPage() {
 
   const toggleGroup = (parent: string) => setOpenGroups(prev => ({ ...prev, [parent]: !prev[parent] }))
 
+  const triggerCartAnimation = (productId: number) => {
+    const cartEl = document.getElementById('cart-icon-target')
+    const imgEl = document.getElementById(`product-img-${productId}`) as HTMLImageElement
+    
+    if (cartEl && imgEl) {
+      const imgRect = imgEl.getBoundingClientRect()
+      const cartRect = cartEl.getBoundingClientRect()
+      
+      const clone = imgEl.cloneNode(true) as HTMLImageElement
+      clone.style.position = 'fixed'
+      clone.style.left = `${imgRect.left}px`
+      clone.style.top = `${imgRect.top}px`
+      clone.style.width = `${imgRect.width}px`
+      clone.style.height = `${imgRect.height}px`
+      clone.style.zIndex = '9999'
+      clone.style.transition = 'all 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94)'
+      clone.style.opacity = '0.9'
+      clone.style.borderRadius = '50%'
+      clone.style.objectFit = 'cover'
+      clone.style.boxShadow = '0 10px 15px -3px rgb(0 0 0 / 0.1)'
+      clone.id = '' // clear id to avoid duplicates
+      
+      document.body.appendChild(clone)
+      
+      void clone.offsetWidth
+      
+      clone.style.left = `${cartRect.left + cartRect.width/2 - 15}px`
+      clone.style.top = `${cartRect.top + cartRect.height/2 - 15}px`
+      clone.style.width = '30px'
+      clone.style.height = '30px'
+      clone.style.opacity = '0.1'
+      clone.style.transform = 'scale(0.5) rotate(360deg)'
+      
+      setTimeout(() => clone.remove(), 600)
+    }
+  }
+
   const getDisplayQty = (product: Product) => {
     if (selectedLocation === 'ALL') return product.stocks.reduce((sum, s) => sum + Number(s.qty), 0)
     const branchStock = product.stocks.find(s => s.branch_id === selectedLocation)
     return branchStock ? Number(branchStock.qty) : 0
+  }
+
+  const handleProductClick = (product: Product) => {
+    addToCart(product)
   }
 
   const addToCart = async (product: Product) => {
@@ -190,6 +239,9 @@ export default function ManagerPOSPage() {
       }
       return
     }
+
+    // 🚀 สต็อกพอ ดึงลงตะกร้าเลย พร้อมเล่นแอนิเมชัน
+    triggerCartAnimation(product.id)
 
     const branchName = branches.find(b => b.id === targetBranchId)?.branch_name || 'สาขาหลัก'
 
@@ -227,6 +279,9 @@ export default function ManagerPOSPage() {
         return prevCart
       }
 
+      // 🚀 สต็อกของสาขาอื่นพอ ดึงลงตะกร้า พร้อมเล่นแอนิเมชัน
+      triggerCartAnimation(product.id)
+
       if (existing) {
         return prevCart.map(item => item.cartItemId === cartItemId ? { ...item, quantity: item.quantity + 1 } : item)
       }
@@ -241,6 +296,16 @@ export default function ManagerPOSPage() {
     })
 
     setNearbyModal({ isOpen: false, product: null, nearbyStocks: [], isLoading: false })
+
+    // 🚀 บังคับเป็นโหมดจัดส่งทันทีเมื่อมีการดึงข้ามสาขา
+    if (saleMode === 'TAKE_AWAY') {
+      setSaleMode('DELIVERY')
+      setShippingName('')
+      setShippingPhone('')
+      setShippingAddress('')
+      toast.info('เปลี่ยนเป็นโหมด "ให้ร้านส่งให้" อัตโนมัติ เนื่องจากมีรายการดึงสต็อกข้ามสาขา')
+      setIsCustomerFormOpen(true) // เปิดฟอร์มให้กรอกเลย
+    }
   }
 
   const updateQuantity = (cartItemId: string, delta: number) => {
@@ -476,42 +541,39 @@ export default function ManagerPOSPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4 w-full">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4 w-full pb-24 lg:pb-0">
             {filteredProducts.map((product) => {
               const currentQty = getDisplayQty(product)
               return (
                 <div
                   key={product.id}
-                  onClick={() => addToCart(product)}
-                  className="bg-white rounded-3xl p-4 flex flex-col shadow-xs cursor-pointer border border-transparent hover:border-blue-200 hover:shadow-md transition-all group aspect-square relative"
+                  onClick={() => handleProductClick(product)}
+                  className="bg-white rounded-[20px] p-2 flex flex-col shadow-xs cursor-pointer border border-slate-100 hover:border-blue-300 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 group relative"
                 >
-                  <div className="relative flex-1 bg-slate-50/50 rounded-2xl overflow-hidden mb-2 flex items-center justify-center">
+                  <div className="relative w-full aspect-square bg-slate-50 rounded-2xl overflow-hidden mb-2 flex items-center justify-center">
                     {product.image_url ? (
-                      <img src={product.image_url} alt={product.name} className="object-contain w-full h-full p-2 transition-transform duration-300 group-hover:scale-105" />
+                      <img id={`product-img-${product.id}`} src={product.image_url} alt={product.name} className="object-cover w-full h-full transition-transform duration-500 group-hover:scale-110" />
                     ) : (
-                      <span className="text-xs text-slate-300 font-medium">ไม่มีรูปภาพ</span>
+                      <span className="text-xs text-slate-300 font-medium">ไม่มีรูป</span>
                     )}
                     <div className="absolute top-2 right-2 bg-slate-900/80 text-white text-[9px] px-1.5 py-0.5 rounded-md backdrop-blur-xs font-bold">
-                      ส่องเจอ: {currentQty} ชิ้น
+                      เหลือ {currentQty}
                     </div>
                   </div>
-                  <div className="flex flex-col shrink-0 mt-1">
-                    <h3 className="font-bold text-slate-800 text-xs truncate w-full" title={product.name}>
+                  <div className="flex flex-col shrink-0 px-1 pb-1">
+                    <h3 className="font-bold text-slate-800 text-[11px] sm:text-xs truncate w-full" title={product.name}>
                       {product.name}
                     </h3>
-                    <div className="flex items-center justify-between mt-2 pt-1 border-t border-slate-50">
-                      <div>
+                    <div className="flex items-end justify-between mt-1">
+                      <div className="flex flex-col">
                         {product.discount_label && (
-                          <div className="flex items-center gap-1">
-                            <span className="text-[9px] text-slate-400 line-through">THB {product.original_price.toLocaleString()}</span>
-                            <span className="text-[8px] bg-orange-50 border border-orange-100 text-orange-600 px-0.5 rounded font-black">{product.discount_label}</span>
+                          <div className="flex items-center gap-1 mb-0.5">
+                            <span className="text-[9px] text-slate-400 line-through">฿{product.original_price.toLocaleString()}</span>
+                            <span className="text-[8px] bg-orange-50 text-orange-600 px-1 rounded font-black">{product.discount_label}</span>
                           </div>
                         )}
-                        <div className="text-blue-600 font-black text-xs">THB {product.price.toLocaleString()}</div>
+                        <div className="text-blue-600 font-black text-xs sm:text-sm">฿{product.price.toLocaleString()}</div>
                       </div>
-                      <span className="bg-blue-50 text-blue-600 px-2.5 py-1 rounded-xl text-[10px] font-bold group-hover:bg-blue-600 group-hover:text-white transition-all shadow-2xs">
-                        + เพิ่ม
-                      </span>
                     </div>
                   </div>
                 </div>
@@ -521,11 +583,11 @@ export default function ManagerPOSPage() {
         </div>
 
         {/* 🛒 ฝั่งขวา: ตะกร้าสรุปบิล */}
-        <div className="w-full lg:w-[360px] shrink-0 bg-white rounded-3xl shadow-sm border border-slate-100 flex flex-col overflow-hidden lg:sticky lg:top-6 max-h-[calc(100vh-48px)]">
-
-          <div className="p-3 bg-slate-50 border-b border-slate-100 grid grid-cols-2 gap-2 relative">
-            <button
-              onClick={() => handleSaleModeChange('TAKE_AWAY')}
+        <div id="mobile-cart-section" className="w-full lg:w-[360px] shrink-0 bg-white rounded-3xl shadow-sm border border-slate-100 flex flex-col lg:sticky lg:top-6 lg:max-h-[calc(100vh-48px)] z-10">
+          
+          <div className="p-3 bg-slate-50 border-b border-slate-100 grid grid-cols-2 gap-2 relative rounded-t-3xl">
+            <button 
+              onClick={() => handleSaleModeChange('TAKE_AWAY')} 
               className={`py-2 text-xs font-black rounded-xl transition-all flex items-center justify-center gap-1.5 ${saleMode === 'TAKE_AWAY' ? 'bg-[#1E293B] text-white shadow-xs' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'}`}
             >
               <Store className="w-4 h-4" /> รับหน้าร้าน
@@ -539,7 +601,7 @@ export default function ManagerPOSPage() {
           </div>
 
           <div className="p-4 pb-3 border-b border-slate-50 flex justify-between items-center">
-            <h2 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+            <h2 id="cart-icon-target" className="text-sm font-bold text-slate-800 flex items-center gap-1.5 transition-transform">
               <Receipt className="w-4 h-4" /> รายการใบสรุปขาย
               <span className="bg-blue-50 text-blue-600 font-bold text-[10px] px-2 py-0.5 rounded-full">{cart.length} รายการ</span>
             </h2>
@@ -587,38 +649,34 @@ export default function ManagerPOSPage() {
                 {cart.map((item, index) => (
                   <div
                     key={`${item.cartItemId}-${index}`}
-                    className="flex gap-2.5 p-2.5 bg-slate-50/70 border border-slate-100 rounded-2xl hover:bg-slate-50 transition-colors relative animate-fade-in"
+                    className="flex gap-2 p-2 bg-slate-50/70 border border-slate-100 rounded-2xl hover:bg-slate-50 transition-colors relative items-center"
                   >
                     {item.fulfill_branch_id !== myBranchId && (
-                      <span className="absolute -top-2 -right-1 bg-orange-100 text-orange-700 border border-orange-200 text-[8px] px-1.5 py-0.5 rounded font-bold shadow-2xs z-10">
-                        ดึงสต็อก: {item.fulfill_branch_name}
+                      <span className="absolute -top-2 -left-1 bg-orange-100 text-orange-700 border border-orange-200 text-[8px] px-1.5 py-0.5 rounded-md font-bold shadow-2xs z-10">
+                        ดึง: {item.fulfill_branch_name}
                       </span>
                     )}
-
-                    {/* รูปภาพสินค้า */}
-                    <div className="w-11 h-11 bg-white border border-slate-100 rounded-xl overflow-hidden shrink-0 flex items-center justify-center shadow-3xs">
+                    <div className="w-12 h-12 bg-white rounded-xl overflow-hidden border border-slate-100 shrink-0 flex items-center justify-center">
                       {item.image_url ? (
-                        <img src={item.image_url} alt={item.name} className="w-full h-full object-contain p-0.5" />
+                        <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" />
                       ) : (
-                        <span className="text-[8px] text-slate-300 font-medium">No Img</span>
+                        <span className="text-[8px] text-slate-300 font-medium">ไม่มีรูป</span>
                       )}
                     </div>
-
-                    {/* รายละเอียดสินค้า */}
-                    <div className="flex-1 min-w-0 flex flex-col justify-between">
+                    
+                    <div className="flex-1 flex flex-col min-w-0">
                       <div className="flex justify-between items-start gap-1">
-                        <p className="text-xs font-bold text-slate-700 truncate" title={item.name}>{item.name}</p>
-                        <button onClick={() => removeFromCart(item.cartItemId)} className="text-slate-400 hover:text-red-500 transition-colors shrink-0" title="ลบรายการนี้">
-                          <Trash2 className="w-3.5 h-3.5" />
+                        <p className="text-[11px] font-bold text-slate-700 truncate leading-tight" title={item.name}>{item.name}</p>
+                        <button onClick={() => removeFromCart(item.cartItemId)} className="text-slate-300 hover:text-red-500 transition-colors shrink-0 p-0.5" title="ลบรายการนี้">
+                          <Trash2 className="w-3 h-3" />
                         </button>
                       </div>
-
-                      <div className="flex items-center justify-between mt-1">
-                        <p className="text-xs text-blue-600 font-extrabold">{(item.price * item.quantity).toLocaleString()} ฿</p>
-                        <div className="flex items-center bg-white border border-slate-200 rounded-lg shadow-2xs overflow-hidden">
-                          <button onClick={() => updateQuantity(item.cartItemId, -1)} className="px-2 py-0.5 text-slate-500 font-bold hover:bg-slate-50 text-[10px]">-</button>
-                          <span className="px-1.5 text-[10px] font-bold text-slate-800">{item.quantity}</span>
-                          <button onClick={() => updateQuantity(item.cartItemId, 1)} className="px-2 py-0.5 text-slate-500 font-bold hover:bg-slate-50 text-[10px]">+</button>
+                      <div className="flex items-center justify-between mt-1.5">
+                        <p className="text-[11px] text-blue-600 font-extrabold">{(item.price * item.quantity).toLocaleString()} ฿</p>
+                        <div className="flex items-center bg-white border border-slate-200 rounded-lg shadow-2xs overflow-hidden h-6">
+                          <button onClick={() => updateQuantity(item.cartItemId, -1)} className="w-6 h-full flex items-center justify-center text-slate-500 font-bold hover:bg-slate-50 text-xs">-</button>
+                          <span className="px-1 text-[11px] font-bold text-slate-800 min-w-[16px] text-center">{item.quantity}</span>
+                          <button onClick={() => updateQuantity(item.cartItemId, 1)} className="w-6 h-full flex items-center justify-center text-slate-500 font-bold hover:bg-slate-50 text-xs">+</button>
                         </div>
                       </div>
                     </div>
@@ -628,67 +686,30 @@ export default function ManagerPOSPage() {
             )}
           </div>
 
-          <div className="p-4 bg-slate-50/60 border-t border-slate-100">
-
-            {/* ✨ ฟอร์มข้อมูลลูกค้าแบบพับเก็บได้ (+/-) */}
-            <div className="mb-4 bg-blue-50/70 border border-blue-100 rounded-xl shadow-inner overflow-hidden transition-all">
-              <button
-                onClick={() => setIsCustomerFormOpen(!isCustomerFormOpen)}
-                className="w-full p-3 flex items-center justify-between hover:bg-blue-100/50 transition-colors cursor-pointer"
-              >
-                <p className="text-[10px] font-black text-blue-700 flex items-center gap-1">
-                  <MapPin className="w-3.5 h-3.5" /> ข้อมูลลูกค้า (สำหรับจัดส่ง)
-                </p>
-                {isCustomerFormOpen ? (
-                  <Minus className="w-4 h-4 text-blue-600 bg-blue-100 rounded-md p-0.5" />
-                ) : (
-                  <Plus className="w-4 h-4 text-blue-600 bg-blue-100 rounded-md p-0.5" />
-                )}
-              </button>
-
-              {isCustomerFormOpen && (
-                <div className="p-3 pt-0 border-t border-blue-100/50 mt-1">
-                  <div className="space-y-2">
-                    <input type="text" placeholder="ชื่อลูกค้าผู้รับ" value={shippingName} onChange={e => setShippingName(e.target.value)} className="w-full text-xs p-2 bg-white rounded-lg border border-blue-200 outline-none focus:border-blue-400" />
-                    <input type="text" placeholder="เบอร์โทรศัพท์ติดต่อ" value={shippingPhone} onChange={e => setShippingPhone(e.target.value)} className="w-full text-xs p-2 bg-white rounded-lg border border-blue-200 outline-none focus:border-blue-400" />
-                    <textarea placeholder="ที่อยู่ลูกค้าโดยละเอียด..." value={shippingAddress} onChange={e => setShippingAddress(e.target.value)} rows={2} className="w-full text-xs p-2 bg-white rounded-lg border border-blue-200 outline-none focus:border-blue-400 resize-none" />
-                  </div>
-
-                  <div className="pt-3 border-t border-blue-100/50 mt-3 space-y-2">
-                    {latitude && longitude ? (
-                      <div className="w-full h-32 bg-slate-100 rounded-xl overflow-hidden border border-blue-200 relative shadow-inner">
-                        <iframe
-                          title="Mini Map Preview"
-                          width="100%"
-                          height="100%"
-                          frameBorder="0"
-                          scrolling="no"
-                          src={`https://www.openstreetmap.org/export/embed.html?bbox=${longitude - 0.002},${latitude - 0.002},${longitude + 0.002},${latitude + 0.002}&layer=mapnik&marker=${latitude},${longitude}`}
-                          className="pointer-events-none"
-                        />
-                        <div className="absolute bottom-1 right-1 bg-white/90 backdrop-blur-sm px-2 py-0.5 rounded text-[8px] font-bold text-blue-600 shadow-sm">
-                          พิกัดลูกค้า
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="w-full h-20 bg-slate-50/50 rounded-xl border border-dashed border-blue-200 flex flex-col items-center justify-center text-slate-400 gap-1">
-                        <MapPin className="w-4 h-4 text-blue-300" />
-                        <span className="text-[10px] font-medium">ยังไม่ได้ปักหมุดแผนที่</span>
-                      </div>
-                    )}
-
-                    <button
-                      type="button"
-                      onClick={() => setShowMap(true)}
-                      className={`w-full flex items-center justify-center gap-1.5 p-2.5 text-xs font-bold rounded-lg border transition-all ${latitude && longitude
-                          ? 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                          : 'bg-blue-50 border-blue-300 text-blue-600 hover:bg-blue-100 shadow-sm'
-                        }`}
+          <div className="p-4 bg-slate-50/60 border-t border-slate-100 flex flex-col justify-end">
+            
+            {/* ✨ ข้อมูลลูกค้าแบบย่อ (เปิด Modal) */}
+            <div className="mb-3">
+              {saleMode === 'DELIVERY' ? (
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 shadow-2xs">
+                  <div className="flex justify-between items-center mb-1">
+                    <p className="text-[11px] font-black text-blue-700 flex items-center gap-1">
+                      <Truck className="w-3.5 h-3.5" /> ข้อมูลสำหรับจัดส่ง
+                    </p>
+                    <button 
+                      onClick={() => setIsCustomerFormOpen(true)}
+                      className="text-[10px] bg-white text-blue-600 border border-blue-200 hover:bg-blue-100 font-bold px-2 py-0.5 rounded transition-colors"
                     >
-                      <MapPin className="w-4 h-4" />
-                      {latitude && longitude ? 'แก้ไขจุดปักหมุดแผนที่' : 'เปิดแผนที่เพื่อจิ้มปักหมุดลูกค้า'}
+                      แก้ไข
                     </button>
                   </div>
+                  <p className="text-[10px] text-slate-600 truncate">{shippingName || '-'}</p>
+                  <p className="text-[10px] text-slate-500 truncate">{shippingAddress || '-'}</p>
+                </div>
+              ) : (
+                <div className="bg-slate-100 border border-slate-200 rounded-xl p-3 shadow-2xs flex items-center gap-2">
+                  <Store className="w-4 h-4 text-slate-400" />
+                  <p className="text-[11px] font-bold text-slate-600">ลูกค้าทั่วไป (รับของหน้าร้าน)</p>
                 </div>
               )}
             </div>
@@ -716,8 +737,84 @@ export default function ManagerPOSPage() {
 
           </div>
         </div>
-
       </div>
+
+      {/* 🚀 Modal ข้อมูลลูกค้าสำหรับจัดส่ง */}
+      {isCustomerFormOpen && saleMode === 'DELIVERY' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
+          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl flex flex-col max-h-[90vh]">
+            <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-blue-50/50 rounded-t-3xl">
+              <h3 className="font-bold text-blue-800 text-sm flex items-center gap-1.5">
+                <Truck className="w-5 h-5 text-blue-600" /> ระบุข้อมูลสำหรับจัดส่ง
+              </h3>
+              <button onClick={() => setIsCustomerFormOpen(false)} className="text-slate-400 hover:text-slate-700 font-bold p-1 bg-white rounded-lg shadow-2xs">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            
+            <div className="p-5 overflow-y-auto">
+              <div className="space-y-3">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 mb-1 block">ชื่อลูกค้า/ผู้รับ</label>
+                  <input type="text" placeholder="ระบุชื่อลูกค้า..." value={shippingName} onChange={e => setShippingName(e.target.value)} className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-blue-400 focus:bg-white transition-colors" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 mb-1 block">เบอร์โทรศัพท์ติดต่อ</label>
+                  <input type="text" placeholder="ระบุเบอร์โทร..." value={shippingPhone} onChange={e => setShippingPhone(e.target.value)} className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-blue-400 focus:bg-white transition-colors" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 mb-1 block">ที่อยู่จัดส่งโดยละเอียด</label>
+                  <textarea placeholder="บ้านเลขที่, ซอย, ถนน, ตำบล, อำเภอ, จังหวัด, รหัสไปรษณีย์..." value={shippingAddress} onChange={e => setShippingAddress(e.target.value)} rows={3} className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-blue-400 focus:bg-white transition-colors resize-none" />
+                </div>
+              </div>
+              
+              <div className="pt-4 mt-4 border-t border-slate-100 space-y-3">
+                <label className="text-[10px] font-bold text-slate-500 block">ปักหมุดแผนที่สำหรับไรเดอร์ / ขนส่ง</label>
+                {latitude && longitude ? (
+                  <div className="w-full h-32 bg-slate-100 rounded-xl overflow-hidden border border-slate-200 relative shadow-inner">
+                    <iframe
+                      title="Mini Map Preview"
+                      width="100%"
+                      height="100%"
+                      frameBorder="0"
+                      scrolling="no"
+                      src={`https://www.openstreetmap.org/export/embed.html?bbox=${longitude-0.002},${latitude-0.002},${longitude+0.002},${latitude+0.002}&layer=mapnik&marker=${latitude},${longitude}`}
+                      className="pointer-events-none" 
+                    />
+                    <div className="absolute bottom-2 right-2 bg-white/90 backdrop-blur-sm px-2 py-1 rounded-md text-[9px] font-bold text-blue-600 shadow-sm border border-blue-100">
+                      พิกัดถูกบันทึกแล้ว
+                    </div>
+                  </div>
+                ) : (
+                  <div className="w-full h-24 bg-slate-50 rounded-xl border border-dashed border-slate-300 flex flex-col items-center justify-center text-slate-400 gap-2">
+                    <MapPin className="w-5 h-5 text-slate-300" />
+                    <span className="text-[11px] font-medium">ยังไม่ได้ปักหมุดแผนที่บน Google Maps</span>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setShowMap(true)}
+                  className={`w-full flex items-center justify-center gap-1.5 p-3 text-xs font-bold rounded-xl border transition-all ${
+                    latitude && longitude 
+                      ? 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50' 
+                      : 'bg-blue-50 border-blue-200 text-blue-600 hover:bg-blue-100 hover:border-blue-300 shadow-sm'
+                  }`}
+                >
+                  <MapPin className="w-4 h-4" />
+                  {latitude && longitude ? 'แก้ไขจุดปักหมุดแผนที่' : 'เปิดแผนที่เพื่อปักหมุดลูกค้าตอนนี้'}
+                </button>
+              </div>
+            </div>
+            
+            <div className="p-4 bg-slate-50 border-t border-slate-100 rounded-b-3xl">
+              <button onClick={() => setIsCustomerFormOpen(false)} className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs transition-colors shadow-md shadow-blue-200 cursor-pointer">
+                บันทึกข้อมูลจัดส่ง
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 🔍 Modal แจ้งเตือนสต็อกสาขาอื่น */}
       {nearbyModal.isOpen && nearbyModal.product && (
@@ -791,6 +888,26 @@ export default function ManagerPOSPage() {
           onClose={() => setShowMap(false)}
         />
       )}
+
+      {/* 📱 ปุ่มลอยสำหรับมือถือ (เลื่อนลงไปตะกร้า) */}
+      <div className="lg:hidden fixed bottom-6 right-6 z-40">
+        <button 
+          onClick={() => {
+            const cartEl = document.getElementById('mobile-cart-section');
+            if (cartEl) {
+              cartEl.scrollIntoView({ behavior: 'smooth' });
+            }
+          }} 
+          className="bg-blue-600 hover:bg-blue-700 text-white rounded-full p-4 shadow-2xl flex items-center justify-center relative transition-transform active:scale-95"
+        >
+          <Receipt className="w-6 h-6" />
+          {cart.length > 0 && (
+            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center border-2 border-[#F4F7F9] shadow-sm">
+              {cart.length}
+            </span>
+          )}
+        </button>
+      </div>
 
     </div>
   )

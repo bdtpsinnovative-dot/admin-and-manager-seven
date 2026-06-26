@@ -12,7 +12,6 @@ interface Profile {
   email: string; 
   role: string; 
   phone: string | null;
-  citizen_id: string | null;
   birth_date: string | null;
   avatar_url: string | null; 
   branch_id: number | null;
@@ -315,7 +314,7 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
             </div>
             
             <div className="overflow-y-auto p-6">
-                <form action={handleUpdate} className="space-y-5">
+                <form onSubmit={async (e) => { e.preventDefault(); await handleUpdate(new FormData(e.currentTarget)); }} className="space-y-5">
                 
                 {editingEmp.role === 'unassigned' && (
                     <div className="bg-amber-50 text-amber-800 p-3 rounded-xl text-xs flex items-start gap-2 border border-amber-200">
@@ -347,14 +346,6 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
                         <div className="relative">
                             <Calendar className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
                             <input type="date" name="birth_date" defaultValue={editingEmp.birth_date || ""} className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-500 outline-none transition text-slate-600" />
-                        </div>
-                    </div>
-
-                    <div className="col-span-2">
-                        <label className="text-[10px] font-bold text-slate-500 uppercase mb-1 block">เลขบัตรประชาชน (13 หลัก)</label>
-                        <div className="relative">
-                            <CreditCard className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
-                            <input name="citizen_id" defaultValue={editingEmp.citizen_id || ""} className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-500 outline-none transition" placeholder="xxxxxxxxxxxxx" maxLength={13} />
                         </div>
                     </div>
                 </div>
@@ -404,9 +395,9 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
             </div>
             
             <div className="overflow-y-auto p-6">
-                <form action={handleCreate} className="space-y-5">
+                <form onSubmit={async (e) => { e.preventDefault(); await handleCreate(new FormData(e.currentTarget)); }} className="space-y-5">
                 <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-4"><div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">ข้อมูลบัญชี (Login)</div><div className="grid grid-cols-2 gap-4"><div className="col-span-2"><label className="text-[10px] font-bold text-slate-500 uppercase mb-1 block">อีเมล <span className="text-red-500">*</span></label><div className="relative"><Mail className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" /><input type="email" name="email" className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="example@mail.com" required /></div></div><div className="col-span-2"><label className="text-[10px] font-bold text-slate-500 uppercase mb-1 block">รหัสผ่าน <span className="text-red-500">*</span></label><div className="relative"><Key className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" /><input type="password" name="password" className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="กำหนดรหัสผ่าน..." required minLength={6} /></div></div></div></div>
-                <div className="grid grid-cols-2 gap-4"><div className="col-span-2"><label className="text-[10px] font-bold text-slate-500 uppercase mb-1 block">ชื่อ-นามสกุล <span className="text-red-500">*</span></label><div className="relative"><User className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" /><input name="full_name" className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="ระบุชื่อจริง..." required /></div></div><div><label className="text-[10px] font-bold text-slate-500 uppercase mb-1 block">เบอร์โทรศัพท์</label><div className="relative"><Phone className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" /><input name="phone" className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-500 outline-none" placeholder="0xxxxxxxxx" /></div></div><div><label className="text-[10px] font-bold text-slate-500 uppercase mb-1 block">วันเกิด</label><div className="relative"><Calendar className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" /><input type="date" name="birth_date" className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-500 outline-none text-slate-600" /></div></div><div className="col-span-2"><label className="text-[10px] font-bold text-slate-500 uppercase mb-1 block">เลขบัตรประชาชน (13 หลัก)</label><div className="relative"><CreditCard className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" /><input name="citizen_id" className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-500 outline-none" placeholder="xxxxxxxxxxxxx" maxLength={13} /></div></div></div>
+                <div className="grid grid-cols-2 gap-4"><div className="col-span-2"><label className="text-[10px] font-bold text-slate-500 uppercase mb-1 block">ชื่อ-นามสกุล <span className="text-red-500">*</span></label><div className="relative"><User className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" /><input name="full_name" className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="ระบุชื่อจริง..." required /></div></div><div><label className="text-[10px] font-bold text-slate-500 uppercase mb-1 block">เบอร์โทรศัพท์</label><div className="relative"><Phone className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" /><input name="phone" className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-500 outline-none" placeholder="0xxxxxxxxx" /></div></div><div className="col-span-2"><label className="text-[10px] font-bold text-slate-500 uppercase mb-1 block">วันเกิด</label><div className="relative"><Calendar className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" /><input type="date" name="birth_date" className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-500 outline-none text-slate-600" /></div></div></div>
                 <div className="grid grid-cols-2 gap-4"><div><label className="text-[10px] font-bold text-blue-600 uppercase mb-1 flex items-center gap-1"><Shield className="w-3 h-3" /> ตำแหน่ง</label><select name="role" className="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none"><option value="sale">Sale</option><option value="manager">Manager</option><option value="warehouse">Warehouse</option><option value="admin">Admin</option></select></div><div><label className="text-[10px] font-bold text-blue-600 uppercase mb-1 flex items-center gap-1"><Briefcase className="w-3 h-3" /> สาขา</label><select name="branch_id" className="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none"><option value="">-- เลือกสาขา --</option>{branches.map(b => (<option key={b.id} value={b.id}>{b.branch_name}</option>))}</select></div></div>
                 <div className="flex justify-end gap-3 pt-4 border-t border-slate-100"><button type="button" onClick={() => setIsCreateModalOpen(false)} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg font-medium transition">ยกเลิก</button><button type="submit" disabled={loading} className="px-6 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-lg shadow-blue-200 transition font-bold flex items-center gap-2">{loading ? "กำลังสร้าง..." : <><Plus className="w-4 h-4"/> สร้างบัญชี</>}</button></div>
                 </form>

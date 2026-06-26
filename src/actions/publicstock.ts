@@ -3,6 +3,7 @@
 
 import { createClient } from "../lib/supabase/server" // ✅ ตรวจสอบ Path ให้ตรงกับไฟล์ server.ts ของคุณ
 import { revalidatePath } from "next/cache"
+import sharp from "sharp"
 
 // --- Types ---
 export interface ProductStock {
@@ -108,5 +109,126 @@ export async function getTotalQty(branchId: number): Promise<number> {
     return (data ?? []).reduce((sum, r) => sum + Number(r.qty), 0)
   } catch {
     return 0
+  }
+}
+
+// ✅ 5. ดึงข้อมูลทั้งหมดสำหรับ Export Excel
+export async function getAllStockForExport(branchId: number) {
+  const supabase = await createClient()
+  try {
+    const { data, error } = await supabase
+      .from('stock')
+      .select(`
+        qty,
+        products!inner (name, price, specs)
+      `)
+      .eq('branch_id', branchId)
+      .order('qty', { ascending: false })
+
+    if (error) throw error
+    return data
+  } catch (error: any) {
+    console.error("Export error:", error.message)
+    return []
+  }
+}
+
+// ✅ 6. ดึงรูปภาพเป็น Base64 (เพื่อแก้ปัญหา CORS บน Browser) และแปลง WebP เป็น JPEG สำหรับ Excel
+export async function getBase64Image(url: string) {
+  try {
+    if (!url) return null
+    const res = await fetch(url)
+    if (!res.ok) return null
+    const arrayBuffer = await res.arrayBuffer()
+    const inputBuffer = Buffer.from(arrayBuffer)
+
+    // แปลงรูปเป็น JPEG เสมอ เพราะ Excel ไม่รองรับ WebP
+    const outputBuffer = await sharp(inputBuffer).jpeg({ quality: 80 }).toBuffer()
+
+    return outputBuffer.toString('base64')
+  } catch (e) {
+    console.error("Image conversion error:", e)
+    return null
+  }
+}
+
+import ExcelJS from "exceljs"
+
+// ✅ 7. สร้างไฟล์ Excel บน Server เลย เพื่อให้ชัวร์ว่า exceljs และรูปภาพทำงานได้ 100%
+export async function generateExcelFile(branchId: number): Promise<string | null> {
+  const supabase = await createClient()
+  try {
+    const { data, error } = await supabase
+      .from('stock')
+      .select(`
+        qty,
+        products!inner (name, price, specs, image_url)
+      `)
+      .eq('branch_id', branchId)
+      .order('qty', { ascending: false })
+
+    if (error) throw error
+    if (!data) return null
+
+    const workbook = new ExcelJS.Workbook()
+    const sheet = workbook.addWorksheet("Stock")
+
+    sheet.columns = [
+      { header: 'No', key: 'no', width: 8 },
+      { header: 'Image', key: 'image', width: 12 },
+      { header: 'Product', key: 'product', width: 45 },
+      { header: 'Size (cm)', key: 'size', width: 25 },
+      { header: 'Qty', key: 'qty', width: 10 },
+      { header: 'Price', key: 'price', width: 15 },
+    ]
+
+    sheet.getRow(1).font = { bold: true }
+    sheet.getRow(1).alignment = { vertical: 'middle', horizontal: 'center' }
+
+    for (let i = 0; i < data.length; i++) {
+      const item = data[i] as any
+      const specs = item.products?.specs || {}
+      const w = specs.width_cm || "-"
+      const d = specs.length_cm || "-"
+      const h = specs.thickness_cm || "-"
+
+      const row = sheet.addRow({
+        no: i + 1,
+        product: item.products?.name || "-",
+        size: `W${w} x D${d} x H${h}`,
+        qty: Number(item.qty) || 0,
+        price: Number(item.products?.price) || 0
+      })
+
+      row.height = 60
+      row.alignment = { vertical: 'middle' }
+
+      let imageUrl = item.products?.image_url
+      if (imageUrl) {
+        if (imageUrl.startsWith('/')) {
+            imageUrl = process.env.NEXT_PUBLIC_SITE_URL ? process.env.NEXT_PUBLIC_SITE_URL + imageUrl : "http://localhost:3000" + imageUrl
+        }
+        const base64str = await getBase64Image(imageUrl)
+        if (base64str) {
+          const imageId = workbook.addImage({
+            base64: `data:image/jpeg;base64,${base64str}`,
+            extension: 'jpeg'
+          })
+          
+          sheet.addImage(imageId, {
+            tl: { col: 1, row: row.number - 1 },
+            ext: { width: 60, height: 60 },
+            editAs: 'oneCell'
+          })
+        }
+      }
+    }
+
+    const buffer = await workbook.xlsx.writeBuffer()
+    return Buffer.from(buffer).toString('base64')
+
+  } catch (error: any) {
+    console.error("Excel generation error:", error.message)
+    return null
   }
 }

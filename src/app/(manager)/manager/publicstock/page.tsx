@@ -3,10 +3,11 @@
 import { useState, useEffect, useCallback } from "react"
 import {
   Package, Search, RefreshCcw, ChevronLeft, ChevronRight,
-  Loader2, Barcode, Tag, Layers
+  Loader2, Barcode, Tag, Layers, Download
 } from "lucide-react"
-import { getStockList, getStockStats, getInitialProfile, getTotalQty, type ProductStock } from "../../../../actions/publicstock"
+import { getStockList, getStockStats, getInitialProfile, getTotalQty, generateExcelFile, type ProductStock } from "../../../../actions/publicstock"
 import { useRouter } from "next/navigation"
+import { saveAs } from "file-saver"
 
 const fmtQty = (n: number) => n.toLocaleString("th-TH", { maximumFractionDigits: 0 })
 const fmtDT = (d: string) => new Intl.DateTimeFormat("en-GB", {
@@ -20,6 +21,7 @@ export default function PublicStockPage() {
   const [dataLoading, setDataLoading] = useState(false)
   const [products, setProducts] = useState<ProductStock[]>([])
   const [profile, setProfile] = useState<{ branch_id: number, branch_name: string } | null>(null)
+  const [exporting, setExporting] = useState(false)
 
   const [page, setPage] = useState(1)
   const [totalCount, setTotalCount] = useState(0)
@@ -79,6 +81,34 @@ export default function PublicStockPage() {
   const handleReset = () => { setSearchQ(""); setOnlyNeg(false); setPage(1) }
   const pageAll = Math.max(1, Math.ceil(totalCount / pageSize))
 
+  const handleExportExcel = async () => {
+    if (!profile) return
+    setExporting(true)
+    try {
+      // เรียกใช้ Server Action เพื่อสร้าง Excel บน Server ทั้งไฟล์
+      const excelBase64 = await generateExcelFile(profile.branch_id)
+      
+      if (excelBase64) {
+        // แปลง Base64 กลับเป็นไฟล์และดาวน์โหลด
+        const byteCharacters = atob(excelBase64);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let j = 0; j < byteCharacters.length; j++) {
+            byteNumbers[j] = byteCharacters.charCodeAt(j);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+        
+        saveAs(blob, `Stock_${profile.branch_name}_${new Date().toISOString().split('T')[0]}.xlsx`)
+      } else {
+        alert("ไม่สามารถสร้างไฟล์ Excel ได้ หรือไม่มีข้อมูล")
+      }
+    } catch (err) {
+      console.error(err)
+      alert("เกิดข้อผิดพลาดในการดาวน์โหลด Excel")
+    }
+    setExporting(false)
+  }
+
   if (loading) return (
     <div className="h-screen flex items-center justify-center text-slate-400 gap-2">
       <Loader2 className="animate-spin" /> กำลังตรวจสอบสิทธิ์...
@@ -100,12 +130,23 @@ export default function PublicStockPage() {
             {" · "}<span className="text-slate-400">{lastUpdate}</span>
           </p>
         </div>
-        <button
-          onClick={fetchData}
-          className="p-2 text-slate-400 hover:text-blue-600 transition-colors bg-white border border-slate-200 rounded-xl shadow-sm self-start"
-        >
-          <RefreshCcw className={`w-5 h-5 ${dataLoading ? 'animate-spin' : ''}`} />
-        </button>
+        <div className="flex items-center gap-3 self-start">
+          <button
+            onClick={handleExportExcel}
+            disabled={exporting}
+            className="px-5 py-2.5 text-sm font-bold bg-[#107c41] text-white rounded-xl shadow-lg shadow-green-900/20 hover:bg-[#0c5e31] active:scale-95 transition-all flex items-center gap-2 disabled:opacity-50"
+          >
+            {exporting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
+            โหลด Excel
+          </button>
+          <button
+            onClick={fetchData}
+            className="p-2.5 text-slate-400 hover:text-blue-600 transition-colors bg-white border border-slate-200 rounded-xl shadow-sm active:scale-95"
+            title="รีเฟรชข้อมูล"
+          >
+            <RefreshCcw className={`w-5 h-5 ${dataLoading ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
       </div>
 
       {/* Summary Cards */}

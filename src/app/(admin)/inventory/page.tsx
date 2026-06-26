@@ -4,8 +4,10 @@ import { getProducts } from "../../../actions/woodslab"
 import InventoryActions from "../../../components/InventoryActions"
 import InventoryTable from "../../../components/InventoryTable"
 import TypeFilterDropdown from "../../../components/TypeFilterDropdown"
-// 💡 เพิ่มไอคอน Search เข้ามาครับ
-import { Package, Layers, Hammer, FileUp, Box, Search } from "lucide-react"
+import StatusFilterDropdown from "../../../components/StatusFilterDropdown"
+import InventoryLoadingOverlay from "../../../components/InventoryLoadingOverlay"
+import { Package, Layers, Hammer, FileUp, Box, Search, Loader2 } from "lucide-react"
+import { Suspense } from "react"
 
 type Props = {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>
@@ -15,17 +17,12 @@ export default async function InventoryPage({ searchParams }: Props) {
   const resolvedSearchParams = await searchParams
   const activeTab = (resolvedSearchParams.tab as string) || 'SLABS'
   const activeType = (resolvedSearchParams.type as string) || ''
+  const activeStatus = (resolvedSearchParams.status as string) || ''
   const searchQuery = (resolvedSearchParams.search as string) || '' // 💡 รับคำค้นหาจาก URL
-
-  let dbCategory = 'SLABS'
-  if (activeTab === 'ROUGH') dbCategory = 'rough_wood'
-  if (activeTab === 'PROP') dbCategory = 'prop'
-
-  // 💡 ส่งคำค้นหาเข้าไปในฟังก์ชัน getProducts ด้วยครับ
-  const { data: products, error } = await getProducts(dbCategory, activeType || undefined, searchQuery)
 
   return (
     <div className="min-h-screen bg-slate-50 p-6 font-sans text-slate-800">
+      <InventoryLoadingOverlay />
       <div className="max-w-7xl mx-auto">
 
         {/* Header */}
@@ -100,32 +97,57 @@ export default async function InventoryPage({ searchParams }: Props) {
           </div>
         </div>
 
-        {/* Sub-type dropdown — แสดงเฉพาะ SLABS */}
-        {activeTab === 'SLABS' && (
-          <div className="flex items-center gap-3 py-3 px-1 bg-white border-b border-slate-200 mb-6">
-            <span className="text-xs text-slate-400 font-medium uppercase tracking-widest">กรองตามประเภท</span>
-            <TypeFilterDropdown activeType={activeType} />
+        {/* Filters */}
+        <div className="flex items-center gap-3 py-3 px-1 bg-white border-b border-slate-200 mb-6 flex-wrap">
+          {activeTab === 'SLABS' && (
+            <div className="flex items-center gap-3 border-r border-slate-200 pr-4">
+              <span className="text-xs text-slate-400 font-medium uppercase tracking-widest hidden sm:inline">กรองตามประเภท</span>
+              <TypeFilterDropdown activeType={activeType} />
+            </div>
+          )}
+          <div className="flex items-center gap-3 pl-1">
+            <span className="text-xs text-slate-400 font-medium uppercase tracking-widest hidden sm:inline">สถานะสินค้า</span>
+            <StatusFilterDropdown activeStatus={activeStatus} />
           </div>
-        )}
-
-        {activeTab !== 'SLABS' && <div className="mb-6" />}
+        </div>
 
         {/* Content */}
-        {error ? (
-          <div className="p-8 text-center text-red-500 bg-white rounded-xl border border-red-100 shadow-sm">
-            <div className="flex flex-col items-center gap-2">
-              <Package className="w-12 h-12 text-red-200" />
-              <p className="font-bold">เกิดข้อผิดพลาดในการโหลดข้อมูล</p>
-              <p className="text-sm opacity-70">{error}</p>
-            </div>
+        <Suspense key={`${activeTab}-${activeType}-${searchQuery}-${activeStatus}`} fallback={
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 min-h-[400px] flex flex-col items-center justify-center text-slate-400 gap-3">
+             <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+             <p className="text-sm font-medium animate-pulse">กำลังโหลดข้อมูล...</p>
           </div>
-        ) : (
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-            <InventoryTable products={products || []} activeTab={activeTab} />
-          </div>
-        )}
+        }>
+          <InventoryData activeTab={activeTab} activeType={activeType} searchQuery={searchQuery} activeStatus={activeStatus} />
+        </Suspense>
 
       </div>
+    </div>
+  )
+}
+
+async function InventoryData({ activeTab, activeType, searchQuery, activeStatus }: { activeTab: string, activeType: string, searchQuery: string, activeStatus: string }) {
+  let dbCategory = 'SLABS'
+  if (activeTab === 'ROUGH') dbCategory = 'rough_wood'
+  if (activeTab === 'PROP') dbCategory = 'prop'
+
+  const { data: products, error } = await getProducts(dbCategory, activeType || undefined, searchQuery, activeStatus || undefined)
+
+  if (error) {
+    return (
+      <div className="p-8 text-center text-red-500 bg-white rounded-xl border border-red-100 shadow-sm">
+        <div className="flex flex-col items-center gap-2">
+          <Package className="w-12 h-12 text-red-200" />
+          <p className="font-bold">เกิดข้อผิดพลาดในการโหลดข้อมูล</p>
+          <p className="text-sm opacity-70">{error}</p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+      <InventoryTable products={products || []} activeTab={activeTab} />
     </div>
   )
 }

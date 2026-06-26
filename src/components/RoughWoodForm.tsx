@@ -268,9 +268,10 @@ export default function RoughWoodForm({ isOpen, onClose, onSuccess, initialData 
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">Status</label>
-                  <select name="status" defaultValue={initialData?.status} className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm bg-white">
-                    <option value="active">Active</option>
-                    <option value="inactive">Inactive</option>
+                  <select name="status" defaultValue={initialData?.status || 'active'} className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm bg-white">
+                    <option value="active">Active (เปิดขาย)</option>
+                    <option value="paused">Paused (ปิดการขายชั่วคราว)</option>
+                    <option value="inactive">Inactive (ยกเลิก)</option>
                   </select>
                 </div>
               </div>

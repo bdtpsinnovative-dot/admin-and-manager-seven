@@ -1,6 +1,6 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useState, useRef, useEffect } from 'react'
 import { ChevronDown, Check } from 'lucide-react'
 
@@ -34,13 +34,17 @@ export default function TypeFilterDropdown({ activeType }: TypeFilterDropdownPro
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
+  const searchParams = useSearchParams()
+
   const select = (type: string) => {
     setOpen(false)
+    const params = new URLSearchParams(searchParams.toString())
     if (type === '') {
-      router.push('/inventory?tab=SLABS')
+      params.delete('type')
     } else {
-      router.push(`/inventory?tab=SLABS&type=${encodeURIComponent(type)}`)
+      params.set('type', type)
     }
+    router.push(`/inventory?${params.toString()}`)
   }
 
   const label = activeType || 'ทั้งหมด'

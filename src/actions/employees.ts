@@ -90,39 +90,41 @@ export async function getEmployeesByBranch(branchId: number) {
 
 // 2. อัปเดตข้อมูลพนักงาน
 export async function updateEmployee(formData: FormData) {
-  const userId = formData.get('user_id') as string
-  const role = formData.get('role') as string
-  const branchId = formData.get('branch_id')
-  const fullName = formData.get('full_name') as string
-  const phone = formData.get('phone') as string
-  const citizenId = formData.get('citizen_id') as string
-  const birthDate = formData.get('birth_date') as string
+  try {
+    const userId = formData.get('user_id') as string
+    const role = formData.get('role') as string
+    const branchId = formData.get('branch_id')
+    const fullName = formData.get('full_name') as string
+    const phone = formData.get('phone') as string
+    const birthDate = formData.get('birth_date') as string
 
-  // เช็ค Constraint Database
-  if (role !== 'admin' && (!branchId || branchId === "")) {
-    return { error: "ตำแหน่ง Sale/Manager/Warehouse ต้องระบุสาขา (ตามกฎ Database)" }
+    // เช็ค Constraint Database
+    if (role !== 'admin' && (!branchId || branchId === "")) {
+      return { error: "ตำแหน่ง Sale/Manager/Warehouse ต้องระบุสาขา (ตามกฎ Database)" }
+    }
+
+    // เตรียมข้อมูล Update
+    const profileData = {
+        user_id: userId,
+        full_name: fullName,
+        role: role,
+        branch_id: (branchId && branchId !== "") ? Number(branchId) : null,
+        phone: phone || null,
+        birth_date: birthDate || null
+    }
+
+    const { error } = await supabaseAdmin
+      .from(TABLE_PROFILES)
+      .upsert(profileData, { onConflict: 'user_id' })
+
+    if (error) return { error: error.message }
+    
+    revalidatePath('/employees') 
+    revalidatePath('/manager/employees') 
+    return { success: true }
+  } catch (err: any) {
+    return { error: err.message || "เกิดข้อผิดพลาดในการอัปเดตข้อมูล" }
   }
-
-  // เตรียมข้อมูล Update
-  const profileData = {
-      user_id: userId,
-      full_name: fullName,
-      role: role,
-      branch_id: (branchId && branchId !== "") ? Number(branchId) : null,
-      phone: phone || null,
-      citizen_id: citizenId || null, // ✅ ใช้ citizenId (ตัวแปร) คู่กับ citizen_id (ชื่อ column)
-      birth_date: birthDate || null
-  }
-
-  const { error } = await supabaseAdmin
-    .from(TABLE_PROFILES)
-    .upsert(profileData, { onConflict: 'user_id' })
-
-  if (error) return { error: error.message }
-  
-  revalidatePath('/employees') 
-  revalidatePath('/manager/employees') 
-  return { success: true }
 }
 
 // 3. ลบพนักงาน
@@ -138,62 +140,58 @@ export async function deleteEmployee(userId: string) {
 
 // 4. สร้างพนักงานใหม่
 export async function createEmployee(formData: FormData) {
-  const email = formData.get('email') as string
-  const password = formData.get('password') as string
-  const fullName = formData.get('full_name') as string
-  const role = formData.get('role') as string
-  const branchId = formData.get('branch_id')
-  const phone = formData.get('phone') as string
-  
-  // ✅ ประกาศตัวแปรชื่อ citizenId (camelCase)
-  const citizenId = formData.get('citizen_id') as string 
-  const birthDate = formData.get('birth_date') as string
+  try {
+    const email = formData.get('email') as string
+    const password = formData.get('password') as string
+    const fullName = formData.get('full_name') as string
+    const role = formData.get('role') as string
+    const branchId = formData.get('branch_id')
+    const phone = formData.get('phone') as string
+    const birthDate = formData.get('birth_date') as string
 
-  // Validation
-  if (!email || !password || !fullName) {
-    return { error: "กรุณากรอก อีเมล, รหัสผ่าน และชื่อ-นามสกุล" }
+    // Validation
+    if (!email || !password || !fullName) {
+      return { error: "กรุณากรอก อีเมล, รหัสผ่าน และชื่อ-นามสกุล" }
+    }
+    
+    // เช็ค Constraint Database
+    if (role !== 'admin' && (!branchId || branchId === "")) {
+      return { error: "ตำแหน่ง Sale/Manager/Warehouse ต้องระบุสาขา" }
+    }
+
+    // 1. สร้าง User ใน Auth
+    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+      email: email,
+      password: password,
+      email_confirm: true,
+      user_metadata: { full_name: fullName }
+    })
+
+    if (authError) return { error: "สร้างบัญชีไม่สำเร็จ: " + authError.message }
+    if (!authData.user) return { error: "ไม่พบข้อมูล User ที่ถูกสร้าง" }
+
+    // 2. สร้าง Profile ใน DB
+    const { error: profileError } = await supabaseAdmin
+      .from(TABLE_PROFILES)
+      .upsert({ 
+        user_id: authData.user.id,
+        full_name: fullName,
+        role: role,
+        branch_id: (branchId && branchId !== "" && branchId !== "null") ? Number(branchId) : null,
+        phone: phone || null,
+        birth_date: birthDate || null
+      }, { onConflict: 'user_id' })
+
+    if (profileError) {
+      // ถ้าสร้าง Profile พลาด -> ลบ User ทิ้งเพื่อความสะอาด
+      await supabaseAdmin.auth.admin.deleteUser(authData.user.id)
+      return { error: "สร้างข้อมูลส่วนตัวไม่สำเร็จ: " + profileError.message }
+    }
+    
+    revalidatePath('/employees') 
+    revalidatePath('/manager/employees') 
+    return { success: true }
+  } catch (err: any) {
+    return { error: err.message || "เกิดข้อผิดพลาดในการสร้างบัญชี" }
   }
-  
-  // เช็ค Constraint Database
-  if (role !== 'admin' && (!branchId || branchId === "")) {
-    return { error: "ตำแหน่ง Sale/Manager/Warehouse ต้องระบุสาขา" }
-  }
-
-  // 1. สร้าง User ใน Auth
-  const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
-    email: email,
-    password: password,
-    email_confirm: true,
-    user_metadata: { full_name: fullName }
-  })
-
-  if (authError) return { error: "สร้างบัญชีไม่สำเร็จ: " + authError.message }
-  if (!authData.user) return { error: "ไม่พบข้อมูล User ที่ถูกสร้าง" }
-
-  // 2. สร้าง Profile ใน DB
-  const { error: profileError } = await supabaseAdmin
-    .from(TABLE_PROFILES)
-    .upsert({ 
-      user_id: authData.user.id,
-      // email: email, // คอมเมนต์ออกเพราะใน Table profiles อาจไม่มี column email
-      full_name: fullName,
-      role: role,
-      branch_id: (branchId && branchId !== "" && branchId !== "null") ? Number(branchId) : null,
-      phone: phone || null,
-      
-      // ✅ แก้ไขตรงนี้: key ใน DB คือ 'citizen_id' แต่ค่าที่ส่งไปคือตัวแปร 'citizenId'
-      citizen_id: citizenId || null, 
-      
-      birth_date: birthDate || null
-    }, { onConflict: 'user_id' })
-
-  if (profileError) {
-    // ถ้าสร้าง Profile พลาด -> ลบ User ทิ้งเพื่อความสะอาด
-    await supabaseAdmin.auth.admin.deleteUser(authData.user.id)
-    return { error: "สร้างข้อมูลส่วนตัวไม่สำเร็จ: " + profileError.message }
-  }
-  
-  revalidatePath('/employees') 
-  revalidatePath('/manager/employees') 
-  return { success: true }
 }

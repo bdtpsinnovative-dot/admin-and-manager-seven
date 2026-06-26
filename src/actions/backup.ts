@@ -11,6 +11,8 @@ const SNAPSHOT_DIR  = path.join(process.cwd(), "data", "snapshots")
 // Tables ที่ snapshot+restore ได้ (เรียงตาม FK order — parent ก่อน)
 const RESTORABLE_TABLES = [
   { key: "branches",                  label: "Branches",                  pk: "id",         orderCol: "id" },
+  { key: "profiles",                  label: "Profiles",                  pk: "user_id",    orderCol: "user_id" },
+  { key: "customers",                 label: "Customers",                 pk: "id",         orderCol: "id" },
   { key: "collection_groups",         label: "Collection Groups",         pk: "id",         orderCol: "id" },
   { key: "products",                  label: "Products",                  pk: "id",         orderCol: "id" },
   { key: "discounts",                 label: "Discounts",                 pk: "id",         orderCol: "id" },
@@ -27,22 +29,19 @@ const RESTORABLE_TABLES = [
   { key: "stock_initial_count_items", label: "Stock Initial Items",       pk: "id",         orderCol: "id" }, 
   { key: "stock_transfers",           label: "Stock Transfers",           pk: "id",         orderCol: "id" },
   { key: "stock_transfer_items",      label: "Stock Transfer Items",      pk: "id",         orderCol: "id" },
+  { key: "orders",                    label: "Orders",                    pk: "id",         orderCol: "id" },
+  { key: "order_items",               label: "Order Items",               pk: "id",         orderCol: "id" },
+  { key: "cart_items",                label: "Cart Items",                pk: "id",         orderCol: "id" },
+  { key: "favorites",                 label: "Favorites",                 pk: "id",         orderCol: "id" },
+  { key: "site_gallery",              label: "Site Gallery",              pk: "id",         orderCol: "id" },
+  { key: "sale_dasbrode",             label: "Sale Dashboard",            pk: "day",        orderCol: "day" },
+  { key: "summary_daily",             label: "Summary Daily",             pk: "period_key", orderCol: "period_key" },
+  { key: "summary_weekly",            label: "Summary Weekly",            pk: "period_key", orderCol: "period_key" },
+  { key: "summary_monthly",           label: "Summary Monthly",           pk: "period_key", orderCol: "period_key" },
 ]
 
-// Tables ที่ export ได้ แต่ไม่ restore
-const EXPORT_ONLY_TABLES = [
-  { key: "profiles",          label: "Profiles",           orderCol: "user_id" },
-  { key: "customers",         label: "Customers",          orderCol: "id" },
-  { key: "sale_dasbrode",     label: "Sale Dashboard",     orderCol: "day" },
-  { key: "orders",            label: "Orders",             orderCol: "id" },
-  { key: "order_items",       label: "Order Items",        orderCol: "id" },
-  { key: "cart_items",        label: "Cart Items",         orderCol: "id" },
-  { key: "favorites",         label: "Favorites",          orderCol: "id" },
-  { key: "site_gallery",      label: "Site Gallery",       orderCol: "id" },
-  { key: "summary_daily",     label: "Summary Daily",      orderCol: "period_key" },
-  { key: "summary_weekly",    label: "Summary Weekly",     orderCol: "period_key" },
-  { key: "summary_monthly",   label: "Summary Monthly",    orderCol: "period_key" },
-]
+// Tables ที่ export ได้ แต่ไม่ restore (ย้ายไป Restore หมดแล้วในช่วงทดสอบ)
+const EXPORT_ONLY_TABLES: any[] = []
 
 const ALL_EXPORT_TABLES = [...RESTORABLE_TABLES, ...EXPORT_ONLY_TABLES]
 

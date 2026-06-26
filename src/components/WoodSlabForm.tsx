@@ -479,10 +479,11 @@ export default function WoodSlabForm({ initialData }: { initialData?: any }) {
 
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase mb-1">สถานะ (Status)</label>
-                  <select name="status" defaultValue={initialData?.status} className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 text-sm bg-white">
-                    <option value="active">Active</option>
-                    <option value="inactive">Inactive</option>
-                    <option value="draft">Draft</option>
+                  <select name="status" defaultValue={initialData?.status || 'active'} className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 text-sm bg-white">
+                    <option value="active">Active (เปิดขาย)</option>
+                    <option value="paused">Paused (ปิดการขายชั่วคราว)</option>
+                    <option value="inactive">Inactive (ยกเลิก)</option>
+                    <option value="draft">Draft (ฉบับร่าง)</option>
                   </select>
                 </div>
                 <div>
