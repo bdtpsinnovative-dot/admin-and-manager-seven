@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react'
 import { getSalesHistory } from '@/actions/sales-check'
 import { toast } from 'sonner'
+import { BarChart3, DollarSign, Building2, Truck, Printer } from 'lucide-react'
+import PrintDispatchModal from '@/components/PrintDispatchModal'
 
 interface RemoteDetail {
   branch_name: string;
@@ -27,6 +29,7 @@ export default function SalesCheckPage() {
   const [sales, setSales] = useState<SaleOrder[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
+  const [printOrderCode, setPrintOrderCode] = useState<string | null>(null)
 
   useEffect(() => {
     loadSalesData()
@@ -44,7 +47,7 @@ export default function SalesCheckPage() {
   }
 
   // ฟิลเตอร์ค้นหาจากเลขที่ใบขาย หรือ ชื่อลูกค้าจัดส่ง
-  const filteredSales = sales.filter(s => 
+  const filteredSales = sales.filter(s =>
     s.orderCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (s.shippingName && s.shippingName.toLowerCase().includes(searchTerm.toLowerCase()))
   )
@@ -59,11 +62,14 @@ export default function SalesCheckPage() {
   return (
     <div className="min-h-screen bg-[#F4F7F9] p-4 md:p-6 font-sans select-none pb-20">
       <div className="max-w-[1600px] mx-auto space-y-6">
-        
+
         {/* หัวข้อหน้าจอ */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-black text-slate-800">📊 ตรวจสอบประวัติใบขาย</h1>
+            <h1 className="text-2xl font-black text-slate-800 flex items-center gap-2">
+              <BarChart3 className="w-7 h-7 text-blue-600" />
+              ตรวจสอบประวัติใบขาย
+            </h1>
             <p className="text-slate-500 text-xs mt-1 font-medium">ดูรายการออเดอร์และยอดเงินแยกคลังที่เปิดบิลโดยสาขาของนาย</p>
           </div>
           <div className="w-full md:w-80">
@@ -80,19 +86,25 @@ export default function SalesCheckPage() {
         {/* ✨ Stat Cards: แผงสรุปกองเงินเพื่อให้บัญชีดูยอดรวมไวๆ */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
-            <span className="text-[11px] font-black text-slate-400 uppercase tracking-wider">💰 ยอดสุทธิใบขายรวม</span>
+            <span className="text-[11px] font-black text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+              <DollarSign className="w-3.5 h-3.5 text-blue-500" /> ยอดสุทธิใบขายรวม
+            </span>
             <div className="text-2xl font-black text-blue-600 mt-2">{totalInvoiced.toLocaleString()} ฿</div>
             <span className="text-[10px] text-slate-400 block mt-1 font-medium">รวมเม็ดเงินทั้งหมดที่เรียกเก็บจากออเดอร์</span>
           </div>
 
           <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
-            <span className="text-[11px] font-black text-emerald-600 uppercase tracking-wider">🏢 ยอดเงินเข้าคลังเรา</span>
+            <span className="text-[11px] font-black text-emerald-600 uppercase tracking-wider flex items-center gap-1.5">
+              <Building2 className="w-3.5 h-3.5 text-emerald-500" /> ยอดเงินเข้าคลังเรา
+            </span>
             <div className="text-2xl font-black text-emerald-600 mt-2">{totalMyRevenue.toLocaleString()} ฿</div>
             <span className="text-[10px] text-slate-400 block mt-1 font-medium">ยอดขายที่เป็นสินค้าจากสต็อกสาขาตัวเอง</span>
           </div>
 
           <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
-            <span className="text-[11px] font-black text-orange-600 uppercase tracking-wider">🚚 ยอดจัดส่งข้ามสาขา (Drop Ship)</span>
+            <span className="text-[11px] font-black text-orange-600 uppercase tracking-wider flex items-center gap-1.5">
+              <Truck className="w-3.5 h-3.5 text-orange-500" /> ยอดจัดส่งข้ามสาขา (Drop Ship)
+            </span>
             <div className="text-2xl font-black text-orange-600 mt-2">{totalDropShip.toLocaleString()} ฿</div>
             <span className="text-[10px] text-slate-400 block mt-1 font-medium">ยอดเงินของสินค้าที่ต้องให้สาขาอื่นแพ็คส่ง</span>
           </div>
@@ -123,7 +135,19 @@ export default function SalesCheckPage() {
                     <tr key={order.id} className="hover:bg-slate-50/50 transition-colors">
                       {/* เลขที่ใบขาย & รูปแบบขาย */}
                       <td className="p-4 font-bold text-slate-800">
-                        <span className="text-sm font-black block">{order.orderCode}</span>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-sm font-black block">{order.orderCode}</span>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setPrintOrderCode(order.orderCode);
+                            }}
+                            className="text-[10px] text-slate-500 hover:text-blue-600 font-bold flex items-center gap-1 transition-colors px-2 py-0.5 rounded border border-slate-200 bg-white shadow-3xs cursor-pointer"
+                            title="พิมพ์ใบเสนอราคา/ใบเสร็จ"
+                          >
+                            <Printer className="w-3.5 h-3.5" /> พิมพ์
+                          </button>
+                        </div>
                         {order.shippingName ? (
                           <span className="inline-flex items-center gap-1 mt-1 text-[10px] bg-blue-50 text-blue-600 font-bold px-2 py-0.5 rounded-md border border-blue-100">
                             🚚 ส่งบ้าน: {order.shippingName}
@@ -178,11 +202,10 @@ export default function SalesCheckPage() {
 
                       {/* สถานะบิล */}
                       <td className="p-4 text-center">
-                        <span className={`inline-block px-3 py-1.5 rounded-full text-[10px] font-black shadow-sm ${
-                          order.status === 'COMPLETED' 
-                            ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' 
+                        <span className={`inline-block px-3 py-1.5 rounded-full text-[10px] font-black shadow-sm ${order.status === 'COMPLETED'
+                            ? 'bg-emerald-50 text-emerald-600 border border-emerald-200'
                             : 'bg-amber-50 text-amber-600 border border-amber-200 animate-pulse'
-                        }`}>
+                          }`}>
                           {order.status === 'COMPLETED' ? '✓ สำเร็จแล้ว' : '⏳ รอสาขาแพ็ค'}
                         </span>
                       </td>
@@ -195,6 +218,7 @@ export default function SalesCheckPage() {
         </div>
 
       </div>
+      <PrintDispatchModal orderCode={printOrderCode} onClose={() => setPrintOrderCode(null)} />
     </div>
   )
 }

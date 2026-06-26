@@ -2,8 +2,9 @@
 
 import React, { useState, useEffect } from 'react'
 import { getSalesHistory } from '@/actions/sales-check'
-import { History, DollarSign, Building2, Truck, User, Check, Clock, ChevronDown, ChevronUp } from 'lucide-react'
+import { History, DollarSign, Building2, Truck, User, Check, Clock, ChevronDown, ChevronUp, Printer } from 'lucide-react'
 import { toast } from 'sonner'
+import PrintDispatchModal from '@/components/PrintDispatchModal'
 
 interface RemoteDetail {
   branch_name: string;
@@ -39,9 +40,10 @@ export default function SaleSalesHistoryPage() {
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [expandedOrders, setExpandedOrders] = useState<number[]>([])
+  const [printOrderCode, setPrintOrderCode] = useState<string | null>(null)
 
   const toggleExpand = (orderId: number) => {
-    setExpandedOrders(prev => 
+    setExpandedOrders(prev =>
       prev.includes(orderId) ? prev.filter(id => id !== orderId) : [...prev, orderId]
     )
   }
@@ -150,15 +152,27 @@ export default function SaleSalesHistoryPage() {
                     const isExpanded = expandedOrders.includes(order.id)
                     return (
                       <React.Fragment key={order.id}>
-                        <tr 
+                        <tr
                           className="hover:bg-slate-50/50 transition-colors cursor-pointer"
                           onClick={() => toggleExpand(order.id)}
                         >
                           {/* เลขที่ใบขาย & รูปแบบขาย */}
                           <td className="p-4 font-bold text-slate-800">
-                            <div className="flex items-center gap-2">
-                              {isExpanded ? <ChevronUp className="w-4 h-4 text-slate-400 shrink-0" /> : <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />}
-                              <span className="text-sm font-black block">{order.orderCode}</span>
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-2 min-w-0">
+                                {isExpanded ? <ChevronUp className="w-4 h-4 text-slate-400 shrink-0" /> : <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />}
+                                <span className="text-sm font-black block truncate">{order.orderCode}</span>
+                              </div>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setPrintOrderCode(order.orderCode);
+                                }}
+                                className="text-[10px] text-slate-500 hover:text-emerald-600 font-bold flex items-center gap-1 transition-colors px-2 py-0.5 rounded border border-slate-200 bg-white shadow-3xs cursor-pointer shrink-0"
+                                title="พิมพ์ใบเสนอราคา/ใบเสร็จ"
+                              >
+                                <Printer className="w-3.5 h-3.5" /> พิมพ์
+                              </button>
                             </div>
                             {order.shippingName ? (
                               <span className="inline-flex items-center gap-1 mt-1 text-[10px] bg-emerald-50 text-emerald-600 font-bold px-2 py-0.5 rounded-md border border-emerald-100">
@@ -215,8 +229,8 @@ export default function SaleSalesHistoryPage() {
                           {/* สถานะบิล */}
                           <td className="p-4 text-center">
                             <span className={`inline-block px-3 py-1.5 rounded-full text-[10px] font-black shadow-sm ${order.status === 'COMPLETED'
-                                ? 'bg-emerald-50 text-emerald-600 border border-emerald-200'
-                                : 'bg-amber-50 text-amber-600 border border-amber-200 animate-pulse'
+                              ? 'bg-emerald-50 text-emerald-600 border border-emerald-200'
+                              : 'bg-amber-50 text-amber-600 border border-amber-200 animate-pulse'
                               }`}>
                               {order.status === 'COMPLETED' ? (
                                 <span className="flex items-center justify-center gap-1"><Check className="w-3 h-3" /> สำเร็จแล้ว</span>
@@ -266,6 +280,7 @@ export default function SaleSalesHistoryPage() {
         </div>
 
       </div>
+      <PrintDispatchModal orderCode={printOrderCode} onClose={() => setPrintOrderCode(null)} />
     </div>
   )
 }

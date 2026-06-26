@@ -41,6 +41,7 @@ export async function getSalesHistory() {
       )
     `)
     .eq('branch_id', myBranchId)
+    .neq('status', 'PENDING')
     .order('created_at', { ascending: false })
   if (error) return { success: false, error: error.message }
 

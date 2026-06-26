@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import dynamic from 'next/dynamic'
 import { getPosData, processCheckout, CheckoutPayload, getNearbyStock } from '@/actions/pos'
-import { FolderOpen, Store, Truck, Receipt, MapPin, Save, AlertTriangle, X, Plus, Minus, FileText, Trash2 } from 'lucide-react'
+import { FolderOpen, Store, Truck, Receipt, MapPin, Save, AlertTriangle, X, Plus, Minus, FileText, Trash2, Printer, RefreshCw, Clock } from 'lucide-react'
 import { toast } from 'sonner'
 
 // โหลด Component แผนที่แบบไม่ทำ SSR
@@ -14,15 +14,15 @@ interface Product {
   id: number; name: string; sku: string; original_price: number; price: number;
   discount_label: string; image_url: string | null; barcode: string | null;
   product_sup: string | null; stocks: { branch_id: number, qty: number }[];
-  discount_id?: number | null; 
+  discount_id?: number | null;
   discount_name?: string | null;
 }
 
-interface CartItem extends Product { 
-  cartItemId: string;          
-  quantity: number; 
-  fulfill_branch_id: number;   
-  fulfill_branch_name: string; 
+interface CartItem extends Product {
+  cartItemId: string;
+  quantity: number;
+  fulfill_branch_id: number;
+  fulfill_branch_name: string;
 }
 
 interface NestedCategory {
@@ -61,6 +61,8 @@ export default function ManagerPOSPage() {
   const [shippingPhone, setShippingPhone] = useState('-')
   const [shippingAddress, setShippingAddress] = useState('รับของเองที่สาขา')
   const [isCustomerFormOpen, setIsCustomerFormOpen] = useState(false) // ซ่อนฟอร์มไว้ก่อน ประหยัดที่!
+  
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
 
   const handleSaleModeChange = (mode: 'TAKE_AWAY' | 'DELIVERY') => {
     setSaleMode(mode)
@@ -99,7 +101,7 @@ export default function ManagerPOSPage() {
     isLoading: boolean;
   }>({ isOpen: false, product: null, nearbyStocks: [], isLoading: false })
 
-  useEffect(() => { loadData() }, [])
+  useEffect(() => { loadData(true) }, [])
 
   useEffect(() => {
     const savedCart = localStorage.getItem('pos_cart')
@@ -116,7 +118,7 @@ export default function ManagerPOSPage() {
     }
   }, [cart])
 
-  async function loadData() {
+  async function loadData(isInitial = false) {
     setLoadingDb(true)
     const res = await getPosData()
     if (res.success && res.products && res.branches) {
@@ -125,8 +127,9 @@ export default function ManagerPOSPage() {
       if (res.categories) buildNestedMenu(res.categories)
       if (res.branchId) {
         setMyBranchId(res.branchId)
-        setSelectedLocation(res.branchId) 
+        if (isInitial) setSelectedLocation(res.branchId)
       }
+      setLastUpdated(new Date())
     } else {
       toast.error("โหลดข้อมูลล้มเหลว: " + res.error)
     }
@@ -166,13 +169,13 @@ export default function ManagerPOSPage() {
   }
 
   const addToCart = async (product: Product) => {
-    const targetBranchId = myBranchId 
-    
+    const targetBranchId = myBranchId
+
     const branchStock = product.stocks.find(s => s.branch_id === targetBranchId)
     const availableQty = branchStock ? Number(branchStock.qty) : 0
-    
+
     const cartItemId = `${product.id}-${targetBranchId}`
-    
+
     const existing = cart.find((item) => item.cartItemId === cartItemId)
     const currentInCart = existing ? existing.quantity : 0
 
@@ -192,16 +195,16 @@ export default function ManagerPOSPage() {
 
     setCart((prevCart) => {
       if (existing) {
-        return prevCart.map((item) => 
+        return prevCart.map((item) =>
           item.cartItemId === cartItemId ? { ...item, quantity: item.quantity + 1 } : item
         )
       }
-      return [...prevCart, { 
-        ...product, 
-        cartItemId, 
-        quantity: 1, 
-        fulfill_branch_id: targetBranchId, 
-        fulfill_branch_name: branchName 
+      return [...prevCart, {
+        ...product,
+        cartItemId,
+        quantity: 1,
+        fulfill_branch_id: targetBranchId,
+        fulfill_branch_name: branchName
       }]
     })
   }
@@ -212,13 +215,13 @@ export default function ManagerPOSPage() {
     const fulfillBranchId = stockData.branch_id
     const fulfillBranchName = stockData.branch_name || 'สาขาอื่น'
     const maxQty = stockData.available_qty ?? stockData.qty ?? stockData.quantity ?? 0
-    
+
     const product = nearbyModal.product
     const cartItemId = `${product.id}-${fulfillBranchId}`
 
     setCart((prevCart) => {
       const existing = prevCart.find(item => item.cartItemId === cartItemId)
-      
+
       if (existing && existing.quantity >= maxQty) {
         toast.warning(`สต็อกของ ${fulfillBranchName} ถูกหยิบลงตะกร้าหมดแล้วครับ!`)
         return prevCart
@@ -228,12 +231,12 @@ export default function ManagerPOSPage() {
         return prevCart.map(item => item.cartItemId === cartItemId ? { ...item, quantity: item.quantity + 1 } : item)
       }
 
-      return [...prevCart, { 
-        ...product, 
-        cartItemId, 
-        quantity: 1, 
-        fulfill_branch_id: fulfillBranchId, 
-        fulfill_branch_name: fulfillBranchName 
+      return [...prevCart, {
+        ...product,
+        cartItemId,
+        quantity: 1,
+        fulfill_branch_id: fulfillBranchId,
+        fulfill_branch_name: fulfillBranchName
       }]
     })
 
@@ -245,7 +248,7 @@ export default function ManagerPOSPage() {
       prevCart.map((item) => {
         if (item.cartItemId === cartItemId) {
           const branchStock = item.stocks.find(s => s.branch_id === item.fulfill_branch_id)
-          const displayQty = branchStock ? Number(branchStock.qty) : 999 
+          const displayQty = branchStock ? Number(branchStock.qty) : 999
 
           const newQty = item.quantity + delta
           if (newQty > displayQty) return item
@@ -280,25 +283,25 @@ export default function ManagerPOSPage() {
     try {
       const checkoutBranchId = myBranchId
 
-      const finalAddress = saleMode === 'TAKE_AWAY' 
-        ? `[รับหน้าร้าน] ${finalAddressText}` 
+      const finalAddress = saleMode === 'TAKE_AWAY'
+        ? `[รับหน้าร้าน] ${finalAddressText}`
         : finalAddressText;
 
-      const payload: any = { 
-        branchId: checkoutBranchId, 
+      const payload: any = {
+        branchId: checkoutBranchId,
         subtotal: totalOriginalPrice,
-        discountAmount: totalDiscountAmount, 
-        totalAmount: totalFinalPrice, 
-        saleMode, 
+        discountAmount: totalDiscountAmount,
+        totalAmount: totalFinalPrice,
+        saleMode,
         shippingName: finalName,
         shippingPhone: finalPhone,
         shippingAddress: finalAddress,
-        latitude: latitude,   
-        longitude: longitude, 
-        items: cart.map(item => ({ 
-          productId: item.id, 
-          qty: item.quantity, 
-          priceAtSale: item.price, 
+        latitude: latitude,
+        longitude: longitude,
+        items: cart.map(item => ({
+          productId: item.id,
+          qty: item.quantity,
+          priceAtSale: item.price,
           originalPrice: item.original_price,
           fulfillBranchId: item.fulfill_branch_id,
           discountId: item.discount_id || null,
@@ -306,17 +309,32 @@ export default function ManagerPOSPage() {
           discountAmountPerPiece: item.original_price - item.price
         }))
       }
-      
+
       const result = await processCheckout(payload)
       if (result.success) {
-        toast.success(`ออกใบขายสำเร็จ! รหัสบิล: ${result.orderCode}`)
+        const isSaleRole = window.location.pathname.startsWith('/sale')
+        const printUrl = isSaleRole
+          ? `/sale/print/dispatch/${result.orderCode}`
+          : `/manager/print/dispatch/${result.orderCode}`
+
+        toast.success(
+          <div className="flex flex-col gap-1.5 py-0.5">
+            <span className="font-bold text-slate-800 text-xs">ออกใบขายสำเร็จ! รหัสบิล: {result.orderCode}</span>
+            <button
+              onClick={() => window.open(printUrl, '_blank')}
+              className="mt-1.5 bg-slate-900 hover:bg-slate-800 text-white font-bold py-1.5 px-3 rounded-lg text-[10px] self-start transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm"
+            >
+              <Printer className="w-3.5 h-3.5" /> พิมพ์ใบเสนอราคา
+            </button>
+          </div>
+        )
         setCart([])
         setIsConfirmingClear(false)
         setShippingName('ลูกค้าทั่วไป (หน้าร้าน)')
         setShippingPhone('-')
         setShippingAddress('รับของเองที่สาขา')
-        setLatitude(null)  
-        setLongitude(null) 
+        setLatitude(null)
+        setLongitude(null)
         setSaleMode('TAKE_AWAY')
         setIsCustomerFormOpen(false) // หดฟอร์มกลับ
         await loadData()
@@ -339,7 +357,7 @@ export default function ManagerPOSPage() {
 
   return (
     <div className="min-h-screen bg-[#F4F7F9] p-6 font-sans relative select-none">
-      
+
       {/* 🧭 ลิ้นชักเมนูด้านซ้าย */}
       <div className={`fixed inset-y-0 left-0 z-50 w-64 bg-white shadow-2xl flex flex-col overflow-hidden transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="p-5 pb-2 flex items-center justify-between border-b border-slate-100">
@@ -349,7 +367,7 @@ export default function ManagerPOSPage() {
           </button>
         </div>
         <div className="flex-1 overflow-y-auto px-3 py-4">
-          <button 
+          <button
             onClick={() => { setSelectedCategory('ALL'); setIsSidebarOpen(false); }}
             className={`w-full text-left px-4 py-3 rounded-2xl font-bold text-sm transition-all mb-2 ${selectedCategory === 'ALL' ? 'bg-[#1E293B] text-white' : 'text-slate-600 hover:bg-slate-50'}`}
           >
@@ -370,7 +388,7 @@ export default function ManagerPOSPage() {
             const isGroupOpen = openGroups[menu.parent]
             return (
               <div key={menu.parent} className="flex flex-col mb-1">
-                <div 
+                <div
                   onClick={() => toggleGroup(menu.parent)}
                   className="w-full flex justify-between items-center px-4 py-3 text-slate-500 font-bold text-xs uppercase tracking-widest cursor-pointer hover:bg-slate-50 rounded-2xl"
                 >
@@ -403,13 +421,13 @@ export default function ManagerPOSPage() {
 
       {/* 🧩 โครงสร้างเนื้อหาหลัก */}
       <div className="max-w-[1600px] mx-auto flex flex-col lg:flex-row gap-6 items-start">
-        
+
         <div className="flex-1 w-full flex flex-col gap-4">
-          <div className="bg-white p-4 rounded-3xl shadow-xs flex flex-col sm:flex-row gap-4 items-center justify-between w-full">
-            <div className="flex items-center gap-3">
-              <button 
+          <div className="bg-white p-4 rounded-3xl shadow-xs flex flex-col xl:flex-row gap-4 items-center justify-between w-full">
+            <div className="flex flex-wrap items-center gap-3 w-full xl:w-auto">
+              <button
                 onClick={() => setIsSidebarOpen(true)}
-                className="bg-slate-100 text-slate-700 font-bold text-xs px-4 py-2.5 rounded-full hover:bg-slate-200 transition-all flex items-center gap-1.5 shadow-xs"
+                className="bg-slate-100 text-slate-700 font-bold text-xs px-4 py-2.5 rounded-full hover:bg-slate-200 transition-all flex items-center gap-1.5 shadow-xs shrink-0"
               >
                 <FolderOpen className="w-4 h-4" /> เลือกหมวดหมู่ {selectedCategory !== 'ALL' && <span className="text-blue-600">({selectedCategory.split(' ').pop()})</span>}
               </button>
@@ -419,15 +437,35 @@ export default function ManagerPOSPage() {
                   const val = e.target.value
                   setSelectedLocation(val === 'ALL' ? 'ALL' : Number(val))
                 }}
-                className={`border font-bold text-xs rounded-full px-4 py-2 outline-none cursor-pointer appearance-none shadow-xs ${selectedLocation === myBranchId ? 'bg-blue-50 border-blue-200 text-blue-600' : 'bg-white border-slate-200 text-slate-700'}`}
+                className={`border font-bold text-xs rounded-full px-4 py-2 outline-none cursor-pointer appearance-none shadow-xs shrink-0 ${selectedLocation === myBranchId ? 'bg-blue-50 border-blue-200 text-blue-600' : 'bg-white border-slate-200 text-slate-700'}`}
               >
                 <option value="ALL">ส่องดู ALL STOCKS</option>
                 {branches.map(b => (
                   <option key={b.id} value={b.id}>{b.branch_name} {b.id === myBranchId ? '(คลังเรา)' : ''}</option>
                 ))}
               </select>
+
+              {/* ✨ Reload & Time */}
+              <div className="flex items-center gap-2 bg-slate-50 border border-slate-100 rounded-full px-3 py-1.5 shrink-0 ml-auto xl:ml-0">
+                <div className="flex flex-col">
+                  <span className="text-[9px] text-slate-400 font-bold flex items-center gap-1">
+                    <Clock className="w-2.5 h-2.5" /> อัปเดตล่าสุด
+                  </span>
+                  <span className="text-[10px] text-slate-700 font-bold">
+                    {lastUpdated ? lastUpdated.toLocaleString('th-TH', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : 'กำลังโหลด...'}
+                  </span>
+                </div>
+                <button
+                  onClick={() => loadData(false)}
+                  disabled={loadingDb}
+                  className="ml-1 p-1.5 bg-white border border-slate-200 text-blue-600 rounded-full hover:bg-blue-50 hover:border-blue-300 disabled:opacity-50 transition-all cursor-pointer shadow-xs"
+                  title="รีโหลดข้อมูลสินค้าและสต็อก"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${loadingDb ? 'animate-spin text-slate-400' : ''}`} />
+                </button>
+              </div>
             </div>
-            <div className="w-full sm:w-72">
+            <div className="w-full xl:w-72 shrink-0">
               <input
                 type="text"
                 placeholder="ค้นหาชื่อสินค้าที่นี่..."
@@ -442,7 +480,7 @@ export default function ManagerPOSPage() {
             {filteredProducts.map((product) => {
               const currentQty = getDisplayQty(product)
               return (
-                <div 
+                <div
                   key={product.id}
                   onClick={() => addToCart(product)}
                   className="bg-white rounded-3xl p-4 flex flex-col shadow-xs cursor-pointer border border-transparent hover:border-blue-200 hover:shadow-md transition-all group aspect-square relative"
@@ -484,16 +522,16 @@ export default function ManagerPOSPage() {
 
         {/* 🛒 ฝั่งขวา: ตะกร้าสรุปบิล */}
         <div className="w-full lg:w-[360px] shrink-0 bg-white rounded-3xl shadow-sm border border-slate-100 flex flex-col overflow-hidden lg:sticky lg:top-6 max-h-[calc(100vh-48px)]">
-          
+
           <div className="p-3 bg-slate-50 border-b border-slate-100 grid grid-cols-2 gap-2 relative">
-            <button 
-              onClick={() => handleSaleModeChange('TAKE_AWAY')} 
+            <button
+              onClick={() => handleSaleModeChange('TAKE_AWAY')}
               className={`py-2 text-xs font-black rounded-xl transition-all flex items-center justify-center gap-1.5 ${saleMode === 'TAKE_AWAY' ? 'bg-[#1E293B] text-white shadow-xs' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'}`}
             >
               <Store className="w-4 h-4" /> รับหน้าร้าน
             </button>
-            <button 
-              onClick={() => handleSaleModeChange('DELIVERY')} 
+            <button
+              onClick={() => handleSaleModeChange('DELIVERY')}
               className={`py-2 text-xs font-black rounded-xl transition-all flex items-center justify-center gap-1.5 ${saleMode === 'DELIVERY' ? 'bg-blue-600 text-white shadow-xs' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'}`}
             >
               <Truck className="w-4 h-4" /> ให้ร้านส่งให้
@@ -538,7 +576,7 @@ export default function ManagerPOSPage() {
               </div>
             )}
           </div>
-          
+
           <div className="flex-1 overflow-y-auto px-4 py-2 min-h-[180px]">
             {cart.length === 0 ? (
               <div className="h-40 flex items-center justify-center text-slate-400 text-xs font-medium text-center">
@@ -547,27 +585,41 @@ export default function ManagerPOSPage() {
             ) : (
               <div className="flex flex-col gap-2 py-1">
                 {cart.map((item, index) => (
-                  <div 
+                  <div
                     key={`${item.cartItemId}-${index}`}
-                    className="flex flex-col gap-1 p-2.5 bg-slate-50/70 border border-slate-100 rounded-2xl hover:bg-slate-50 transition-colors relative"
+                    className="flex gap-2.5 p-2.5 bg-slate-50/70 border border-slate-100 rounded-2xl hover:bg-slate-50 transition-colors relative animate-fade-in"
                   >
                     {item.fulfill_branch_id !== myBranchId && (
                       <span className="absolute -top-2 -right-1 bg-orange-100 text-orange-700 border border-orange-200 text-[8px] px-1.5 py-0.5 rounded font-bold shadow-2xs z-10">
                         ดึงสต็อก: {item.fulfill_branch_name}
                       </span>
                     )}
-                    <div className="flex justify-between items-start">
-                      <p className="text-xs font-bold text-slate-700 truncate w-44" title={item.name}>{item.name}</p>
-                      <button onClick={() => removeFromCart(item.cartItemId)} className="text-slate-400 hover:text-red-500 transition-colors" title="ลบรายการนี้">
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+
+                    {/* รูปภาพสินค้า */}
+                    <div className="w-11 h-11 bg-white border border-slate-100 rounded-xl overflow-hidden shrink-0 flex items-center justify-center shadow-3xs">
+                      {item.image_url ? (
+                        <img src={item.image_url} alt={item.name} className="w-full h-full object-contain p-0.5" />
+                      ) : (
+                        <span className="text-[8px] text-slate-300 font-medium">No Img</span>
+                      )}
                     </div>
-                    <div className="flex items-center justify-between mt-0.5">
-                      <p className="text-xs text-blue-600 font-extrabold">{(item.price * item.quantity).toLocaleString()} ฿</p>
-                      <div className="flex items-center bg-white border border-slate-200 rounded-lg shadow-2xs overflow-hidden">
-                        <button onClick={() => updateQuantity(item.cartItemId, -1)} className="px-2 py-0.5 text-slate-500 font-bold hover:bg-slate-50 text-xs">-</button>
-                        <span className="px-1.5 text-[11px] font-bold text-slate-800">{item.quantity}</span>
-                        <button onClick={() => updateQuantity(item.cartItemId, 1)} className="px-2 py-0.5 text-slate-500 font-bold hover:bg-slate-50 text-xs">+</button>
+
+                    {/* รายละเอียดสินค้า */}
+                    <div className="flex-1 min-w-0 flex flex-col justify-between">
+                      <div className="flex justify-between items-start gap-1">
+                        <p className="text-xs font-bold text-slate-700 truncate" title={item.name}>{item.name}</p>
+                        <button onClick={() => removeFromCart(item.cartItemId)} className="text-slate-400 hover:text-red-500 transition-colors shrink-0" title="ลบรายการนี้">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      <div className="flex items-center justify-between mt-1">
+                        <p className="text-xs text-blue-600 font-extrabold">{(item.price * item.quantity).toLocaleString()} ฿</p>
+                        <div className="flex items-center bg-white border border-slate-200 rounded-lg shadow-2xs overflow-hidden">
+                          <button onClick={() => updateQuantity(item.cartItemId, -1)} className="px-2 py-0.5 text-slate-500 font-bold hover:bg-slate-50 text-[10px]">-</button>
+                          <span className="px-1.5 text-[10px] font-bold text-slate-800">{item.quantity}</span>
+                          <button onClick={() => updateQuantity(item.cartItemId, 1)} className="px-2 py-0.5 text-slate-500 font-bold hover:bg-slate-50 text-[10px]">+</button>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -577,10 +629,10 @@ export default function ManagerPOSPage() {
           </div>
 
           <div className="p-4 bg-slate-50/60 border-t border-slate-100">
-            
+
             {/* ✨ ฟอร์มข้อมูลลูกค้าแบบพับเก็บได้ (+/-) */}
             <div className="mb-4 bg-blue-50/70 border border-blue-100 rounded-xl shadow-inner overflow-hidden transition-all">
-              <button 
+              <button
                 onClick={() => setIsCustomerFormOpen(!isCustomerFormOpen)}
                 className="w-full p-3 flex items-center justify-between hover:bg-blue-100/50 transition-colors cursor-pointer"
               >
@@ -601,7 +653,7 @@ export default function ManagerPOSPage() {
                     <input type="text" placeholder="เบอร์โทรศัพท์ติดต่อ" value={shippingPhone} onChange={e => setShippingPhone(e.target.value)} className="w-full text-xs p-2 bg-white rounded-lg border border-blue-200 outline-none focus:border-blue-400" />
                     <textarea placeholder="ที่อยู่ลูกค้าโดยละเอียด..." value={shippingAddress} onChange={e => setShippingAddress(e.target.value)} rows={2} className="w-full text-xs p-2 bg-white rounded-lg border border-blue-200 outline-none focus:border-blue-400 resize-none" />
                   </div>
-                  
+
                   <div className="pt-3 border-t border-blue-100/50 mt-3 space-y-2">
                     {latitude && longitude ? (
                       <div className="w-full h-32 bg-slate-100 rounded-xl overflow-hidden border border-blue-200 relative shadow-inner">
@@ -611,8 +663,8 @@ export default function ManagerPOSPage() {
                           height="100%"
                           frameBorder="0"
                           scrolling="no"
-                          src={`https://www.openstreetmap.org/export/embed.html?bbox=${longitude-0.002},${latitude-0.002},${longitude+0.002},${latitude+0.002}&layer=mapnik&marker=${latitude},${longitude}`}
-                          className="pointer-events-none" 
+                          src={`https://www.openstreetmap.org/export/embed.html?bbox=${longitude - 0.002},${latitude - 0.002},${longitude + 0.002},${latitude + 0.002}&layer=mapnik&marker=${latitude},${longitude}`}
+                          className="pointer-events-none"
                         />
                         <div className="absolute bottom-1 right-1 bg-white/90 backdrop-blur-sm px-2 py-0.5 rounded text-[8px] font-bold text-blue-600 shadow-sm">
                           พิกัดลูกค้า
@@ -628,11 +680,10 @@ export default function ManagerPOSPage() {
                     <button
                       type="button"
                       onClick={() => setShowMap(true)}
-                      className={`w-full flex items-center justify-center gap-1.5 p-2.5 text-xs font-bold rounded-lg border transition-all ${
-                        latitude && longitude 
-                          ? 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50' 
+                      className={`w-full flex items-center justify-center gap-1.5 p-2.5 text-xs font-bold rounded-lg border transition-all ${latitude && longitude
+                          ? 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
                           : 'bg-blue-50 border-blue-300 text-blue-600 hover:bg-blue-100 shadow-sm'
-                      }`}
+                        }`}
                     >
                       <MapPin className="w-4 h-4" />
                       {latitude && longitude ? 'แก้ไขจุดปักหมุดแผนที่' : 'เปิดแผนที่เพื่อจิ้มปักหมุดลูกค้า'}
@@ -649,14 +700,14 @@ export default function ManagerPOSPage() {
                 <span>ยอดสุทธิใบขาย</span><span className="text-base text-blue-600 font-black">{totalFinalPrice.toLocaleString()} ฿</span>
               </div>
             </div>
-            
+
             {/* ✨ เพิ่มปุ่มเสนอราคามาไว้ตรงนี้ */}
             <div className="flex flex-col gap-2">
-             
 
-              <button 
-                onClick={handleCheckout} 
-                disabled={submitting || cart.length === 0} 
+
+              <button
+                onClick={handleCheckout}
+                disabled={submitting || cart.length === 0}
                 className="w-full py-3.5 bg-[#1E293B] text-white rounded-xl font-bold text-xs hover:bg-slate-800 transition-all shadow-md shadow-slate-200 disabled:opacity-40 disabled:shadow-none cursor-pointer flex items-center justify-center gap-1.5"
               >
                 {submitting ? 'กำลังบันทึกข้อมูลออเดอร์...' : <><Save className="w-4 h-4" /> สร้างใบเสนอราคา</>}
@@ -687,23 +738,35 @@ export default function ManagerPOSPage() {
                 <p className="text-xs font-bold text-blue-600 flex items-center gap-1">
                   <MapPin className="w-3.5 h-3.5" /> พบสินค้าในสาขาอื่น (คลิกเพื่อดึงของมาส่งบ้านลูกค้า):
                 </p>
-                {nearbyModal.nearbyStocks.map((stock: any) => {
-                  const displayAmount = stock.available_qty ?? stock.qty ?? stock.quantity ?? '?'
-                  return (
-                    <button 
-                      key={stock.branch_id || stock.id || Math.random()} 
-                      onClick={() => handleSelectNearbyBranch(stock)}
-                      className="w-full flex justify-between items-center bg-white border border-blue-100 hover:border-blue-400 hover:bg-blue-50 p-3 rounded-xl transition-all cursor-pointer group shadow-2xs hover:shadow-md"
-                    >
-                      <span className="text-xs font-bold text-slate-700 group-hover:text-blue-800">
-                        {stock.branch_name || 'ไม่ทราบชื่อสาขา'}
-                      </span>
-                      <span className="text-xs font-black text-blue-600 bg-blue-50 group-hover:bg-white px-2 py-1 rounded border border-transparent group-hover:border-blue-200 transition-colors">
-                        มี {displayAmount} ชิ้น
-                      </span>
-                    </button>
-                  )
-                })}
+                {nearbyModal.isLoading ? (
+                  <div className="flex items-center justify-center py-8 gap-2 text-slate-400 font-bold text-xs">
+                    <span className="animate-spin rounded-full h-4 w-4 border-2 border-slate-300 border-t-blue-600" />
+                    กำลังตรวจสอบสต็อกสาขาอื่น...
+                  </div>
+                ) : nearbyModal.nearbyStocks.length === 0 ? (
+                  <div className="text-center py-8 text-slate-500 font-semibold text-xs border border-dashed border-slate-200 rounded-2xl bg-slate-50/50 flex flex-col items-center justify-center gap-1.5">
+                    <AlertTriangle className="w-5 h-5 text-amber-500" />
+                    ไม่พบสินค้านี้ในคลังของสาขาอื่นเลยครับ
+                  </div>
+                ) : (
+                  nearbyModal.nearbyStocks.map((stock: any) => {
+                    const displayAmount = stock.available_qty ?? stock.qty ?? stock.quantity ?? '?'
+                    return (
+                      <button
+                        key={stock.branch_id || stock.id || Math.random()}
+                        onClick={() => handleSelectNearbyBranch(stock)}
+                        className="w-full flex justify-between items-center bg-white border border-blue-100 hover:border-blue-400 hover:bg-blue-50 p-3 rounded-xl transition-all cursor-pointer group shadow-2xs hover:shadow-md"
+                      >
+                        <span className="text-xs font-bold text-slate-700 group-hover:text-blue-800">
+                          {stock.branch_name || 'ไม่ทราบชื่อสาขา'}
+                        </span>
+                        <span className="text-xs font-black text-blue-600 bg-blue-50 group-hover:bg-white px-2 py-1 rounded border border-transparent group-hover:border-blue-200 transition-colors">
+                          มี {displayAmount} ชิ้น
+                        </span>
+                      </button>
+                    )
+                  })
+                )}
               </div>
             </div>
             <div className="p-4 bg-slate-50 border-t border-slate-100 flex gap-2">
@@ -717,15 +780,15 @@ export default function ManagerPOSPage() {
 
       {/* ✨ Modal เลือกแผนที่ (MapPicker) */}
       {showMap && (
-        <MapPicker 
+        <MapPicker
           initialLat={latitude}
           initialLng={longitude}
           onSelectLocation={(lat, lng) => {
             setLatitude(lat);
             setLongitude(lng);
             setShowMap(false);
-          }} 
-          onClose={() => setShowMap(false)} 
+          }}
+          onClose={() => setShowMap(false)}
         />
       )}
 

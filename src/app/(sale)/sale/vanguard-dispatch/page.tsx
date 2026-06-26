@@ -3,35 +3,37 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { getGroupedDispatches, markOrderItemsShipped, approveAndCutStock } from '@/actions/dispatch'
-import { 
-  ChevronDown, 
-  ChevronUp, 
-  Printer, 
-  CheckCircle, 
-  Package, 
-  List, 
-  Activity, 
-  Archive, 
-  AlertTriangle, 
-  Banknote, 
+import {
+  ChevronDown,
+  ChevronUp,
+  Printer,
+  CheckCircle,
+  Package,
+  List,
+  Activity,
+  Archive,
+  AlertTriangle,
+  Banknote,
   Store,
-  MapPin,    
+  MapPin,
   Navigation,
-  Truck 
+  Truck
 } from 'lucide-react'
 import { toast } from 'sonner'
+import PrintDispatchModal from '@/components/PrintDispatchModal'
 
 export default function SaleDispatchMonitorPage() {
   const [activeTab, setActiveTab] = useState<'overview' | 'my_tasks' | 'follow_ups' | 'completed'>('overview')
-  const [tasks, setTasks] = useState<{ myTasks: any[]; followUpTasks: any[]; completedTasks: any[] }>({ 
-    myTasks: [], 
-    followUpTasks: [], 
-    completedTasks: [] 
+  const [tasks, setTasks] = useState<{ myTasks: any[]; followUpTasks: any[]; completedTasks: any[] }>({
+    myTasks: [],
+    followUpTasks: [],
+    completedTasks: []
   })
   const [loading, setLoading] = useState(true)
   const [processingId, setProcessingId] = useState<number | null>(null)
   const [approvingId, setApprovingId] = useState<number | null>(null)
   const [expandedOrders, setExpandedOrders] = useState<number[]>([])
+  const [printOrderCode, setPrintOrderCode] = useState<string | null>(null)
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
     title: string;
@@ -39,7 +41,7 @@ export default function SaleDispatchMonitorPage() {
     confirmText?: string;
     confirmVariant?: 'emerald' | 'blue' | 'red';
     onConfirm: () => void;
-  }>({ isOpen: false, title: '', description: '', onConfirm: () => {} })
+  }>({ isOpen: false, title: '', description: '', onConfirm: () => { } })
 
   useEffect(() => {
     loadData()
@@ -61,7 +63,7 @@ export default function SaleDispatchMonitorPage() {
   }
 
   const toggleExpand = (orderId: number) => {
-    setExpandedOrders(prev => 
+    setExpandedOrders(prev =>
       prev.includes(orderId) ? prev.filter(id => id !== orderId) : [...prev, orderId]
     )
   }
@@ -76,7 +78,7 @@ export default function SaleDispatchMonitorPage() {
       onConfirm: async () => {
         setApprovingId(orderId)
         const res = await approveAndCutStock(orderId, orderCode, items)
-        
+
         if (res.success) {
           toast.success("อนุมัติรับชำระเงิน และ หักสต็อกออกจากคลังเรียบร้อยแล้ว!")
           await loadData()
@@ -99,7 +101,7 @@ export default function SaleDispatchMonitorPage() {
         setProcessingId(orderId)
         const itemIds = items.map(item => item.id)
         const res = await markOrderItemsShipped(orderId, itemIds, orderCode)
-        
+
         if (res.success) {
           toast.success("อัปเดตสถานะจัดส่งเรียบร้อยแล้ว!")
           await loadData()
@@ -112,14 +114,14 @@ export default function SaleDispatchMonitorPage() {
   }
 
   const handlePrintSlip = (orderCode: string) => {
-    window.open(`/sale/print/dispatch/${orderCode}`, '_blank')
+    setPrintOrderCode(orderCode)
   }
 
   const currentData = useMemo(() => {
     if (activeTab === 'my_tasks') return tasks.myTasks;
     if (activeTab === 'follow_ups') return tasks.followUpTasks;
     if (activeTab === 'completed') return tasks.completedTasks;
-    
+
     const combined = [...tasks.myTasks, ...tasks.followUpTasks];
     return combined.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   }, [activeTab, tasks])
@@ -129,15 +131,15 @@ export default function SaleDispatchMonitorPage() {
   return (
     <div className="min-h-screen bg-slate-50 p-6 font-sans select-none pb-20">
       <div className="max-w-7xl mx-auto space-y-6">
-        
+
         {/* Header Section */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-xl shadow-sm border border-slate-200">
           <div>
             <h1 className="text-xl font-bold text-slate-800">ระบบจัดการสินค้ารอจัดส่ง</h1>
             <p className="text-slate-500 text-sm mt-1">ตรวจสอบรายการบิลค้างส่งและติดตามสถานะสินค้าข้ามสาขา</p>
           </div>
-          <button 
-            onClick={loadData} 
+          <button
+            onClick={loadData}
             className="px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors shadow-sm flex items-center gap-2"
           >
             รีเฟรชข้อมูล
@@ -181,11 +183,11 @@ export default function SaleDispatchMonitorPage() {
           ) : (
             currentData.map((order: any, index: number) => {
               const isExpanded = expandedOrders.includes(order.id)
-              
+
               const hasCoordinates = order.latitude && order.longitude;
               const isStorefrontTakeaway = (!order.shipping_address && !hasCoordinates) || (order.shipping_address?.includes('[รับหน้าร้าน]') && !hasCoordinates);
               const isMyTask = tasks.myTasks.some(t => t.id === order.id)
-              
+
               const isAnyItemOutOfStock = order.order_items.some((item: any) => {
                 const branchStock = item.products?.stock?.find((s: any) => Number(s.branch_id) === Number(item.fulfill_branch_id))
                 const currentLiveQty = branchStock ? Number(branchStock.qty) : 0
@@ -195,7 +197,7 @@ export default function SaleDispatchMonitorPage() {
               return (
                 <div key={`${order.id}-${index}`} className={`bg-white border rounded-xl shadow-sm overflow-hidden transition-all ${isAnyItemOutOfStock && order.status === 'PENDING' ? 'border-red-300' : 'border-slate-200'}`}>
                   {/* Order Header */}
-                  <div 
+                  <div
                     onClick={() => toggleExpand(order.id)}
                     className="flex flex-wrap md:flex-nowrap items-center justify-between p-4 cursor-pointer hover:bg-slate-50 transition-colors"
                   >
@@ -205,7 +207,7 @@ export default function SaleDispatchMonitorPage() {
                       </div>
                       <div>
                         <span className="text-sm font-bold text-slate-800 block">
-                          เลขที่บิล: {order.order_code} 
+                          เลขที่บิล: {order.order_code}
                           {activeTab === 'overview' && (
                             <span className={`ml-2 text-[10px] px-2 py-0.5 rounded border ${isMyTask ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-amber-50 text-amber-600 border-amber-100'}`}>
                               {isMyTask ? 'คลังเราแพ็ค' : 'สาขาอื่นแพ็ค'}
@@ -217,7 +219,7 @@ export default function SaleDispatchMonitorPage() {
                         </span>
                       </div>
                     </div>
-                    
+
                     <div className="flex items-center gap-4 mt-3 md:mt-0 ml-14 md:ml-0">
                       {isAnyItemOutOfStock && order.status === 'PENDING' && (
                         <span className="flex items-center gap-1 text-[10px] font-bold bg-red-100 text-red-600 border border-red-200 px-2 py-1 rounded-full animate-pulse">
@@ -241,7 +243,7 @@ export default function SaleDispatchMonitorPage() {
                   {isExpanded && (
                     <div className="border-t border-slate-100 bg-slate-50/50 p-4 md:p-6">
                       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                        
+
                         {/* Column 1: Items List */}
                         <div className="lg:col-span-2 space-y-3">
                           <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">รายการสินค้าในความรับผิดชอบ</h3>
@@ -303,7 +305,7 @@ export default function SaleDispatchMonitorPage() {
                                   <p><span className="font-semibold text-slate-700">ชื่อผู้รับ:</span> {order.shipping_name || '-'}</p>
                                   <p><span className="font-semibold text-slate-700">เบอร์โทร:</span> {order.shipping_phone || '-'}</p>
                                   <p className="leading-relaxed">
-                                    <span className="font-semibold text-slate-700 block mb-1">ที่อยู่จัดส่ง:</span> 
+                                    <span className="font-semibold text-slate-700 block mb-1">ที่อยู่จัดส่ง:</span>
                                     {order.shipping_address || '-'}
                                   </p>
 
@@ -312,7 +314,7 @@ export default function SaleDispatchMonitorPage() {
                                       <p className="font-semibold text-slate-700 text-xs mb-2 flex items-center gap-1">
                                         <MapPin className="w-3.5 h-3.5 text-emerald-500" /> แผนที่และพิกัดจัดส่ง
                                       </p>
-                                      
+
                                       <div className="w-full h-32 bg-slate-100 rounded-lg overflow-hidden border border-slate-200 mb-2 relative shadow-inner">
                                         <iframe
                                           title="Mini Map Preview"
@@ -320,8 +322,8 @@ export default function SaleDispatchMonitorPage() {
                                           height="100%"
                                           frameBorder="0"
                                           scrolling="no"
-                                          src={`https://www.openstreetmap.org/export/embed.html?bbox=${order.longitude-0.002},${order.latitude-0.002},${order.longitude+0.002},${order.latitude+0.002}&layer=mapnik&marker=${order.latitude},${order.longitude}`}
-                                          className="pointer-events-none" 
+                                          src={`https://www.openstreetmap.org/export/embed.html?bbox=${order.longitude - 0.002},${order.latitude - 0.002},${order.longitude + 0.002},${order.latitude + 0.002}&layer=mapnik&marker=${order.latitude},${order.longitude}`}
+                                          className="pointer-events-none"
                                         />
                                       </div>
 
@@ -329,9 +331,9 @@ export default function SaleDispatchMonitorPage() {
                                         <p className="text-[10px] text-emerald-700 font-mono font-medium text-center truncate">
                                           {order.latitude}, {order.longitude}
                                         </p>
-                                        <a 
-                                          href={`https://www.google.com/maps/dir/?api=1&destination=${order.latitude},${order.longitude}`} 
-                                          target="_blank" 
+                                        <a
+                                          href={`https://www.google.com/maps/dir/?api=1&destination=${order.latitude},${order.longitude}`}
+                                          target="_blank"
                                           rel="noopener noreferrer"
                                           className="w-full py-2 bg-emerald-600 text-white rounded text-xs font-bold hover:bg-emerald-700 transition-colors flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
                                         >
@@ -355,7 +357,7 @@ export default function SaleDispatchMonitorPage() {
                               <>
                                 {isMyTask && (
                                   order.status === 'PENDING' ? (
-                                    <button 
+                                    <button
                                       onClick={() => handleApproveStock(order.id, order.order_code, order.order_items)}
                                       disabled={approvingId === order.id || isAnyItemOutOfStock}
                                       className={`w-full py-2.5 text-white rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2 shadow-sm 
@@ -373,25 +375,25 @@ export default function SaleDispatchMonitorPage() {
                                     </div>
                                   )
                                 )}
-                                
-                                <button 
+
+                                <button
                                   onClick={() => handleCompleteOrder(order.id, order.order_code, order.order_items)}
                                   disabled={processingId === order.id || order.status === 'PENDING'}
                                   className={`w-full py-2.5 text-white rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2 shadow-sm mt-2 ${order.status === 'PENDING' ? 'bg-slate-300 cursor-not-allowed' : (!isMyTask ? 'bg-slate-800 hover:bg-slate-900' : (isStorefrontTakeaway ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-emerald-600 hover:bg-emerald-700'))}`}
                                 >
-                                  <CheckCircle className="w-4 h-4" /> 
-                                  {processingId === order.id ? 'กำลังอัปเดต...' : 
+                                  <CheckCircle className="w-4 h-4" />
+                                  {processingId === order.id ? 'กำลังอัปเดต...' :
                                     order.status === 'PENDING' ? 'รออนุมัติชำระเงิน' :
-                                    (!isMyTask ? 'ลูกค้ารับของแล้ว (ปิดงานติดตาม)' : 
-                                      (isStorefrontTakeaway ? 'ส่งมอบลูกค้าหน้าร้านแล้ว' : 'จัดส่งเรียบร้อยแล้ว')
-                                    )
+                                      (!isMyTask ? 'ลูกค้ารับของแล้ว (ปิดงานติดตาม)' :
+                                        (isStorefrontTakeaway ? 'ส่งมอบลูกค้าหน้าร้านแล้ว' : 'จัดส่งเรียบร้อยแล้ว')
+                                      )
                                   }
                                 </button>
                               </>
                             )}
 
                             {isMyTask && (
-                              <button 
+                              <button
                                 onClick={() => handlePrintSlip(order.order_code)}
                                 className="w-full py-2.5 bg-white border border-slate-300 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-50 transition-colors flex items-center justify-center gap-2 shadow-sm mt-2"
                               >
@@ -424,22 +426,21 @@ export default function SaleDispatchMonitorPage() {
               </p>
             </div>
             <div className="p-4 bg-slate-50 border-t border-slate-100 flex gap-2 justify-end">
-              <button 
-                onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))} 
+              <button
+                onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
                 className="px-3.5 py-2 bg-white border border-slate-200 text-slate-600 rounded-xl font-bold text-xs hover:bg-slate-100 transition-all cursor-pointer"
               >
                 ยกเลิก
               </button>
-              <button 
+              <button
                 onClick={() => {
                   confirmModal.onConfirm()
                   setConfirmModal(prev => ({ ...prev, isOpen: false }))
-                }} 
-                className={`px-3.5 py-2 text-white rounded-xl font-bold text-xs transition-all cursor-pointer ${
-                  confirmModal.confirmVariant === 'emerald' ? 'bg-emerald-600 hover:bg-emerald-700 shadow-sm shadow-emerald-100' :
-                  confirmModal.confirmVariant === 'blue' ? 'bg-blue-600 hover:bg-blue-700 shadow-sm shadow-blue-100' :
-                  'bg-slate-800 hover:bg-slate-900 shadow-sm shadow-slate-200'
-                }`}
+                }}
+                className={`px-3.5 py-2 text-white rounded-xl font-bold text-xs transition-all cursor-pointer ${confirmModal.confirmVariant === 'emerald' ? 'bg-emerald-600 hover:bg-emerald-700 shadow-sm shadow-emerald-100' :
+                    confirmModal.confirmVariant === 'blue' ? 'bg-blue-600 hover:bg-blue-700 shadow-sm shadow-blue-100' :
+                      'bg-slate-800 hover:bg-slate-900 shadow-sm shadow-slate-200'
+                  }`}
               >
                 {confirmModal.confirmText || 'ยืนยัน'}
               </button>
@@ -447,6 +448,9 @@ export default function SaleDispatchMonitorPage() {
           </div>
         </div>
       )}
+
+      {/* 🧩 Print Dispatch Modal */}
+      <PrintDispatchModal orderCode={printOrderCode} onClose={() => setPrintOrderCode(null)} />
     </div>
   )
 }
