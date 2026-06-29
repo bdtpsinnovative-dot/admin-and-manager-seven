@@ -27,7 +27,6 @@ export async function getTransfersList() {
       from_branch:branches!stock_transfers_from_branch_fkey(branch_name),
       to_branch:branches!stock_transfers_to_branch_fkey(branch_name)
     `)
-    .in('status', ['DRAFT', 'PENDING']) 
     .order('created_at', { ascending: false })
 
   if (branchId) {
@@ -197,7 +196,7 @@ export async function receiveStockAction(transferId: number, items: any[]) {
 
     if (transferError) throw transferError
 
-    revalidatePath('/manager/receive-check')
+    revalidatePath('/manager/receive-check1')
     return { success: true }
 
   } catch (error: any) {
@@ -239,7 +238,7 @@ export async function cancelTransferAction(transferId: number) {
       .update({ item_status: 'CANCELLED' })
       .eq('transfer_id', transferId)
 
-    revalidatePath('/manager/receive-check')
+    revalidatePath('/manager/receive-check1')
     return { success: true }
   } catch (error: any) {
     return { error: error.message || 'เกิดข้อผิดพลาดในการยกเลิกใบโอน' }

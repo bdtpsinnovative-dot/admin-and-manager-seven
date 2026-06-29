@@ -48,7 +48,7 @@ export default function TransferDetailPage() {
       setSubmitting(false)
     } else {
       alert('รับสินค้าสำเร็จ! ยอดสต็อกอัปเดตเรียบร้อย')
-      router.push('/manager/receive-check') 
+      router.push('/manager/receive-check1') 
     }
   }
 
@@ -63,7 +63,7 @@ export default function TransferDetailPage() {
       setSubmitting(false)
     } else {
       alert('ยกเลิกการโอนสินค้าเรียบร้อยแล้ว!')
-      router.push('/manager/receive-check')
+      router.push('/manager/receive-check1')
     }
   }
 

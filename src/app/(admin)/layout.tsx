@@ -1,4 +1,5 @@
 import { createClient } from "../../lib/supabase/server";
+import { redirect } from "next/navigation";
 import AdminSidebar from "../../components/AdminSidebar";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -6,7 +7,11 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   
   // 1. ดึง User ที่ Login อยู่
   const { data: { user } } = await supabase.auth.getUser();
-  
+
+  // 🔒 ถ้าไม่ได้ล็อกอิน → redirect ไปหน้า login
+  if (!user) {
+    redirect("/login");
+  }
   // 2. ค่า Default (กรณีไม่เจอ User หรือ Profile)
   let userData = {
     name: "Admin User",

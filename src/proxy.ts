@@ -30,12 +30,21 @@ export async function proxy(request: NextRequest) {
   const isAdminPath = path.startsWith('/dashboard') || 
                       path.startsWith('/employees') || 
                       path.startsWith('/branches') ||
-                      path.startsWith('/inventory')
+                      path.startsWith('/inventory') ||
+                      path.startsWith('/lots') ||
+                      path.startsWith('/props') ||
+                      path.startsWith('/CheckRfid')
   const isManagerPath = path.startsWith('/manager')
   const isSalePath = path.startsWith('/sale')
+  const isProtectedPath = isAdminPath || isManagerPath || isSalePath
+
+  // ถ้าไม่ใช่ path ที่ต้อง protect (เช่น API, public pages) → ปล่อยผ่าน (แต่ token ถูก refresh ไปแล้ว)
+  if (!isProtectedPath && !isLoginPage) {
+    return response
+  }
 
   // 1. ถ้ายังไม่ Login แต่จะเข้าหน้าหวงห้าม -> ไป Login
-  if (!user && (isAdminPath || isManagerPath || isSalePath)) {
+  if (!user && isProtectedPath) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 
@@ -84,12 +93,12 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/dashboard/:path*', 
-    '/inventory/:path*', 
-    '/employees/:path*', 
-    '/branches/:path*',
-    '/manager/:path*',
-    '/sale/:path*',
-    '/login'
+    /*
+     * Match all request paths except for:
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico, images, etc.
+     */
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
   ],
 };

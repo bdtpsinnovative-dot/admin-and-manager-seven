@@ -13,6 +13,7 @@ export default function ReceiveCheckPage() {
   // ตัวกรองสำหรับการค้นหาด่วน
   const [searchQuery, setSearchQuery] = useState('')
   const [showSearch, setShowSearch] = useState(false)
+  const [statusFilter, setStatusFilter] = useState('ALL')
 
   useEffect(() => {
     getTransfersList()
@@ -34,6 +35,15 @@ export default function ReceiveCheckPage() {
   useEffect(() => {
     let result = [...allTransfers]
 
+    // กรองตามสถานะ
+    if (statusFilter !== 'ALL') {
+      if (statusFilter === 'ACTIVE') {
+        result = result.filter(t => ['DRAFT', 'PENDING', 'AWAITING_SHIPMENT'].includes(t.status))
+      } else {
+        result = result.filter(t => t.status === statusFilter)
+      }
+    }
+
     if (searchQuery.trim() !== '') {
       const q = searchQuery.toLowerCase()
       result = result.filter(t => 
@@ -44,7 +54,7 @@ export default function ReceiveCheckPage() {
     }
 
     setFilteredTransfers(result)
-  }, [allTransfers, searchQuery])
+  }, [allTransfers, searchQuery, statusFilter])
 
   // ฟังก์ชันจัดฟอร์แมต วันที่-เดือน-ปี พ.ศ. ให้แสดงผลคลีนๆ
   const formatDate = (dateString: string) => {
@@ -76,6 +86,12 @@ export default function ReceiveCheckPage() {
           text: 'แบบร่าง',
           dotColor: 'bg-amber-400',
           badgeClass: 'bg-amber-50 text-amber-800'
+        }
+      case 'AWAITING_SHIPMENT':
+        return {
+          text: 'รอแพ็คส่ง',
+          dotColor: 'bg-orange-400',
+          badgeClass: 'bg-orange-50 text-orange-800'
         }
       case 'CANCELLED':
         return {
@@ -124,7 +140,33 @@ export default function ReceiveCheckPage() {
           </div>
         </div>
 
-        {/* ตารางแสดงรายการสไตล์ DHL/Enterprise คลีนๆ ไม่ปวดหัว */}
+        {/* แถบกรองสถานะ */}
+        <div className="flex gap-2 mb-4 flex-wrap">
+          {[
+            { key: 'ALL', label: 'ทั้งหมด', color: 'bg-slate-600' },
+            { key: 'ACTIVE', label: 'รอดำเนินการ', color: 'bg-amber-500' },
+            { key: 'COMPLETED', label: 'เสร็จสิ้นแล้ว', color: 'bg-emerald-500' },
+            { key: 'CANCELLED', label: 'ยกเลิก', color: 'bg-rose-500' },
+          ].map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setStatusFilter(tab.key)}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition-all cursor-pointer ${
+                statusFilter === tab.key
+                  ? `${tab.color} text-white border-transparent shadow-sm`
+                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              {tab.label}
+              {tab.key === 'ALL' && ` (${allTransfers.length})`}
+              {tab.key === 'ACTIVE' && ` (${allTransfers.filter(t => ['DRAFT','PENDING','AWAITING_SHIPMENT'].includes(t.status)).length})`}
+              {tab.key === 'COMPLETED' && ` (${allTransfers.filter(t => t.status === 'COMPLETED').length})`}
+              {tab.key === 'CANCELLED' && ` (${allTransfers.filter(t => t.status === 'CANCELLED').length})`}
+            </button>
+          ))}
+        </div>
+
+        {/* ตารางแสดงรายการ */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-200/80 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm text-slate-600">
@@ -224,7 +266,7 @@ export default function ReceiveCheckPage() {
                           <button 
                             onClick={(e) => {
                               e.stopPropagation();
-                              router.push(`/manager/receive-check/${t.id}?type=${t.transfer_type}`);
+                              router.push(`/manager/receive-check1/${t.id}?type=${t.transfer_type}`);
                             }}
                             className="p-1.5 text-slate-400 hover:text-blue-600 rounded-lg border border-slate-200/50 hover:bg-blue-50/50 transition-all shadow-sm"
                           >
