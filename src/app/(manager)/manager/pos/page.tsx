@@ -61,6 +61,7 @@ export default function ManagerPOSPage() {
   const [shippingName, setShippingName] = useState('')
   const [shippingPhone, setShippingPhone] = useState('')
   const [shippingAddress, setShippingAddress] = useState('')
+  const [customOrderCode, setCustomOrderCode] = useState('')
   const [companyNameTh, setCompanyNameTh] = useState('')
   const [companyNameEn, setCompanyNameEn] = useState('')
   const [companyAddress, setCompanyAddress] = useState('')
@@ -71,7 +72,6 @@ export default function ManagerPOSPage() {
   const [editOrderId, setEditOrderId] = useState<number | null>(null)
   const [editOrderCode, setEditOrderCode] = useState<string | null>(null)
   const [hasLoadedEdit, setHasLoadedEdit] = useState(false)
-  const [customOrderCode, setCustomOrderCode] = useState('') // ✨ รหัสบิลแบบกำหนดเอง
   
   // ✨ State สำหรับ Modal ยืนยันและการพิมพ์
   const [isConfirmCheckoutOpen, setIsConfirmCheckoutOpen] = useState(false)
@@ -432,13 +432,22 @@ export default function ManagerPOSPage() {
     }
 
     if (companyNameTh.trim() !== '' || companyNameEn.trim() !== '') {
-      if (companyAddress.trim() === '' || taxId.trim() === '') {
-        toast.error("หากต้องการออกใบกำกับภาษี กรุณากรอกที่อยู่บริษัทและเลขผู้เสียภาษีให้ครบถ้วนครับ")
+      if (companyAddress.trim() === '') {
+        toast.error("หากต้องการออกใบกำกับภาษี กรุณากรอกที่อยู่บริษัทให้ครบถ้วนครับ")
         setIsCustomerFormOpen(true)
         return
       }
     }
 
+    if (taxId.trim() !== '' && taxId.trim().length !== 13) {
+      toast.error("เลขประจำตัวผู้เสียภาษี หากระบุ ต้องมี 13 หลักถ้วนครับ")
+      setIsCustomerFormOpen(true)
+      return
+    }
+
+    if (!editOrderId && !customOrderCode) {
+      setCustomOrderCode(`INV${Date.now()}`)
+    }
     setIsConfirmCheckoutOpen(true)
   }
 
@@ -465,6 +474,7 @@ export default function ManagerPOSPage() {
       const payload: any = {
         orderId: editOrderId,
         orderCode: editOrderCode,
+        customOrderCode: customOrderCode.trim() || undefined,
         branchId: checkoutBranchId,
         subtotal: totalOriginalPrice,
         discountAmount: totalDiscountAmount,
@@ -479,7 +489,6 @@ export default function ManagerPOSPage() {
         companyNameEn: companyNameEn.trim() || null,
         companyAddress: companyAddress.trim() || null,
         taxId: taxId.trim() || null,
-        customOrderCode: customOrderCode.trim() || null, // ✨ ส่งรหัสออเดอร์ไป
         items: cart.map(item => ({
           productId: item.id,
           qty: item.quantity,
@@ -520,6 +529,7 @@ export default function ManagerPOSPage() {
         
         setEditOrderId(null)
         setEditOrderCode(null)
+        setCustomOrderCode('')
         if (typeof window !== 'undefined') {
           const url = new URL(window.location.href)
           url.searchParams.delete('edit')
@@ -924,8 +934,11 @@ export default function ManagerPOSPage() {
                       <textarea placeholder="ระบุที่อยู่บริษัทสำหรับออกใบกำกับภาษี..." value={companyAddress} onChange={e => setCompanyAddress(e.target.value)} rows={2} className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-blue-400 focus:bg-white transition-colors resize-none" />
                     </div>
                     <div>
-                      <label className="text-[10px] font-bold text-slate-500 mb-1 block">เลขประจำตัวผู้เสียภาษี (13 หลัก) <span className="text-red-500">*</span></label>
-                      <input type="text" placeholder="ระบุเลขประจำตัวผู้เสียภาษี..." value={taxId} onChange={e => setTaxId(e.target.value)} maxLength={13} className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-blue-400 focus:bg-white transition-colors" />
+                      <div className="flex justify-between items-end mb-1">
+                        <label className="text-[10px] font-bold text-slate-500 block">เลขประจำตัวผู้เสียภาษี (13 หลัก) <span className="text-xs font-normal text-slate-400">(ไม่บังคับ)</span></label>
+                        <span className={`text-[9px] font-bold ${taxId.length === 13 ? 'text-emerald-500' : 'text-slate-400'}`}>{taxId.length}/13</span>
+                      </div>
+                      <input type="text" placeholder="ระบุเลขประจำตัวผู้เสียภาษี..." value={taxId} onChange={e => setTaxId(e.target.value.replace(/\D/g, ''))} maxLength={13} className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-blue-400 focus:bg-white transition-colors" />
                     </div>
                   </>
                 )}
@@ -1065,10 +1078,10 @@ export default function ManagerPOSPage() {
                 <label className="text-[10px] font-bold text-slate-500 mb-1 block">รหัสออเดอร์ (ระบุเองได้ - ไม่บังคับ)</label>
                 <input 
                   type="text" 
-                  placeholder="เช่น INV-1234 หรือเว้นว่างไว้ให้ระบบสร้างให้อัตโนมัติ" 
+                  placeholder="เช่น INV-1234 (ลบแล้วตั้งเองได้)" 
                   value={customOrderCode}
-                  onChange={e => setCustomOrderCode(e.target.value)}
-                  className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-blue-400 focus:bg-white transition-colors" 
+                  onChange={e => setCustomOrderCode(e.target.value.toUpperCase().replace(/\s/g, ''))}
+                  className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-blue-400 focus:bg-white transition-colors uppercase font-mono" 
                 />
               </div>
             )}

@@ -132,6 +132,7 @@ export default function ReceiveCheckPage() {
               {/* แถบหัวสีน้ำเงินเด่นชัด พร้อมเพิ่มหัวข้อ 'ประเภท' ตามสั่งครับนาย */}
               <thead className="bg-[#0284c7] text-white text-xs uppercase tracking-wider font-semibold">
                 <tr>
+                  <th className="py-3 px-5 w-16 font-medium text-center">ลำดับ</th>
                   <th className="py-3 px-5 w-32 font-medium">วันที่</th>
                   <th className="py-3 px-4 w-40 font-medium">ประเภท</th>
                   <th className="py-3 px-4 w-48 font-medium">เลขที่เอกสาร</th>
@@ -145,18 +146,18 @@ export default function ReceiveCheckPage() {
               <tbody className="divide-y divide-slate-100">
                 {loading ? (
                   <tr>
-                    <td colSpan={7} className="py-10 text-center text-slate-400">
+                    <td colSpan={8} className="py-10 text-center text-slate-400">
                       กำลังโหลดข้อมูลงานโอนสต็อก...
                     </td>
                   </tr>
                 ) : filteredTransfers.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="py-10 text-center text-slate-400">
+                    <td colSpan={8} className="py-10 text-center text-slate-400">
                       ไม่พบรายการโอนสินค้าในคลังขณะนี้
                     </td>
                   </tr>
                 ) : (
-                  filteredTransfers.map(t => {
+                  filteredTransfers.map((t, index) => {
                     const statusConfig = getStatusLabelAndStyle(t.status)
                     const isInbound = t.transfer_type === 'inbound'
                     
@@ -166,6 +167,10 @@ export default function ReceiveCheckPage() {
                         className="hover:bg-slate-50/70 transition-colors group cursor-pointer"
                         onClick={() => router.push(`/manager/receive-check1/${t.id}?type=${t.transfer_type}`)}
                       >
+                        {/* 0. ลำดับ */}
+                        <td className="py-3.5 px-5 font-medium text-slate-500 text-[13px] text-center">
+                          {index + 1}
+                        </td>
                         {/* 1. วันที่สร้างเอกสาร */}
                         <td className="py-3.5 px-5 font-medium text-slate-800 text-[13px]">
                           {formatDate(t.created_at)}

@@ -58,9 +58,9 @@ export async function getProducts(category?: string, specType?: string, searchQu
     }
   }
 
-  // 💡 เพิ่มตรงนี้ครับ: ค้นหาจากชื่อ หรือ SKU
+  // 💡 ค้นหาจากชื่อ, SKU หรือ Barcode
   if (searchQuery) {
-    query = query.or(`sku.ilike.%${searchQuery}%,name.ilike.%${searchQuery}%`)
+    query = query.or(`sku.ilike.%${searchQuery}%,name.ilike.%${searchQuery}%,barcode.ilike.%${searchQuery}%`)
   }
 
   const { data, error } = await query

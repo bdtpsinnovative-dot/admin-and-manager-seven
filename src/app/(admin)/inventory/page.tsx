@@ -47,7 +47,7 @@ export default async function InventoryPage({ searchParams }: Props) {
                 type="text"
                 name="search"
                 defaultValue={searchQuery}
-                placeholder="ค้นหา ชื่อ, รหัส SKU..."
+                placeholder="ค้นหา ชื่อ, SKU, บาร์โค้ด..."
                 className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all shadow-sm"
               />
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />

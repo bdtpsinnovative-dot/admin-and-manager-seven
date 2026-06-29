@@ -131,51 +131,43 @@ export default function PrintDispatchModal({ orderCode, onClose }: PrintDispatch
         <div id="print-section" className="w-full bg-white px-8 py-6 shadow-[0_0_40px_rgba(0,0,0,0.1)] flex flex-col min-h-[1122px] rounded-2xl print:rounded-none">
           
           {/* ================= HEADER ================= */}
-          <div className="flex justify-between items-start pb-3 border-b border-neutral-200">
-            <div>
+          <div className="flex justify-between items-start pb-4 border-b border-neutral-200">
+            {/* Left: Logo */}
+            <div className="w-1/3">
               <img 
                 src="/logo.terra.home.png" 
                 alt="Terra Home Studio Logo" 
-                className="h-10 w-auto object-contain mb-2 mix-blend-multiply" 
+                className="h-10 w-auto object-contain mix-blend-multiply self-start" 
                 onError={(e) => {
                   e.currentTarget.style.display = 'none';
                   const fallback = document.getElementById('logo-fallback');
                   if (fallback) fallback.style.display = 'block';
                 }}
               />
-              <h1 id="logo-fallback" className="hidden text-2xl font-black tracking-tighter text-neutral-900 flex-col leading-none mb-2">
+              <h1 id="logo-fallback" className="hidden text-2xl font-black tracking-tighter text-neutral-900 flex-col leading-none">
                 TERRA <span className="font-light tracking-wide text-sm text-neutral-500 mt-0.5">HOME STUDIO</span>
               </h1>
+            </div>
 
-              <div className="mt-1 text-[8px] text-neutral-500 leading-tight tracking-wide">
-                <p className="font-bold text-neutral-800 uppercase">Operated by TPS GARDEN FURNITURE CO., LTD</p>
-                <p>351/7-8 Soi Bangkok-Nonthaburi 13, Bangkok-Nonthaburi Road,</p>
-                <p>Bang Sue Subdistrict, Bang Sue District, Bangkok 10800</p>
-                <p className="mt-0.5 text-neutral-400">TAX ID: 0105541075911</p>
-              </div>
+            {/* Middle: TPS Info */}
+            <div className="w-1/3 text-center text-[7.5px] text-neutral-500 leading-snug tracking-wide pt-1">
+              <p className="font-bold text-neutral-800 uppercase mb-1">Operated by TPS GARDEN FURNITURE CO., LTD</p>
+              <p>351/7-8 Soi Bangkok-Nonthaburi 13, Bangkok-Nonthaburi Road,</p>
+              <p>Bang Sue Subdistrict, Bang Sue District, Bangkok 10800</p>
+              <p className="mt-1 text-neutral-800 font-bold">TAX ID: 0105541075911</p>
             </div>
             
-            <div className="text-right flex flex-col items-end">
-              <h2 className="text-3xl font-light tracking-[0.2em] uppercase text-neutral-200">
-                {data.status === 'PENDING' ? 'Quote' : 'Receipt'}
+            {/* Right: Document Type */}
+            <div className="w-1/3 text-right flex flex-col items-end">
+              <h2 className="text-xl font-light tracking-[0.2em] uppercase text-neutral-300 leading-none mt-1">
+                {data.status === 'PENDING' ? 'Quotation' : 'Receipt'}
               </h2>
-              
-              <div className={`mt-1 px-2.5 py-0.5 text-[8px] font-bold uppercase tracking-widest rounded-sm border inline-block
-                ${data.status === 'COMPLETED' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 
-                  data.status === 'PROCESSING' ? 'bg-blue-50 text-blue-600 border-blue-200' :
-                  data.status === 'CANCELLED' ? 'bg-red-50 text-red-600 border-red-200' :
-                  'bg-neutral-50 text-neutral-600 border-neutral-200'}`}
-              >
-                {data.status === 'COMPLETED' ? 'COMPLETED / DELIVERED' :
-                 data.status === 'PROCESSING' ? 'PAID / PROCESSING' :
-                 data.status === 'CANCELLED' ? 'CANCELLED' :
-                 'PENDING PAYMENT'}
-              </div>
             </div>
           </div>
 
-          {/* ================= INFO SECTION ================= */}
-          <div className="py-3 flex justify-between items-end">
+          {/* ================= INFO SECTION (CUSTOMER & DOC META) ================= */}
+          <div className="py-3 flex justify-between items-start">
+            {/* Left: Customer Info */}
             <div className="w-1/2">
               <h3 className="text-[8px] font-bold uppercase tracking-[0.15em] text-neutral-400 mb-1">Prepared For</h3>
               {data.company_name_th || data.company_name_en ? (
@@ -199,6 +191,7 @@ export default function PrintDispatchModal({ orderCode, onClose }: PrintDispatch
               )}
             </div>
             
+            {/* Right: Document Meta */}
             <div className="w-1/2 text-right">
               <table className="ml-auto text-[9px] text-neutral-600">
                 <tbody>
