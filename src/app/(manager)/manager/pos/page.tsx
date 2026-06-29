@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import dynamic from 'next/dynamic'
-import { getPosData, processCheckout, CheckoutPayload, getNearbyStock } from '@/actions/pos'
+import { getPosData, processCheckout, CheckoutPayload, getNearbyStock, getOrderForEdit } from '@/actions/pos'
 import { FolderOpen, Store, Truck, Receipt, MapPin, Save, AlertTriangle, X, Plus, Minus, FileText, Trash2, Printer, RefreshCw, Clock } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -58,10 +58,20 @@ export default function ManagerPOSPage() {
   const [saleMode, setSaleMode] = useState<'TAKE_AWAY' | 'DELIVERY'>('TAKE_AWAY')
 
   // ✨ State สำหรับฟอร์มลูกค้า
-  const [shippingName, setShippingName] = useState('ลูกค้าทั่วไป (หน้าร้าน)')
-  const [shippingPhone, setShippingPhone] = useState('-')
-  const [shippingAddress, setShippingAddress] = useState('รับของเองที่สาขา')
+  const [shippingName, setShippingName] = useState('')
+  const [shippingPhone, setShippingPhone] = useState('')
+  const [shippingAddress, setShippingAddress] = useState('')
+  const [companyNameTh, setCompanyNameTh] = useState('')
+  const [companyNameEn, setCompanyNameEn] = useState('')
+  const [companyAddress, setCompanyAddress] = useState('')
+  const [taxId, setTaxId] = useState('')
   const [isCustomerFormOpen, setIsCustomerFormOpen] = useState(false) // ซ่อนฟอร์มไว้ก่อน ประหยัดที่!
+  
+  // ✨ State สำหรับการแก้ไขบิล (Edit Mode)
+  const [editOrderId, setEditOrderId] = useState<number | null>(null)
+  const [editOrderCode, setEditOrderCode] = useState<string | null>(null)
+  const [hasLoadedEdit, setHasLoadedEdit] = useState(false)
+  const [customOrderCode, setCustomOrderCode] = useState('') // ✨ รหัสบิลแบบกำหนดเอง
   
   // ✨ State สำหรับ Modal ยืนยันและการพิมพ์
   const [isConfirmCheckoutOpen, setIsConfirmCheckoutOpen] = useState(false)
@@ -79,27 +89,6 @@ export default function ManagerPOSPage() {
     }
 
     setSaleMode(mode)
-    if (mode === 'TAKE_AWAY') {
-      if (!shippingName || shippingName.trim() === '') {
-        setShippingName('ลูกค้าทั่วไป (หน้าร้าน)')
-      }
-      if (!shippingPhone || shippingPhone.trim() === '') {
-        setShippingPhone('-')
-      }
-      if (!shippingAddress || shippingAddress.trim() === '') {
-        setShippingAddress('รับของเองที่สาขา')
-      }
-    } else {
-      if (shippingName === 'ลูกค้าทั่วไป (หน้าร้าน)') {
-        setShippingName('')
-      }
-      if (shippingPhone === '-') {
-        setShippingPhone('')
-      }
-      if (shippingAddress === 'รับของเองที่สาขา') {
-        setShippingAddress('')
-      }
-    }
   }
 
   // ✨ State สำหรับพิกัดลูกค้า
@@ -115,6 +104,68 @@ export default function ManagerPOSPage() {
   }>({ isOpen: false, product: null, nearbyStocks: [], isLoading: false })
 
   useEffect(() => { loadData(true) }, [])
+
+  // ✨ ฟังก์ชันโหลดบิลเก่ามาแก้ไข
+  async function loadOrderForEdit(orderCode: string) {
+    const res = await getOrderForEdit(orderCode)
+    if (res.success && res.order) {
+       const newCart: CartItem[] = []
+       res.order.order_items.forEach((item: any) => {
+          const product = products.find(p => p.id === item.product_id)
+          if (product) {
+            newCart.push({
+               ...product,
+               cartItemId: `${product.id}-${item.fulfill_branch_id}`,
+               quantity: item.qty,
+               fulfill_branch_id: item.fulfill_branch_id,
+               fulfill_branch_name: item.branches?.branch_name || 'สาขา',
+               price: item.price_at_sale,
+               original_price: product.original_price, 
+               discount_id: item.discount_id,
+               discount_name: item.discount_name
+            })
+          }
+       })
+       setCart(newCart)
+       setEditOrderId(res.order.id)
+       setEditOrderCode(res.order.order_code)
+       
+       if (res.order.shipping_name) setShippingName(res.order.shipping_name)
+       if (res.order.shipping_phone) setShippingPhone(res.order.shipping_phone)
+       if (res.order.shipping_address) {
+          const isTakeaway = res.order.shipping_address.startsWith('[รับหน้าร้าน]')
+          if (isTakeaway) {
+             setSaleMode('TAKE_AWAY')
+             setShippingAddress(res.order.shipping_address.replace('[รับหน้าร้าน] ', ''))
+          } else {
+             setSaleMode('DELIVERY')
+             setShippingAddress(res.order.shipping_address)
+          }
+       }
+        if (res.order.latitude) setLatitude(res.order.latitude)
+        if (res.order.longitude) setLongitude(res.order.longitude)
+        if (res.order.company_name_th) setCompanyNameTh(res.order.company_name_th)
+        if (res.order.company_name_en) setCompanyNameEn(res.order.company_name_en)
+        if (res.order.company_address) setCompanyAddress(res.order.company_address)
+       if (res.order.tax_id) setTaxId(res.order.tax_id)
+       
+       toast.success(`โหลดข้อมูลบิล ${orderCode} เพื่อแก้ไขแล้ว`)
+    } else {
+       toast.error(res.error || "ไม่สามารถโหลดบิลนี้ได้")
+    }
+  }
+
+  // ✨ เช็ค Edit Param
+  useEffect(() => {
+    if (products.length > 0 && !hasLoadedEdit && typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search)
+      const editCode = urlParams.get('edit')
+      if (editCode) {
+        setHasLoadedEdit(true)
+        loadOrderForEdit(editCode)
+      }
+    }
+  }, [products, hasLoadedEdit])
 
   useEffect(() => {
     const savedCart = localStorage.getItem('pos_cart')
@@ -133,15 +184,21 @@ export default function ManagerPOSPage() {
         if (info.shippingAddress) setShippingAddress(info.shippingAddress)
         if (info.latitude) setLatitude(info.latitude)
         if (info.longitude) setLongitude(info.longitude)
+        if (info.companyNameTh) setCompanyNameTh(info.companyNameTh)
+        if (info.companyNameEn) setCompanyNameEn(info.companyNameEn)
+        if (info.companyAddress) setCompanyAddress(info.companyAddress)
+        if (info.taxId) setTaxId(info.taxId)
       } catch (e) { console.error("โหลดข้อมูลลูกค้าไม่สำเร็จ", e) }
     }
   }, [])
 
   // ✨ บันทึกข้อมูลลูกค้าลง Local Storage ทุกครั้งที่มีการเปลี่ยนแปลง
   useEffect(() => {
-    const customerInfo = { saleMode, shippingName, shippingPhone, shippingAddress, latitude, longitude }
-    localStorage.setItem('pos_customer_info', JSON.stringify(customerInfo))
-  }, [saleMode, shippingName, shippingPhone, shippingAddress, latitude, longitude])
+    if (hasLoadedEdit && !editOrderId) {
+      const customerInfo = { saleMode, shippingName, shippingPhone, shippingAddress, latitude, longitude, companyNameTh, companyNameEn, companyAddress, taxId }
+      localStorage.setItem('pos_customer_info', JSON.stringify(customerInfo))
+    }
+  }, [saleMode, shippingName, shippingPhone, shippingAddress, latitude, longitude, companyNameTh, companyNameEn, companyAddress, taxId])
 
   useEffect(() => {
     if (cart.length > 0) {
@@ -157,15 +214,12 @@ export default function ManagerPOSPage() {
       const hasCrossBranch = cart.some(item => item.fulfill_branch_id !== myBranchId)
       if (hasCrossBranch && saleMode === 'TAKE_AWAY') {
         setSaleMode('DELIVERY')
-        setShippingName('')
-        setShippingPhone('')
-        setShippingAddress('')
       }
     }
   }, [cart, myBranchId, saleMode])
 
   async function loadData(isInitial = false) {
-    setLoadingDb(true)
+    if (isInitial) setLoadingDb(true)
     const res = await getPosData()
     if (res.success && res.products && res.branches) {
       setProducts(res.products)
@@ -179,7 +233,7 @@ export default function ManagerPOSPage() {
     } else {
       toast.error("โหลดข้อมูลล้มเหลว: " + res.error)
     }
-    setLoadingDb(false)
+    if (isInitial) setLoadingDb(false)
   }
 
   const buildNestedMenu = (rawCategories: string[]) => {
@@ -338,11 +392,7 @@ export default function ManagerPOSPage() {
     // 🚀 บังคับเป็นโหมดจัดส่งทันทีเมื่อมีการดึงข้ามสาขา
     if (saleMode === 'TAKE_AWAY') {
       setSaleMode('DELIVERY')
-      setShippingName('')
-      setShippingPhone('')
-      setShippingAddress('')
       toast.info('เปลี่ยนเป็นโหมด "ให้ร้านส่งให้" อัตโนมัติ เนื่องจากมีรายการดึงสต็อกข้ามสาขา')
-      // setIsCustomerFormOpen(true) // เอาออกเพื่อไม่ให้เด้งขึ้นมากวนตอนกำลังขาย
     }
   }
 
@@ -371,14 +421,22 @@ export default function ManagerPOSPage() {
   const handlePreCheckout = () => {
     if (cart.length === 0) return
 
-    const finalName = shippingName.trim() || (saleMode === 'TAKE_AWAY' ? 'ลูกค้าทั่วไป (หน้าร้าน)' : '')
-    const finalPhone = shippingPhone.trim() || (saleMode === 'TAKE_AWAY' ? '-' : '')
-    const finalAddressText = shippingAddress.trim() || (saleMode === 'TAKE_AWAY' ? 'รับของเองที่สาขา' : '')
+    const finalName = shippingName.trim()
+    const finalPhone = shippingPhone.trim()
+    const finalAddressText = shippingAddress.trim()
 
-    if (saleMode === 'DELIVERY' && (!finalName || !finalPhone || !finalAddressText || finalAddressText === 'รับของเองที่สาขา')) {
-      toast.warning("รบกวนกรอก ชื่อ เบอร์โทร และที่อยู่ลูกค้า สำหรับออกเอกสารด้วยครับ")
+    if (!finalName || !finalPhone || !finalAddressText) {
+      toast.warning("รบกวนกรอก ชื่อ เบอร์โทร และที่อยู่ลูกค้า ให้ครบถ้วนครับ")
       setIsCustomerFormOpen(true)
       return
+    }
+
+    if (companyNameTh.trim() !== '' || companyNameEn.trim() !== '') {
+      if (companyAddress.trim() === '' || taxId.trim() === '') {
+        toast.error("หากต้องการออกใบกำกับภาษี กรุณากรอกที่อยู่บริษัทและเลขผู้เสียภาษีให้ครบถ้วนครับ")
+        setIsCustomerFormOpen(true)
+        return
+      }
     }
 
     setIsConfirmCheckoutOpen(true)
@@ -387,9 +445,9 @@ export default function ManagerPOSPage() {
   const handleCheckout = async () => {
     if (cart.length === 0) return
 
-    const finalName = shippingName.trim() || (saleMode === 'TAKE_AWAY' ? 'ลูกค้าทั่วไป (หน้าร้าน)' : '')
-    const finalPhone = shippingPhone.trim() || (saleMode === 'TAKE_AWAY' ? '-' : '')
-    const finalAddressText = shippingAddress.trim() || (saleMode === 'TAKE_AWAY' ? 'รับของเองที่สาขา' : '')
+    const finalName = shippingName.trim()
+    const finalPhone = shippingPhone.trim()
+    const finalAddressText = shippingAddress.trim()
 
     setIsConfirmCheckoutOpen(false)
 
@@ -401,17 +459,27 @@ export default function ManagerPOSPage() {
         ? `[รับหน้าร้าน] ${finalAddressText}`
         : finalAddressText;
 
+      const vatAmount = totalFinalPrice * 0.07;
+      const grandTotal = totalFinalPrice + vatAmount;
+
       const payload: any = {
+        orderId: editOrderId,
+        orderCode: editOrderCode,
         branchId: checkoutBranchId,
         subtotal: totalOriginalPrice,
         discountAmount: totalDiscountAmount,
-        totalAmount: totalFinalPrice,
+        totalAmount: grandTotal,
         saleMode,
         shippingName: finalName,
         shippingPhone: finalPhone,
         shippingAddress: finalAddress,
         latitude: latitude,
         longitude: longitude,
+        companyNameTh: companyNameTh.trim() || null,
+        companyNameEn: companyNameEn.trim() || null,
+        companyAddress: companyAddress.trim() || null,
+        taxId: taxId.trim() || null,
+        customOrderCode: customOrderCode.trim() || null, // ✨ ส่งรหัสออเดอร์ไป
         items: cart.map(item => ({
           productId: item.id,
           qty: item.quantity,
@@ -437,18 +505,31 @@ export default function ManagerPOSPage() {
         setSuccessPrintUrl(printUrl)
         setCart([])
         setIsConfirmingClear(false)
-        setShippingName('ลูกค้าทั่วไป (หน้าร้าน)')
-        setShippingPhone('-')
-        setShippingAddress('รับของเองที่สาขา')
+        setShippingName('')
+        setShippingPhone('')
+        setShippingAddress('')
+        setCompanyNameTh('')
+        setCompanyNameEn('')
+        setCompanyAddress('')
+        setTaxId('')
+        setCustomOrderCode('')
         setLatitude(null)
         setLongitude(null)
         setSaleMode('TAKE_AWAY')
         setIsCustomerFormOpen(false) // หดฟอร์มกลับ
-        await loadData()
+        
+        setEditOrderId(null)
+        setEditOrderCode(null)
+        if (typeof window !== 'undefined') {
+          const url = new URL(window.location.href)
+          url.searchParams.delete('edit')
+          window.history.replaceState({}, '', url.toString())
+        }
+        loadData()
       } else {
         toast.error(`เกิดข้อผิดพลาด: ${result.error}`)
         if (result.outOfStockProductIds && result.outOfStockProductIds.length > 0) {
-          await loadData() // Re-fetch products to reflect actual stock
+          loadData() // Re-fetch products to reflect actual stock
           setCart(prev => prev.map(item => ({
             ...item,
             isOutOfStockError: result.outOfStockProductIds.includes(item.id.toString())
@@ -746,35 +827,34 @@ export default function ManagerPOSPage() {
             
             {/* ✨ ข้อมูลลูกค้าแบบย่อ (เปิด Modal) */}
             <div className="mb-3">
-              {saleMode === 'DELIVERY' ? (
-                <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 shadow-2xs">
+                <div className={`border rounded-xl p-3 shadow-2xs ${saleMode === 'DELIVERY' ? 'bg-blue-50 border-blue-200' : 'bg-slate-50 border-slate-200'}`}>
                   <div className="flex justify-between items-center mb-1">
-                    <p className="text-[11px] font-black text-blue-700 flex items-center gap-1">
-                      <Truck className="w-3.5 h-3.5" /> ข้อมูลสำหรับจัดส่ง
+                    <p className={`text-[11px] font-black flex items-center gap-1 ${saleMode === 'DELIVERY' ? 'text-blue-700' : 'text-slate-700'}`}>
+                      {saleMode === 'DELIVERY' ? <Truck className="w-3.5 h-3.5" /> : <Store className="w-3.5 h-3.5" />}
+                      {saleMode === 'DELIVERY' ? 'ข้อมูลสำหรับจัดส่ง' : 'ข้อมูลลูกค้ารับหน้าร้าน'}
                     </p>
                     <button 
                       onClick={() => setIsCustomerFormOpen(true)}
-                      className="text-[10px] bg-white text-blue-600 border border-blue-200 hover:bg-blue-100 font-bold px-2 py-0.5 rounded transition-colors"
+                      className={`text-[10px] bg-white border font-bold px-2 py-0.5 rounded transition-colors ${saleMode === 'DELIVERY' ? 'text-blue-600 border-blue-200 hover:bg-blue-100' : 'text-slate-600 border-slate-200 hover:bg-slate-100'}`}
                     >
-                      แก้ไข
+                      {shippingName ? 'แก้ไข' : 'กรอกข้อมูล'}
                     </button>
                   </div>
-                  <p className="text-[10px] text-slate-600 truncate">{shippingName || '-'}</p>
-                  <p className="text-[10px] text-slate-500 truncate">{shippingAddress || '-'}</p>
+                  <p className="text-[10px] text-slate-600 truncate">{shippingName || 'ยังไม่ได้ระบุชื่อ'}</p>
+                  <p className="text-[10px] text-slate-500 truncate">{shippingAddress || 'ยังไม่ได้ระบุที่อยู่'}</p>
+                  {(companyNameTh || companyNameEn) && (
+                     <p className="text-[9px] text-slate-400 mt-1 flex items-center gap-1"><FileText className="w-3 h-3"/> ขอใบกำกับภาษี ({companyNameTh || companyNameEn})</p>
+                  )}
                 </div>
-              ) : (
-                <div className="bg-slate-100 border border-slate-200 rounded-xl p-3 shadow-2xs flex items-center gap-2">
-                  <Store className="w-4 h-4 text-slate-400" />
-                  <p className="text-[11px] font-bold text-slate-600">ลูกค้าทั่วไป (รับของหน้าร้าน)</p>
-                </div>
-              )}
             </div>
 
             <div className="space-y-1.5 text-xs font-semibold text-slate-500 mb-4">
-              <div className="flex justify-between"><span>ยอดรวมสินค้า</span><span>{totalOriginalPrice.toLocaleString()} ฿</span></div>
-              {totalDiscountAmount > 0 && <div className="flex justify-between text-orange-600"><span>ส่วนลดโปรโมชัน</span><span>- {totalDiscountAmount.toLocaleString()} ฿</span></div>}
+              <div className="flex justify-between"><span>ยอดรวมสินค้า</span><span>{totalOriginalPrice.toLocaleString('th-TH', { minimumFractionDigits: 2 })} ฿</span></div>
+              {totalDiscountAmount > 0 && <div className="flex justify-between text-orange-600"><span>ส่วนลดโปรโมชัน</span><span>- {totalDiscountAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })} ฿</span></div>}
+              <div className="flex justify-between pt-1"><span>ยอดก่อนภาษี (Subtotal)</span><span>{totalFinalPrice.toLocaleString('th-TH', { minimumFractionDigits: 2 })} ฿</span></div>
+              <div className="flex justify-between"><span>ภาษีมูลค่าเพิ่ม (VAT 7%)</span><span>{(totalFinalPrice * 0.07).toLocaleString('th-TH', { minimumFractionDigits: 2 })} ฿</span></div>
               <div className="flex justify-between text-xs font-bold text-slate-800 pt-3 mt-1 border-t border-dashed border-slate-200">
-                <span>ยอดสุทธิใบขาย</span><span className="text-base text-blue-600 font-black">{totalFinalPrice.toLocaleString()} ฿</span>
+                <span>ยอดสุทธิใบขาย (Grand Total)</span><span className="text-base text-blue-600 font-black">{(totalFinalPrice * 1.07).toLocaleString('th-TH', { minimumFractionDigits: 2 })} ฿</span>
               </div>
             </div>
 
@@ -785,9 +865,11 @@ export default function ManagerPOSPage() {
               <button
                 onClick={handlePreCheckout}
                 disabled={submitting || cart.length === 0}
-                className="w-full py-3.5 bg-[#1E293B] text-white rounded-xl font-bold text-xs hover:bg-slate-800 transition-all shadow-md shadow-slate-200 disabled:opacity-40 disabled:shadow-none cursor-pointer flex items-center justify-center gap-1.5"
+                className={`w-full py-3.5 text-white rounded-xl font-bold text-xs transition-all shadow-md shadow-slate-200 disabled:opacity-40 disabled:shadow-none cursor-pointer flex items-center justify-center gap-1.5 ${editOrderId ? 'bg-orange-600 hover:bg-orange-700' : 'bg-[#1E293B] hover:bg-slate-800'}`}
               >
-                {submitting ? 'กำลังบันทึกข้อมูลออเดอร์...' : <><Save className="w-4 h-4" /> สร้างใบเสนอราคา</>}
+                {submitting ? 'กำลังบันทึกข้อมูลออเดอร์...' : (
+                  editOrderId ? <><Save className="w-4 h-4" /> บันทึกการแก้ไขบิล</> : <><Save className="w-4 h-4" /> สร้างใบเสนอราคา</>
+                )}
               </button>
             </div>
 
@@ -795,13 +877,14 @@ export default function ManagerPOSPage() {
         </div>
       </div>
 
-      {/* 🚀 Modal ข้อมูลลูกค้าสำหรับจัดส่ง */}
-      {isCustomerFormOpen && saleMode === 'DELIVERY' && (
+      {/* 🚀 Modal ข้อมูลลูกค้า */}
+      {isCustomerFormOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
           <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl flex flex-col max-h-[90vh]">
-            <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-blue-50/50 rounded-t-3xl">
-              <h3 className="font-bold text-blue-800 text-sm flex items-center gap-1.5">
-                <Truck className="w-5 h-5 text-blue-600" /> ระบุข้อมูลสำหรับจัดส่ง
+            <div className={`p-5 border-b flex justify-between items-center rounded-t-3xl ${saleMode === 'DELIVERY' ? 'bg-blue-50/50 border-blue-100' : 'bg-slate-50 border-slate-100'}`}>
+              <h3 className={`font-bold text-sm flex items-center gap-1.5 ${saleMode === 'DELIVERY' ? 'text-blue-800' : 'text-slate-800'}`}>
+                {saleMode === 'DELIVERY' ? <Truck className="w-5 h-5 text-blue-600" /> : <Store className="w-5 h-5 text-slate-600" />} 
+                {saleMode === 'DELIVERY' ? 'ระบุข้อมูลสำหรับจัดส่ง' : 'ระบุข้อมูลลูกค้ารับหน้าร้าน'}
               </h3>
               <button onClick={() => setIsCustomerFormOpen(false)} className="text-slate-400 hover:text-slate-700 font-bold p-1 bg-white rounded-lg shadow-2xs">
                 <X className="w-4 h-4" />
@@ -811,56 +894,82 @@ export default function ManagerPOSPage() {
             <div className="p-5 overflow-y-auto">
               <div className="space-y-3">
                 <div>
-                  <label className="text-[10px] font-bold text-slate-500 mb-1 block">ชื่อลูกค้า/ผู้รับ</label>
+                  <label className="text-[10px] font-bold text-slate-500 mb-1 block">ชื่อลูกค้า/ผู้รับ <span className="text-red-500">*</span></label>
                   <input type="text" placeholder="ระบุชื่อลูกค้า..." value={shippingName} onChange={e => setShippingName(e.target.value)} className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-blue-400 focus:bg-white transition-colors" />
                 </div>
                 <div>
-                  <label className="text-[10px] font-bold text-slate-500 mb-1 block">เบอร์โทรศัพท์ติดต่อ</label>
+                  <label className="text-[10px] font-bold text-slate-500 mb-1 block">เบอร์โทรศัพท์ติดต่อ <span className="text-red-500">*</span></label>
                   <input type="text" placeholder="ระบุเบอร์โทร..." value={shippingPhone} onChange={e => setShippingPhone(e.target.value)} className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-blue-400 focus:bg-white transition-colors" />
                 </div>
                 <div>
-                  <label className="text-[10px] font-bold text-slate-500 mb-1 block">ที่อยู่จัดส่งโดยละเอียด</label>
+                  <label className="text-[10px] font-bold text-slate-500 mb-1 block">ที่อยู่จัดส่ง/ที่อยู่ลูกค้า <span className="text-red-500">*</span></label>
                   <textarea placeholder="บ้านเลขที่, ซอย, ถนน, ตำบล, อำเภอ, จังหวัด, รหัสไปรษณีย์..." value={shippingAddress} onChange={e => setShippingAddress(e.target.value)} rows={3} className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-blue-400 focus:bg-white transition-colors resize-none" />
                 </div>
               </div>
-              
-              <div className="pt-4 mt-4 border-t border-slate-100 space-y-3">
-                <label className="text-[10px] font-bold text-slate-500 block">ปักหมุดแผนที่สำหรับไรเดอร์ / ขนส่ง</label>
-                {latitude && longitude ? (
-                  <div className="w-full h-32 bg-slate-100 rounded-xl overflow-hidden border border-slate-200 relative shadow-inner">
-                    <iframe
-                      title="Mini Map Preview"
-                      width="100%"
-                      height="100%"
-                      frameBorder="0"
-                      scrolling="no"
-                      src={`https://www.openstreetmap.org/export/embed.html?bbox=${longitude-0.002},${latitude-0.002},${longitude+0.002},${latitude+0.002}&layer=mapnik&marker=${latitude},${longitude}`}
-                      className="pointer-events-none" 
-                    />
-                    <div className="absolute bottom-2 right-2 bg-white/90 backdrop-blur-sm px-2 py-1 rounded-md text-[9px] font-bold text-blue-600 shadow-sm border border-blue-100">
-                      พิกัดถูกบันทึกแล้ว
-                    </div>
-                  </div>
-                ) : (
-                  <div className="w-full h-24 bg-slate-50 rounded-xl border border-dashed border-slate-300 flex flex-col items-center justify-center text-slate-400 gap-2">
-                    <MapPin className="w-5 h-5 text-slate-300" />
-                    <span className="text-[11px] font-medium">ยังไม่ได้ปักหมุดแผนที่บน Google Maps</span>
-                  </div>
-                )}
 
-                <button
-                  type="button"
-                  onClick={() => setShowMap(true)}
-                  className={`w-full flex items-center justify-center gap-1.5 p-3 text-xs font-bold rounded-xl border transition-all ${
-                    latitude && longitude 
-                      ? 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50' 
-                      : 'bg-blue-50 border-blue-200 text-blue-600 hover:bg-blue-100 hover:border-blue-300 shadow-sm'
-                  }`}
-                >
-                  <MapPin className="w-4 h-4" />
-                  {latitude && longitude ? 'แก้ไขจุดปักหมุดแผนที่' : 'เปิดแผนที่เพื่อปักหมุดลูกค้าตอนนี้'}
-                </button>
+              <div className="pt-4 mt-4 border-t border-slate-100 space-y-3">
+                <h4 className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5"><FileText className="w-4 h-4 text-blue-500"/> ข้อมูลสำหรับออกใบกำกับภาษี (ถ้ามี)</h4>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 mb-1 block">ชื่อบริษัท (ภาษาไทย) <span className="text-xs font-normal text-slate-400">(ไม่บังคับ)</span></label>
+                  <input type="text" placeholder="ระบุชื่อบริษัทภาษาไทย..." value={companyNameTh} onChange={e => setCompanyNameTh(e.target.value)} className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-blue-400 focus:bg-white transition-colors" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 mb-1 block">ชื่อบริษัท (ภาษาอังกฤษ) <span className="text-xs font-normal text-slate-400">(ไม่บังคับ)</span></label>
+                  <input type="text" placeholder="ระบุชื่อบริษัทภาษาอังกฤษ..." value={companyNameEn} onChange={e => setCompanyNameEn(e.target.value)} className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-blue-400 focus:bg-white transition-colors" />
+                </div>
+                {(companyNameTh.trim() !== '' || companyNameEn.trim() !== '') && (
+                  <>
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 mb-1 block">ที่อยู่บริษัท <span className="text-red-500">*</span></label>
+                      <textarea placeholder="ระบุที่อยู่บริษัทสำหรับออกใบกำกับภาษี..." value={companyAddress} onChange={e => setCompanyAddress(e.target.value)} rows={2} className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-blue-400 focus:bg-white transition-colors resize-none" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 mb-1 block">เลขประจำตัวผู้เสียภาษี (13 หลัก) <span className="text-red-500">*</span></label>
+                      <input type="text" placeholder="ระบุเลขประจำตัวผู้เสียภาษี..." value={taxId} onChange={e => setTaxId(e.target.value)} maxLength={13} className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-blue-400 focus:bg-white transition-colors" />
+                    </div>
+                  </>
+                )}
               </div>
+              
+              {saleMode === 'DELIVERY' && (
+                <div className="pt-4 mt-4 border-t border-slate-100 space-y-3">
+                  <label className="text-[10px] font-bold text-slate-500 block">ปักหมุดแผนที่สำหรับไรเดอร์ / ขนส่ง</label>
+                  {latitude && longitude ? (
+                    <div className="w-full h-32 bg-slate-100 rounded-xl overflow-hidden border border-slate-200 relative shadow-inner">
+                      <iframe
+                        title="Mini Map Preview"
+                        width="100%"
+                        height="100%"
+                        frameBorder="0"
+                        scrolling="no"
+                        src={`https://www.openstreetmap.org/export/embed.html?bbox=${longitude-0.002},${latitude-0.002},${longitude+0.002},${latitude+0.002}&layer=mapnik&marker=${latitude},${longitude}`}
+                        className="pointer-events-none" 
+                      />
+                      <div className="absolute bottom-2 right-2 bg-white/90 backdrop-blur-sm px-2 py-1 rounded-md text-[9px] font-bold text-blue-600 shadow-sm border border-blue-100">
+                        พิกัดถูกบันทึกแล้ว
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="w-full h-24 bg-slate-50 rounded-xl border border-dashed border-slate-300 flex flex-col items-center justify-center text-slate-400 gap-2">
+                      <MapPin className="w-5 h-5 text-slate-300" />
+                      <span className="text-[11px] font-medium">ยังไม่ได้ปักหมุดแผนที่บน Google Maps</span>
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => setShowMap(true)}
+                    className={`w-full flex items-center justify-center gap-1.5 p-3 text-xs font-bold rounded-xl border transition-all ${
+                      latitude && longitude 
+                        ? 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50' 
+                        : 'bg-blue-50 border-blue-200 text-blue-600 hover:bg-blue-100 hover:border-blue-300 shadow-sm'
+                    }`}
+                  >
+                    <MapPin className="w-4 h-4" />
+                    {latitude && longitude ? 'แก้ไขจุดปักหมุดแผนที่' : 'เปิดแผนที่เพื่อปักหมุดลูกค้าตอนนี้'}
+                  </button>
+                </div>
+              )}
             </div>
             
             <div className="p-4 bg-slate-50 border-t border-slate-100 rounded-b-3xl">
@@ -944,10 +1053,26 @@ export default function ManagerPOSPage() {
             <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mb-4">
               <FileText className="w-8 h-8" />
             </div>
-            <h3 className="font-bold text-slate-800 text-lg mb-2">ยืนยันสร้างใบเสนอราคา?</h3>
+            <h3 className="font-bold text-slate-800 text-lg mb-2">
+              {editOrderId ? 'ยืนยันบันทึกการแก้ไขบิล?' : 'ยืนยันสร้างใบเสนอราคา?'}
+            </h3>
             <p className="text-slate-500 text-xs mb-6 px-4 leading-relaxed">
               กรุณาตรวจสอบรายการสินค้าและยอดเงินให้ถูกต้องก่อนกดยืนยัน ระบบจะทำการบันทึกบิลและตัดสต็อกทันที
             </p>
+
+            {!editOrderId && (
+              <div className="w-full mb-6 text-left">
+                <label className="text-[10px] font-bold text-slate-500 mb-1 block">รหัสออเดอร์ (ระบุเองได้ - ไม่บังคับ)</label>
+                <input 
+                  type="text" 
+                  placeholder="เช่น INV-1234 หรือเว้นว่างไว้ให้ระบบสร้างให้อัตโนมัติ" 
+                  value={customOrderCode}
+                  onChange={e => setCustomOrderCode(e.target.value)}
+                  className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-blue-400 focus:bg-white transition-colors" 
+                />
+              </div>
+            )}
+
             <div className="flex gap-3 w-full">
               <button
                 onClick={() => setIsConfirmCheckoutOpen(false)}

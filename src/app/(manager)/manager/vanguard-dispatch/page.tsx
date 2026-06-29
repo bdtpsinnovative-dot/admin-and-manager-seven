@@ -3,7 +3,7 @@
 "use client"
 
 import { useState, useEffect, useMemo } from 'react'
-import { getGroupedDispatches, markOrderItemsShipped, approveAndCutStock } from '@/actions/dispatch'
+import { getGroupedDispatches, markOrderItemsShipped, approveAndCutStock, cancelOrder } from '@/actions/dispatch'
 import {
   ChevronDown,
   ChevronUp,
@@ -18,22 +18,28 @@ import {
   Store,
   MapPin,
   Navigation,
-  Truck
+  Truck,
+  FileText,
+  Save,
+  XCircle
 } from 'lucide-react'
 import { toast } from 'sonner'
 import PrintDispatchModal from '@/components/PrintDispatchModal'
 
 export default function DispatchMonitorPage() {
-  const [activeTab, setActiveTab] = useState<'overview' | 'my_tasks' | 'follow_ups' | 'completed'>('overview')
-  const [tasks, setTasks] = useState<{ myTasks: any[]; followUpTasks: any[]; completedTasks: any[] }>({
+  const [activeTab, setActiveTab] = useState<'overview' | 'my_tasks' | 'follow_ups' | 'completed' | 'cancelled'>('overview')
+  const [tasks, setTasks] = useState<{ myTasks: any[]; followUpTasks: any[]; completedTasks: any[]; cancelledTasks: any[] }>({
     myTasks: [],
     followUpTasks: [],
-    completedTasks: []
+    completedTasks: [],
+    cancelledTasks: []
   })
   const [loading, setLoading] = useState(true)
   const [processingId, setProcessingId] = useState<number | null>(null)
   const [approvingId, setApprovingId] = useState<number | null>(null)
+  const [cancellingId, setCancellingId] = useState<number | null>(null)
   const [expandedOrders, setExpandedOrders] = useState<number[]>([])
+  const [customOrderCodes, setCustomOrderCodes] = useState<Record<number, string>>({})
   const [printOrderCode, setPrintOrderCode] = useState<string | null>(null)
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
@@ -41,8 +47,11 @@ export default function DispatchMonitorPage() {
     description: string;
     confirmText?: string;
     confirmVariant?: 'emerald' | 'blue' | 'red';
-    onConfirm: () => void;
+    showOrderCodeInput?: boolean;
+    defaultOrderCode?: string;
+    onConfirm: (customCode?: string) => void;
   }>({ isOpen: false, title: '', description: '', onConfirm: () => { } })
+  const [modalCustomOrderCode, setModalCustomOrderCode] = useState('')
 
   useEffect(() => {
     loadData()
@@ -55,7 +64,8 @@ export default function DispatchMonitorPage() {
       setTasks({
         myTasks: res.myDispatchOrders || [],
         followUpTasks: res.followUpOrders || [],
-        completedTasks: res.completedOrders || []
+        completedTasks: res.completedOrders || [],
+        cancelledTasks: res.cancelledOrders || []
       })
     } else {
       toast.error("โหลดข้อมูลไม่สำเร็จ: " + res.error)
@@ -69,16 +79,19 @@ export default function DispatchMonitorPage() {
     )
   }
 
-  const handleApproveStock = (orderId: number, orderCode: string, items: any[]) => {
+  const handleApproveStock = async (orderId: number, orderCode: string, items: any[]) => {
+    setModalCustomOrderCode(orderCode) // ดึงรหัสเดิมมาแสดงให้แก้
     setConfirmModal({
       isOpen: true,
-      title: 'ยืนยันการรับชำระเงินและตัดสต็อก',
-      description: `ยืนยันการรับชำระเงินและ "ตัดสต็อก" บิล ${orderCode} ใช่หรือไม่? \n(สินค้าจะถูกหักออกจากคลังของสาขาทันที)`,
-      confirmText: 'ยืนยันตัดสต็อก',
+      title: 'ยืนยันรับชำระเงินและตัดสต็อก?',
+      description: 'กรุณาตรวจสอบรายการสินค้าและยอดเงินให้ถูกต้องก่อนกดยืนยัน\nระบบจะทำการบันทึกรับเงินและตัดสต็อกทันที',
+      confirmText: 'ยืนยันรับชำระเงิน',
       confirmVariant: 'emerald',
-      onConfirm: async () => {
+      showOrderCodeInput: true,
+      defaultOrderCode: orderCode,
+      onConfirm: async (customCode?: string) => {
         setApprovingId(orderId)
-        const res = await approveAndCutStock(orderId, orderCode, items)
+        const res = await approveAndCutStock(orderId, orderCode, items, customCode)
 
         if (res.success) {
           toast.success("อนุมัติรับชำระเงิน และ หักสต็อกออกจากคลังเรียบร้อยแล้ว!")
@@ -118,10 +131,35 @@ export default function DispatchMonitorPage() {
     setPrintOrderCode(orderCode)
   }
 
+  const handleCancelOrder = (orderId: number, orderCode: string, items: any[], currentStatus: string) => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'ยืนยันการยกเลิกบิล?',
+      description: currentStatus !== 'PENDING' 
+        ? `บิล ${orderCode} นี้มีการชำระเงินและหักสต็อกไปแล้ว\nถ้ายกเลิก ระบบจะทำการคืนสต็อกเข้าคลังให้โดยอัตโนมัติ ยืนยันใช่หรือไม่?`
+        : `คุณต้องการยกเลิกบิล ${orderCode} ใช่หรือไม่?\nบิลจะถูกเก็บประวัติไว้ในแท็บยกเลิกแล้ว`,
+      confirmText: 'ยืนยันยกเลิกบิล',
+      confirmVariant: 'red',
+      onConfirm: async () => {
+        setCancellingId(orderId)
+        const res = await cancelOrder(orderId, orderCode, items, currentStatus)
+
+        if (res.success) {
+          toast.success("ยกเลิกบิลและจัดการสต็อกเรียบร้อยแล้ว!")
+          await loadData()
+        } else {
+          toast.error("เกิดข้อผิดพลาด: " + res.error)
+        }
+        setCancellingId(null)
+      }
+    })
+  }
+
   const currentData = useMemo(() => {
-    if (activeTab === 'my_tasks') return tasks.myTasks;
-    if (activeTab === 'follow_ups') return tasks.followUpTasks;
+    if (activeTab === 'my_tasks') return tasks.myTasks.filter((t: any) => t.status !== 'PENDING');
+    if (activeTab === 'follow_ups') return tasks.followUpTasks.filter((t: any) => t.status !== 'PENDING');
     if (activeTab === 'completed') return tasks.completedTasks;
+    if (activeTab === 'cancelled') return tasks.cancelledTasks;
 
     const combined = [...tasks.myTasks, ...tasks.followUpTasks];
     return combined.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
@@ -159,19 +197,25 @@ export default function DispatchMonitorPage() {
             onClick={() => setActiveTab('my_tasks')}
             className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 text-sm font-bold rounded-md transition-colors ${activeTab === 'my_tasks' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}
           >
-            <Package className="w-4 h-4" /> คลังเราต้องจัดส่ง ({tasks.myTasks.length})
+            <Package className="w-4 h-4" /> คลังเราต้องจัดส่ง ({tasks.myTasks.filter((t: any) => t.status !== 'PENDING').length})
           </button>
           <button
             onClick={() => setActiveTab('follow_ups')}
             className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 text-sm font-bold rounded-md transition-colors ${activeTab === 'follow_ups' ? 'bg-amber-500 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}
           >
-            <Activity className="w-4 h-4" /> ติดตามสาขาอื่น ({tasks.followUpTasks.length})
+            <Activity className="w-4 h-4" /> ติดตามสาขาอื่น ({tasks.followUpTasks.filter((t: any) => t.status !== 'PENDING').length})
           </button>
           <button
             onClick={() => setActiveTab('completed')}
             className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 text-sm font-bold rounded-md transition-colors ${activeTab === 'completed' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}
           >
             <Archive className="w-4 h-4" /> ประวัติสำเร็จ ({tasks.completedTasks.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('cancelled')}
+            className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 text-sm font-bold rounded-md transition-colors ${activeTab === 'cancelled' ? 'bg-red-500 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}
+          >
+            <XCircle className="w-4 h-4" /> ยกเลิกแล้ว ({tasks.cancelledTasks.length})
           </button>
         </div>
 
@@ -185,7 +229,6 @@ export default function DispatchMonitorPage() {
             currentData.map((order: any, index: number) => {
               const isExpanded = expandedOrders.includes(order.id)
 
-              // ✨ แก้ไขตรรกะใหม่: ถ้าระบุพิกัดมา จะถือว่าเป็นการจัดส่ง (หรือมีข้อมูลให้ดู) ทันที
               const hasCoordinates = order.latitude && order.longitude;
               const isStorefrontTakeaway = (!order.shipping_address && !hasCoordinates) || (order.shipping_address?.includes('[รับหน้าร้าน]') && !hasCoordinates);
               const isMyTask = tasks.myTasks.some(t => t.id === order.id)
@@ -311,14 +354,12 @@ export default function DispatchMonitorPage() {
                                     {order.shipping_address || '-'}
                                   </p>
 
-                                  {/* ✨ ส่วนแสดงพิกัด GPS และ Mini Map (ถ้ามีการปักหมุด) */}
                                   {hasCoordinates && (
                                     <div className="mt-3 pt-3 border-t border-dashed border-slate-200">
                                       <p className="font-semibold text-slate-700 text-xs mb-2 flex items-center gap-1">
                                         <MapPin className="w-3.5 h-3.5 text-blue-500" /> แผนที่และพิกัดจัดส่ง
                                       </p>
 
-                                      {/* กล่อง Mini Map ตัวเล็ก */}
                                       <div className="w-full h-32 bg-slate-100 rounded-lg overflow-hidden border border-slate-200 mb-2 relative shadow-inner">
                                         <iframe
                                           title="Mini Map Preview"
@@ -353,32 +394,36 @@ export default function DispatchMonitorPage() {
 
                           {/* Action Buttons (ปุ่มการทำงานต่างๆ เรียงสวยงาม) */}
                           <div className="space-y-2 pt-2">
-                            {activeTab === 'completed' || order.status === 'COMPLETED' ? (
+                            {activeTab === 'cancelled' || order.status === 'CANCELLED' ? (
+                              <div className="w-full py-3 bg-red-50 text-red-600 border border-red-200 rounded-lg text-sm font-bold flex items-center justify-center gap-2 shadow-sm cursor-not-allowed">
+                                <XCircle className="w-4 h-4" /> บิลนี้ถูกยกเลิกแล้ว
+                              </div>
+                            ) : activeTab === 'completed' || order.status === 'COMPLETED' ? (
                               <div className="w-full py-3 bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-lg text-sm font-bold flex items-center justify-center gap-2 shadow-sm cursor-not-allowed">
                                 <CheckCircle className="w-4 h-4" /> บิลนี้ปิดงาน/ส่งมอบสำเร็จแล้ว
                               </div>
                             ) : (
-                              <>
-                                {isMyTask && (
-                                  order.status === 'PENDING' ? (
-                                    <button
-                                      onClick={() => handleApproveStock(order.id, order.order_code, order.order_items)}
-                                      disabled={approvingId === order.id || isAnyItemOutOfStock}
-                                      className={`w-full py-2.5 text-white rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2 shadow-sm 
-                                        ${isAnyItemOutOfStock ? 'bg-red-400 cursor-not-allowed' : 'bg-emerald-500 hover:bg-emerald-600'}`}
-                                    >
-                                      {isAnyItemOutOfStock ? (
-                                        <><AlertTriangle className="w-4 h-4" /> ไม่สามารถอนุมัติได้ (สินค้าหมด)</>
-                                      ) : (
-                                        <>{approvingId === order.id ? 'กำลังตัดสต็อก...' : <><Banknote className="w-4 h-4" /> ยืนยันรับชำระเงิน & ตัดสต็อก</>}</>
-                                      )}
-                                    </button>
-                                  ) : (
-                                    <div className="w-full py-2.5 bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-lg text-sm font-bold flex items-center justify-center gap-2 shadow-sm cursor-not-allowed">
-                                      <CheckCircle className="w-4 h-4" /> จ่ายเงินและหักสต็อกแล้ว
-                                    </div>
-                                  )
-                                )}
+                                <>
+                                  {isMyTask && (
+                                    order.status === 'PENDING' ? (
+                                      <button
+                                        onClick={() => handleApproveStock(order.id, order.order_code, order.order_items)}
+                                        disabled={approvingId === order.id || isAnyItemOutOfStock}
+                                        className={`w-full py-2.5 text-white rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2 shadow-sm 
+                                          ${isAnyItemOutOfStock ? 'bg-red-400 cursor-not-allowed' : 'bg-emerald-500 hover:bg-emerald-600'}`}
+                                      >
+                                        {isAnyItemOutOfStock ? (
+                                          <><AlertTriangle className="w-4 h-4" /> ไม่สามารถอนุมัติได้ (สินค้าหมด)</>
+                                        ) : (
+                                          <>{approvingId === order.id ? 'กำลังตัดสต็อก...' : <><Banknote className="w-4 h-4" /> ยืนยันรับชำระเงิน & ตัดสต็อก</>}</>
+                                        )}
+                                      </button>
+                                    ) : (
+                                      <div className="w-full py-2.5 bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-lg text-sm font-bold flex items-center justify-center gap-2 shadow-sm cursor-not-allowed">
+                                        <CheckCircle className="w-4 h-4" /> จ่ายเงินและหักสต็อกแล้ว
+                                      </div>
+                                    )
+                                  )}
 
                                 <button
                                   onClick={() => handleCompleteOrder(order.id, order.order_code, order.order_items)}
@@ -404,6 +449,16 @@ export default function DispatchMonitorPage() {
                                 <Printer className="w-4 h-4" /> พิมพ์เอกสาร (ใบเสร็จ/ใบเสนอราคา)
                               </button>
                             )}
+
+                            {isMyTask && activeTab !== 'cancelled' && order.status !== 'CANCELLED' && order.status !== 'COMPLETED' && (
+                              <button
+                                onClick={() => handleCancelOrder(order.id, order.order_code, order.order_items, order.status)}
+                                disabled={cancellingId === order.id}
+                                className="w-full py-2.5 mt-4 bg-white border border-red-200 text-red-500 rounded-lg text-sm font-bold hover:bg-red-50 transition-colors flex items-center justify-center gap-2 shadow-sm"
+                              >
+                                {cancellingId === order.id ? 'กำลังยกเลิก...' : <><XCircle className="w-4 h-4" /> ยกเลิกออเดอร์นี้</>}
+                              </button>
+                            )}
                           </div>
                         </div>
 
@@ -420,33 +475,48 @@ export default function DispatchMonitorPage() {
       {/* 🧩 Custom Confirmation Modal */}
       {confirmModal.isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 backdrop-blur-xs px-4">
-          <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden flex flex-col border border-slate-100 animate-fade-in">
-            <div className="p-6 pb-4">
-              <h3 className="font-black text-slate-800 text-sm mb-2">
-                {confirmModal.title}
-              </h3>
-              <p className="text-slate-500 text-xs font-semibold leading-relaxed whitespace-pre-line">
-                {confirmModal.description}
-              </p>
+          <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden flex flex-col p-6 items-center text-center animate-fade-in border border-slate-100">
+            <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-4 ${confirmModal.confirmVariant === 'emerald' ? 'bg-emerald-50 text-emerald-600' : confirmModal.confirmVariant === 'blue' ? 'bg-blue-50 text-blue-600' : 'bg-red-50 text-red-600'}`}>
+              <FileText className="w-8 h-8" />
             </div>
-            <div className="p-4 bg-slate-50 border-t border-slate-100 flex gap-2 justify-end">
+            <h3 className="font-bold text-slate-800 text-lg mb-2">
+              {confirmModal.title}
+            </h3>
+            <p className="text-slate-500 text-xs mb-6 px-4 leading-relaxed whitespace-pre-line">
+              {confirmModal.description}
+            </p>
+
+            {confirmModal.showOrderCodeInput && (
+              <div className="w-full mb-6 text-left">
+                <label className="text-[10px] font-bold text-slate-500 mb-1 block">รหัสออเดอร์ (ระบุเองได้ - ไม่บังคับ)</label>
+                <input 
+                  type="text" 
+                  placeholder={`เช่น ${confirmModal.defaultOrderCode} หรือเว้นว่างไว้ใช้รหัสเดิม`}
+                  value={modalCustomOrderCode}
+                  onChange={e => setModalCustomOrderCode(e.target.value)}
+                  className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-emerald-400 focus:bg-white transition-colors" 
+                />
+              </div>
+            )}
+
+            <div className="flex gap-3 w-full">
               <button
                 onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
-                className="px-3.5 py-2 bg-white border border-slate-200 text-slate-600 rounded-xl font-bold text-xs hover:bg-slate-100 transition-all cursor-pointer"
+                className="flex-1 py-3 bg-white border border-slate-200 text-slate-600 rounded-xl font-bold text-xs hover:bg-slate-50 transition-all cursor-pointer"
               >
                 ยกเลิก
               </button>
               <button
                 onClick={() => {
-                  confirmModal.onConfirm()
+                  confirmModal.onConfirm(modalCustomOrderCode)
                   setConfirmModal(prev => ({ ...prev, isOpen: false }))
                 }}
-                className={`px-3.5 py-2 text-white rounded-xl font-bold text-xs transition-all cursor-pointer ${confirmModal.confirmVariant === 'emerald' ? 'bg-emerald-600 hover:bg-emerald-700 shadow-sm shadow-emerald-100' :
-                    confirmModal.confirmVariant === 'blue' ? 'bg-blue-600 hover:bg-blue-700 shadow-sm shadow-blue-100' :
-                      'bg-slate-800 hover:bg-slate-900 shadow-sm shadow-slate-200'
+                className={`flex-1 py-3 text-white rounded-xl font-bold text-xs transition-all cursor-pointer shadow-md flex items-center justify-center gap-1.5 ${confirmModal.confirmVariant === 'emerald' ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200' :
+                    confirmModal.confirmVariant === 'blue' ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-200' :
+                      'bg-slate-800 hover:bg-slate-900 shadow-slate-200'
                   }`}
               >
-                {confirmModal.confirmText || 'ยืนยัน'}
+                <Save className="w-4 h-4" /> {confirmModal.confirmText || 'ยืนยัน'}
               </button>
             </div>
           </div>

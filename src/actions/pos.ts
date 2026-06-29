@@ -105,6 +105,9 @@ export async function getPosData() {
 }
 
 export interface CheckoutPayload {
+  orderId?: number;          // ✨ รองรับการแก้ไขบิลเดิม
+  orderCode?: string;        // ✨ รองรับการแก้ไขบิลเดิม
+  customOrderCode?: string | null; // ✨ รหัสออเดอร์ที่ผู้ใช้กรอกเอง
   branchId: number; 
   subtotal: number;       
   discountAmount: number; 
@@ -113,8 +116,12 @@ export interface CheckoutPayload {
   shippingName?: string | null;
   shippingPhone?: string | null;
   shippingAddress?: string | null;
-  latitude?: number | null;  // ✨ เพื่มรับค่าละติจูด
-  longitude?: number | null; // ✨ เพิ่มรับค่าลองจิจูด
+  latitude?: number | null;
+  longitude?: number | null;
+  companyNameTh?: string | null;     // ✨ ชื่อบริษัท (ไทย)
+  companyNameEn?: string | null;     // ✨ ชื่อบริษัท (อังกฤษ)
+  companyAddress?: string | null;  // ✨ เพิ่มข้อมูลบริษัท
+  taxId?: string | null;           // ✨ เพิ่มข้อมูลบริษัท
   items: {
     productId: number; 
     qty: number; 
@@ -142,23 +149,26 @@ export async function processCheckout(payload: CheckoutPayload) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) throw new Error("Unauthorized")
 
-    const orderCode = `INV${Date.now()}`
+    const orderCode = payload.orderId 
+      ? payload.orderCode 
+      : (payload.customOrderCode || `INV${Date.now()}`)
 
     const usedDiscounts = payload.items
       .filter(item => item.discountId)
       .map(item => ({ id: item.discountId, name: item.discountName, amount_per_piece: item.discountAmountPerPiece }))
     // ✨ 0. เช็คสต็อกล่วงหน้ากันเหนียว (เวลาขายชนกัน)
     const outOfStockItems: string[] = []
+    
+    // ดึงสต็อกทั้งหมดของสินค้าที่อยู่ในตะกร้าในครั้งเดียว (ลดเวลาการทำงาน)
+    const productIds = payload.items.map(item => item.productId)
+    const { data: allStocks } = await supabase
+      .from('stock')
+      .select('product_id, branch_id, qty')
+      .in('product_id', productIds)
+
     for (const item of payload.items) {
-      const { data: stockCheck } = await supabase
-        .from('stock')
-        .select('qty')
-        .eq('product_id', item.productId)
-        .eq('branch_id', item.fulfillBranchId)
-        .single()
-        
+      const stockCheck = allStocks?.find(s => s.product_id === item.productId && s.branch_id === item.fulfillBranchId)
       if (!stockCheck || stockCheck.qty < item.qty) {
-        // ใส่ cartItemId เข้าไปใน list (ฝั่ง client ใช้ id เป็น string หรือ number)
         outOfStockItems.push(item.productId.toString())
       }
     }
@@ -177,26 +187,85 @@ export async function processCheckout(payload: CheckoutPayload) {
     // ✨ 2. บังคับสถานะบิลหลัก: ถ้าเซลล์กดจัดส่ง "หรือ" มีการดึงของข้ามสาขา บังคับบิลนี้เป็น PENDING ทันที
     const orderStatus = 'PENDING'
 
-    const { data: order, error: orderError } = await supabase
-      .from('orders')
-      .insert({
-        order_code: orderCode, 
-        user_id: user.id, 
-        branch_id: payload.branchId,
-        subtotal: payload.subtotal, 
-        discount_amount: payload.discountAmount, 
-        total_amount: payload.totalAmount, 
-        status: orderStatus, 
-        device_type: 'WEB_ADMIN',
-        discount_snapshot: usedDiscounts.length > 0 ? usedDiscounts : {}, 
-        shipping_name: payload.shippingName || null,                      
-        shipping_phone: payload.shippingPhone || null,
-        shipping_address: payload.shippingAddress || null,
-        latitude: payload.latitude || null,   // ✨ บันทึกค่าลงฐานข้อมูล
-        longitude: payload.longitude || null  // ✨ บันทึกค่าลงฐานข้อมูล
-      }).select('id').single()
+    let order;
+    if (payload.orderId) {
+      // 🛠️ อัปเดตบิลเก่าที่ยัง PENDING
+      const { data: existingOrder } = await supabase.from('orders').select('status').eq('id', payload.orderId).single()
+      if (existingOrder?.status !== 'PENDING') throw new Error("บิลนี้ชำระเงินหรือประมวลผลไปแล้ว ไม่สามารถแก้ไขได้")
 
-    if (orderError) throw new Error("สร้างบิลไม่สำเร็จ: " + orderError.message)
+      const updateOrderPromise = supabase
+        .from('orders')
+        .update({
+          subtotal: payload.subtotal, 
+          discount_amount: payload.discountAmount, 
+          total_amount: payload.totalAmount, 
+          discount_snapshot: usedDiscounts.length > 0 ? usedDiscounts : {}, 
+          shipping_name: payload.shippingName || null,                      
+          shipping_phone: payload.shippingPhone || null,
+          shipping_address: payload.shippingAddress || null,
+          latitude: payload.latitude || null,   
+          longitude: payload.longitude || null,
+          company_name_th: payload.companyNameTh || null,
+          company_name_en: payload.companyNameEn || null,
+          company_address: payload.companyAddress || null,
+          tax_id: payload.taxId || null
+        })
+        .eq('id', payload.orderId)
+        .select('id').single()
+
+      const deleteItemsPromise = supabase.from('order_items').delete().eq('order_id', payload.orderId)
+      const fetchOldTransfersPromise = supabase.from('stock_transfers').select('id').like('note', `%${orderCode}%`)
+
+      const [updateRes, deleteRes, oldTransfersRes] = await Promise.all([
+        updateOrderPromise,
+        deleteItemsPromise,
+        fetchOldTransfersPromise
+      ])
+
+      if (updateRes.error) throw new Error("อัปเดตบิลไม่สำเร็จ: " + updateRes.error.message)
+      order = updateRes.data
+      
+      // ลบ stock_transfers ของเดิมทิ้งก่อน (ถ้ามี)
+      const oldTransfers = oldTransfersRes.data
+      if (oldTransfers && oldTransfers.length > 0) {
+        const tIds = oldTransfers.map(t => t.id)
+        // สามารถรอให้ลบเสร็จได้เลย เพราะเป็นขั้นตอนต่อเนื่อง
+        await supabase.from('stock_transfer_items').delete().in('transfer_id', tIds)
+        await supabase.from('stock_transfers').delete().in('id', tIds)
+      }
+    } else {
+      // 🆕 สร้างบิลใหม่
+      const { data, error: insertError } = await supabase
+        .from('orders')
+        .insert({
+          order_code: orderCode, 
+          user_id: user.id, 
+          branch_id: payload.branchId,
+          subtotal: payload.subtotal, 
+          discount_amount: payload.discountAmount, 
+          total_amount: payload.totalAmount, 
+          status: orderStatus, 
+          device_type: 'WEB_ADMIN',
+          discount_snapshot: usedDiscounts.length > 0 ? usedDiscounts : {}, 
+          shipping_name: payload.shippingName || null,                      
+          shipping_phone: payload.shippingPhone || null,
+          shipping_address: payload.shippingAddress || null,
+          latitude: payload.latitude || null,   
+          longitude: payload.longitude || null,
+          company_name_th: payload.companyNameTh || null,
+          company_name_en: payload.companyNameEn || null,
+          company_address: payload.companyAddress || null,
+          tax_id: payload.taxId || null
+        }).select('id').single()
+
+      if (insertError) {
+         if (insertError.code === '23505') {
+            throw new Error("รหัสออเดอร์นี้มีอยู่ในระบบแล้ว กรุณาใช้รหัสอื่น")
+         }
+         throw new Error("สร้างบิลไม่สำเร็จ: " + insertError.message)
+      }
+      order = data
+    }
 
     // ✨ 3. บังคับสถานะรายชิ้น (หัวใจหลักที่ทำให้บั๊ก!)
     const orderItems = payload.items.map(item => {
@@ -224,29 +293,17 @@ export async function processCheckout(payload: CheckoutPayload) {
       }
     })
     
-    const { error: itemsError } = await supabase.from('order_items').insert(orderItems)
-    if (itemsError) throw new Error("บันทึกรายการสินค้าล้มเหลว: " + itemsError.message)
+    const insertOrderItemsPromise = supabase.from('order_items').insert(orderItems)
+    const pendingPromises: PromiseLike<any>[] = [insertOrderItemsPromise]
 
     // 4. แยกกลุ่มตัดสต็อก (เหมือนเดิม ไม่ต้องแก้)
     const localItems = payload.items.filter(item => item.fulfillBranchId === payload.branchId)
     const remoteItems = payload.items.filter(item => item.fulfillBranchId !== payload.branchId)
 
     // 4.1 สต็อกในสาขาตัวเอง (ปิดการตัดสต็อกอัตโนมัติชั่วคราว)
-    for (const item of localItems) {
-      // ❌ คอมเมนต์ส่วนนี้ทิ้งไปเลยครับ เพื่อไม่ให้มันไปลบยอดในตาราง stock
-      /*
-      const { data: currentStock } = await supabase.from('stock').select('id, qty').eq('product_id', item.productId).eq('branch_id', payload.branchId).single()
-      if (!currentStock || currentStock.qty < item.qty) throw new Error(`สินค้าสต็อกไม่พอขาย (ID ${item.productId})`)
-      await supabase.from('stock').update({ qty: currentStock.qty - item.qty, updated_at: new Date().toISOString() }).eq('id', currentStock.id)
-      
-      await supabase.from('stock_movements').insert({
-        product_id_bigint: item.productId, branch_id: payload.branchId, type: 'SALE', 
-        qty: -Math.abs(item.qty), note: `ออกใบขายหน้าร้าน (บิล: ${orderCode})`, ref_type: 'ORDER', ref_id_bigint: order.id, created_by: user.id
-      })
-      */
-    }
+    // สำหรับ localItems ยังคอมเมนต์ไว้อยู่ ไม่ต้องทำอะไร
 
-// 4.2 สต็อกต่างสาขา (Drop Ship) 
+    // 4.2 สต็อกต่างสาขา (Drop Ship) 
     if (remoteItems.length > 0) {
       const groupedByBranch = remoteItems.reduce((acc, item) => {
         if (!acc[item.fulfillBranchId]) acc[item.fulfillBranchId] = []
@@ -255,45 +312,39 @@ export async function processCheckout(payload: CheckoutPayload) {
       }, {} as Record<number, typeof remoteItems>)
 
       for (const [remoteBranchId, items] of Object.entries(groupedByBranch)) {
-        for (const item of items) {
-          // ❌ คอมเมนต์การตัดสต็อกต่างสาขาออก
-          /*
-          const { data: rStock } = await supabase.from('stock').select('id, qty').eq('product_id', item.productId).eq('branch_id', remoteBranchId).single()
-          if (!rStock || rStock.qty < item.qty) throw new Error(`สต็อกต่างสาขาไม่เพียงพอ กรุณาทำรายการใหม่`)
-          await supabase.from('stock').update({ qty: rStock.qty - item.qty, updated_at: new Date().toISOString() }).eq('id', rStock.id)
+        // ประมวลผลแต่ละสาขาแบบขนานกัน
+        const processRemoteBranch = async () => {
+          const transferCode = `DP-AUTO-${Date.now()}-${remoteBranchId}`
+          const { data: transferOrder, error: tfError } = await supabase
+            .from('stock_transfers')
+            .insert({
+              transfer_code: transferCode,
+              from_branch_id: Number(remoteBranchId),
+              to_branch_id: payload.branchId, 
+              status: 'AWAITING_SHIPMENT', 
+              note: `[ใบเบิกแพ็คอัตโนมัติจากใบขาย ${orderCode}] \nผู้รับ: ${payload.shippingName} \nโทร: ${payload.shippingPhone} \nที่อยู่จัดส่ง: ${payload.shippingAddress}`,
+              created_by: user.id
+            }).select('id').single()
 
-          await supabase.from('stock_movements').insert({
-            product_id_bigint: item.productId, branch_id: Number(remoteBranchId), type: 'CROSS_BRANCH_DELIVERY', 
-            qty: -Math.abs(item.qty), note: `ออกใบขาย Drop Ship (บิล: ${orderCode})`, ref_type: 'ORDER', ref_id_bigint: order.id, created_by: user.id
-          })
-          */
+          if (tfError) throw new Error("ระบบสร้างใบแจ้งแพ็คของข้ามสาขาล้มเหลว")
+
+          const transferItems = items.map(item => ({
+            transfer_id: transferOrder.id,
+            product_id: item.productId,
+            qty: item.qty,
+            transfer_qty: item.qty,
+            item_status: 'AWAITING_SHIPMENT'
+          }))
+          await supabase.from('stock_transfer_items').insert(transferItems)
         }
-
-        // ✅ ส่วนด้านล่างนี้ (สร้าง transferCode และ insert ลง stock_transfers) ให้เปิดไว้เหมือนเดิมครับ
-        const transferCode = `DP-AUTO-${Date.now()}`
-        const { data: transferOrder, error: tfError } = await supabase
-          .from('stock_transfers')
-          .insert({
-            transfer_code: transferCode,
-            from_branch_id: Number(remoteBranchId),
-            to_branch_id: payload.branchId, 
-            status: 'AWAITING_SHIPMENT', 
-            note: `[ใบเบิกแพ็คอัตโนมัติจากใบขาย ${orderCode}] \nผู้รับ: ${payload.shippingName} \nโทร: ${payload.shippingPhone} \nที่อยู่จัดส่ง: ${payload.shippingAddress}`,
-            created_by: user.id
-          }).select('id').single()
-
-        if (tfError) throw new Error("ระบบสร้างใบแจ้งแพ็คของข้ามสาขาล้มเหลว")
-
-        const transferItems = items.map(item => ({
-          transfer_id: transferOrder.id,
-          product_id: item.productId,
-          qty: item.qty,
-          transfer_qty: item.qty,
-          item_status: 'AWAITING_SHIPMENT'
-        }))
-        await supabase.from('stock_transfer_items').insert(transferItems)
+        pendingPromises.push(processRemoteBranch())
       }
     }
+
+    // รอให้ทั้ง order_items และ stock_transfers ทำงานเสร็จพร้อมกัน
+    const results = await Promise.all(pendingPromises)
+    const itemsError = results[0]?.error
+    if (itemsError) throw new Error("บันทึกรายการสินค้าล้มเหลว: " + itemsError.message)
 
     return { success: true, orderCode }
   } catch (error: any) {
@@ -307,4 +358,28 @@ export async function getNearbyStock(productId: number, currentBranchId: number)
   const { data, error } = await supabase.rpc('get_nearby_stock', { p_current_branch_id: currentBranchId, p_product_id: productId })
   if (error) return { success: false, error: error.message }
   return { success: true, data }
+}
+
+export async function getOrderForEdit(orderCode: string) {
+  const cookieStore = await cookies()
+  const supabase = createServerClient(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!, { 
+    cookies: { getAll() { return cookieStore.getAll() } } 
+  })
+
+  const { data: order, error } = await supabase
+    .from('orders')
+    .select(`
+      id, order_code, status, shipping_name, shipping_phone, shipping_address, latitude, longitude, company_name_th, company_name_en, company_address, tax_id,
+      order_items (
+        id, product_id, qty, price_at_sale, fulfill_branch_id, discount_id, discount_name, discount_amount_per_piece,
+        branches!order_items_fulfill_branch_fk ( branch_name )
+      )
+    `)
+    .eq('order_code', orderCode)
+    .single()
+
+  if (error || !order) return { success: false, error: error?.message || "ไม่พบบิลนี้ในระบบ" }
+  if (order.status !== 'PENDING') return { success: false, error: "บิลนี้ชำระเงินหรือประมวลผลไปแล้ว ไม่สามารถแก้ไขได้" }
+
+  return { success: true, order }
 }

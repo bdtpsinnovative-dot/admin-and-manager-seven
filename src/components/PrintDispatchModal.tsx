@@ -75,7 +75,10 @@ export default function PrintDispatchModal({ orderCode, onClose }: PrintDispatch
     }, 0);
   }
 
-  const grandTotal = calculateTotal();
+  const subTotalWithoutVat = calculateTotal();
+  // คำนวณ VAT 7% แบบเพิ่ม VAT (Exclusive)
+  const vatAmount = subTotalWithoutVat * 0.07;
+  const grandTotal = subTotalWithoutVat + vatAmount;
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/50 backdrop-blur-xs flex justify-center items-start p-4 sm:p-8 print:p-0 print:bg-white">
@@ -175,9 +178,25 @@ export default function PrintDispatchModal({ orderCode, onClose }: PrintDispatch
           <div className="py-3 flex justify-between items-end">
             <div className="w-1/2">
               <h3 className="text-[8px] font-bold uppercase tracking-[0.15em] text-neutral-400 mb-1">Prepared For</h3>
-              <p className="text-sm font-semibold text-neutral-900 mb-0.5">{data.shipping_name || 'ไม่ระบุชื่อลูกค้า'}</p>
-              <p className="text-[9px] text-neutral-500 leading-tight max-w-[280px]">{data.shipping_address || 'ไม่ระบุที่อยู่'}</p>
-              <p className="text-[9px] text-neutral-500 mt-0.5">Tel: <span className="text-neutral-900">{data.shipping_phone || '-'}</span></p>
+              {data.company_name_th || data.company_name_en ? (
+                <>
+                  <p className="text-sm font-semibold text-neutral-900 mb-0.5">{data.company_name_th || data.company_name_en}</p>
+                  {data.company_name_th && data.company_name_en && (
+                    <p className="text-[9px] text-neutral-500 leading-tight mb-0.5">{data.company_name_en}</p>
+                  )}
+                  <p className="text-[9px] text-neutral-500 leading-tight max-w-[280px]">{data.company_address || data.shipping_address}</p>
+                  {data.tax_id && (
+                    <p className="text-[9px] text-neutral-500 mt-0.5">Tax ID: <span className="text-neutral-900 font-medium">{data.tax_id}</span></p>
+                  )}
+                  <p className="text-[9px] text-neutral-500 mt-0.5">Contact: <span className="text-neutral-900">{data.shipping_name || '-'}</span> (Tel: <span className="text-neutral-900">{data.shipping_phone || '-'}</span>)</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm font-semibold text-neutral-900 mb-0.5">{data.shipping_name || 'ไม่ระบุชื่อลูกค้า'}</p>
+                  <p className="text-[9px] text-neutral-500 leading-tight max-w-[280px]">{data.shipping_address || 'ไม่ระบุที่อยู่'}</p>
+                  <p className="text-[9px] text-neutral-500 mt-0.5">Tel: <span className="text-neutral-900">{data.shipping_phone || '-'}</span></p>
+                </>
+              )}
             </div>
             
             <div className="w-1/2 text-right">
@@ -288,12 +307,12 @@ export default function PrintDispatchModal({ orderCode, onClose }: PrintDispatch
               </div>
               <div className="w-56">
                 <div className="flex justify-between py-1 text-[9px] text-neutral-500">
-                  <span>Subtotal</span>
-                  <span>{grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span>
+                  <span>Subtotal (Before VAT)</span>
+                  <span>{subTotalWithoutVat.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
                 <div className="flex justify-between py-1 text-[9px] text-neutral-500">
                   <span>VAT (7%)</span>
-                  <span>Included</span>
+                  <span>{vatAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
                 <div className="flex justify-between py-2 mt-1 border-t border-neutral-900">
                   <span className="text-[10px] font-bold text-neutral-900 uppercase tracking-widest mt-0.5">Total (THB)</span>
