@@ -66,8 +66,8 @@ export default function ManagerPOSPage() {
   const [companyNameEn, setCompanyNameEn] = useState('')
   const [companyAddress, setCompanyAddress] = useState('')
   const [taxId, setTaxId] = useState('')
-  const [specialDiscountPercent, setSpecialDiscountPercent] = useState<string>('0')
-  const [specialDiscountBaht, setSpecialDiscountBaht] = useState<string>('0')
+  const [specialDiscountPercent, setSpecialDiscountPercent] = useState<string>('')
+  const [specialDiscountBaht, setSpecialDiscountBaht] = useState<string>('')
   const [isCustomerFormOpen, setIsCustomerFormOpen] = useState(false) // ซ่อนฟอร์มไว้ก่อน ประหยัดที่!
   
   // ✨ State สำหรับระบบช่วยปัดเศษ
@@ -900,17 +900,19 @@ export default function ManagerPOSPage() {
                 <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">
                   ส่วนลดพิเศษท้ายบิล (Special Discount)
                 </span>
-                <button 
-                  onClick={() => {
-                    setTargetRoundingTotal(Math.floor(totalFinalPrice * 1.07).toString())
-                    setCalculatedRoundingBaht(null)
-                    setIsRoundingModalOpen(true)
-                  }}
-                  className="text-[10px] bg-indigo-50 text-indigo-600 hover:bg-indigo-100 px-2 py-0.5 rounded flex items-center gap-1 font-semibold transition-colors"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
-                  ผู้ช่วยปัดเศษ
-                </button>
+                {Number(specialDiscountPercent || 0) > 0 && (
+                  <button 
+                    onClick={() => {
+                      setTargetRoundingTotal(Math.floor(totalFinalPrice * 1.07).toString())
+                      setCalculatedRoundingBaht(null)
+                      setIsRoundingModalOpen(true)
+                    }}
+                    className="text-[10px] bg-indigo-50 text-indigo-600 hover:bg-indigo-100 px-2 py-0.5 rounded flex items-center gap-1 font-semibold transition-colors animate-in fade-in zoom-in duration-200"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+                    ผู้ช่วยปัดเศษ
+                  </button>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 <div className="flex-1 flex items-center bg-white border border-slate-200 rounded-lg px-2 py-1 shadow-2xs">
@@ -922,8 +924,12 @@ export default function ManagerPOSPage() {
                     value={specialDiscountBaht}
                     onChange={(e) => {
                       const val = e.target.value;
-                      if (val === '' || Number(val) >= 0) {
-                        setSpecialDiscountBaht(val);
+                      if (val === '') {
+                        setSpecialDiscountBaht('');
+                      } else if (Number(val) >= 0) {
+                        // Strip leading zeros unless it's a decimal starting with 0.
+                        const cleanVal = val.length > 1 && val.startsWith('0') && !val.includes('.') ? val.replace(/^0+/, '') : val;
+                        setSpecialDiscountBaht(cleanVal || '0');
                       }
                     }}
                     className="w-full text-xs outline-none bg-transparent font-semibold text-slate-700 p-0 border-none"
@@ -939,8 +945,11 @@ export default function ManagerPOSPage() {
                     value={specialDiscountPercent}
                     onChange={(e) => {
                       const val = e.target.value;
-                      if (val === '' || (Number(val) >= 0 && Number(val) <= 100)) {
-                        setSpecialDiscountPercent(val);
+                      if (val === '') {
+                        setSpecialDiscountPercent('');
+                      } else if (Number(val) >= 0 && Number(val) <= 100) {
+                        const cleanVal = val.length > 1 && val.startsWith('0') && !val.includes('.') ? val.replace(/^0+/, '') : val;
+                        setSpecialDiscountPercent(cleanVal || '0');
                       }
                     }}
                     className="w-full text-xs outline-none bg-transparent font-semibold text-slate-700 p-0 border-none"
@@ -1325,10 +1334,20 @@ export default function ManagerPOSPage() {
                         </div>
                         <div className="text-sm text-emerald-800 font-medium leading-relaxed mb-3">
                           เพื่อให้ยอดสุทธิเป็น <span className="font-bold underline decoration-emerald-300 decoration-2 underline-offset-2">{target.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span><br/>
-                          คุณต้องกรอกส่วนลดบาท (ก่อนภาษี):
+                          คุณต้องให้ส่วนลด <span className="font-bold">(ก่อนรวมภาษี)</span> เป็นจำนวน:
                         </div>
-                        <div className="text-2xl font-black text-emerald-600 bg-white rounded-lg px-4 py-2 border border-emerald-100 shadow-sm text-center mb-3">
+                        <div className="text-2xl font-black text-emerald-600 bg-white rounded-lg px-4 py-2 border border-emerald-100 shadow-sm text-center mb-4">
                           {newBahtFormatted} ฿
+                        </div>
+                        
+                        <div className="bg-white/60 p-3 rounded-lg border border-emerald-100/50 mb-4">
+                          <p className="text-[10px] text-emerald-700 font-bold mb-1 flex items-center gap-1">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+                            ทำไมตัวเลขส่วนลดถึงมีเศษสตางค์?
+                          </p>
+                          <p className="text-[10px] text-emerald-600/90 leading-relaxed">
+                            เพื่อความถูกต้องตามหลักบัญชีสรรพากร ส่วนลดจะต้องถูกหักออก <span className="font-bold underline">ก่อน</span> คิดภาษี (VAT 7%) เสมอ ระบบจึงช่วยคำนวณส่วนลดก่อนภาษีที่แม่นยำที่สุดให้ เพื่อให้ยอดสุทธิออกมาลงตัวตรงใจคุณพอดีครับ
+                          </p>
                         </div>
                         
                         <button
