@@ -2,6 +2,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { addProp } from "@/actions/props";
+import { ArrowLeft, Save, Loader2, PackageOpen } from "lucide-react";
+import Link from "next/link";
 
 export default function UploadPropPage() {
   const [loading, setLoading] = useState(false);
@@ -12,64 +14,76 @@ export default function UploadPropPage() {
     setLoading(true);
     try {
       await addProp(new FormData(e.currentTarget));
-      alert("บันทึกสินค้า Prop เรียบร้อยแล้วจ้ะหลานรัก!");
+      alert("บันทึกสินค้า Prop เรียบร้อยแล้ว");
       router.push("/props");
     } catch (err: any) {
-      alert("โอ๊ยหลาน! มีปัญหาตอนบันทึก: " + err.message);
+      alert("มีปัญหาตอนบันทึก: " + err.message);
     }
     setLoading(false);
   };
 
   return (
-    <div className="max-w-3xl mx-auto p-10">
-      <div className="bg-white rounded-[2.5rem] shadow-2xl p-10 border border-gray-50">
-        <div className="mb-10 text-center">
-          <h1 className="text-2xl font-black text-gray-900">📥 New Prop Registration</h1>
-          <p className="text-gray-400 text-sm mt-2">กรอกข้อมูลเพื่อบันทึกสินค้าประกอบฉากเข้าสต็อก</p>
+    <div className="max-w-3xl mx-auto p-4 md:p-6 text-slate-800">
+      
+      {/* Back link */}
+      <div className="mb-4">
+        <Link href="/props" className="inline-flex items-center text-sm text-slate-500 hover:text-blue-600 transition">
+          <ArrowLeft className="w-4 h-4 mr-1" /> กลับหน้าคลัง Props
+        </Link>
+      </div>
+
+      <div className="bg-white rounded border border-slate-200 p-6 shadow-sm">
+        <div className="mb-8 border-b border-slate-100 pb-4">
+          <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+            <PackageOpen className="w-6 h-6 text-indigo-600" />
+            <span>เพิ่มสินค้าใหม่ (New Prop)</span>
+          </h1>
+          <p className="text-slate-500 text-xs mt-1">กรอกข้อมูลเพื่อบันทึกสินค้าประกอบฉากเข้าคลังสต็อก</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-8">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-gray-400 uppercase ml-1">Item NO. (จะเป็น SKU)</label>
-              <input name="item_no" required placeholder="HPST..." className="w-full p-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none font-medium transition-all" />
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-500 uppercase">Item NO. (SKU)</label>
+              <input name="item_no" required placeholder="เช่น HPST..." className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded text-sm focus:border-indigo-500 outline-none font-medium" />
             </div>
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-gray-400 uppercase ml-1">CODE/SKU (จะเป็น Barcode)</label>
-              <input name="code_sku" required placeholder="ML-VA-CR-..." className="w-full p-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none font-medium transition-all" />
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-500 uppercase">CODE/SKU (Barcode)</label>
+              <input name="code_sku" required placeholder="เช่น ML-VA-CR-..." className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded text-sm focus:border-indigo-500 outline-none font-medium" />
             </div>
           </div>
 
-          <div className="space-y-2">
-            <label className="text-xs font-bold text-gray-400 uppercase ml-1">Color (สีสินค้า)</label>
-            <input name="color" placeholder="Pink, Grey, Beige..." className="w-full p-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none font-medium transition-all" />
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-slate-500 uppercase">Color (สีสินค้า)</label>
+            <input name="color" placeholder="Pink, Grey, Beige..." className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded text-sm focus:border-indigo-500 outline-none font-medium" />
           </div>
 
-          <div className="space-y-2">
-            <label className="text-xs font-bold text-gray-400 uppercase ml-1">URL รูปภาพ</label>
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-slate-500 uppercase">URL รูปภาพ</label>
             <input
               name="image_url"
               type="url"
               placeholder="https://pub-258bd10e7e8c4a7690a74c54cfbdef93.r2.dev/original/..."
-              className="w-full p-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none font-medium transition-all text-sm"
+              className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded text-xs focus:border-indigo-500 outline-none font-mono"
             />
-            <p className="text-[11px] text-gray-400 ml-1">วาง URL จาก R2 ได้เลยครับ (ถ้าไม่มีรูปก็เว้นว่างไว้ก่อนได้)</p>
+            <p className="text-[10px] text-slate-400">ระบุ URL ไฟล์รูปภาพจากคลังเก็บรูป R2 (หากไม่มีรูปให้เว้นว่างไว้ก่อน)</p>
           </div>
 
-          <div className="bg-gray-900 rounded-[2rem] p-8 text-white">
-            <p className="text-[10px] font-bold text-gray-500 uppercase mb-4 text-center tracking-widest">Dimensions (Centimeters)</p>
-            <div className="grid grid-cols-3 gap-6">
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-blue-400 uppercase text-center block">Width (W)</label>
-                <input name="width_cm" type="number" step="0.1" placeholder="0.0" className="w-full p-3 bg-gray-800 border-none rounded-xl outline-none text-center font-bold text-blue-400 focus:ring-1 focus:ring-blue-400" />
+          {/* Dimensions */}
+          <div className="bg-slate-50 rounded border border-slate-200 p-4">
+            <p className="text-xs font-bold text-slate-500 uppercase mb-4 text-center tracking-wider border-b border-slate-200 pb-2">ขนาดสินค้า (Dimensions - Centimeters)</p>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-blue-600 uppercase text-center block">Width (W)</label>
+                <input name="width_cm" type="number" step="0.1" placeholder="0.0" className="w-full p-2 bg-white border border-slate-200 rounded outline-none text-center font-bold text-blue-600 focus:border-blue-400" />
               </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-green-400 uppercase text-center block">Depth (D)</label>
-                <input name="length_cm" type="number" step="0.1" placeholder="0.0" className="w-full p-3 bg-gray-800 border-none rounded-xl outline-none text-center font-bold text-green-400 focus:ring-1 focus:ring-green-400" />
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-green-600 uppercase text-center block">Depth (D)</label>
+                <input name="length_cm" type="number" step="0.1" placeholder="0.0" className="w-full p-2 bg-white border border-slate-200 rounded outline-none text-center font-bold text-green-600 focus:border-green-400" />
               </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-purple-400 uppercase text-center block">Height (H)</label>
-                <input name="thickness_cm" type="number" step="0.1" placeholder="0.0" className="w-full p-3 bg-gray-800 border-none rounded-xl outline-none text-center font-bold text-purple-400 focus:ring-1 focus:ring-purple-400" />
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-purple-600 uppercase text-center block">Height (H)</label>
+                <input name="thickness_cm" type="number" step="0.1" placeholder="0.0" className="w-full p-2 bg-white border border-slate-200 rounded outline-none text-center font-bold text-purple-600 focus:border-purple-400" />
               </div>
             </div>
           </div>
@@ -77,9 +91,19 @@ export default function UploadPropPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-5 bg-blue-600 text-white rounded-[1.5rem] font-bold text-lg hover:bg-blue-700 transition-all shadow-xl shadow-blue-200 disabled:bg-gray-300"
+            className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-bold text-sm transition disabled:bg-slate-300 flex items-center justify-center gap-2 shadow-sm"
           >
-            {loading ? "กำลังบันทึกลงฐานข้อมูล..." : "บันทึกข้อมูลสินค้า"}
+            {loading ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>กำลังบันทึกลงฐานข้อมูล...</span>
+              </>
+            ) : (
+              <>
+                <Save className="w-4 h-4" />
+                <span>บันทึกข้อมูลสินค้า</span>
+              </>
+            )}
           </button>
         </form>
       </div>

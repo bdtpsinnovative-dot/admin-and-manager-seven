@@ -171,7 +171,6 @@ export default function ReceiveCheckPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm text-slate-600">
               
-              {/* แถบหัวสีน้ำเงินเด่นชัด พร้อมเพิ่มหัวข้อ 'ประเภท' ตามสั่งครับนาย */}
               <thead className="bg-[#0284c7] text-white text-xs uppercase tracking-wider font-semibold">
                 <tr>
                   <th className="py-3 px-5 w-16 font-medium text-center">ลำดับ</th>
@@ -180,6 +179,8 @@ export default function ReceiveCheckPage() {
                   <th className="py-3 px-4 w-48 font-medium">เลขที่เอกสาร</th>
                   <th className="py-3 px-4 font-medium">คลังต้นทาง</th>
                   <th className="py-3 px-4 font-medium">คลังปลายทาง</th>
+                  <th className="py-3 px-4 w-28 text-center font-medium">จำนวนโอน</th>
+                  <th className="py-3 px-4 w-28 text-center font-medium">จำนวนรับ</th>
                   <th className="py-3 px-4 w-44 text-center font-medium">สถานะ</th>
                   <th className="py-3 px-4 w-16 text-center"></th>
                 </tr>
@@ -188,13 +189,13 @@ export default function ReceiveCheckPage() {
               <tbody className="divide-y divide-slate-100">
                 {loading ? (
                   <tr>
-                    <td colSpan={8} className="py-10 text-center text-slate-400">
+                    <td colSpan={10} className="py-10 text-center text-slate-400">
                       กำลังโหลดข้อมูลงานโอนสต็อก...
                     </td>
                   </tr>
                 ) : filteredTransfers.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="py-10 text-center text-slate-400">
+                    <td colSpan={10} className="py-10 text-center text-slate-400">
                       ไม่พบรายการโอนสินค้าในคลังขณะนี้
                     </td>
                   </tr>
@@ -203,6 +204,10 @@ export default function ReceiveCheckPage() {
                     const statusConfig = getStatusLabelAndStyle(t.status)
                     const isInbound = t.transfer_type === 'inbound'
                     
+                    // คำนวณจำนวนชิ้นรวม
+                    const totalTransferQty = t.stock_transfer_items?.reduce((sum: number, item: any) => sum + (Number(item.transfer_qty) || 0), 0) || 0
+                    const totalReceivedQty = t.stock_transfer_items?.reduce((sum: number, item: any) => sum + (Number(item.received_qty) || 0), 0) || 0
+
                     return (
                       <tr 
                         key={`${t.id}-${t.transfer_type}`}
@@ -217,20 +222,32 @@ export default function ReceiveCheckPage() {
                         <td className="py-3.5 px-5 font-medium text-slate-800 text-[13px]">
                           {formatDate(t.created_at)}
                         </td>
-
-                        {/* 2. ประเภทการโอน (แสดงผลในตารางแทนปุ่มกดแบบเดิม) */}
+ 
+                        {/* 2. ประเภทการโอน */}
                         <td className="py-3.5 px-4">
                           {isInbound ? (
-                            <span className="text-[11px] px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded-lg font-bold border border-emerald-200/60 inline-block">
-                              โอนเข้า (รอรับ)
-                            </span>
+                            t.status === 'COMPLETED' ? (
+                              <span className="text-[11px] px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded-lg font-bold border border-emerald-200/60 inline-block">
+                                โอนเข้า (รับแล้ว)
+                              </span>
+                            ) : (
+                              <span className="text-[11px] px-2.5 py-1 bg-amber-50 text-amber-700 rounded-lg font-bold border border-amber-200/60 inline-block">
+                                โอนเข้า (รอรับ)
+                              </span>
+                            )
                           ) : (
-                            <span className="text-[11px] px-2.5 py-1 bg-blue-50 text-blue-700 rounded-lg font-bold border border-blue-200/60 inline-block">
-                              โอนออก
-                            </span>
+                            t.status === 'COMPLETED' ? (
+                              <span className="text-[11px] px-2.5 py-1 bg-blue-50 text-blue-700 rounded-lg font-bold border border-blue-200/60 inline-block">
+                                โอนออก (ส่งแล้ว)
+                              </span>
+                            ) : (
+                              <span className="text-[11px] px-2.5 py-1 bg-slate-100 text-slate-700 rounded-lg font-bold border border-slate-200/60 inline-block">
+                                โอนออก
+                              </span>
+                            )
                           )}
                         </td>
-
+ 
                         {/* 3. รหัสเอกสาร + จุดสถานะสี */}
                         <td className="py-3.5 px-4">
                           <div className="flex items-center gap-2">
@@ -240,18 +257,31 @@ export default function ReceiveCheckPage() {
                             </span>
                           </div>
                         </td>
-
+ 
                         {/* 4. คลังต้นทาง */}
                         <td className="py-3.5 px-4 text-slate-700 font-medium text-[13px]">
                           {t.from_branch?.branch_name || '-'}
                         </td>
-
+ 
                         {/* 5. คลังปลายทาง */}
                         <td className="py-3.5 px-4 text-slate-700 font-medium text-[13px]">
                           {t.to_branch?.branch_name || '-'}
                         </td>
 
-                        {/* 6. สถานะเอกสาร */}
+                        {/* 5.1 จำนวนโอน */}
+                        <td className="py-3.5 px-4 text-center font-bold text-slate-700 text-[13px]">
+                          {totalTransferQty} ชิ้น
+                        </td>
+
+                        {/* 5.2 จำนวนรับ */}
+                        <td className="py-3.5 px-4 text-center font-bold text-[13px]">
+                          {t.status === 'COMPLETED' ? (
+                            <span className="text-emerald-600">{totalReceivedQty} ชิ้น</span>
+                          ) : (
+                            <span className="text-slate-400">-</span>
+                          )}
+                        </td>
+{/* 6. สถานะเอกสาร */}
                         <td className="py-3.5 px-4 text-center">
                           <div className="inline-flex items-center justify-between w-36 px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-200/60 shadow-sm transition-all bg-slate-50 text-slate-700">
                             <span>{statusConfig.text}</span>

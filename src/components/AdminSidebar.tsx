@@ -7,12 +7,12 @@ import {
   LayoutDashboard, Box, PlusCircle, ShoppingCart,
   MapPin, Tag, LogOut, Users, Receipt,
   BarChart3, History, Package, Settings, Frame,
-  Layers, ShieldCheck
+  Layers, ShieldCheck, AlertTriangle
 } from "lucide-react";
 
 // 1. เมนูที่ใช้บ่อย (งานประจำวัน)
 const primaryItems = [
-  { name: "Dashboard",       href: "/dashboard",    icon: LayoutDashboard },
+  // { name: "Dashboard",       href: "/dashboard",    icon: LayoutDashboard },
   // { name: "สต็อกทุกสาขา",   href: "/stock-all",    icon: Package },
   // { name: "ประวัติสต็อก",    href: "/stockmovement",icon: History },
   // { name: "ขายสินค้า (Slab)",href: "/sale_slab",    icon: ShoppingCart },
@@ -29,6 +29,7 @@ const secondaryItems = [
   { name: "พนักงาน",         href: "/employees",    icon: Users },
   // { name: "ใบเสร็จ",         href: "/receipts",     icon: Receipt },
   // { name: "รายงานยอดขาย",    href: "/sales-report", icon: BarChart3 },
+  { name: "ตรวจสอบ RFID ยอดเกิน", href: "/rfid-mismatch", icon: AlertTriangle },
   { name: "Backup & Restore", href: "/backup",       icon: ShieldCheck },
 ];
 

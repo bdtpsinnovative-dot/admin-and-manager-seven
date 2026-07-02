@@ -79,3 +79,57 @@ export async function deleteDiscount(id: number) {
   if (error) return { error: error.message }
   revalidatePath('/discounts')
 }
+
+// 4. แก้ไขส่วนลด
+export async function updateDiscount(formData: FormData) {
+  const supabase = await createClient();
+
+  const id = Number(formData.get('discount_id'))
+  const updateData: Record<string, any> = {}
+
+  const name = formData.get('name') as string
+  if (name) updateData.name = name
+
+  const discountType = formData.get('discount_type') as string
+  if (discountType) updateData.discount_type = discountType
+
+  const value = formData.get('value')
+  if (value) updateData.value = parseFloat(value as string)
+
+  if (Object.keys(updateData).length === 0) {
+    return { error: "ไม่มีข้อมูลที่ต้องแก้ไข" }
+  }
+
+  const { error } = await supabase
+    .from(TABLE_DISCOUNTS)
+    .update(updateData)
+    .eq('id', id)
+
+  if (error) return { error: error.message }
+
+  // อัพเดท branch_id ใน rules ถ้าส่งมา
+  const branchId = formData.get('branch_id')
+  if (branchId !== null && branchId !== undefined) {
+    const branchValue = branchId === '' ? null : branchId
+    await supabase
+      .from(TABLE_RULES)
+      .update({ branch_id: branchValue })
+      .eq('discount_id', id)
+  }
+
+  revalidatePath('/discounts')
+  return { success: true }
+}
+
+// 5. ถอดสินค้าบางตัวออกจากส่วนลด (ลบ rule เดียว)
+export async function removeDiscountRule(ruleId: number) {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from(TABLE_RULES)
+    .delete()
+    .eq('id', ruleId)
+
+  if (error) return { error: error.message }
+  revalidatePath('/discounts')
+  return { success: true }
+}

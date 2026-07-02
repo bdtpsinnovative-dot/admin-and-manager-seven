@@ -216,11 +216,14 @@ export async function getPrintDispatchData(orderCode: string) {
       company_name_en,
       company_address,
       tax_id,
+      special_discount_percent,
+      special_discount_baht,
       branches!orders_branch_fk ( branch_name ),
       order_items (
         id, 
         qty, 
         item_status,
+        price_at_sale,
         fulfill_branch_id,
         products!order_items_product_fk ( 
           name, sku, image_url, price,

@@ -40,7 +40,7 @@ export default function PrintQuotationPage() {
 
       if (isOutOfStock) return sum;
 
-      const price = item.price || item.products?.price || 0;
+      const price = item.price_at_sale ?? item.products?.price ?? 0;
       return sum + (price * item.qty);
     }, 0);
   }
@@ -48,7 +48,16 @@ export default function PrintQuotationPage() {
   if (loading) return <div className="min-h-screen flex items-center justify-center font-light text-neutral-400 tracking-widest animate-pulse">LOADING...</div>
   if (!data) return <div className="min-h-screen flex items-center justify-center font-light text-red-400 tracking-widest">DOCUMENT NOT FOUND</div>
 
-  const grandTotal = calculateTotal();
+  const totalItemsPrice = calculateTotal();
+  const specialDiscountPercent = Number(data?.special_discount_percent || 0);
+  const specialDiscountBaht = Number(data?.special_discount_baht || 0);
+  const afterBaht = Math.max(0, totalItemsPrice - specialDiscountBaht);
+  const specialDiscountPercentAmount = afterBaht * (specialDiscountPercent / 100);
+  const totalSpecialDiscount = specialDiscountBaht + specialDiscountPercentAmount;
+
+  const subTotalWithoutVat = Math.max(0, totalItemsPrice - totalSpecialDiscount);
+  const vatAmount = subTotalWithoutVat * 0.07;
+  const grandTotal = subTotalWithoutVat + vatAmount;
 
   const isEmbed = isEmbedQuery || (typeof window !== 'undefined' && window.location.search.includes('embed=true'))
 
@@ -194,7 +203,7 @@ export default function PrintQuotationPage() {
                 const currentLiveQty = branchStock ? Number(branchStock.qty) : 0;
                 const isOutOfStock = currentLiveQty < item.qty && data.status === 'PENDING';
 
-                const price = item.price || item.products?.price || 0;
+                const price = item.price_at_sale ?? item.products?.price ?? 0;
                 const total = price * item.qty;
                 const imageUrl = item.products?.image_url || 'https://placehold.co/150x150?text=No+Image';
 
@@ -262,13 +271,30 @@ export default function PrintQuotationPage() {
               </p>
             </div>
             <div className="w-56">
-              <div className="flex justify-between py-1 text-[9px] text-neutral-500">
-                <span>Subtotal</span>
-                <span>{grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span>
-              </div>
+              {totalSpecialDiscount > 0 ? (
+                <>
+                  <div className="flex justify-between py-1 text-[9px] text-neutral-500">
+                    <span>Subtotal</span>
+                    <span>{totalItemsPrice.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  </div>
+                  <div className="flex justify-between py-1 text-[9px] text-red-600">
+                    <span>Special Discount</span>
+                    <span>- {totalSpecialDiscount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  </div>
+                  <div className="flex justify-between py-1 text-[9px] text-neutral-500 border-t border-neutral-100">
+                    <span>Subtotal (Before VAT)</span>
+                    <span>{subTotalWithoutVat.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  </div>
+                </>
+              ) : (
+                <div className="flex justify-between py-1 text-[9px] text-neutral-500">
+                  <span>Subtotal (Before VAT)</span>
+                  <span>{subTotalWithoutVat.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+              )}
               <div className="flex justify-between py-1 text-[9px] text-neutral-500">
                 <span>VAT (7%)</span>
-                <span>Included</span>
+                <span>{vatAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
               </div>
               <div className="flex justify-between py-2 mt-1 border-t border-neutral-900">
                 <span className="text-[10px] font-bold text-neutral-900 uppercase tracking-widest mt-0.5">Total (THB)</span>

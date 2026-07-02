@@ -1,8 +1,8 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
-import { createDiscount, toggleDiscountStatus, deleteDiscount } from "../../../actions/discoun"
-import { Loader2, Plus, Trash2, Tag, Search, X, Check, Package } from "lucide-react"
+import { createDiscount, toggleDiscountStatus, deleteDiscount, updateDiscount, removeDiscountRule } from "../../../actions/discoun"
+import { Loader2, Plus, Trash2, Tag, Search, X, Check, Package, Edit, Save, XCircle, CheckCircle } from "lucide-react"
 
 const R2_BASE = "https://pub-258bd10e7e8c4a7690a74c54cfbdef93.r2.dev/"
 
@@ -105,7 +105,7 @@ function ProductPicker({ products }: { products: any[] }) {
         {filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full py-10">
             <Package className="w-10 h-10 text-slate-200 mb-2" />
-            <p className="text-sm text-slate-400">ไม่พบสินค้าที่ตรงกับ "{query}"</p>
+            <p className="text-sm text-slate-400">ไม่พบสินค้าที่ตรงกับ &quot;{query}&quot;</p>
           </div>
         ) : (
           <div className="divide-y divide-slate-100">
@@ -173,14 +173,55 @@ export default function DiscountClient({
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [loading, setLoading] = useState(false)
 
+  // Edit state
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false)
+  const [editingDiscount, setEditingDiscount] = useState<any | null>(null)
+  const [editLoading, setEditLoading] = useState(false)
+
+  // Alert state
+  const [alertState, setAlertState] = useState<{
+    isOpen: boolean;
+    type: 'success' | 'error';
+    title: string;
+    message: string;
+  }>({ isOpen: false, type: 'success', title: '', message: '' })
+
+  // Rule removing loading
+  const [removingRuleId, setRemovingRuleId] = useState<number | null>(null)
+
   const handleSubmit = async (formData: FormData) => {
     setLoading(true)
     const res = await createDiscount(formData)
     setLoading(false)
     if (res?.error) {
-      alert("Error: " + res.error)
+      setAlertState({ isOpen: true, type: 'error', title: 'เกิดข้อผิดพลาด', message: res.error })
     } else {
       setIsModalOpen(false)
+      setAlertState({ isOpen: true, type: 'success', title: 'สำเร็จ!', message: 'สร้างส่วนลดใหม่เรียบร้อยแล้ว' })
+    }
+  }
+
+  const handleEdit = async (formData: FormData) => {
+    setEditLoading(true)
+    const res = await updateDiscount(formData)
+    setEditLoading(false)
+    if (res?.error) {
+      setAlertState({ isOpen: true, type: 'error', title: 'เกิดข้อผิดพลาด', message: res.error })
+    } else {
+      setIsEditModalOpen(false)
+      setEditingDiscount(null)
+      setAlertState({ isOpen: true, type: 'success', title: 'สำเร็จ!', message: 'แก้ไขส่วนลดเรียบร้อยแล้ว' })
+    }
+  }
+
+  const handleRemoveRule = async (ruleId: number) => {
+    setRemovingRuleId(ruleId)
+    const res = await removeDiscountRule(ruleId)
+    setRemovingRuleId(null)
+    if (res?.error) {
+      setAlertState({ isOpen: true, type: 'error', title: 'เกิดข้อผิดพลาด', message: res.error })
+    } else {
+      setAlertState({ isOpen: true, type: 'success', title: 'สำเร็จ!', message: 'ถอดสินค้าออกจากส่วนลดแล้ว' })
     }
   }
 
@@ -212,23 +253,27 @@ export default function DiscountClient({
               <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">มูลค่า</th>
               <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">ใช้กับ</th>
               <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase text-center">สถานะ</th>
-              <th className="px-6 py-4"></th>
+              <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase text-right">จัดการ</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {discounts.length === 0 ? (
               <tr>
                 <td colSpan={5} className="px-6 py-12 text-center text-slate-400 text-sm">
-                  ยังไม่มีส่วนลด — กด "สร้างส่วนลดใหม่" เพื่อเริ่มต้น
+                  ยังไม่มีส่วนลด — กด &quot;สร้างส่วนลดใหม่&quot; เพื่อเริ่มต้น
                 </td>
               </tr>
             ) : discounts.map((item) => {
-              // หาสินค้าที่ผูกอยู่กับ rule
-              const ruleProductId = item.discount_rules?.[0]?.product_id
-              const linkedProduct = ruleProductId ? products.find(p => p.id === ruleProductId) : null
+              // หาสินค้าที่ผูกกับ rules พร้อม rule.id
+              const linkedItems = (item.discount_rules || [])
+                .map((r: any) => {
+                  const product = r.product_id ? products.find(p => p.id === r.product_id) : null
+                  return product ? { ...product, ruleId: r.id } : null
+                })
+                .filter(Boolean)
 
               return (
-                <tr key={item.id} className="hover:bg-slate-50 transition">
+                <tr key={item.id} className="hover:bg-slate-50 transition group">
                   <td className="px-6 py-4">
                     <p className="font-bold text-sm text-slate-800">{item.name}</p>
                     {item.code && <p className="text-xs text-slate-400 font-mono mt-0.5">{item.code}</p>}
@@ -239,32 +284,40 @@ export default function DiscountClient({
                     </span>
                   </td>
                   <td className="px-6 py-4">
-                    {(() => {
-                      const linkedProducts = (item.discount_rules || [])
-                        .map((r: any) => r.product_id ? products.find(p => p.id === r.product_id) : null)
-                        .filter(Boolean)
-                      if (linkedProducts.length === 0) return <span className="text-xs text-slate-400">ทุกสินค้า</span>
-                      return (
-                        <div className="flex flex-wrap gap-1.5">
-                          {linkedProducts.slice(0, 3).map((lp: any) => (
-                            <div key={lp.id} className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1">
-                              <div className="w-5 h-5 rounded overflow-hidden flex-shrink-0">
-                                {getImageUrl(lp.image_url)
-                                  ? <img src={getImageUrl(lp.image_url)!} alt="" className="w-full h-full object-cover" />
-                                  : <Package className="w-3 h-3 text-slate-300" />
-                                }
-                              </div>
-                              <span className="text-xs text-slate-600 font-medium max-w-[100px] truncate">{lp.name || lp.sku}</span>
+                    {linkedItems.length === 0 ? (
+                      <span className="text-xs text-slate-400">ทุกสินค้า</span>
+                    ) : (
+                      <div className="flex flex-wrap gap-1.5">
+                        {linkedItems.slice(0, 4).map((lp: any) => (
+                          <div key={lp.ruleId} className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 group/chip">
+                            <div className="w-5 h-5 rounded overflow-hidden flex-shrink-0">
+                              {getImageUrl(lp.image_url)
+                                ? <img src={getImageUrl(lp.image_url)!} alt="" className="w-full h-full object-cover" />
+                                : <Package className="w-3 h-3 text-slate-300" />
+                              }
                             </div>
-                          ))}
-                          {linkedProducts.length > 3 && (
-                            <div className="flex items-center px-2 py-1 bg-indigo-50 border border-indigo-200 rounded-lg">
-                              <span className="text-xs font-bold text-indigo-600">+{linkedProducts.length - 3}</span>
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })()}
+                            <span className="text-xs text-slate-600 font-medium max-w-[100px] truncate">{lp.name || lp.sku}</span>
+                            {/* ปุ่มถอดสินค้าออก */}
+                            <button
+                              onClick={() => handleRemoveRule(lp.ruleId)}
+                              disabled={removingRuleId === lp.ruleId}
+                              className="text-slate-300 hover:text-red-500 transition flex-shrink-0 opacity-0 group-hover/chip:opacity-100"
+                              title="ถอดสินค้านี้ออก"
+                            >
+                              {removingRuleId === lp.ruleId
+                                ? <Loader2 className="w-3 h-3 animate-spin" />
+                                : <X className="w-3 h-3" />
+                              }
+                            </button>
+                          </div>
+                        ))}
+                        {linkedItems.length > 4 && (
+                          <div className="flex items-center px-2 py-1 bg-indigo-50 border border-indigo-200 rounded-lg">
+                            <span className="text-xs font-bold text-indigo-600">+{linkedItems.length - 4}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </td>
                   <td className="px-6 py-4 text-center">
                     <button
@@ -275,9 +328,28 @@ export default function DiscountClient({
                     </button>
                   </td>
                   <td className="px-6 py-4 text-right">
-                    <button onClick={() => deleteDiscount(item.id)} className="text-slate-300 hover:text-red-500 p-2 transition">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      {/* ปุ่มแก้ไข */}
+                      <button
+                        onClick={() => { setEditingDiscount(item); setIsEditModalOpen(true); }}
+                        className="text-slate-400 hover:text-blue-600 hover:bg-blue-50 p-2 rounded-lg transition"
+                        title="แก้ไขส่วนลด"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
+                      {/* ปุ่มลบ */}
+                      <button
+                        onClick={() => {
+                          if (confirm("ต้องการลบส่วนลดนี้ออกถาวรใช่หรือไม่?")) {
+                            deleteDiscount(item.id)
+                          }
+                        }}
+                        className="text-slate-300 hover:text-red-500 hover:bg-red-50 p-2 rounded-lg transition"
+                        title="ลบส่วนลด"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               )
@@ -286,7 +358,189 @@ export default function DiscountClient({
         </table>
       </div>
 
-      {/* Modal — ใหญ่ 2 คอลัมน์ */}
+      {/* =================================================================================== */}
+      {/* ALERT MODAL */}
+      {/* =================================================================================== */}
+      {alertState.isOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4" style={{ animation: 'fadeIn 0.2s ease-out' }}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col items-center p-8" style={{ animation: 'scaleIn 0.25s ease-out' }}>
+            <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-4 ${alertState.type === 'success' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+              {alertState.type === 'success' ? <CheckCircle className="w-8 h-8" /> : <XCircle className="w-8 h-8" />}
+            </div>
+            <h3 className={`text-xl font-bold mb-2 ${alertState.type === 'success' ? 'text-slate-800' : 'text-red-600'}`}>
+              {alertState.title}
+            </h3>
+            <p className="text-slate-500 text-center mb-6 text-sm leading-relaxed">
+              {alertState.message}
+            </p>
+            <button
+              onClick={() => {
+                setAlertState({ ...alertState, isOpen: false });
+                if (alertState.type === 'success') window.location.reload();
+              }}
+              className={`w-full py-3 rounded-xl font-bold text-white shadow-lg transition-all active:scale-[0.97] ${alertState.type === 'success' ? 'bg-green-600 hover:bg-green-700 shadow-green-200' : 'bg-slate-800 hover:bg-slate-900 shadow-slate-200'}`}
+            >
+              {alertState.type === 'success' ? 'ตกลง' : 'รับทราบ'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* =================================================================================== */}
+      {/* EDIT MODAL */}
+      {/* =================================================================================== */}
+      {isEditModalOpen && editingDiscount && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4" style={{ animation: 'fadeIn 0.2s ease-out' }}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]" style={{ animation: 'scaleIn 0.25s ease-out' }}>
+
+            {/* Header */}
+            <div className="flex justify-between items-center px-6 py-5 border-b border-slate-100 bg-slate-50/50">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 flex items-center justify-center shadow-md">
+                  <Edit className="w-4 h-4 text-white" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-slate-800">แก้ไขส่วนลด</h2>
+                  <p className="text-[11px] text-slate-500">{editingDiscount.name}</p>
+                </div>
+              </div>
+              <button onClick={() => { setIsEditModalOpen(false); setEditingDiscount(null); }} className="p-2 hover:bg-slate-200/50 rounded-xl transition">
+                <X className="w-5 h-5 text-slate-400" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="overflow-y-auto p-6">
+              <form onSubmit={async (e) => { e.preventDefault(); await handleEdit(new FormData(e.currentTarget)); }} className="space-y-5">
+                <input type="hidden" name="discount_id" value={editingDiscount.id} />
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">ชื่อโปรโมชั่น</label>
+                  <input
+                    name="name"
+                    defaultValue={editingDiscount.name}
+                    required
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 transition"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">ประเภท</label>
+                    <select
+                      name="discount_type"
+                      defaultValue={editingDiscount.discount_type}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-300 transition"
+                    >
+                      <option value="PERCENT">เปอร์เซ็นต์ (%)</option>
+                      <option value="FIXED">จำนวนเงิน (฿)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">มูลค่า</label>
+                    <input
+                      name="value"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      defaultValue={editingDiscount.value}
+                      required
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-300 transition font-mono"
+                    />
+                  </div>
+                </div>
+
+                {branches.length > 0 && (
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">ใช้กับสาขา</label>
+                    <select
+                      name="branch_id"
+                      defaultValue={editingDiscount.discount_rules?.[0]?.branch_id || ""}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-300 transition"
+                    >
+                      <option value="">ทุกสาขา</option>
+                      {branches.map((b: any) => (
+                        <option key={b.id} value={b.id}>{b.branch_name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* แสดงสินค้าที่ผูกอยู่ — ถอดออกได้ */}
+                {(() => {
+                  const linkedItems = (editingDiscount.discount_rules || [])
+                    .map((r: any) => {
+                      const product = r.product_id ? products.find(p => p.id === r.product_id) : null
+                      return product ? { ...product, ruleId: r.id } : null
+                    })
+                    .filter(Boolean)
+
+                  if (linkedItems.length === 0) return null
+
+                  return (
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">
+                        สินค้าที่ผูกอยู่ ({linkedItems.length} รายการ)
+                      </label>
+                      <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 max-h-48 overflow-y-auto space-y-1.5">
+                        {linkedItems.map((lp: any) => (
+                          <div key={lp.ruleId} className="flex items-center gap-3 bg-white rounded-lg px-3 py-2 border border-slate-100 group/item hover:border-red-200 transition">
+                            <div className="w-8 h-8 rounded-lg overflow-hidden flex-shrink-0 border border-slate-200">
+                              {getImageUrl(lp.image_url)
+                                ? <img src={getImageUrl(lp.image_url)!} alt="" className="w-full h-full object-cover" />
+                                : <div className="w-full h-full bg-slate-100 flex items-center justify-center"><Package className="w-4 h-4 text-slate-300" /></div>
+                              }
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-slate-700 truncate">{lp.name || '—'}</p>
+                              <p className="text-[10px] text-slate-400 font-mono">{lp.sku}</p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveRule(lp.ruleId)}
+                              disabled={removingRuleId === lp.ruleId}
+                              className="text-slate-300 hover:text-red-500 p-1.5 rounded-lg hover:bg-red-50 transition opacity-0 group-hover/item:opacity-100 disabled:opacity-50"
+                              title="ถอดสินค้านี้ออก"
+                            >
+                              {removingRuleId === lp.ruleId
+                                ? <Loader2 className="w-4 h-4 animate-spin" />
+                                : <X className="w-4 h-4" />
+                              }
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                      <p className="text-[10px] text-slate-400 mt-1.5">กดปุ่ม X เพื่อถอดสินค้าออกจากส่วนลดนี้</p>
+                    </div>
+                  )
+                })()}
+
+                {/* Actions */}
+                <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+                  <button type="button" onClick={() => { setIsEditModalOpen(false); setEditingDiscount(null); }} className="px-5 py-2.5 text-sm text-slate-600 hover:bg-slate-100 rounded-xl font-medium transition">
+                    ยกเลิก
+                  </button>
+                  <button type="submit" disabled={editLoading} className="px-6 py-2.5 text-sm bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition font-bold flex items-center gap-2 disabled:opacity-50">
+                    {editLoading ? (
+                      <span className="flex items-center gap-2">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        กำลังบันทึก...
+                      </span>
+                    ) : (
+                      <><Save className="w-4 h-4" /> บันทึกการแก้ไข</>
+                    )}
+                  </button>
+                </div>
+
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =================================================================================== */}
+      {/* CREATE MODAL — ใหญ่ 2 คอลัมน์ */}
+      {/* =================================================================================== */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl h-[88vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
@@ -392,6 +646,19 @@ export default function DiscountClient({
           </div>
         </div>
       )}
+
+      {/* Global Animations */}
+      <style jsx global>{`
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes scaleIn {
+          from { opacity: 0; transform: scale(0.92); }
+          to { opacity: 1; transform: scale(1); }
+        }
+      `}</style>
+
     </div>
   )
 }

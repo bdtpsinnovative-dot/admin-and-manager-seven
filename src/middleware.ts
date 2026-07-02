@@ -1,7 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
-export async function proxy(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   let response = NextResponse.next({
     request: { headers: request.headers },
   })
@@ -25,6 +25,23 @@ export async function proxy(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   const path = request.nextUrl.pathname
 
+  // 🛠️ Helper สำหรับ Redirect โดยรักษาคุกกี้ (ป้องกันเซสชันหลุดเมื่อถูก Redirect)
+  const redirect = (targetPath: string) => {
+    const redirectResponse = NextResponse.redirect(new URL(targetPath, request.url))
+    response.cookies.getAll().forEach((cookie) => {
+      redirectResponse.cookies.set(cookie.name, cookie.value, {
+        path: cookie.path,
+        domain: cookie.domain,
+        maxAge: cookie.maxAge,
+        expires: cookie.expires,
+        secure: cookie.secure,
+        httpOnly: cookie.httpOnly,
+        sameSite: cookie.sameSite,
+      })
+    })
+    return redirectResponse
+  }
+
   // --- นิยาม Path ---
   const isLoginPage = path === '/login'
   const isAdminPath = path.startsWith('/dashboard') || 
@@ -33,7 +50,8 @@ export async function proxy(request: NextRequest) {
                       path.startsWith('/inventory') ||
                       path.startsWith('/lots') ||
                       path.startsWith('/props') ||
-                      path.startsWith('/CheckRfid')
+                      path.startsWith('/CheckRfid') ||
+                      path.startsWith('/rfid-mismatch')
   const isManagerPath = path.startsWith('/manager')
   const isSalePath = path.startsWith('/sale')
   const isProtectedPath = isAdminPath || isManagerPath || isSalePath
@@ -45,7 +63,7 @@ export async function proxy(request: NextRequest) {
 
   // 1. ถ้ายังไม่ Login แต่จะเข้าหน้าหวงห้าม -> ไป Login
   if (!user && isProtectedPath) {
-    return NextResponse.redirect(new URL('/login', request.url))
+    return redirect('/login')
   }
 
   // 2. ถ้า Login แล้ว
@@ -61,30 +79,30 @@ export async function proxy(request: NextRequest) {
 
     // ✅ ถ้า Login แล้วแต่อยู่หน้า Login -> ดีดไปหน้า Dashboard ตาม Role
     if (isLoginPage) {
-        if (role === 'admin') return NextResponse.redirect(new URL('/dashboard', request.url))
-        if (role === 'manager') return NextResponse.redirect(new URL('/manager/dashboard', request.url))
-        if (role === 'sale') return NextResponse.redirect(new URL('/sale/pos', request.url))
+        if (role === 'admin') return redirect('/dashboard')
+        if (role === 'manager') return redirect('/manager/dashboard')
+        if (role === 'sale') return redirect('/sale/pos')
     }
 
     // ⛔ Admin Path Check
     if (isAdminPath && role !== 'admin') {
-      if (role === 'manager') return NextResponse.redirect(new URL('/manager/dashboard', request.url))
-      if (role === 'sale') return NextResponse.redirect(new URL('/sale/pos', request.url))
-      return NextResponse.redirect(new URL('/login', request.url))
+      if (role === 'manager') return redirect('/manager/dashboard')
+      if (role === 'sale') return redirect('/sale/pos')
+      return redirect('/login')
     }
 
     // ⛔ Manager Path Check
     if (isManagerPath && role !== 'manager') {
-       if (role === 'admin') return NextResponse.redirect(new URL('/dashboard', request.url)) 
-       if (role === 'sale') return NextResponse.redirect(new URL('/sale/pos', request.url))
-       return NextResponse.redirect(new URL('/login', request.url))
+       if (role === 'admin') return redirect('/dashboard') 
+       if (role === 'sale') return redirect('/sale/pos')
+       return redirect('/login')
     }
 
     // ⛔ Sale Path Check
     if (isSalePath && role !== 'sale') {
-       if (role === 'admin') return NextResponse.redirect(new URL('/dashboard', request.url))
-       if (role === 'manager') return NextResponse.redirect(new URL('/manager/dashboard', request.url))
-       return NextResponse.redirect(new URL('/login', request.url))
+       if (role === 'admin') return redirect('/dashboard')
+       if (role === 'manager') return redirect('/manager/dashboard')
+       return redirect('/login')
     }
   }
 

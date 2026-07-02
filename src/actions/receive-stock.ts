@@ -25,7 +25,8 @@ export async function getTransfersList() {
     .select(`
       id, transfer_code, status, note, created_at, from_branch_id, to_branch_id,
       from_branch:branches!stock_transfers_from_branch_fkey(branch_name),
-      to_branch:branches!stock_transfers_to_branch_fkey(branch_name)
+      to_branch:branches!stock_transfers_to_branch_fkey(branch_name),
+      stock_transfer_items(transfer_qty, received_qty)
     `)
     .order('created_at', { ascending: false })
 

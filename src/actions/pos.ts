@@ -122,6 +122,8 @@ export interface CheckoutPayload {
   companyNameEn?: string | null;     // ✨ ชื่อบริษัท (อังกฤษ)
   companyAddress?: string | null;  // ✨ เพิ่มข้อมูลบริษัท
   taxId?: string | null;           // ✨ เพิ่มข้อมูลบริษัท
+  specialDiscountPercent?: number;  // ✨ ส่วนลดพิเศษ %
+  specialDiscountBaht?: number;     // ✨ ส่วนลดพิเศษ บาท
   items: {
     productId: number; 
     qty: number; 
@@ -208,7 +210,9 @@ export async function processCheckout(payload: CheckoutPayload) {
           company_name_th: payload.companyNameTh || null,
           company_name_en: payload.companyNameEn || null,
           company_address: payload.companyAddress || null,
-          tax_id: payload.taxId || null
+          tax_id: payload.taxId || null,
+          special_discount_percent: payload.specialDiscountPercent || 0,
+          special_discount_baht: payload.specialDiscountBaht || 0
         })
         .eq('id', payload.orderId)
         .select('id').single()
@@ -255,7 +259,9 @@ export async function processCheckout(payload: CheckoutPayload) {
           company_name_th: payload.companyNameTh || null,
           company_name_en: payload.companyNameEn || null,
           company_address: payload.companyAddress || null,
-          tax_id: payload.taxId || null
+          tax_id: payload.taxId || null,
+          special_discount_percent: payload.specialDiscountPercent || 0,
+          special_discount_baht: payload.specialDiscountBaht || 0
         }).select('id').single()
 
       if (insertError) {
@@ -369,7 +375,7 @@ export async function getOrderForEdit(orderCode: string) {
   const { data: order, error } = await supabase
     .from('orders')
     .select(`
-      id, order_code, status, shipping_name, shipping_phone, shipping_address, latitude, longitude, company_name_th, company_name_en, company_address, tax_id,
+      id, order_code, status, shipping_name, shipping_phone, shipping_address, latitude, longitude, company_name_th, company_name_en, company_address, tax_id, special_discount_percent, special_discount_baht,
       order_items (
         id, product_id, qty, price_at_sale, fulfill_branch_id, discount_id, discount_name, discount_amount_per_piece,
         branches!order_items_fulfill_branch_fk ( branch_name )

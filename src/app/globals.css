@@ -2,4 +2,13 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ส่วนที่เหลือปล่อยไว้ หรือลบทิ้งให้เกลี้ยงก็ได้ครับ ให้เหลือแค่ 3 บรรทัดบนก็พอ */
+/* Hide HTML5 number input spinner arrows */
+input::-webkit-outer-spin-button,
+input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type=number] {
+  -moz-appearance: textfield;
+}

@@ -5,7 +5,11 @@ import JsBarcode from "jsbarcode";
 import QRCode from "qrcode";
 import { updatePropImageUrl } from "@/actions/props";
 import PropBoxCalculator from "./PropBoxCalculator";
-//asdasdasdasdasd
+import { 
+  Search, X, Check, Edit, Printer, FileDown, FileUp, 
+  Package, Image as ImageIcon, Loader2, Plus, Trash2, Save 
+} from "lucide-react";
+
 function BarcodeSvg({ value }: { value: string }) {
   const ref = useRef<SVGSVGElement>(null);
   useEffect(() => {
@@ -148,43 +152,69 @@ export default function PropsClient({ products }: Props) {
       alert("ไม่พบข้อมูลที่ตรงกับในระบบเลยครับนาย กรุณาตรวจสอบว่า Copy มาถูกคอลัมน์ไหม (จำนวน [Tab] รหัสสินค้า)");
     }
   };
-const printQrPhoto = async () => {
+
+  const printQrPhoto = async () => {
     const win = window.open("", "_blank", "width=900,height=700");
     if (!win) return;
     const groups: string[] = [];
+
     for (const p of printTargets) {
       const sets = quantities[p.id] || 1;
       const val = p.barcode || p.sku || '';
+      
       let qrImg = '';
-      try { qrImg = await QRCode.toDataURL(val, { width: 200, margin: 1, errorCorrectionLevel: 'M' }); } catch {}
+      try { 
+        qrImg = await QRCode.toDataURL(val, { width: 200, margin: 1, errorCorrectionLevel: 'M' }); 
+      } catch {}
+
       const specs = p.specs || {};
       const L = p.length_cm ?? specs.length_cm ?? '';
       const W = p.width_cm ?? specs.width_cm ?? '';
       const T = p.thickness_cm ?? specs.thickness_cm ?? '';
       
-      const sizeStr = (L || W || T) ? `${L}×${W}×${T}&nbsp;CM` : (specs.size || '');
+      const sizeStr = (L || W || T) ? `${L}×${W}×${T} CM` : (specs.size || '');
       const colorStr = p.color || '';
+      const priceStr = p.price ? new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB', minimumFractionDigits: 0 }).format(p.price) : '';
 
       for (let i = 0; i < sets; i++) {
         groups.push(`
           <div class="group">
-            <div class="photo-cell"><img src="${p.image_url || ''}" onerror="this.style.display='none'" /></div>
-            <div class="qr-col">
-              <div class="qr-cell"><img src="${qrImg}" /><div class="code">${val}</div></div>
-              <div class="qr-cell"><img src="${qrImg}" /><div class="code">${val}</div></div>
-            </div>
-            <div class="info">
-              <div class="pname">${p.name || ''}</div>
-              <div class="rows">
-                <div class="col">
-                  ${colorStr ? `<div class="row"><span class="label">COLOR</span><span class="val">${colorStr}</span></div>` : ''}
-                  ${sizeStr ? `<div class="row"><span class="label">SIZE</span><span class="val">${sizeStr}</span></div>` : ''}
+            <div class="top-sec">
+              <div class="photo-cell">
+                <img src="${p.image_url || ''}" onerror="this.style.display='none'" />
+              </div>
+              <div class="codes-cell">
+                <div class="qr-container-half">
+                  <img src="${qrImg}" />
                 </div>
-                <div class="col">
-                  <div class="row"><span class="label">SKU</span><span class="val">${p.sku || ''}</span></div>
-                  ${p.barcode ? `<div class="row"><span class="label">BARCODE</span><span class="val barcode-val">${p.barcode}</span></div>` : ''}
+                <div class="qr-container-half">
+                  <img src="${qrImg}" />
                 </div>
               </div>
+            </div>
+            
+            <div class="info-sec">
+              <div class="pname">${p.name || ''}</div>
+              <div class="details-list">
+                <div class="detail-row">
+                  <span class="detail-label">SKU</span>
+                  <span class="detail-val" title="${p.sku || ''}">${p.sku || '—'}</span>
+                </div>
+                ${p.barcode ? `
+                <div class="detail-row">
+                  <span class="detail-label">BARCODE</span>
+                  <span class="detail-val" title="${p.barcode}">${p.barcode}</span>
+                </div>` : ''}
+                <div class="detail-row">
+                  <span class="detail-label">COLOR</span>
+                  <span class="detail-val" title="${colorStr}">${colorStr || '—'}</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">SIZE</span>
+                  <span class="detail-val" title="${sizeStr}">${sizeStr || '—'}</span>
+                </div>
+              </div>
+              ${priceStr ? `<div class="price-tag">${priceStr}</div>` : ''}
             </div>
           </div>`);
       }
@@ -203,31 +233,145 @@ const printQrPhoto = async () => {
       .page:last-child{page-break-after:auto}
       
       .grid{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);gap:0;height:100%; border-top:1px solid #bbb; border-left:1px solid #bbb;}
-      .group{display:grid;grid-template-columns:2fr 1fr;grid-template-rows:1fr auto; border-right:1px solid #bbb; border-bottom:1px solid #bbb; border-radius:0; overflow:hidden;background:#fff;min-height:0}
       
-      .photo-cell{grid-column:1;grid-row:1;border-right:0.8px solid #ccc;background:#f8f8f8;display:flex;align-items:center;justify-content:center;padding:1.5mm;overflow:hidden;min-height:0}
-      .photo-cell img{width:100%;height:100%;object-fit:contain;display:block}
-      .qr-col{grid-column:2;grid-row:1;display:flex;flex-direction:column;min-height:0;overflow:hidden}
-      .qr-cell{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:1mm;flex:1;border-bottom:0.8px solid #ddd;background:#fff;min-height:0;overflow:hidden}
-      .qr-cell:last-child{border-bottom:none}
-      .qr-cell img{width:75%;display:block;object-fit:contain}
+      .group { 
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        border-right: 1px solid #bbb; 
+        border-bottom: 1px solid #bbb; 
+        background: #fff; 
+        padding: 3mm;
+        height: 100%;
+        overflow: hidden;
+      }
       
-      .info{grid-column:1/3;grid-row:2;border-top:1px solid #bbb;padding:2.5mm 3mm;background:#fff;overflow:hidden;display:flex;flex-direction:column;}
-      .pname{font-size:8pt;font-weight:900;color:#000;margin-bottom:1.5mm;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+      .top-sec {
+        display: flex;
+        height: 44mm;
+        min-height: 0;
+        margin-bottom: 2mm;
+        border-bottom: 1px solid #ddd;
+      }
       
-      /* --- ปรับ Grid ใหม่ คืนพื้นที่ให้ฝั่งขวานิดนึง --- */
-      .rows{display:grid; grid-template-columns: 1fr 1.1fr; gap:1.5mm; width:100%; align-items: start;}
-      .col{display:flex;flex-direction:column;gap:1mm;min-width:0; overflow:hidden;}
-      .row{display:flex;align-items:flex-start;gap:1mm;line-height:1.2;}
+      .photo-cell {
+        flex: 1.4;
+        height: 100%;
+        background: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+      }
       
-      /* --- ปรับพื้นที่ Label ให้คำว่า BARCODE ใส่พอดี --- */
-      .label{color:#666;flex-shrink:0;width:11mm;font-size:4.5pt;font-weight:800;text-transform:uppercase;padding-top:0.5px;}
-      .val{color:#111;flex:1;font-size:5.5pt;font-weight:800;word-wrap:break-word;}
+      .photo-cell img {
+        max-width: 100%;
+        max-height: 100%;
+        object-fit: contain;
+        display: block;
+      }
       
-      /* --- ล็อค Barcode ให้จบในบรรทัดเดียวเด็ดขาด --- */
-      .barcode-val{font-size:4.5pt; white-space:nowrap; letter-spacing:-0.1px;} 
+      .codes-cell {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        min-width: 0;
+        border-left: 1px solid #eee;
+      }
       
-      .code{font-size:4pt;font-family:monospace;text-align:center;padding:0.5mm 0 0;word-break:break-all;color:#555}
+      .qr-container-half {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        flex: 1;
+        width: 100%;
+        padding: 1mm;
+        overflow: hidden;
+      }
+      
+      .qr-container-half:first-child {
+        border-bottom: 1px solid #eee;
+      }
+      
+      .qr-container-half img {
+        width: 100%;
+        max-width: 17mm;
+        max-height: 17mm;
+        object-fit: contain;
+      }
+      
+      .qr-code-text {
+        font-size: 5pt;
+        font-family: monospace;
+        color: #555;
+        text-align: center;
+        margin-top: 0.5mm;
+        word-break: break-all;
+        line-height: 1;
+      }
+      
+      .info-sec {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        padding-top: 2mm;
+        min-height: 0;
+      }
+      
+      .pname {
+        font-size: 8.5pt;
+        font-weight: 800;
+        color: #000;
+        line-height: 1.2;
+        height: 8.5mm;
+        overflow: hidden;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        margin-bottom: 1.5mm;
+      }
+      
+      .details-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.8mm;
+      }
+      
+      .detail-row {
+        display: flex;
+        align-items: flex-start;
+        font-size: 7pt;
+        line-height: 1.25;
+      }
+      
+      .detail-label {
+        color: #555;
+        font-weight: 800;
+        width: 15mm;
+        flex-shrink: 0;
+      }
+      
+      .detail-val {
+        color: #000;
+        font-weight: 800;
+        white-space: normal;
+        word-break: break-all;
+      }
+      
+      .price-tag {
+        font-size: 11pt;
+        font-weight: 900;
+        color: #000;
+        border-top: 1px dashed #ccc;
+        padding-top: 1.5mm;
+        margin-top: 1.5mm;
+        text-align: right;
+      }
     </style></head><body>
     ${pages.join("")}
     <script>window.onload=()=>{window.print();window.onafterprint=()=>window.close()}<\/script>
@@ -240,14 +384,18 @@ const printQrPhoto = async () => {
 
   return (
     <>
-      <div className="p-6 bg-[#fafafa] min-h-screen font-sans">
+      <div className="p-4 md:p-6 bg-slate-50 min-h-screen font-sans text-slate-800">
+        
         {/* Header */}
-        <div className="flex justify-between items-center mb-6">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 border-b border-slate-200 pb-4">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">🖼️ Props Inventory</h1>
-            <p className="text-gray-500 text-sm">จัดการรายการสินค้าประกอบฉากทั้งหมด ({products.length} รายการ)</p>
+            <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+              <Package className="w-6 h-6 text-indigo-600" />
+              <span>Props Inventory</span>
+            </h1>
+            <p className="text-slate-500 text-xs mt-0.5">จัดการรายการสินค้าประกอบฉากทั้งหมด {products.length} รายการ</p>
           </div>
-          <Link href="/props/upload" className="bg-black text-white px-6 py-3 rounded-2xl hover:bg-gray-800 transition shadow-lg font-medium text-sm">
+          <Link href="/props/upload" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-semibold text-sm transition">
             + Add New Prop
           </Link>
         </div>
@@ -255,21 +403,23 @@ const printQrPhoto = async () => {
         {/* Search Bar */}
         <div className="mb-4">
           <div className="relative">
-            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-lg">🔍</span>
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               placeholder="ค้นหาชื่อ, SKU, บาร์โค้ด, สี..."
-              className="w-full pl-11 pr-4 py-3 bg-white border border-gray-200 rounded-2xl shadow-sm text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+              className="w-full pl-9 pr-8 py-2 text-sm border border-slate-200 rounded outline-none focus:border-indigo-500 bg-white"
             />
             {searchQuery && (
               <button onClick={() => setSearchQuery("")}
-                className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-lg">✕</button>
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                <X className="w-4 h-4" />
+              </button>
             )}
           </div>
           {searchQuery && (
-            <p className="text-xs text-gray-400 mt-1 ml-1">พบ {filteredProducts.length} รายการ จาก {products.length} ทั้งหมด</p>
+            <p className="text-xs text-slate-400 mt-1 ml-1">พบ {filteredProducts.length} รายการ จาก {products.length} ทั้งหมด</p>
           )}
         </div>
 
@@ -280,38 +430,40 @@ const printQrPhoto = async () => {
         />
 
         {/* Action Bar */}
-        <div className="flex items-center gap-3 mb-6 bg-white p-3 rounded-2xl border border-gray-100 shadow-sm flex-wrap">
+        <div className="flex items-center gap-2 mb-6 bg-white p-3 rounded border border-slate-200 flex-wrap">
           <button onClick={toggleAll}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl border-2 border-gray-200 text-sm font-semibold text-gray-600 hover:border-gray-400 transition">
-            <span className={`w-4 h-4 rounded border-2 flex items-center justify-center ${allSelected ? 'bg-black border-black' : 'border-gray-400'}`}>
-              {allSelected && <span className="text-white text-[10px]">✓</span>}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition">
+            <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center ${allSelected ? 'bg-slate-800 border-slate-800' : 'border-slate-300 bg-white'}`}>
+              {allSelected && <Check className="text-white w-2.5 h-2.5" />}
             </span>
-            {allSelected ? 'ยกเลิกทั้งหมด' : 'เลือกทั้งหมด'}
+            <span>{allSelected ? 'ยกเลิกทั้งหมด' : 'เลือกทั้งหมด'}</span>
           </button>
 
           <button onClick={() => setShowImportModal(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl border-2 border-green-500 text-green-600 text-sm font-semibold hover:bg-green-50 transition shadow-sm">
-            📋 นำเข้าจาก Sheets
+            className="flex items-center gap-1 px-3 py-1.5 rounded border border-green-200 bg-green-50/50 text-green-600 text-xs font-semibold hover:bg-green-50 transition">
+            <FileUp className="w-3.5 h-3.5" />
+            <span>นำเข้าจาก Sheets</span>
           </button>
 
           {selected.size > 0 && (
             <button onClick={() => openModal(selectedProducts)}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition shadow">
-              🖨️ ปริ้นที่เลือก ({selected.size})
+              className="flex items-center gap-1 px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition">
+              <Printer className="w-3.5 h-3.5" />
+              <span>พิมพ์ที่เลือก ({selected.size})</span>
             </button>
           )}
           <button onClick={() => openModal(products)}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gray-800 text-white text-sm font-semibold hover:bg-black transition shadow">
-            🖨️ ปริ้นทั้งหมด
+            className="flex items-center gap-1 px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold transition">
+            <Printer className="w-3.5 h-3.5" />
+            <span>พิมพ์ทั้งหมด</span>
           </button>
-          {selected.size > 0 && <span className="ml-auto text-sm text-gray-500">เลือก {selected.size} รายการ</span>}
+          {selected.size > 0 && <span className="ml-auto text-xs text-slate-500">เลือก {selected.size} รายการ</span>}
         </div>
 
         {/* Product Grid */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
           {filteredProducts.length === 0 && (
-            <div className="col-span-full text-center py-16 text-gray-400">
-              <div className="text-5xl mb-3">🔍</div>
+            <div className="col-span-full text-center py-16 border border-slate-200 border-dashed rounded bg-white text-slate-400">
               <p className="font-semibold">ไม่พบสินค้าที่ตรงกับ &quot;{searchQuery}&quot;</p>
             </div>
           )}
@@ -324,36 +476,36 @@ const printQrPhoto = async () => {
             const displayImage = localImages[item.id] ?? item.image_url;
             return (
               <div key={item.id} onClick={() => toggleSelect(item.id)}
-                className={`bg-white rounded-2xl shadow-sm hover:shadow-lg transition-all duration-200 overflow-hidden border-2 cursor-pointer
-                  ${selected.has(item.id) ? 'border-blue-500 ring-2 ring-blue-100' : 'border-gray-100 hover:border-gray-200'}`}>
+                className={`bg-white rounded border hover:shadow transition overflow-hidden cursor-pointer relative
+                  ${selected.has(item.id) ? 'border-blue-500 bg-blue-50/10' : 'border-slate-200 hover:border-slate-300'}`}>
 
-                <div className="relative aspect-square bg-[#f3f3f3] m-1.5 rounded-xl overflow-hidden">
-                  <div className={`absolute top-1.5 left-1.5 z-10 w-5 h-5 rounded border-2 flex items-center justify-center shadow
-                    ${selected.has(item.id) ? 'bg-blue-500 border-blue-500' : 'bg-white border-gray-300'}`}>
-                    {selected.has(item.id) && <span className="text-white text-[10px] font-bold">✓</span>}
+                <div className="relative aspect-square bg-slate-50 m-1.5 rounded border border-slate-100 overflow-hidden">
+                  <div className={`absolute top-1.5 left-1.5 z-10 w-4 h-4 rounded border flex items-center justify-center
+                    ${selected.has(item.id) ? 'bg-blue-500 border-blue-500' : 'bg-white border-slate-300'}`}>
+                    {selected.has(item.id) && <Check className="text-white w-3 h-3" />}
                   </div>
                   <button onClick={(e) => openEditImage(e, item)}
                     title="เปลี่ยนรูปภาพ"
-                    className="absolute top-1.5 right-1.5 z-10 w-6 h-6 rounded-full bg-white/80 hover:bg-white border border-gray-200 flex items-center justify-center shadow text-[11px] transition hover:scale-110">
-                    ✏️
+                    className="absolute top-1.5 right-1.5 z-10 w-6 h-6 rounded bg-white/90 hover:bg-white border border-slate-200 flex items-center justify-center shadow-sm transition active:scale-95">
+                    <Edit className="w-3.5 h-3.5 text-slate-500" />
                   </button>
                   <img src={displayImage || "/placeholder.png"} alt={item.name}
-                    className="object-contain w-full h-full p-2" />
+                    className="object-contain w-full h-full p-1.5" />
                 </div>
 
                 <div className="px-2.5 pb-3 pt-1">
-                  <div className="flex items-center gap-1 mb-0.5 flex-wrap">
-                    <span className="text-[9px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full font-bold uppercase">{item.color || '–'}</span>
+                  <div className="flex items-center gap-1 mb-1.5 flex-wrap">
+                    <span className="text-[9px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-bold uppercase">{item.color || '–'}</span>
                     {sizeStr && (
-                      <span className="text-[9px] bg-blue-50 text-blue-500 px-1.5 py-0.5 rounded-full font-bold">{sizeStr}</span>
+                      <span className="text-[9px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-bold">{sizeStr}</span>
                     )}
                   </div>
-                  <h3 className="text-[10px] font-bold text-gray-800 mb-1.5 line-clamp-1">{item.name}</h3>
+                  <h3 className="text-xs font-bold text-slate-800 mb-2 line-clamp-1">{item.name}</h3>
 
-                  <div className="bg-gray-50 rounded-lg px-1 py-1">
+                  <div className="bg-slate-50 rounded p-1 border border-slate-100">
                     {item.barcode
                       ? <BarcodeSvg value={item.barcode} />
-                      : <p className="text-center text-[9px] text-gray-400 py-2">ไม่มีบาร์โค้ด</p>}
+                      : <p className="text-center text-[10px] text-slate-400 py-2">ไม่มีบาร์โค้ด</p>}
                   </div>
                 </div>
               </div>
@@ -364,16 +516,21 @@ const printQrPhoto = async () => {
 
       {/* Print Modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowModal(false)}>
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
-            <div className="p-6 border-b">
-              <h2 className="text-xl font-bold">🖨️ เลือกจำนวนที่ต้องการปริ้น</h2>
-              <p className="text-gray-500 text-sm mt-1">
-                รวม <b>{totalSets} ชุด</b> | 1 ชุด = รูป + QR×2 + ข้อมูล
-              </p>
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowModal(false)}>
+          <div className="bg-white rounded border border-slate-200 w-full max-w-2xl max-h-[80vh] flex flex-col shadow-xl" onClick={e => e.stopPropagation()}>
+            <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50/50">
+              <div>
+                <h2 className="text-base font-bold text-slate-800">เลือกจำนวนที่ต้องการพิมพ์</h2>
+                <p className="text-slate-500 text-xs mt-0.5">
+                  รวม <b>{totalSets} ชุด</b> | 1 ชุด = รูป + QR x 2 + ข้อมูล
+                </p>
+              </div>
+              <button onClick={() => setShowModal(false)} className="p-1 hover:bg-slate-100 rounded text-slate-400 transition">
+                <X className="w-4 h-4" />
+              </button>
             </div>
 
-            <div className="overflow-y-auto flex-1 p-6 space-y-3">
+            <div className="overflow-y-auto flex-1 p-4 space-y-2 bg-slate-50">
               {printTargets.map(p => {
                 const specs = p.specs || {};
                 const L = p.length_cm ?? specs.length_cm ?? '';
@@ -381,38 +538,37 @@ const printQrPhoto = async () => {
                 const T = p.thickness_cm ?? specs.thickness_cm ?? '';
                 const sizeStr = (L || W || T) ? `${L}×${W}×${T} CM` : (specs.size || '');
                 return (
-                  <div key={p.id} className="flex items-center gap-3 bg-gray-50 rounded-2xl p-3">
+                  <div key={p.id} className="flex items-center gap-3 bg-white rounded border border-slate-200 p-2.5">
                     <img src={p.image_url || "/placeholder.png"} alt={p.name}
-                      className="w-10 h-10 object-contain rounded-lg bg-white border shrink-0" />
+                      className="w-10 h-10 object-contain rounded bg-slate-50 border shrink-0" />
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold text-gray-800 truncate">{p.name}</p>
-                      <p className="text-xs font-mono text-gray-400 truncate">{p.barcode || p.sku}</p>
-                      {sizeStr && <p className="text-xs text-blue-500 font-semibold">{sizeStr}</p>}
+                      <p className="text-sm font-bold text-slate-800 truncate">{p.name}</p>
+                      <p className="text-xs font-mono text-slate-400 truncate">{p.barcode || p.sku}</p>
+                      {sizeStr && <p className="text-xs text-blue-600 font-semibold">{sizeStr}</p>}
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
-                      <span className="text-xs text-gray-500">ชุด:</span>
+                      <span className="text-xs text-slate-500">ชุด:</span>
                       <button onClick={() => setQuantities(q => ({ ...q, [p.id]: Math.max(1, (q[p.id] || 1) - 1) }))}
-                        className="w-7 h-7 rounded-lg bg-gray-200 font-bold text-gray-700 hover:bg-gray-300 transition text-sm">−</button>
+                        className="w-7 h-7 rounded bg-slate-100 font-bold text-slate-600 hover:bg-slate-200 transition text-sm">−</button>
                       <input type="number" min={1} value={quantities[p.id] || 1}
                         onChange={e => setQuantities(q => ({ ...q, [p.id]: Math.max(1, parseInt(e.target.value) || 1) }))}
-                        className="w-11 text-center border rounded-lg text-sm font-bold py-1" />
+                        className="w-11 text-center border border-slate-200 rounded text-xs font-bold py-1 bg-white" />
                       <button onClick={() => setQuantities(q => ({ ...q, [p.id]: (q[p.id] || 1) + 1 }))}
-                        className="w-7 h-7 rounded-lg bg-gray-200 font-bold text-gray-700 hover:bg-gray-300 transition text-sm">+</button>
+                        className="w-7 h-7 rounded bg-slate-100 font-bold text-slate-600 hover:bg-slate-200 transition text-sm">+</button>
                     </div>
                   </div>
                 );
               })}
             </div>
 
-            <div className="p-6 border-t flex flex-col gap-3">
+            <div className="p-4 border-t border-slate-200 flex flex-col gap-2 bg-white">
               <button onClick={printQrPhoto}
-                className="flex flex-col items-center gap-1 py-5 rounded-2xl border-2 border-orange-300 bg-orange-50 hover:bg-orange-100 transition font-semibold text-gray-700 text-sm">
-                <span className="text-3xl">🔲🖼️</span>
-                <span className="font-bold text-base">ปริ้น QR + รูป + ข้อมูล</span>
-                <span className="text-xs text-gray-400 font-normal">รูปซ้าย · QR ขวาซ้อน 2 อัน · ข้อมูลล่าง</span>
+                className="flex flex-col items-center gap-1 py-4 rounded border border-orange-200 bg-orange-50 hover:bg-orange-100 transition text-slate-700 text-sm">
+                <span className="font-bold text-sm">พิมพ์ QR + รูป + ข้อมูล</span>
+                <span className="text-[11px] text-slate-400">รูปซ้าย · QR ขวา 2 อัน · ข้อมูลด้านล่าง</span>
               </button>
               <button onClick={() => setShowModal(false)}
-                className="w-full py-3 rounded-2xl border-2 border-gray-200 font-semibold text-gray-500 hover:bg-gray-50 transition text-sm">
+                className="w-full py-2 rounded border border-slate-200 font-semibold text-slate-500 hover:bg-slate-50 transition text-sm">
                 ยกเลิก
               </button>
             </div>
@@ -422,27 +578,29 @@ const printQrPhoto = async () => {
 
       {/* Image Edit Modal */}
       {editImageItem && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setEditImageItem(null)}>
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm flex flex-col gap-4 p-6" onClick={e => e.stopPropagation()}>
-            <h2 className="text-lg font-bold">🖼️ เปลี่ยนรูปภาพ</h2>
-            <p className="text-sm text-gray-500 -mt-2 font-medium truncate">{editImageItem.name}</p>
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setEditImageItem(null)}>
+          <div className="bg-white rounded border border-slate-200 w-full max-w-sm flex flex-col gap-4 p-5 shadow-xl" onClick={e => e.stopPropagation()}>
+            <h2 className="text-base font-bold text-slate-800">เปลี่ยนรูปภาพ</h2>
+            <p className="text-xs text-slate-400 -mt-2 truncate">{editImageItem.name}</p>
 
             {/* Preview */}
-            <div className="bg-gray-100 rounded-2xl aspect-square flex items-center justify-center overflow-hidden">
-              {editImageUrl
-                ? <img src={editImageUrl} alt="preview" className="object-contain w-full h-full p-3"
-                    onError={e => (e.currentTarget.style.opacity = "0.3")} />
-                : <span className="text-gray-400 text-4xl">🖼️</span>}
+            <div className="bg-slate-50 rounded border border-slate-100 aspect-square flex items-center justify-center overflow-hidden">
+              {editImageUrl ? (
+                <img src={editImageUrl} alt="preview" className="object-contain w-full h-full p-2"
+                  onError={e => (e.currentTarget.style.opacity = "0.3")} />
+              ) : (
+                <ImageIcon className="w-10 h-10 text-slate-300" />
+              )}
             </div>
 
             <div>
-              <label className="text-xs font-bold text-gray-500 mb-1 block">URL รูปภาพ</label>
+              <label className="text-xs font-bold text-slate-500 mb-1 block">URL รูปภาพ</label>
               <input
                 type="url"
                 value={editImageUrl}
                 onChange={e => { setEditImageUrl(e.target.value); setImageError(""); }}
                 placeholder="https://example.com/image.jpg"
-                className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                className="w-full border border-slate-200 rounded px-3 py-2 text-sm outline-none focus:border-indigo-500"
                 autoFocus
               />
               {imageError && <p className="text-red-500 text-xs mt-1">{imageError}</p>}
@@ -450,12 +608,22 @@ const printQrPhoto = async () => {
 
             <div className="flex gap-2">
               <button onClick={() => setEditImageItem(null)}
-                className="flex-1 py-2.5 rounded-xl border-2 border-gray-200 text-sm font-semibold text-gray-500 hover:bg-gray-50 transition">
+                className="flex-1 py-2 rounded border border-slate-200 text-sm font-semibold text-slate-500 hover:bg-slate-50 transition">
                 ยกเลิก
               </button>
               <button onClick={saveImage} disabled={isPending}
-                className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 transition disabled:opacity-50">
-                {isPending ? "กำลังบันทึก..." : "💾 บันทึก"}
+                className="flex-1 py-2 rounded bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold transition disabled:opacity-50 flex items-center justify-center gap-1.5">
+                {isPending ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>บันทึก...</span>
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-3.5 h-3.5" />
+                    <span>บันทึก</span>
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -464,30 +632,35 @@ const printQrPhoto = async () => {
 
       {/* Import Modal */}
       {showImportModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowImportModal(false)}>
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl flex flex-col" onClick={e => e.stopPropagation()}>
-            <div className="p-6 border-b">
-              <h2 className="text-xl font-bold">📋 นำเข้าจำนวนจาก Google Sheets / Excel</h2>
-              <p className="text-gray-500 text-sm mt-1">
-                Copy ข้อมูล 2 คอลัมน์ (คอลัมน์ซ้าย: จำนวน, คอลัมน์ขวา: รหัสสินค้า) แล้ว Paste ลงในช่องด้านล่างได้เลยครับ
-              </p>
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowImportModal(false)}>
+          <div className="bg-white rounded border border-slate-200 w-full max-w-2xl flex flex-col shadow-xl" onClick={e => e.stopPropagation()}>
+            <div className="p-4 border-b border-slate-200 bg-slate-50/50 flex justify-between items-center">
+              <div>
+                <h2 className="text-base font-bold text-slate-800">นำเข้าจำนวนจาก Google Sheets / Excel</h2>
+                <p className="text-slate-500 text-xs mt-0.5">
+                  คัดลอกข้อมูล 2 คอลัมน์ (จำนวน [Tab] รหัสสินค้า) แล้ววางในช่องด้านล่าง
+                </p>
+              </div>
+              <button onClick={() => setShowImportModal(false)} className="p-1 hover:bg-slate-100 rounded text-slate-400 transition">
+                <X className="w-4 h-4" />
+              </button>
             </div>
-            <div className="p-6">
+            <div className="p-4">
               <textarea
                 value={importText}
                 onChange={(e) => setImportText(e.target.value)}
                 placeholder={"2\tFD-D24031A\n2\tFD-D24031B\n1\tFB-E24015A"}
-                className="w-full h-64 p-4 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm resize-none"
+                className="w-full h-56 p-3 border border-slate-200 rounded focus:border-indigo-500 outline-none font-mono text-xs resize-none"
               />
             </div>
-            <div className="p-6 border-t flex justify-end gap-3 bg-gray-50 rounded-b-3xl">
+            <div className="p-4 border-t border-slate-200 flex justify-end gap-2 bg-slate-50">
               <button onClick={() => setShowImportModal(false)}
-                className="px-6 py-2.5 rounded-xl border-2 border-gray-200 font-semibold text-gray-600 hover:bg-white transition text-sm">
+                className="px-4 py-2 rounded border border-slate-200 font-semibold text-slate-600 hover:bg-white transition text-xs">
                 ยกเลิก
               </button>
               <button onClick={handleImport}
-                className="px-6 py-2.5 rounded-xl bg-green-600 text-white font-semibold hover:bg-green-700 transition shadow-lg text-sm">
-                🚀 ประมวลผลและเตรียมปริ้น
+                className="px-4 py-2 rounded bg-green-600 hover:bg-green-700 text-white font-semibold transition text-xs shadow-sm">
+                ประมวลผลและเตรียมพิมพ์
               </button>
             </div>
           </div>
