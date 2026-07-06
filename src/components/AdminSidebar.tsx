@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Box, PlusCircle, ShoppingCart,
   MapPin, Tag, LogOut, Users, Receipt,
   BarChart3, History, Package, Settings, Frame,
-  Layers, ShieldCheck, AlertTriangle
+  Layers, ShieldCheck, AlertTriangle, Scale
 } from "lucide-react";
 
 // 1. เมนูที่ใช้บ่อย (งานประจำวัน)
@@ -29,6 +29,7 @@ const secondaryItems = [
   { name: "พนักงาน",         href: "/employees",    icon: Users },
   // { name: "ใบเสร็จ",         href: "/receipts",     icon: Receipt },
   // { name: "รายงานยอดขาย",    href: "/sales-report", icon: BarChart3 },
+  { name: "ตรวจสอบยอดรวมระบบ", href: "/balance-check", icon: Scale },
   { name: "ตรวจสอบ RFID ยอดเกิน", href: "/rfid-mismatch", icon: AlertTriangle },
   { name: "Backup & Restore", href: "/backup",       icon: ShieldCheck },
 ];

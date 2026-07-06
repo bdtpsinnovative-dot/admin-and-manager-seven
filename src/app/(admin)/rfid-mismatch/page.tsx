@@ -284,23 +284,35 @@ export default function RfidMismatchPage() {
                           {/* ชื่อสินค้า & รายละเอียด */}
                           <td className="py-4 px-4 flex flex-col">
                             <span className="font-bold text-slate-800 text-[13px]">{p.name}</span>
-                            
-                            {/* ปุ่มแก้ไขยอดด่วน (รวม) */}
-                            <div className="mt-2.5">
-                                <button
-                                  onClick={() => {
-                                    // หากไม่สนใจสาขา จะไม่สามารถแก้รายสาขาได้จากหน้านี้ง่ายๆ
-                                    // แต่ถ้าต้องการให้แก้สาขา default ก็อาจจะเลือกสาขาแรก หรือให้ผู้ใช้ไปแก้ที่หน้ารายละเอียดสินค้า
-                                    // สำหรับตอนนี้อาจจะซ่อนปุ่มแก้ยอด หรือเก็บไว้แต่ต้องเลือกสาขา
-                                    alert("หากต้องการแก้ไขสต็อก กรุณาทำในหน้ารายละเอียดสินค้า หรือหน้ารับเข้า-เบิกออก ครับ (เนื่องจากไม่ได้แยกสาขาในหน้านี้)");
-                                  }}
-                                  className="text-[10px] text-blue-600 hover:text-blue-800 bg-blue-50 px-2 py-1 rounded-lg border border-blue-100 transition-all cursor-pointer inline-flex items-center gap-1 font-semibold"
-                                  title="แก้ไขยอดสต็อก"
-                                >
-                                  <Edit2 className="w-3 h-3" />
-                                  จัดการสต็อก
-                                </button>
-                            </div>
+                            {/* แจกแจงรายสาขาพร้อมปุ่มแก้ไข */}
+                            {p.branchBreakdown && p.branchBreakdown.length > 0 && (
+                              <div className="mt-3 flex flex-col gap-2">
+                                {p.branchBreakdown.filter((b: any) => b.stock > 0 || b.rfid > 0).map((b: any) => (
+                                  <div key={b.branchId} className="flex items-center justify-between bg-slate-50 border border-slate-100 p-2 rounded-lg">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-[11px] font-bold text-slate-700">{b.branchName}</span>
+                                      <span className="text-[10px] text-slate-500">(สต็อก: {b.stock}, Tag: {b.rfid})</span>
+                                    </div>
+                                    <button
+                                      onClick={() => {
+                                        setEditItem({
+                                          productId: p.id,
+                                          productName: p.name,
+                                          sku: p.sku,
+                                          branchId: b.branchId,
+                                          branchName: b.branchName,
+                                          currentQty: b.stock
+                                        })
+                                        setNewQtyVal(b.stock.toString())
+                                      }}
+                                      className="text-[10px] text-blue-600 hover:text-blue-800 bg-white px-2 py-1 rounded border border-blue-100 transition-all cursor-pointer flex items-center gap-1 shadow-sm"
+                                    >
+                                      <Edit2 className="w-3 h-3" /> แก้ไขสต็อก
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                           </td>
 
                           {/* ยอดสต็อกรวม */}

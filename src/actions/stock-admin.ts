@@ -120,6 +120,28 @@ export async function updateStockQty(productId: number, branchId: number, newQty
   }
 }
 
+// Helper function for paginated fetching
+async function fetchAll(table: string, select: string, modifiers?: (q: any) => any) {
+  let allData: any[] = []
+  let from = 0
+  const pageSize = 1000
+  const supabase = await createClient()
+
+  while (true) {
+    let query = supabase.from(table).select(select).range(from, from + pageSize - 1)
+    if (modifiers) query = modifiers(query)
+
+    const { data, error } = await query
+    if (error) throw error
+
+    if (!data || data.length === 0) break
+    allData = allData.concat(data)
+    if (data.length < pageSize) break
+    from += pageSize
+  }
+  return allData
+}
+
 export async function getRfidStockMismatch() {
   try {
     const supabase = await createClient()
@@ -131,53 +153,124 @@ export async function getRfidStockMismatch() {
 
     if (branchesError) throw branchesError
 
-    // 2. ดึงข้อมูลสินค้าพร้อม stock ทั้งหมด
-    const { data: rawProducts, error: productsError } = await supabase
-      .from("products")
-      .select(`
-        id,
-        name,
-        sku,
-        barcode,
-        image_url,
-        stock ( branch_id, qty )
-      `)
-      .limit(10000)
-
-    if (productsError) throw productsError
-
-    // 3. ดึงจำนวน tag IN_STOCK ทั้งหมดแยกต่างหาก เพื่อหลีกเลี่ยงข้อจำกัด limit 1000 แถวต่อ join ของ Supabase
-    const tagCounts: Record<number, number> = {}
-    let from = 0
-    const pageSize = 10000
+    // 2. Fetch all products
+    const rawProducts = await fetchAll("products", "id, name, sku, barcode, image_url")
     
-    while (true) {
-      const { data: tags, error: tagsError } = await supabase
-        .from("product_rfid_tags")
-        .select("product_id")
-        .eq("status", "IN_STOCK")
-        .range(from, from + pageSize - 1)
+    // 3. Fetch all stocks
+    const allStock = await fetchAll("stock", "product_id, branch_id, qty")
+    
+    // 4. Fetch all active RFIDs
+    const allRfids = await fetchAll("product_rfid_tags", "product_id, branch_id", (q) => q.eq("status", "IN_STOCK"))
 
-      if (tagsError) throw tagsError
-      if (!tags || tags.length === 0) break
-
-      for (const tag of tags) {
-        tagCounts[tag.product_id] = (tagCounts[tag.product_id] || 0) + 1
-      }
-
-      if (tags.length < pageSize) break
-      from += pageSize
+    // Group stocks by product_id
+    const stockMap: Record<number, { branch_id: number, qty: number }[]> = {}
+    for (const s of allStock) {
+      if (!stockMap[s.product_id]) stockMap[s.product_id] = []
+      stockMap[s.product_id].push(s)
     }
 
-    // 4. นำจำนวน tag มาประกอบกับสินค้า
+    // Group RFIDs by product_id
+    const rfidMap: Record<number, { branch_id: number, status: string }[]> = {}
+    for (const r of allRfids) {
+      if (!rfidMap[r.product_id]) rfidMap[r.product_id] = []
+      rfidMap[r.product_id].push({ branch_id: r.branch_id, status: "IN_STOCK" })
+    }
+
+    // 5. นำจำนวน tag และ stock มาประกอบกับสินค้า
     const productsWithTags = rawProducts.map(p => ({
       ...p,
-      product_rfid_tags: Array.from({ length: tagCounts[p.id] || 0 }).map(() => ({ status: "IN_STOCK" }))
+      stock: stockMap[p.id] || [],
+      product_rfid_tags: rfidMap[p.id] || []
     }))
 
     return { data: productsWithTags, branches: branchesData }
   } catch (error: any) {
     console.error("Mismatch Fetch Error:", error.message)
     return { error: error.message, data: [], branches: [] }
+  }
+}
+
+export async function getProductBranchTags(productId: number, branchId: number) {
+  try {
+    // ดึง tag ทั้งหมดของสินค้านี้มาก่อน แล้วค่อย filter ใน JS เพื่อหลีกเลี่ยงปัญหา type mismatch ใน .or()
+    // ใช้ supabaseAdmin เพื่อป้องกันปัญหา RLS บล็อกการมองเห็นข้อมูล
+    const { data, error } = await supabaseAdmin
+      .from("product_rfid_tags")
+      .select("id, rfid, status, branch_id")
+      .eq("product_id", productId)
+
+    if (error) throw error
+
+    // กรองเอาเฉพาะสาขาที่ตรงกัน หรือถ้าเป็นสาขา 1 (TerraHome) ให้รวมพวกที่ branch_id เป็น null เข้าไปด้วย
+    const filteredData = (data || []).filter(t => {
+      const tBranch = Number(t.branch_id)
+      if (branchId === 1) {
+        return tBranch === 1 || tBranch === 0 || !t.branch_id
+      }
+      return tBranch === branchId
+    })
+
+    return { data: filteredData }
+  } catch (error: any) {
+    console.error("Fetch Tags Error:", error.message)
+    return { error: error.message }
+  }
+}
+
+export async function deleteProductTag(tagId: string | number, reason: string = "ไม่ได้ระบุเหตุผล") {
+  try {
+    const supabaseUserClient = await createClient()
+    
+    // ดึงโปรไฟล์เพื่อดึงชื่อผู้บันทึกการลบ
+    let deletedByName = "System/Unknown"
+    const { data: { user } } = await supabaseUserClient.auth.getUser()
+    if (user) {
+      const { data: profile } = await supabaseUserClient
+        .from("profiles")
+        .select("full_name")
+        .eq("user_id", user.id)
+        .single()
+      deletedByName = profile?.full_name || user.email || "Admin"
+    }
+
+    // 1. ดึงข้อมูล Tag ที่จะลบก่อน
+    const { data: tagData, error: fetchError } = await supabaseAdmin
+      .from("product_rfid_tags")
+      .select("*")
+      .eq("id", tagId)
+      .single()
+
+    if (fetchError || !tagData) {
+      throw new Error("ไม่พบข้อมูล Tag ที่ต้องการลบ")
+    }
+
+    // 2. นำไปบันทึกลงตารางประวัติ (deleted_rfid_tags)
+    const { error: historyError } = await supabaseAdmin
+      .from("deleted_rfid_tags")
+      .insert({
+        original_tag_id: tagData.id,
+        product_id: tagData.product_id,
+        rfid: tagData.rfid,
+        branch_id: tagData.branch_id,
+        reason: reason,
+        deleted_by: deletedByName
+      })
+
+    if (historyError) {
+      console.error("Insert history error:", historyError.message)
+      // อนุโลมให้ลบได้แม้ว่าจะเก็บประวัติไม่สำเร็จ (หรือจะดัก error ก็ได้ แต่ควรดักเผื่อไว้)
+    }
+
+    // 3. ใช้ supabaseAdmin เพื่อป้องกันปัญหา RLS บล็อกการลบ
+    const { error: deleteError } = await supabaseAdmin
+      .from("product_rfid_tags")
+      .delete()
+      .eq("id", tagId)
+      
+    if (deleteError) throw deleteError
+    return { success: true }
+  } catch (error: any) {
+    console.error("Delete Tag Error:", error.message)
+    return { error: error.message }
   }
 }
