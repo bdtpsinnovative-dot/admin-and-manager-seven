@@ -6,7 +6,7 @@ import InventoryTable from "../../../components/InventoryTable"
 import TypeFilterDropdown from "../../../components/TypeFilterDropdown"
 import StatusFilterDropdown from "../../../components/StatusFilterDropdown"
 import InventoryLoadingOverlay from "../../../components/InventoryLoadingOverlay"
-import { Package, Layers, Hammer, FileUp, Box, Search, Loader2 } from "lucide-react"
+import { Package, Layers, Hammer, FileUp, Box, Search, Loader2, Armchair } from "lucide-react"
 import { Suspense } from "react"
 
 type Props = {
@@ -19,6 +19,7 @@ export default async function InventoryPage({ searchParams }: Props) {
   const activeType = (resolvedSearchParams.type as string) || ''
   const activeStatus = (resolvedSearchParams.status as string) || ''
   const searchQuery = (resolvedSearchParams.search as string) || '' // 💡 รับคำค้นหาจาก URL
+
 
   return (
     <div className="min-h-screen bg-slate-50 p-6 font-sans text-slate-800">
@@ -93,6 +94,15 @@ export default async function InventoryPage({ searchParams }: Props) {
                   : 'border-transparent text-slate-500 hover:text-slate-700'}`}
             >
               <Box className="w-4 h-4" /> Props (พร็อพ)
+            </Link>
+            <Link
+              href="/inventory?tab=FURNITURE"
+              className={`pb-3 text-sm font-bold flex items-center gap-2 border-b-2 transition-colors whitespace-nowrap
+                ${activeTab === 'FURNITURE'
+                  ? 'border-emerald-600 text-emerald-600'
+                  : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+            >
+              <Armchair className="w-4 h-4" /> Furniture (เฟอร์นิเจอร์)
             </Link>
           </div>
         </div>

@@ -6,7 +6,7 @@ import * as XLSX from 'xlsx'
 
 import { 
   FileUp, CheckCircle, AlertCircle, Loader2, 
-  Table as TableIcon, Trash2, Save, X, Layers, Hammer, Info 
+  Table as TableIcon, Trash2, Save, X, Layers, Hammer, Info, Armchair
 } from 'lucide-react'
 
 const SLAB_TYPES = [
@@ -35,7 +35,7 @@ export default function BulkUploadProducts() {
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState<{ type: 'success' | 'error' | 'info', msg: string } | null>(null)
 
-  const [defaultCategory, setDefaultCategory] = useState<'SLABS' | 'rough_wood' | 'prop'>('SLABS')
+  const [defaultCategory, setDefaultCategory] = useState<'SLABS' | 'rough_wood' | 'prop' | 'furniture'>('SLABS')
   const [selectedType, setSelectedType] = useState<SelectedType>(null)
   // ✅ FilterMode สำหรับเลือกดูสินค้า (ALL = ทั้งหมด, NEW = ของใหม่, UPDATE = ของเดิม)
   const [filterMode, setFilterMode] = useState<'ALL' | 'NEW' | 'UPDATE'>('ALL')
@@ -44,6 +44,7 @@ export default function BulkUploadProducts() {
     setSelectedType(type)
     if (type === 'rough_wood') setDefaultCategory('rough_wood')
     else if (type === 'prop') setDefaultCategory('prop')
+    else if (type === 'furniture') setDefaultCategory('furniture')
     else setDefaultCategory('SLABS')
   }
 
@@ -126,8 +127,8 @@ const downloadTemplate = () => {
         const rawJson = XLSX.utils.sheet_to_json(ws)
         
         const processed = rawJson.map((row: any, idx: number) => {
-        // --- Props mode ---
-          if (selectedType === 'prop') {
+        // --- Props / Furniture mode ---
+          if (selectedType === 'prop' || selectedType === 'furniture') {
             
             // 🌟 ท่าไม้ตาย: ลบช่องว่างทั้งหมดทิ้งก่อนเทียบหาคอลัมน์ (รองรับทั้งแบบมีและไม่มีเว้นวรรคใน Excel)
             const getVal = (searchKey: string) => {
@@ -137,8 +138,8 @@ const downloadTemplate = () => {
             };
 
             const itemNo = getVal("Item NO")?.toString() || "";
-            const sheetSku = getVal("SKU")?.toString() || `PROP-${Date.now()}-${idx}`;
-            const sheetBarcode = getVal("BARCODE")?.toString() || "";
+            const sheetSku = getVal("SKU")?.toString() || `${selectedType === 'furniture' ? 'FUR' : 'PROP'}-${Date.now()}-${idx}`;
+            const sheetBarcode = getVal("BARCODE")?.toString() || getVal("BARCOE")?.toString() || "";
             
             const w = getVal("W") != null ? Number(getVal("W")) : null;
             const d = getVal("D") != null ? Number(getVal("D")) : null;
@@ -155,14 +156,14 @@ const downloadTemplate = () => {
             const collectionGroupId = getVal("Collection Group")?.toString() || null;
             const productSupValue = getVal("Product Sup")?.toString() || null;
             const factoryName = getVal("Factory")?.toString() || null;
-            const productName = getVal("Name Product")?.toString() || `Prop - ${sheetSku}`;
+            const productName = getVal("Name Product")?.toString() || `${selectedType === 'furniture' ? 'Furniture' : 'Prop'} - ${sheetSku}`;
 
             return {
               name: productName, 
               sku: sheetSku,
               barcode: sheetBarcode,
               color: getVal("Color")?.toString() || null,
-              category_id: "prop",
+              category_id: selectedType === 'furniture' ? 'furniture' : 'prop',
               image_url: getVal("Link Picture")?.toString() || null,
               status: "active",
               cost: costTh,
@@ -424,6 +425,21 @@ const downloadTemplate = () => {
               Props / Decor (สินค้าประกอบฉาก)
             </button>
           </div>
+
+          {/* Furniture */}
+          <div className="border-t border-slate-200 pt-3">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1">
+              <Armchair size={12} /> Furniture
+            </p>
+            <button
+              type="button"
+              onClick={() => handleSelectType('furniture')}
+              className={`px-3 py-2 rounded-lg border-2 text-sm font-semibold transition-all
+                ${selectedType === 'furniture' ? 'border-emerald-500 bg-emerald-50 text-emerald-700 shadow-sm' : 'border-slate-200 bg-white text-slate-600 hover:border-emerald-300 hover:text-emerald-600'}`}
+            >
+              Furniture (เฟอร์นิเจอร์)
+            </button>
+          </div>
         </div>
       )}
 
@@ -545,7 +561,7 @@ const downloadTemplate = () => {
                 <tr>
                   <th className="p-3 border-b text-center">Status</th> 
                   <th className="p-3 border-b">SKU</th>
-                  {selectedType === 'prop' ? (
+                  {(selectedType === 'prop' || selectedType === 'furniture') ? (
                     <>
                       <th className="p-3 border-b">Barcode</th>
                       <th className="p-3 border-b">Color</th>
@@ -577,7 +593,7 @@ const downloadTemplate = () => {
                       
                       <td className="p-3 font-mono text-xs font-bold text-slate-800">{item.sku}</td>
                       
-                      {selectedType === 'prop' ? (
+                      {(selectedType === 'prop' || selectedType === 'furniture') ? (
                         <>
                           <td className="p-3 font-mono text-xs text-slate-500">{item.barcode || '-'}</td>
                           <td className="p-3 text-xs">{item.color || '-'}</td>
