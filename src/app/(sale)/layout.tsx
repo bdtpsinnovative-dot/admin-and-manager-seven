@@ -1,6 +1,7 @@
 import { createClient } from "../../lib/supabase/server"
 import { redirect } from "next/navigation"
 import SaleSidebar from "../../components/SaleSidebar"
+import MaintenanceGuard from "../../components/MaintenanceGuard"
 
 export default async function SaleLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -29,7 +30,7 @@ export default async function SaleLayout({ children }: { children: React.ReactNo
     redirect("/login")
   }
 
-  // 3. Logic to build the image URL (Same as Admin/Manager)
+  // 3. Logic to build the image URL
   let avatarFullUrl = "";
   if (profile?.avatar_url) {
     const path = profile.avatar_url;
@@ -58,22 +59,24 @@ export default async function SaleLayout({ children }: { children: React.ReactNo
   const branchName = profile?.branches?.branch_name || "ไม่ระบุสาขา"
 
   return (
-    <div className="flex min-h-screen bg-slate-50 font-sans text-slate-900 print:bg-white print:text-black">
-      
-      {/* Hide Sidebar in print mode */}
-      <div className="print:hidden">
-        <SaleSidebar 
-          userName={userName} 
-          branchName={branchName} 
-          userAvatar={avatarFullUrl} 
-        />
-      </div>
-
-      <main className="flex-1 md:ml-[88px] bg-slate-50/50 min-h-screen transition-all duration-300 print:ml-0 print:p-0 print:bg-white">
-        <div className="max-w-7xl mx-auto p-4 md:p-8 print:p-0 print:max-w-full">
-            {children}
+    <MaintenanceGuard type="web_sale">
+      <div className="flex min-h-screen bg-slate-50 font-sans text-slate-900 print:bg-white print:text-black">
+        
+        {/* Hide Sidebar in print mode */}
+        <div className="print:hidden">
+          <SaleSidebar 
+            userName={userName} 
+            branchName={branchName} 
+            userAvatar={avatarFullUrl} 
+          />
         </div>
-      </main>
-    </div>
+
+        <main className="flex-1 md:ml-[88px] bg-slate-50/50 min-h-screen transition-all duration-300 print:ml-0 print:p-0 print:bg-white">
+          <div className="max-w-7xl mx-auto p-4 md:p-8 print:p-0 print:max-w-full">
+              {children}
+          </div>
+        </main>
+      </div>
+    </MaintenanceGuard>
   )
 }

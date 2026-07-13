@@ -19,6 +19,7 @@ const primaryItems = [
   { name: "สินค้าทั้งหมด",   href: "/inventory",    icon: Box },
   // { name: "เพิ่มสินค้า",     href: "/addproduct",   icon: PlusCircle },
   { name: "Props / Decor",   href: "/props",        icon: Frame },
+  { name: "Props / Decor (ใหม่)", href: "/props-new",   icon: Frame },
   { name: "จัดการลอต",       href: "/lots",         icon: Layers },
 ];
 
@@ -31,6 +32,7 @@ const secondaryItems = [
   // { name: "รายงานยอดขาย",    href: "/sales-report", icon: BarChart3 },
   { name: "ตรวจสอบยอดรวมระบบ", href: "/balance-check", icon: Scale },
   { name: "ตรวจสอบ RFID ยอดเกิน", href: "/rfid-mismatch", icon: AlertTriangle },
+  { name: "จัดการแอป & เว็บ",  href: "/app-management", icon: Settings },
   { name: "Backup & Restore", href: "/backup",       icon: ShieldCheck },
 ];
 

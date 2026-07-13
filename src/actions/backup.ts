@@ -23,7 +23,7 @@ const RESTORABLE_TABLES = [
   { key: "stock_movements",           label: "Stock Movements",           pk: "id",         orderCol: "id" },
   { key: "stock_receiving",           label: "Stock Receiving",           pk: "id",         orderCol: "id" },
   { key: "product_rfid_tags",         label: "RFID Tags",                 pk: "id",         orderCol: "id" },
-  { key: "reader_stock",              label: "Reader Stock",              pk: "product_id", orderCol: "product_id" },
+  { key: "reader_stock",              label: "Reader Stock",              pk: ["product_id", "branch_id"], orderCol: "product_id" },
   { key: "reader_count_scans",        label: "Reader Count Scans",        pk: "rfid",       orderCol: "rfid" },
   { key: "stock_initial_counts",      label: "Stock Initial Counts",      pk: "id",         orderCol: "id" }, 
   { key: "stock_initial_count_items", label: "Stock Initial Items",       pk: "id",         orderCol: "id" }, 
@@ -34,10 +34,15 @@ const RESTORABLE_TABLES = [
   { key: "cart_items",                label: "Cart Items",                pk: "id",         orderCol: "id" },
   { key: "favorites",                 label: "Favorites",                 pk: "id",         orderCol: "id" },
   { key: "site_gallery",              label: "Site Gallery",              pk: "id",         orderCol: "id" },
-  { key: "sale_dasbrode",             label: "Sale Dashboard",            pk: "day",        orderCol: "day" },
+  { key: "sale_dasbrode",             label: "Sale Dashboard",            pk: ["day", "branch_id"],        orderCol: "day" },
   { key: "summary_daily",             label: "Summary Daily",             pk: "period_key", orderCol: "period_key" },
   { key: "summary_weekly",            label: "Summary Weekly",            pk: "period_key", orderCol: "period_key" },
   { key: "summary_monthly",           label: "Summary Monthly",           pk: "period_key", orderCol: "period_key" },
+  { key: "boxes",                     label: "Boxes",                     pk: "id",         orderCol: "id" },
+  { key: "search_targets",            label: "Search Targets",            pk: "id",         orderCol: "id" },
+  { key: "damaged_goods_records",     label: "Damaged Goods Records",     pk: "id",         orderCol: "id" },
+  { key: "deleted_rfid_tags",         label: "Deleted RFID Tags",         pk: "id",         orderCol: "id" },
+  { key: "system_settings",           label: "System Settings",           pk: "key",        orderCol: "key" },
 ]
 
 // Tables ที่ export ได้ แต่ไม่ restore (ย้ายไป Restore หมดแล้วในช่วงทดสอบ)
@@ -115,6 +120,11 @@ const TABLE_DESC: Record<string, string> = {
   summary_daily:              "สรุปข้อมูลรายวัน (export only)",
   summary_weekly:             "สรุปข้อมูลรายสัปดาห์ (export only)",
   summary_monthly:            "สรุปข้อมูลรายเดือน (export only)",
+  boxes:                      "กล่องบรรจุภัณฑ์",
+  search_targets:             "เป้าหมายการค้นหา",
+  damaged_goods_records:      "บันทึกสินค้าชำรุด",
+  deleted_rfid_tags:          "ประวัติการลบ RFID Tag",
+  system_settings:            "ตั้งค่าระบบ",
 }
 
 export async function getBackupTableStats(): Promise<TableInfo[]> {
@@ -219,7 +229,7 @@ export async function restoreSnapshot(snapId: string, selectedTables?: string[])
 
     // Generated columns ที่ห้าม insert ค่าเข้าไปตรงๆ
     const GENERATED_COLS: Record<string, string[]> = {
-      products: ["length_cm", "width_cm", "height_cm", "thickness_cm"],
+      products: ["length_cm", "width_cm", "thickness_cm"], // height_cm does not exist in schema
       stock_transfer_items: ["variance_qty"], 
     }
 
@@ -233,12 +243,21 @@ export async function restoreSnapshot(snapId: string, selectedTables?: string[])
       stats[t.key] = { upserted: 0, deleted: 0 }
     }
 
+    // Helper function to serialize keys for comparing/deleting
+    const getRowKey = (r: any, pk: string | string[]) => {
+      if (Array.isArray(pk)) {
+        return pk.map(k => String(r[k])).join(':::')
+      }
+      return String(r[pk])
+    }
+
     // ==========================================
     // Phase 1: ไล่ UPSERT ข้อมูล (เดินหน้า แม่ -> ลูก)
     // ==========================================
     for (const t of tablesToRestore) {
       const rows = data[t.key] ?? []
       const stripCols = GENERATED_COLS[t.key] ?? []
+      const onConflictCol = Array.isArray(t.pk) ? t.pk.join(',') : t.pk
 
       for (let i = 0; i < rows.length; i += 500) {
         const chunk = rows.slice(i, i + 500).map((r: any) => {
@@ -249,7 +268,7 @@ export async function restoreSnapshot(snapId: string, selectedTables?: string[])
         })
         const { error } = await supabaseAdmin
           .from(t.key)
-          .upsert(chunk, { onConflict: t.pk })
+          .upsert(chunk, { onConflict: onConflictCol })
         
         if (error) throw new Error(`upsert ${t.key}: ${error.message}`)
         stats[t.key].upserted += chunk.length
@@ -264,34 +283,49 @@ export async function restoreSnapshot(snapId: string, selectedTables?: string[])
 
     for (const t of reversedTables) {
       const rows = data[t.key] ?? []
-      const snapshotIds = new Set(rows.map((r: any) => r[t.pk]))
+      const snapshotIds = new Set(rows.map((r: any) => getRowKey(r, t.pk)))
 
       // 🌟 ดึง ID ปัจจุบันทั้งหมดใน Database แบบวนลูปดักจับทะลุลิมิต 1,000 แถว
-      let currentIds: any[] = []
+      let currentRecords: any[] = []
       let fetchFrom = 0
+      const selectCols = Array.isArray(t.pk) ? t.pk.join(',') : t.pk
       
       while (true) {
         const { data: currentData, error: fetchErr } = await supabaseAdmin
           .from(t.key)
-          .select(t.pk)
+          .select(selectCols)
           .range(fetchFrom, fetchFrom + 999)
           
         if (fetchErr) throw new Error(`[Fetch ${t.key}] ${fetchErr.message}`)
         if (!currentData || currentData.length === 0) break
         
-        currentIds.push(...currentData.map(r => r[t.pk as keyof typeof r]))
+        currentRecords.push(...currentData)
         if (currentData.length < 1000) break
         fetchFrom += 1000
       }
 
       // เปรียบเทียบเพื่อหา ID ที่เกิดใหม่และไม่มีอยู่ในไฟล์จุดเซฟรอบ MASTER
-      const toDelete = currentIds.filter(id => !snapshotIds.has(id))
+      const toDelete = currentRecords.filter(r => !snapshotIds.has(getRowKey(r, t.pk)))
 
       if (toDelete.length > 0) {
         for (let i = 0; i < toDelete.length; i += 100) {
           const chunk = toDelete.slice(i, i + 100)
           
-          const { error } = await supabaseAdmin.from(t.key).delete().in(t.pk, chunk)
+          let query = supabaseAdmin.from(t.key).delete()
+          if (Array.isArray(t.pk)) {
+            // Build logical OR filter with nested ANDs for composite keys in PostgREST
+            const filter = chunk.map((item: any) => {
+              const parts = (t.pk as string[]).map(k => `${k}.eq.${item[k]}`)
+              return `and(${parts.join(',')})`
+            })
+            query = query.or(filter.join(','))
+          } else {
+            const pkStr = t.pk as string
+            const ids = chunk.map((item: any) => item[pkStr])
+            query = query.in(pkStr, ids)
+          }
+          
+          const { error } = await query
           
           if (error) {
             // ปริ้นท์รายงานความผิดพลาดลงที่จอดำ Terminal ทันทีเมื่อสั่งลบติดปัญหา

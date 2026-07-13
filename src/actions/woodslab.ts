@@ -184,11 +184,18 @@ export async function bulkCreateProducts(productsArray: any[]) {
   const uniqueGroupsMap = new Map<string, any>()
   
   productsArray.forEach(p => {
-    if (p.collection_group_id) {
-      uniqueGroupsMap.set(p.collection_group_id, {
+    // 🎯 ห้ามยุ่งหรือบันทึกลง collection_groups เด็ดขาดสำหรับสินค้าประเภทอื่นที่ไม่ใช่ prop หรือ furniture
+    if (p.collection_group_id && (p.category_id === 'prop' || p.category_id === 'furniture')) {
+      const groupData: any = {
         id: p.collection_group_id, // รหัสกลุ่ม เช่น FA-D2089
         product_sup: p._temp_product_sup // ✅ คำหมวดหมู่ เช่น Doll Animal
-      })
+      }
+      if (p.category_id === 'prop') {
+        groupData.tag = 'Props'
+      } else if (p.category_id === 'furniture') {
+        groupData.tag = 'Furniture'
+      }
+      uniqueGroupsMap.set(p.collection_group_id, groupData)
     }
   })
   
@@ -259,4 +266,93 @@ export async function checkExistingGroups(groupIds: string[]) {
   }
   
   return { existing: data.map((d: any) => d.id) }
+}
+
+// ✅ ฟังก์ชันลบสินค้าหลายรายการพร้อมกัน (Bulk Delete)
+export async function deleteProductsBulk(ids: (string | number)[]) {
+  const supabase = await createClient()
+  await checkAuth(supabase)
+
+  const { error } = await supabase
+    .from(TABLE_NAME)
+    .delete()
+    .in('id', ids)
+
+  if (error) {
+    console.error("Bulk delete error:", error.message)
+    return { error: error.message }
+  }
+
+  revalidatePath('/inventory')
+  return { success: true }
+}
+
+// ✅ ดึงข้อมูลกลุ่มคอลเลกชันพร้อมจำนวนสินค้าในแต่ละกลุ่ม
+export async function getCollectionGroupsWithCounts(tag: 'furniture' | 'prop') {
+  const supabase = await createClient()
+  
+  const { data, error } = await supabase
+    .from('collection_groups')
+    .select('*, products(id)')
+    .eq('tag', tag)
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    console.error("Error fetching collection groups:", error.message)
+    return { data: [], error: error.message }
+  }
+
+  const processed = (data || []).map((g: any) => ({
+    id: g.id,
+    name: g.name,
+    description: g.description,
+    product_sup: g.product_sup,
+    image_url: g.image_url,
+    tag: g.tag,
+    itemCount: g.products?.length || 0
+  }))
+
+  return { data: processed, error: null }
+}
+
+// ✅ ลบกลุ่มสินค้า (Cascade ลบสินค้าภายในผ่านทางโค้ดเท่านั้น โดยไม่ยุ่งกับสต็อก)
+export async function deleteCollectionGroup(groupId: string) {
+  const supabase = await createClient()
+  await checkAuth(supabase)
+
+  // 1. ดึงข้อมูลสินค้าที่ผูกอยู่กับกลุ่มนี้
+  const { data: productsInGroup, error: fetchError } = await supabase
+    .from(TABLE_NAME)
+    .select('id')
+    .eq('collection_group_id', groupId)
+
+  if (fetchError) return { error: fetchError.message }
+
+  if (productsInGroup && productsInGroup.length > 0) {
+    const productIds = productsInGroup.map((p: any) => p.id)
+    
+    // 2. พยายามลบสินค้าตรงๆ (โดยไม่ลบสต็อก ตามคำสั่งเจ้านาย)
+    const { error: productsDeleteError } = await supabase
+      .from(TABLE_NAME)
+      .delete()
+      .in('id', productIds)
+
+    if (productsDeleteError) {
+      // ส่งคืนข้อผิดพลาดแจ้งเตือนผู้ใช้ เช่น ติดประวัติสต็อก/การอ้างอิง
+      return { error: `ไม่สามารถลบกลุ่มสินค้าได้ เนื่องจากติดการอ้างอิงของสินค้าภายในกลุ่ม: ${productsDeleteError.message}` }
+    }
+  }
+
+  // 3. ลบกลุ่มคอลเลกชันสินค้า
+  const { error: groupDeleteError } = await supabase
+    .from('collection_groups')
+    .delete()
+    .eq('id', groupId)
+
+  if (groupDeleteError) {
+    return { error: groupDeleteError.message }
+  }
+
+  revalidatePath('/inventory')
+  return { success: true }
 }

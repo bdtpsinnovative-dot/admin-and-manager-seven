@@ -35,20 +35,37 @@ export default function UploadForm() {
     const file = formData.get('file') as File
 
     if (file?.size) {
-      const compressed = await imageCompression(file, {
-        maxSizeMB: 1,
-        maxWidthOrHeight: 1920,
-        useWebWorker: true,
-        fileType: 'image/webp',
-      })
+      let finalFile = file;
+      
+      if (file.size > 2 * 1024 * 1024) {
+        // บีบอัดเฉพาะรูปที่ขนาดเกิน 2 MB
+        const compressed = await imageCompression(file, {
+          maxSizeMB: 1.8,
+          maxWidthOrHeight: 2560,
+          useWebWorker: true,
+          fileType: 'image/webp',
+        })
+        finalFile = new File(
+          [compressed],
+          file.name.replace(/\.[^/.]+$/, '.webp'),
+          { type: 'image/webp' }
+        )
+      } else {
+        // รูปที่ขนาดไม่เกิน 2 MB แปลงเป็น webp โดยรักษาความละเอียดสูง
+        const compressed = await imageCompression(file, {
+          maxSizeMB: 5,
+          maxWidthOrHeight: 3840,
+          useWebWorker: true,
+          fileType: 'image/webp',
+        })
+        finalFile = new File(
+          [compressed],
+          file.name.replace(/\.[^/.]+$/, '.webp'),
+          { type: 'image/webp' }
+        )
+      }
 
-      const webpFile = new File(
-        [compressed],
-        file.name.replace(/\.[^/.]+$/, '.webp'),
-        { type: 'image/webp' }
-      )
-
-      formData.set('file', webpFile)
+      formData.set('file', finalFile)
     }
 
     setIsCompressing(false)

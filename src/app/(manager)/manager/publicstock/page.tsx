@@ -22,6 +22,7 @@ export default function PublicStockPage() {
   const [products, setProducts] = useState<ProductStock[]>([])
   const [profile, setProfile] = useState<{ branch_id: number, branch_name: string } | null>(null)
   const [exporting, setExporting] = useState(false)
+  const [showExportModal, setShowExportModal] = useState(false)
 
   const [page, setPage] = useState(1)
   const [totalCount, setTotalCount] = useState(0)
@@ -81,12 +82,12 @@ export default function PublicStockPage() {
   const handleReset = () => { setSearchQ(""); setOnlyNeg(false); setPage(1) }
   const pageAll = Math.max(1, Math.ceil(totalCount / pageSize))
 
-  const handleExportExcel = async () => {
+  const triggerExport = async (includeImages: boolean) => {
     if (!profile) return
     setExporting(true)
     try {
       // เรียกใช้ Server Action เพื่อสร้าง Excel บน Server ทั้งไฟล์
-      const excelBase64 = await generateExcelFile(profile.branch_id)
+      const excelBase64 = await generateExcelFile(profile.branch_id, includeImages)
       
       if (excelBase64) {
         // แปลง Base64 กลับเป็นไฟล์และดาวน์โหลด
@@ -107,6 +108,10 @@ export default function PublicStockPage() {
       alert("เกิดข้อผิดพลาดในการดาวน์โหลด Excel")
     }
     setExporting(false)
+  }
+
+  const handleExportExcel = () => {
+    setShowExportModal(true)
   }
 
   if (loading) return (
@@ -346,6 +351,52 @@ export default function PublicStockPage() {
         </div>
       </div>
 
+      {/* Export Options Modal */}
+      {showExportModal && (
+        <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-[2rem] p-6 max-w-sm w-full shadow-2xl border border-slate-100 animate-in fade-in zoom-in-95 duration-150">
+            <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
+              <Download className="w-5 h-5 text-blue-600" />
+              ดาวน์โหลด Excel
+            </h3>
+            <p className="text-slate-500 text-sm mt-2 leading-relaxed">
+              กรุณาเลือกรูปแบบไฟล์ Excel ที่ต้องการดาวน์โหลดข้อมูลสต็อกสินค้า
+            </p>
+            
+            <div className="mt-6 space-y-2.5">
+              <button
+                onClick={() => {
+                  setShowExportModal(false)
+                  triggerExport(false)
+                }}
+                className="w-full py-3 px-4 bg-slate-900 text-white rounded-2xl text-sm font-bold hover:bg-slate-800 transition-all flex items-center justify-center gap-2 active:scale-[0.98]"
+              >
+                ดาวน์โหลดปกติ (ไม่มีรูปภาพ) - โหลดเร็ว
+              </button>
+              
+              <button
+                onClick={() => {
+                  const confirmWithImages = window.confirm("คำเตือน: การดาวน์โหลดพร้อมรูปภาพจะใช้เวลานานในการดาวน์โหลด (ประมาณ 1-2 นาที ขึ้นอยู่กับจำนวนสินค้า)\n\nคุณต้องการดำเนินการต่อหรือไม่?")
+                  if (confirmWithImages) {
+                    setShowExportModal(false)
+                    triggerExport(true)
+                  }
+                }}
+                className="w-full py-3 px-4 bg-blue-50 text-blue-600 rounded-2xl text-sm font-bold hover:bg-blue-100 transition-all border border-blue-100 flex items-center justify-center gap-2 active:scale-[0.98]"
+              >
+                ดาวน์โหลดพร้อมรูปภาพ (ใช้เวลานาน)
+              </button>
+              
+              <button
+                onClick={() => setShowExportModal(false)}
+                className="w-full py-2.5 px-4 text-slate-400 hover:text-slate-600 transition-all text-xs font-bold text-center"
+              >
+                ยกเลิก
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

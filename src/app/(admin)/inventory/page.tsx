@@ -8,6 +8,7 @@ import StatusFilterDropdown from "../../../components/StatusFilterDropdown"
 import InventoryLoadingOverlay from "../../../components/InventoryLoadingOverlay"
 import { Package, Layers, Hammer, FileUp, Box, Search, Loader2, Armchair } from "lucide-react"
 import { Suspense } from "react"
+import CollectionGroupTable from "../../../components/CollectionGroupTable"
 
 type Props = {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>
@@ -19,6 +20,7 @@ export default async function InventoryPage({ searchParams }: Props) {
   const activeType = (resolvedSearchParams.type as string) || ''
   const activeStatus = (resolvedSearchParams.status as string) || ''
   const searchQuery = (resolvedSearchParams.search as string) || '' // 💡 รับคำค้นหาจาก URL
+  const viewMode = (resolvedSearchParams.view as string) || 'products' // 💡 รับโหมดการดู
 
 
   return (
@@ -107,28 +109,50 @@ export default async function InventoryPage({ searchParams }: Props) {
           </div>
         </div>
 
-        {/* Filters */}
-        <div className="flex items-center gap-3 py-3 px-1 bg-white border-b border-slate-200 mb-6 flex-wrap">
-          {activeTab === 'SLABS' && (
-            <div className="flex items-center gap-3 border-r border-slate-200 pr-4">
-              <span className="text-xs text-slate-400 font-medium uppercase tracking-widest hidden sm:inline">กรองตามประเภท</span>
-              <TypeFilterDropdown activeType={activeType} />
-            </div>
-          )}
-          <div className="flex items-center gap-3 pl-1">
-            <span className="text-xs text-slate-400 font-medium uppercase tracking-widest hidden sm:inline">สถานะสินค้า</span>
-            <StatusFilterDropdown activeStatus={activeStatus} />
+        {/* View Mode Toggle (Only for FURNITURE and PROP) */}
+        {(activeTab === 'FURNITURE' || activeTab === 'PROP') && (
+          <div className="flex gap-2 mt-4 mb-2 bg-white p-1 rounded-lg border border-slate-200 w-fit shadow-sm">
+            <Link
+              href={`/inventory?tab=${activeTab}&view=products${activeType ? `&type=${activeType}` : ''}${activeStatus ? `&status=${activeStatus}` : ''}${searchQuery ? `&search=${encodeURIComponent(searchQuery)}` : ''}`}
+              className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${viewMode === 'products' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              แสดงเป็นชิ้น (Products)
+            </Link>
+            <Link
+              href={`/inventory?tab=${activeTab}&view=groups${activeType ? `&type=${activeType}` : ''}${activeStatus ? `&status=${activeStatus}` : ''}${searchQuery ? `&search=${encodeURIComponent(searchQuery)}` : ''}`}
+              className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${viewMode === 'groups' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              แสดงตามกลุ่ม (Groups)
+            </Link>
           </div>
-        </div>
+        )}
+
+        {/* Filters */}
+        {viewMode !== 'groups' ? (
+          <div className="flex items-center gap-3 py-3 px-1 bg-white border-b border-slate-200 mb-6 flex-wrap">
+            {activeTab === 'SLABS' && (
+              <div className="flex items-center gap-3 border-r border-slate-200 pr-4">
+                <span className="text-xs text-slate-400 font-medium uppercase tracking-widest hidden sm:inline">กรองตามประเภท</span>
+                <TypeFilterDropdown activeType={activeType} />
+              </div>
+            )}
+            <div className="flex items-center gap-3 pl-1">
+              <span className="text-xs text-slate-400 font-medium uppercase tracking-widest hidden sm:inline">สถานะสินค้า</span>
+              <StatusFilterDropdown activeStatus={activeStatus} />
+            </div>
+          </div>
+        ) : (
+          <div className="mb-6" />
+        )}
 
         {/* Content */}
-        <Suspense key={`${activeTab}-${activeType}-${searchQuery}-${activeStatus}`} fallback={
+        <Suspense key={`${activeTab}-${activeType}-${searchQuery}-${activeStatus}-${viewMode}`} fallback={
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 min-h-[400px] flex flex-col items-center justify-center text-slate-400 gap-3">
              <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
              <p className="text-sm font-medium animate-pulse">กำลังโหลดข้อมูล...</p>
           </div>
         }>
-          <InventoryData activeTab={activeTab} activeType={activeType} searchQuery={searchQuery} activeStatus={activeStatus} />
+          <InventoryData activeTab={activeTab} activeType={activeType} searchQuery={searchQuery} activeStatus={activeStatus} viewMode={viewMode} />
         </Suspense>
 
       </div>
@@ -136,10 +160,20 @@ export default async function InventoryPage({ searchParams }: Props) {
   )
 }
 
-async function InventoryData({ activeTab, activeType, searchQuery, activeStatus }: { activeTab: string, activeType: string, searchQuery: string, activeStatus: string }) {
+async function InventoryData({ activeTab, activeType, searchQuery, activeStatus, viewMode }: { activeTab: string, activeType: string, searchQuery: string, activeStatus: string, viewMode: string }) {
+  if (viewMode === 'groups' && (activeTab === 'FURNITURE' || activeTab === 'PROP')) {
+    const tag = activeTab === 'FURNITURE' ? 'furniture' : 'prop'
+    return (
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        <CollectionGroupTable tag={tag} />
+      </div>
+    )
+  }
+
   let dbCategory = 'SLABS'
   if (activeTab === 'ROUGH') dbCategory = 'rough_wood'
   if (activeTab === 'PROP') dbCategory = 'prop'
+  if (activeTab === 'FURNITURE') dbCategory = 'furniture'
 
   const { data: products, error } = await getProducts(dbCategory, activeType || undefined, searchQuery, activeStatus || undefined)
 

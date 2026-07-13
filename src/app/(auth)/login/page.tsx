@@ -7,19 +7,23 @@ import { useRouter } from 'next/navigation'
 export default function LoginPage() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const router = useRouter()
 
-  async function clientAction(formData: FormData) {
-    // 🌟 1. เปิดหน้าต่าง Loading ทันทีที่กดปุ่ม
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
     setLoading(true)
     setError(null)
 
-    let email = formData.get('email') as string
-    
-    // ถ้ามีค่า email และ ไม่มีเครื่องหมาย @ ให้เติม @gmail.com ต่อท้าย
-    if (email && !email.includes('@')) {
-      email = `${email.trim()}@gmail.com`
-      formData.set('email', email)
+    const formData = new FormData()
+    formData.append('email', email)
+    formData.append('password', password)
+
+    let emailStr = email
+    if (emailStr && !emailStr.includes('@')) {
+      emailStr = `${emailStr.trim()}@gmail.com`
+      formData.set('email', emailStr)
     }
 
     try {
@@ -27,7 +31,7 @@ export default function LoginPage() {
       
       if (result?.error) {
         setError(result.error)
-        setLoading(false) // ❌ ปิดโหลดแค่ตอนพัง (เพื่อให้กรอกใหม่)
+        setLoading(false) // ❌ ปิดโหลดแค่ตอนพัง (เพื่อให้ผู้ใช้แก้ไขข้อมูลต่อได้โดยไม่ต้องกรอกใหม่)
       } else if (result?.success) {
         // ✅ 2. ล็อกอินผ่านแล้ว ไม่ต้องสั่ง setLoading(false) ให้มันโหลดค้างไว้เลย!
         // 🌟 3. เพิ่มหน่วงเวลาเล็กน้อย (500ms) ให้คนใช้เห็น Spinner หมุนชัดเจนว่าระบบกำลังทำงาน
@@ -46,7 +50,7 @@ export default function LoginPage() {
         }, 500)
       }
     } catch (err) {
-      setError("เกิดข้อผิดพลาดในการเชื่อมต่อ กรุณาลองใหม่อีกครั้ง")
+      setError("ไม่สามารถเชื่อมต่ออินเทอร์เน็ตได้ กรุณาตรวจสอบการเชื่อมต่อของคุณ")
       setLoading(false)
     }
   }
@@ -87,7 +91,7 @@ export default function LoginPage() {
 
         {/* กล่อง Login Form */}
         <div className="bg-white p-8 rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100">
-          <form action={clientAction} className="space-y-6">
+          <form onSubmit={handleSubmit} className="space-y-6">
             
             {/* ช่องกรอก Email */}
             <div>
@@ -104,6 +108,8 @@ export default function LoginPage() {
                   placeholder="admin หรือ admin@wood.com" 
                   required 
                   disabled={loading}
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                   className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all text-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
                 />
               </div>
@@ -124,6 +130,8 @@ export default function LoginPage() {
                   placeholder="••••••••" 
                   required 
                   disabled={loading}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
                   className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all text-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
                 />
               </div>

@@ -43,7 +43,12 @@ const TABLE_RELATIONS: Record<string, string[]> = {
   favorites: ["products"],
   stock_transfers: ["branches", "profiles"], // ตารางใหม่
   stock_transfer_items: ["stock_transfers", "products"], // ตารางใหม่
-  sale_dasbrode: ["branches"]
+  sale_dasbrode: ["branches"],
+  boxes: [],
+  search_targets: ["products", "branches"],
+  damaged_goods_records: ["products", "branches", "profiles"],
+  deleted_rfid_tags: [],
+  system_settings: []
 }
 
 function downloadJSON(data: any, filename: string) {

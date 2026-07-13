@@ -81,7 +81,7 @@ export default function ManagerSidebar({ userName, branchName, userAvatar }: Man
       name: "ระบบสินค้าและลอต",
       icon: Package,
       subMenu: [
-        { name: "นับสต็อกเริ่มต้น (initial-count)", href: "/manager/initial-count", icon: ClipboardList },
+        { name: "แสดงยอดนับ (initial-count)", href: "/manager/initial-count", icon: ClipboardList },
         { name: "จัดการลอตสินค้า (lots)", href: "/manager/lots", icon: Layers },
         { name: "เช็ครับสินค้า (receive-check)", href: "/manager/receive-check", icon: PackageCheck }, 
       ]

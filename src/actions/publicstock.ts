@@ -155,14 +155,14 @@ export async function getBase64Image(url: string) {
 import ExcelJS from "exceljs"
 
 // ✅ 7. สร้างไฟล์ Excel บน Server เลย เพื่อให้ชัวร์ว่า exceljs และรูปภาพทำงานได้ 100%
-export async function generateExcelFile(branchId: number): Promise<string | null> {
+export async function generateExcelFile(branchId: number, includeImages: boolean = false): Promise<string | null> {
   const supabase = await createClient()
   try {
     const { data, error } = await supabase
       .from('stock')
       .select(`
         qty,
-        products!inner (name, price, specs, image_url)
+        products!inner (name, price, specs, image_url, sku, barcode)
       `)
       .eq('branch_id', branchId)
       .order('qty', { ascending: false })
@@ -177,6 +177,8 @@ export async function generateExcelFile(branchId: number): Promise<string | null
       { header: 'No', key: 'no', width: 8 },
       { header: 'Image', key: 'image', width: 12 },
       { header: 'Product', key: 'product', width: 45 },
+      { header: 'SKU', key: 'sku', width: 25 },
+      { header: 'Barcode', key: 'barcode', width: 20 },
       { header: 'Size (cm)', key: 'size', width: 25 },
       { header: 'Qty', key: 'qty', width: 10 },
       { header: 'Price', key: 'price', width: 15 },
@@ -195,31 +197,35 @@ export async function generateExcelFile(branchId: number): Promise<string | null
       const row = sheet.addRow({
         no: i + 1,
         product: item.products?.name || "-",
+        sku: item.products?.sku || "-",
+        barcode: item.products?.barcode || "-",
         size: `W${w} x D${d} x H${h}`,
         qty: Number(item.qty) || 0,
         price: Number(item.products?.price) || 0
       })
 
-      row.height = 60
+      row.height = includeImages ? 60 : 24
       row.alignment = { vertical: 'middle' }
 
-      let imageUrl = item.products?.image_url
-      if (imageUrl) {
-        if (imageUrl.startsWith('/')) {
-            imageUrl = process.env.NEXT_PUBLIC_SITE_URL ? process.env.NEXT_PUBLIC_SITE_URL + imageUrl : "http://localhost:3000" + imageUrl
-        }
-        const base64str = await getBase64Image(imageUrl)
-        if (base64str) {
-          const imageId = workbook.addImage({
-            base64: `data:image/jpeg;base64,${base64str}`,
-            extension: 'jpeg'
-          })
-          
-          sheet.addImage(imageId, {
-            tl: { col: 1, row: row.number - 1 },
-            ext: { width: 60, height: 60 },
-            editAs: 'oneCell'
-          })
+      if (includeImages) {
+        let imageUrl = item.products?.image_url
+        if (imageUrl) {
+          if (imageUrl.startsWith('/')) {
+              imageUrl = process.env.NEXT_PUBLIC_SITE_URL ? process.env.NEXT_PUBLIC_SITE_URL + imageUrl : "http://localhost:3000" + imageUrl
+          }
+          const base64str = await getBase64Image(imageUrl)
+          if (base64str) {
+            const imageId = workbook.addImage({
+              base64: `data:image/jpeg;base64,${base64str}`,
+              extension: 'jpeg'
+            })
+            
+            sheet.addImage(imageId, {
+              tl: { col: 1, row: row.number - 1 },
+              ext: { width: 60, height: 60 },
+              editAs: 'oneCell'
+            })
+          }
         }
       }
     }
