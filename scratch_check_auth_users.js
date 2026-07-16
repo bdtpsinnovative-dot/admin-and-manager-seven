@@ -15,7 +15,7 @@ async function run() {
 
   console.log("Auth Users:");
   for (const u of users) {
-    console.log(`Email: ${u.email} | ID: ${u.id}`);
+    console.log(`Email: ${u.email} | ID: ${u.id} | Confirmed At: ${u.email_confirmed_at} | Last Sign In: ${u.last_sign_in_at}`);
   }
 }
 run();

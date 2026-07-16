@@ -32,7 +32,7 @@ export async function getPosData() {
     const { data: productsChunk, error: productError } = await supabase
       .from('products')
       .select(`
-        id, name, sku, price, image_url, barcode,
+        id, name, sku, price, image_url, barcode, specs,
         collection_groups ( product_sup ),
         stock ( branch_id, qty ),
         discount_rules (
@@ -97,7 +97,8 @@ export async function getPosData() {
       image_url: p.image_url,
       barcode: p.barcode,
       product_sup: p.collection_groups ? p.collection_groups.product_sup : null,
-      stocks: p.stock || [] 
+      stocks: p.stock || [],
+      specs: p.specs || {}
     }
   })
 

@@ -43,6 +43,12 @@ export default function SaleSidebar({ userName, branchName, userAvatar }: SaleSi
     setIsNavigating(false)
   }, [pathname])
 
+  useEffect(() => {
+    const handleOpenMenu = () => setIsMobileMenuOpen(true)
+    window.addEventListener("open-mobile-menu", handleOpenMenu)
+    return () => window.removeEventListener("open-mobile-menu", handleOpenMenu)
+  }, [])
+
   const toggleMenu = (menuName: string) => {
     setOpenMenus((prev) => ({
       ...prev,
@@ -197,15 +203,17 @@ export default function SaleSidebar({ userName, branchName, userAvatar }: SaleSi
       </aside>
 
       {/* --- Mobile View --- */}
-      <div className="md:hidden fixed top-0 inset-x-0 z-30 bg-white/90 backdrop-blur-md border-b border-slate-200 h-16 flex items-center justify-between px-4">
-          <div className="flex items-center gap-2">
-             <div className="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center text-white font-bold text-sm">S</div>
-             <span className="font-bold text-slate-800 text-sm">SALE</span>
-          </div>
-          <button onClick={() => setIsMobileMenuOpen(true)} className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg">
-            <Menu className="w-6 h-6"/>
-          </button>
-      </div>
+      {!(pathname === "/sale/pos" || pathname === "/manager/pos" || pathname.endsWith("/pos")) && (
+        <div className="md:hidden fixed top-0 inset-x-0 z-30 bg-white/90 backdrop-blur-md border-b border-slate-200 h-16 flex items-center justify-between px-4">
+            <div className="flex items-center gap-2">
+               <div className="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center text-white font-bold text-sm">S</div>
+               <span className="font-bold text-slate-800 text-sm">SALE</span>
+            </div>
+            <button onClick={() => setIsMobileMenuOpen(true)} className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg">
+              <Menu className="w-6 h-6"/>
+            </button>
+        </div>
+      )}
 
       {isMobileMenuOpen && (<div className="fixed inset-0 z-40 bg-slate-900/50 backdrop-blur-sm md:hidden" onClick={() => setIsMobileMenuOpen(false)} />)}
       <div className={`fixed inset-y-0 left-0 z-50 w-72 bg-white shadow-2xl transform transition-transform duration-300 ease-out md:hidden flex flex-col ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>

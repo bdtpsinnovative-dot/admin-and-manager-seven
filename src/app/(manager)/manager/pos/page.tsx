@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import dynamic from 'next/dynamic'
 import { getPosData, processCheckout, CheckoutPayload, getNearbyStock, getOrderForEdit } from '@/actions/pos'
-import { FolderOpen, Store, Truck, Receipt, MapPin, Save, AlertTriangle, X, Plus, Minus, FileText, Trash2, Printer, RefreshCw, Clock } from 'lucide-react'
+import { FolderOpen, Store, Truck, Receipt, MapPin, Save, AlertTriangle, X, Plus, Minus, FileText, Trash2, Printer, RefreshCw, Clock, Menu } from 'lucide-react'
 import { toast } from 'sonner'
 
 // โหลด Component แผนที่แบบไม่ทำ SSR
@@ -16,6 +16,7 @@ interface Product {
   product_sup: string | null; stocks: { branch_id: number, qty: number }[];
   discount_id?: number | null;
   discount_name?: string | null;
+  specs?: any;
 }
 
 interface CartItem extends Product {
@@ -54,6 +55,7 @@ export default function ManagerPOSPage() {
   const [cart, setCart] = useState<CartItem[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [isConfirmingClear, setIsConfirmingClear] = useState(false)
+  const [isMobileCartOpen, setIsMobileCartOpen] = useState(false)
 
   const [saleMode, setSaleMode] = useState<'TAKE_AWAY' | 'DELIVERY'>('TAKE_AWAY')
 
@@ -556,6 +558,7 @@ export default function ManagerPOSPage() {
         setLongitude(null)
         setSaleMode('TAKE_AWAY')
         setIsCustomerFormOpen(false) // หดฟอร์มกลับ
+        setIsMobileCartOpen(false) // ปิดตะกร้ามุมมองมือถือ
         
         setEditOrderId(null)
         setEditOrderCode(null)
@@ -591,7 +594,7 @@ export default function ManagerPOSPage() {
   if (loadingDb) return <div className="min-h-screen flex items-center justify-center font-bold text-slate-500 bg-[#F4F7F9]">กำลังโหลดข้อมูลคลังสินค้า...</div>
 
   return (
-    <div className="min-h-screen bg-[#F4F7F9] p-6 font-sans relative select-none">
+    <div className="min-h-screen bg-[#F4F7F9] p-0 md:p-6 mt-[-80px] md:mt-0 font-sans relative select-none">
 
       {/* 🧭 ลิ้นชักเมนูด้านซ้าย */}
       <div className={`fixed inset-y-0 left-0 z-50 w-64 bg-white shadow-2xl flex flex-col overflow-hidden transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
@@ -658,13 +661,26 @@ export default function ManagerPOSPage() {
       <div className="max-w-[1600px] mx-auto flex flex-col lg:flex-row gap-6 items-start">
 
         <div className="flex-1 w-full flex flex-col gap-4">
-          <div className="bg-white p-4 rounded-3xl shadow-xs flex flex-col xl:flex-row gap-4 items-center justify-between w-full">
-            <div className="flex flex-wrap items-center gap-3 w-full xl:w-auto">
+          <div className="bg-white p-4 rounded-3xl shadow-xs flex flex-col xl:flex-row gap-4 items-center justify-between w-full sticky top-0 md:top-4 z-20">
+            <div className="flex items-center gap-1.5 w-full xl:w-auto overflow-hidden">
+              {/* ปุ่ม Hamburger สำหรับมือถือ */}
+              <button
+                type="button"
+                onClick={() => {
+                  window.dispatchEvent(new Event("open-mobile-menu"));
+                }}
+                className="flex md:hidden p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-full transition-all cursor-pointer shadow-xs shrink-0"
+                title="เปิดเมนูหลัก"
+              >
+                <Menu className="w-4 h-4" />
+              </button>
+
               <button
                 onClick={() => setIsSidebarOpen(true)}
-                className="bg-slate-100 text-slate-700 font-bold text-xs px-4 py-2.5 rounded-full hover:bg-slate-200 transition-all flex items-center gap-1.5 shadow-xs shrink-0"
+                className="bg-slate-100 text-slate-700 font-bold text-xs px-3 py-2.5 rounded-full hover:bg-slate-200 transition-all flex items-center justify-center gap-1.5 shadow-xs flex-1 min-w-0 xl:flex-none xl:w-auto text-center truncate"
               >
-                <FolderOpen className="w-4 h-4" /> เลือกหมวดหมู่ {selectedCategory !== 'ALL' && <span className="text-blue-600">({selectedCategory.split(' ').pop()})</span>}
+                <FolderOpen className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">หมวดหมู่ {selectedCategory !== 'ALL' && `(${selectedCategory.split(' ').pop()})`}</span>
               </button>
               <select
                 value={selectedLocation}
@@ -672,16 +688,16 @@ export default function ManagerPOSPage() {
                   const val = e.target.value
                   setSelectedLocation(val === 'ALL' ? 'ALL' : Number(val))
                 }}
-                className={`border font-bold text-xs rounded-full px-4 py-2 outline-none cursor-pointer appearance-none shadow-xs shrink-0 ${selectedLocation === myBranchId ? 'bg-blue-50 border-blue-200 text-blue-600' : 'bg-white border-slate-200 text-slate-700'}`}
+                className={`border font-bold text-xs rounded-full px-3 py-2 outline-none cursor-pointer appearance-none shadow-xs flex-1 min-w-0 xl:flex-none xl:w-auto text-center truncate ${selectedLocation === myBranchId ? 'bg-blue-50 border-blue-200 text-blue-600' : 'bg-white border-slate-200 text-slate-700'}`}
               >
-                <option value="ALL">ส่องดู ALL STOCKS</option>
+                <option value="ALL">ALL STOCKS</option>
                 {branches.map(b => (
-                  <option key={b.id} value={b.id}>{b.branch_name} {b.id === myBranchId ? '(คลังเรา)' : ''}</option>
+                  <option key={b.id} value={b.id}>{b.branch_name.replace('สาขา', '')} {b.id === myBranchId ? '(เรา)' : ''}</option>
                 ))}
               </select>
 
-              {/* ✨ Reload & Time */}
-              <div className="flex items-center gap-2 bg-slate-50 border border-slate-100 rounded-full px-3 py-1.5 shrink-0 ml-auto xl:ml-0">
+              {/* ✨ Reload & Time (Desktop only) */}
+              <div className="hidden sm:flex items-center gap-2 bg-slate-50 border border-slate-100 rounded-full px-3 py-1.5 shrink-0 ml-auto xl:ml-0">
                 <div className="flex flex-col">
                   <span className="text-[9px] text-slate-400 font-bold flex items-center gap-1">
                     <Clock className="w-2.5 h-2.5" /> อัปเดตล่าสุด
@@ -699,6 +715,16 @@ export default function ManagerPOSPage() {
                   <RefreshCw className={`w-3.5 h-3.5 ${loadingDb ? 'animate-spin text-slate-400' : ''}`} />
                 </button>
               </div>
+
+              {/* ✨ Mobile-only compact reload button */}
+              <button
+                onClick={() => loadData(false)}
+                disabled={loadingDb}
+                className="flex sm:hidden p-2.5 bg-slate-100 hover:bg-slate-200 text-blue-600 rounded-full disabled:opacity-50 transition-all cursor-pointer shadow-xs shrink-0"
+                title="รีโหลดข้อมูลสินค้าและสต็อก"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${loadingDb ? 'animate-spin text-slate-400' : ''}`} />
+              </button>
             </div>
             <div className="w-full xl:w-72 shrink-0">
               <input
@@ -711,7 +737,7 @@ export default function ManagerPOSPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4 w-full pb-24 lg:pb-0">
+          <div className="grid grid-cols-4 md:grid-cols-5 xl:grid-cols-6 gap-2 sm:gap-4 w-full pb-24 lg:pb-0">
             {filteredProducts.map((product) => {
               const currentQty = getDisplayQty(product)
               return (
@@ -731,9 +757,14 @@ export default function ManagerPOSPage() {
                     </div>
                   </div>
                   <div className="flex flex-col shrink-0 px-1 pb-1">
-                    <h3 className="font-bold text-slate-800 text-[11px] sm:text-xs truncate w-full" title={product.name}>
+                    <h3 className="font-bold text-slate-800 text-[10px] sm:text-xs truncate w-full" title={product.name}>
                       {product.name}
                     </h3>
+                    {product.specs && product.specs.material && (
+                      <span className="text-[8px] text-slate-400 font-medium uppercase tracking-wider block mt-0.5 leading-none">
+                        {product.specs.material}
+                      </span>
+                    )}
                     <div className="flex items-end justify-between mt-1">
                       <div className="flex flex-col">
                         {product.discount_label && (
@@ -752,8 +783,19 @@ export default function ManagerPOSPage() {
           </div>
         </div>
 
-        {/* 🛒 ฝั่งขวา: ตะกร้าสรุปบิล */}
-        <div id="mobile-cart-section" className="w-full lg:w-[360px] shrink-0 bg-white rounded-3xl shadow-sm border border-slate-100 flex flex-col lg:sticky lg:top-6 lg:max-h-[calc(100vh-48px)] z-10">
+        {/* 🛒 ฝั่งขวา: ตะกร้าสรุปบิล (Desktop แสดงตลอดเวลา, Mobile แสดงในโมดอล/ดรอว์เวอร์เมื่อเปิด) */}
+        <div 
+          className={`
+            ${isMobileCartOpen ? 'fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm lg:relative lg:bg-transparent lg:inset-auto lg:z-10 lg:flex-none lg:items-stretch lg:justify-start' : 'hidden lg:flex'}
+            w-full lg:w-[360px] shrink-0 lg:sticky lg:top-6 lg:max-h-[calc(100vh-48px)]
+          `}
+          onClick={() => setIsMobileCartOpen(false)}
+        >
+          <div 
+            id="mobile-cart-section" 
+            className="w-full max-h-[85vh] lg:max-h-full bg-white rounded-t-3xl lg:rounded-3xl shadow-2xl lg:shadow-sm border border-slate-100 flex flex-col overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
           
           <div className="p-3 bg-slate-50 border-b border-slate-100 grid grid-cols-2 gap-2 relative rounded-t-3xl">
             <button 
@@ -775,40 +817,50 @@ export default function ManagerPOSPage() {
               <Receipt className="w-4 h-4" /> รายการใบสรุปขาย
               <span className="bg-blue-50 text-blue-600 font-bold text-[10px] px-2 py-0.5 rounded-full">{cart.length} รายการ</span>
             </h2>
-            {cart.length > 0 && (
-              <div className="flex items-center gap-1">
-                {!isConfirmingClear ? (
-                  <button
-                    onClick={() => setIsConfirmingClear(true)}
-                    className="text-[11px] text-red-500 hover:text-red-700 font-bold flex items-center gap-1 transition-colors px-2 py-1 rounded-lg hover:bg-red-50 cursor-pointer"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" /> ลบทั้งหมด
-                  </button>
-                ) : (
-                  <div className="flex items-center gap-1 bg-red-50 p-1 rounded-lg border border-red-100 animate-fade-in">
-                    <span className="text-[9px] text-red-700 font-bold px-1">ลบทั้งหมด?</span>
+            <div className="flex items-center gap-2">
+              {cart.length > 0 && (
+                <div className="flex items-center gap-1">
+                  {!isConfirmingClear ? (
                     <button
-                      onClick={() => {
-                        setCart([])
-                        setIsConfirmingClear(false)
-                        setSpecialDiscountPercent('0')
-                        setSpecialDiscountBaht('0')
-                        toast.success('ลบสินค้าทั้งหมดออกจากรายการขายแล้ว')
-                      }}
-                      className="text-[9px] bg-red-600 hover:bg-red-700 text-white font-bold px-1.5 py-0.5 rounded transition-colors cursor-pointer"
+                      onClick={() => setIsConfirmingClear(true)}
+                      className="text-[11px] text-red-500 hover:text-red-700 font-bold flex items-center gap-1 transition-colors px-2 py-1 rounded-lg hover:bg-red-50 cursor-pointer"
                     >
-                      ใช่
+                      <Trash2 className="w-3.5 h-3.5" /> ลบทั้งหมด
                     </button>
-                    <button
-                      onClick={() => setIsConfirmingClear(false)}
-                      className="text-[9px] bg-white hover:bg-slate-100 text-slate-600 border border-slate-200 font-bold px-1.5 py-0.5 rounded transition-colors cursor-pointer"
-                    >
-                      ไม่
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
+                  ) : (
+                    <div className="flex items-center gap-1 bg-red-50 p-1 rounded-lg border border-red-100 animate-fade-in">
+                      <span className="text-[9px] text-red-700 font-bold px-1">ลบทั้งหมด?</span>
+                      <button
+                        onClick={() => {
+                          setCart([])
+                          setIsConfirmingClear(false)
+                          setSpecialDiscountPercent('0')
+                          setSpecialDiscountBaht('0')
+                          toast.success('ลบสินค้าทั้งหมดออกจากรายการขายแล้ว')
+                        }}
+                        className="text-[9px] bg-red-600 hover:bg-red-700 text-white font-bold px-1.5 py-0.5 rounded transition-colors cursor-pointer"
+                      >
+                        ใช่
+                      </button>
+                      <button
+                        onClick={() => setIsConfirmingClear(false)}
+                        className="text-[9px] bg-white hover:bg-slate-100 text-slate-600 border border-slate-200 font-bold px-1.5 py-0.5 rounded transition-colors cursor-pointer"
+                      >
+                        ไม่
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+              {/* ปุ่มปิดโมดอลสำหรับมือถือ */}
+              <button
+                onClick={() => setIsMobileCartOpen(false)}
+                className="lg:hidden p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-full transition-colors cursor-pointer"
+                title="ปิดตะกร้า"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
 
           <div className="flex-1 overflow-y-auto px-4 py-2 min-h-[180px]">
@@ -987,6 +1039,7 @@ export default function ManagerPOSPage() {
           </div>
         </div>
       </div>
+    </div>
 
       {/* 🚀 Modal ข้อมูลลูกค้า */}
       {isCustomerFormOpen && (
@@ -1370,15 +1423,10 @@ export default function ManagerPOSPage() {
         </div>
       )}
 
-      {/* 📱 ปุ่มลอยสำหรับมือถือ (เลื่อนลงไปตะกร้า) */}
+      {/* 📱 ปุ่มลอยสำหรับมือถือ (เปิดตะกร้าในรูปแบบโมดอล) */}
       <div className="lg:hidden fixed bottom-6 right-6 z-40">
         <button 
-          onClick={() => {
-            const cartEl = document.getElementById('mobile-cart-section');
-            if (cartEl) {
-              cartEl.scrollIntoView({ behavior: 'smooth' });
-            }
-          }} 
+          onClick={() => setIsMobileCartOpen(true)} 
           className="bg-blue-600 hover:bg-blue-700 text-white rounded-full p-4 shadow-2xl flex items-center justify-center relative transition-transform active:scale-95"
         >
           <Receipt className="w-6 h-6" />
