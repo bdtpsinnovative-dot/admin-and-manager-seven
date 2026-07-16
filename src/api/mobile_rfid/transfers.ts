@@ -32,6 +32,7 @@ export const TransfersController = {
         const transferItems = items.map((x: any) => ({
           transfer_id: transfer.id,
           product_id: x.product_id,
+          qty: x.qty || x.transfer_qty,
           transfer_qty: x.transfer_qty,
           received_qty: 0,
         }));

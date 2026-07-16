@@ -157,7 +157,7 @@ export const MobileRfidService = {
   async fetchByBarcodeOrSku(code: string) {
     const { data, error } = await supabaseAdmin
       .from("products")
-      .select("id, name, barcode, sku, image_url")
+      .select("id, name, barcode, sku, price, color, image_url")
       .or(`barcode.eq.${code},sku.eq.${code}`)
       .limit(1)
       .maybeSingle();
@@ -178,7 +178,7 @@ export const MobileRfidService = {
   async fetchProductsMap(ids: number[]) {
     const { data, error } = await supabaseAdmin
       .from("products")
-      .select("id, name, barcode, sku, image_url")
+      .select("id, name, barcode, sku, price, color, image_url")
       .in("id", ids);
     if (error) throw error;
     return data;
@@ -317,8 +317,9 @@ export const MobileRfidService = {
     branchId: number,
     qty: number,
     reason: string,
-    remark: string | null,
-    userId: string
+    rfidTag: string | null,
+    userId: string,
+    recordedByName?: string | null
   ) {
     const { data, error } = await supabaseAdmin
       .from("damaged_goods_records")
@@ -327,8 +328,9 @@ export const MobileRfidService = {
         branch_id: branchId,
         qty,
         reason,
-        remark: remark || null,
-        reported_by: userId,
+        rfid_tag: rfidTag || null,
+        recorded_by: userId,
+        recorded_by_name: recordedByName || null,
       })
       .select();
     if (error) throw error;
@@ -496,7 +498,7 @@ export const MobileRfidService = {
   async verifyRfidTag(rfid: string) {
     const { data, error } = await supabaseAdmin
       .from("product_rfid_tags")
-      .select("rfid, product_id, products(name)")
+      .select("id, rfid, product_id, branch_id, status, lot_id, products(name, sku)")
       .eq("rfid", rfid)
       .maybeSingle();
     if (error) throw error;
@@ -527,6 +529,16 @@ export const MobileRfidService = {
       .delete()
       .eq("rfid", rfid);
     if (error) throw error;
+  },
+
+  async updateRfidTag(oldRfid: string, newRfid: string) {
+    const { data, error } = await supabaseAdmin
+      .from("product_rfid_tags")
+      .update({ rfid: newRfid })
+      .eq("rfid", oldRfid)
+      .select();
+    if (error) throw error;
+    return data;
   },
 
   async insertDeletedRfidTag(rfid: string, productId: number) {

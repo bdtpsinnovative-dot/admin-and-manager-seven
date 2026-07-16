@@ -68,8 +68,8 @@ export async function updateStockQty(productId: number, branchId: number, newQty
       .eq("user_id", user.id)
       .single()
 
-    // 1. ดึงข้อมูลสต็อกปัจจุบัน
-    const { data: currentStock, error: stockFetchError } = await supabase
+    // 1. ดึงข้อมูลสต็อกปัจจุบัน (ใช้ supabaseAdmin เพื่อ bypass RLS)
+    const { data: currentStock, error: stockFetchError } = await supabaseAdmin
       .from("stock")
       .select("qty")
       .eq("product_id", productId)
@@ -81,7 +81,7 @@ export async function updateStockQty(productId: number, branchId: number, newQty
 
     if (currentStock) {
       // อัปเดตยอดสต็อกเดิม
-      const { error: updateError } = await supabase
+      const { error: updateError } = await supabaseAdmin
         .from("stock")
         .update({ qty: newQty, updated_at: new Date().toISOString() })
         .eq("product_id", productId)
@@ -89,14 +89,14 @@ export async function updateStockQty(productId: number, branchId: number, newQty
       if (updateError) throw updateError
     } else {
       // สร้างยอดสต็อกใหม่
-      const { error: insertError } = await supabase
+      const { error: insertError } = await supabaseAdmin
         .from("stock")
         .insert({ product_id: productId, branch_id: branchId, qty: newQty, updated_at: new Date().toISOString() })
       if (insertError) throw insertError
     }
 
     // 2. บันทึกประวัติการเปลี่ยนสต็อก (Stock Movement)
-    const { error: logError } = await supabase
+    const { error: logError } = await supabaseAdmin
       .from("stock_movements")
       .insert({
         product_id_bigint: productId,
@@ -116,6 +116,80 @@ export async function updateStockQty(productId: number, branchId: number, newQty
     return { success: true }
   } catch (error: any) {
     console.error("Update Stock Error:", error.message)
+    return { error: error.message }
+  }
+}
+
+export async function bulkUpdateStockQty(updates: { productId: number; branchId: number; newQty: number }[]) {
+  try {
+    const supabase = await createClient()
+
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error("Unauthorized: กรุณาเข้าสู่ระบบ")
+
+    // ดึงโปรไฟล์เพื่อดึงชื่อผู้บันทึก
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("full_name")
+      .eq("user_id", user.id)
+      .single()
+
+    const createdByName = profile?.full_name || user.email || "Admin"
+
+    for (const update of updates) {
+      const { productId, branchId, newQty } = update
+
+      // 1. ดึงข้อมูลสต็อกปัจจุบัน
+      const { data: currentStock } = await supabaseAdmin
+        .from("stock")
+        .select("qty")
+        .eq("product_id", productId)
+        .eq("branch_id", branchId)
+        .maybeSingle()
+
+      const oldQty = currentStock ? Number(currentStock.qty) : 0
+      const diff = newQty - oldQty
+
+      if (diff === 0) continue
+
+      if (currentStock) {
+        // อัปเดตยอดสต็อกเดิม
+        const { error: updateError } = await supabaseAdmin
+          .from("stock")
+          .update({ qty: newQty, updated_at: new Date().toISOString() })
+          .eq("product_id", productId)
+          .eq("branch_id", branchId)
+        if (updateError) throw updateError
+      } else {
+        // สร้างยอดสต็อกใหม่
+        const { error: insertError } = await supabaseAdmin
+          .from("stock")
+          .insert({ product_id: productId, branch_id: branchId, qty: newQty, updated_at: new Date().toISOString() })
+        if (insertError) throw insertError
+      }
+
+      // 2. บันทึกประวัติการเปลี่ยนสต็อก (Stock Movement)
+      const { error: logError } = await supabaseAdmin
+        .from("stock_movements")
+        .insert({
+          product_id_bigint: productId,
+          branch_id: branchId,
+          type: "ADJUST",
+          qty: diff,
+          note: `ปรับปรุงยอดด้วยตนเองจากหน้ารายงานความคลาดเคลื่อน (จาก ${oldQty} เป็น ${newQty})`,
+          ref_type: "MANUAL",
+          created_by: user.id,
+          created_by_name: createdByName
+        })
+
+      if (logError) {
+        console.error(`Error logging movement for product ${productId}:`, logError.message)
+      }
+    }
+
+    return { success: true }
+  } catch (error: any) {
+    console.error("Bulk Update Stock Error:", error.message)
     return { error: error.message }
   }
 }

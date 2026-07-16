@@ -72,39 +72,37 @@ export default function ManagerSidebar({ userName, branchName, userAvatar }: Man
       name: "ภาพรวมและหน้าร้าน",
       icon: Store,
       subMenu: [
-        { name: "ภาพรวม (dashboard)", href: "/manager/dashboard", icon: LayoutDashboard },
-        { name: "ขายสินค้า (pos)", href: "/manager/pos", icon: Store },
-        { name: "สต็อกหน้าร้าน (publicstock)", href: "/manager/publicstock", icon: Box },
+        // { name: "ภาพรวม (dashboard)", href: "/manager/dashboard", icon: LayoutDashboard },
+        { name: "ขายสินค้า ", href: "/manager/pos", icon: Store },
+        { name: "สต็อกหน้าร้าน ", href: "/manager/publicstock", icon: Box },
+        { name: "มอนิเตอร์ค้างส่ง", href: "/manager/vanguard-dispatch", icon: Truck },
+        { name: "แสดงยอดนับ", href: "/manager/initial-count", icon: ClipboardList },
+        { name: "ตรวจสอบยอดขาย", href: "/manager/sales-check", icon: UserCheck },
       ]
     },
-    {
-      name: "ระบบสินค้าและลอต",
-      icon: Package,
-      subMenu: [
-        { name: "แสดงยอดนับ (initial-count)", href: "/manager/initial-count", icon: ClipboardList },
-        { name: "จัดการลอตสินค้า (lots)", href: "/manager/lots", icon: Layers },
-        { name: "เช็ครับสินค้า (receive-check)", href: "/manager/receive-check", icon: PackageCheck }, 
-      ]
-    },
+    
     {
       name: "ระบบรับเข้าและโอน",
       icon: PackageCheck,
       subMenu: [
-        { name: "ตรวจสอบใบโอน (receive-check1)", href: "/manager/receive-check1", icon: ClipboardCheck },
-        { name: "มอนิเตอร์ค้างส่ง (vanguard-dispatch)", href: "/manager/vanguard-dispatch", icon: Truck },
+        { name: "ตรวจสอบใบโอน", href: "/manager/receive-check1", icon: ClipboardCheck },
+        { name: "เช็ครับสินค้า", href: "/manager/receive-check", icon: PackageCheck }, 
+        
       ]
     },
     {
       name: "ตรวจสอบและรายงาน",
       icon: ShieldCheck,
       subMenu: [
-        { name: "ตรวจสอบยอดขาย (sales-check)", href: "/manager/sales-check", icon: UserCheck },
+      
         // { name: "รายงานยอดขาย (sales-report)", href: "/manager/sales-report", icon: BarChart4 },
-        { name: "ตรวจสอบยอด RFID (stock-compare)", href: "/manager/stock-compare", icon: SearchCode },
-        { name: "ค้นหาสต็อก (stock-search)", href: "/manager/stock-search", icon: Search },
-        { name: "ประวัติสต็อก (stocklog)", href: "/manager/stocklog", icon: History },
-        { name: "เช็คแท็กสินค้า (tagcheck)", href: "/manager/tagcheck", icon: SlidersHorizontal },
-        { name: "เช็คแท็กสำรอง (tagcheck1)", href: "/manager/tagcheck1", icon: SlidersHorizontal },
+        
+        { name: "ประวัติสต็อก", href: "/manager/stocklog", icon: History },
+        
+        { name: "ตรวจสอบยอด RFID", href: "/manager/stock-compare", icon: SearchCode },
+        { name: "ค้นหาสต็อก", href: "/manager/stock-search", icon: Search },
+        { name: "เช็คแท็กสินค้า", href: "/manager/tagcheck", icon: SlidersHorizontal },
+        { name: "เช็คแท็กสำรอง", href: "/manager/tagcheck1", icon: SlidersHorizontal },
       ]
     }
   ]

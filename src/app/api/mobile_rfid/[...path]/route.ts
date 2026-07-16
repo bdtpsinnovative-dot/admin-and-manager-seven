@@ -112,6 +112,9 @@ async function dispatch(request: NextRequest, params: { path: string[] }) {
     if (subpath === "stock-receiving/delete-product") {
       if (method === "DELETE") return await StockReceivingController.deleteProduct(request, verifiedUser);
     }
+    if (subpath === "stock-receiving/conflicts") {
+      if (method === "GET") return await StockReceivingController.checkConflicts(request, verifiedUser);
+    }
     if (subpath === "rest/v1/rpc/submit_receive_goods" || subpath === "stock-receiving/commit") {
       if (method === "POST") return await StockReceivingController.commitReceiving(request, verifiedUser);
     }
@@ -181,6 +184,12 @@ async function dispatch(request: NextRequest, params: { path: string[] }) {
           return await StockReceivingController.checkConflicts(request, verifiedUser);
         }
         return await RfidTagsController.verifyRfidTag(request, verifiedUser);
+      }
+      if (method === "PATCH") {
+        return await RfidTagsController.updateRfidTag(request, verifiedUser);
+      }
+      if (method === "DELETE") {
+        return await RfidTagsController.deleteRfidTag(request, verifiedUser);
       }
     }
     if (subpath === "rfid-tags/insert") {

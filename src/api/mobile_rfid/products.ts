@@ -11,8 +11,12 @@ export const ProductsController = {
       }
 
       const idParam = req.nextUrl.searchParams.get("id");
-      if (idParam && idParam.startsWith("in.")) {
-        return await ProductsController.syncProducts(req, user);
+      if (idParam) {
+        if (idParam.startsWith("in.")) {
+          return await ProductsController.syncProducts(req, user);
+        } else if (idParam.startsWith("eq.")) {
+          return await ProductsController.getProductById(req, user);
+        }
       }
 
       // Handle paging request
@@ -65,6 +69,19 @@ export const ProductsController = {
       const ids = match[1].split(",").map(Number);
       
       const data = await MobileRfidService.fetchProductsMap(ids);
+      return NextResponse.json(data);
+    } catch (err) {
+      return handleError(err);
+    }
+  },
+
+  async getProductById(req: NextRequest, user: any) {
+    try {
+      const idParam = req.nextUrl.searchParams.get("id") || "";
+      const productId = Number(idParam.replace("eq.", ""));
+      if (isNaN(productId)) return NextResponse.json([]);
+      
+      const data = await MobileRfidService.fetchProductsMap([productId]);
       return NextResponse.json(data);
     } catch (err) {
       return handleError(err);

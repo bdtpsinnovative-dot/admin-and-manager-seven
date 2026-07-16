@@ -23,16 +23,18 @@ export const DamagedGoodsController = {
       const branch_id = user.branchId;
       const qty = Number(body.qty);
       const reason = body.reason || "";
-      const remark = body.remark || body.rfid_tag || "";
-      const reported_by = user.userId;
+      const rfid_tag = body.rfid_tag || null;
+      const recorded_by = user.userId;
+      const recorded_by_name = body.recorded_by_name || null;
 
       const data = await MobileRfidService.saveDamagedRecord(
         product_id,
         branch_id,
         qty,
         reason,
-        remark,
-        reported_by
+        rfid_tag,
+        recorded_by,
+        recorded_by_name
       );
       return NextResponse.json(data);
     } catch (err) {

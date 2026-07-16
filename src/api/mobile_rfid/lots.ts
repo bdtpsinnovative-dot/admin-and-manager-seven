@@ -33,9 +33,27 @@ export const LotsController = {
 
   async createLot(req: NextRequest, user: any) {
     try {
-      const { lotCode } = await req.json();
-      const branchId = user.branchId;
-      const data = await MobileRfidService.createLot(branchId, lotCode);
+      const body = await req.json();
+      const lot_code = body.lot_code || body.lotCode;
+      const branch_id = Number(body.branch_id || body.branchId || user.branchId);
+      const status = body.status || "SENT";
+      const note = body.note || null;
+      const created_by = body.created_by || null;
+      const created_by_name = body.created_by_name || null;
+
+      const { data, error } = await supabaseAdmin
+        .from("stock_lots")
+        .insert({
+          branch_id,
+          lot_code,
+          status,
+          note,
+          created_by,
+          created_by_name
+        })
+        .select("id")
+        .single();
+      if (error) throw error;
       return NextResponse.json(data);
     } catch (err) {
       return handleError(err);

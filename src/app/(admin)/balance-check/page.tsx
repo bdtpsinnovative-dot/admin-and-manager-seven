@@ -4,7 +4,9 @@ import React, { useState, useEffect, Suspense } from "react"
 import { useRouter, usePathname, useSearchParams } from "next/navigation"
 import { getSystemBalance, BalanceSummary } from "../../../actions/balance-check"
 import { getProductBranchTags, deleteProductTag } from "../../../actions/stock-admin"
-import { Scale, RefreshCw, Loader2, Package, CheckCircle2, AlertTriangle, AlertCircle, Hash, Search, Filter, ChevronDown, ChevronRight, Store, Eye, Trash2, X } from "lucide-react"
+import { Scale, RefreshCw, Loader2, Package, CheckCircle2, AlertTriangle, AlertCircle, Hash, Search, Filter, ChevronDown, ChevronRight, Store, Eye, Trash2, X, Barcode, Printer } from "lucide-react"
+import { useRef, useCallback, useEffect as useEffectBarcode } from "react"
+import JsBarcode from "jsbarcode"
 
 const STORAGE_BUCKET = "product-images"
 const PUBLIC_SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://zexflchjcycxrpjkuews.supabase.co"
@@ -16,6 +18,94 @@ const QUICK_REASONS = [
   "ทดสอบระบบ",
   "อื่นๆ (ระบุเหตุผลเอง)"
 ]
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Barcode Modal
+// ─────────────────────────────────────────────────────────────────────────────
+const BarcodeModal = ({ rfid, onClose }: { rfid: string; onClose: () => void }) => {
+  const svgRef = useRef<SVGSVGElement>(null)
+
+  useEffectBarcode(() => {
+    if (svgRef.current) {
+      JsBarcode(svgRef.current, rfid, {
+        format: "CODE128",
+        width: 2,
+        height: 80,
+        displayValue: true,
+        fontSize: 14,
+        margin: 12,
+        background: "#ffffff",
+        lineColor: "#1e293b",
+        font: "monospace",
+      })
+    }
+  }, [rfid])
+
+  const handlePrint = () => {
+    const svg = svgRef.current
+    if (!svg) return
+    const svgData = new XMLSerializer().serializeToString(svg)
+    const win = window.open("", "_blank", "width=500,height=300")
+    if (!win) return
+    win.document.write(`
+      <html><head><title>Barcode: ${rfid}</title>
+      <style>body{margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#fff;font-family:monospace}svg{max-width:100%}</style></head>
+      <body>${svgData}<script>window.onload=()=>window.print()<\/script></body></html>
+    `)
+    win.document.close()
+  }
+
+  return (
+    <div
+      className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-[70] animate-fade-in"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-2xl w-full max-w-sm overflow-hidden">
+        {/* Header */}
+        <div className="p-4 bg-indigo-50 border-b border-indigo-100 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-9 h-9 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center">
+              <Barcode className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="font-bold text-indigo-800 text-sm">Barcode จาก RFID</h3>
+              <p className="text-[10px] text-indigo-400 font-mono mt-0.5 truncate max-w-[200px]">{rfid}</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-200/50 transition-all"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Barcode */}
+        <div className="p-6 flex flex-col items-center gap-4">
+          <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-inner w-full flex justify-center">
+            <svg ref={svgRef} />
+          </div>
+
+          <div className="flex gap-2 w-full">
+            <button
+              onClick={handlePrint}
+              className="flex-1 flex items-center justify-center gap-2 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs transition-all shadow-sm"
+            >
+              <Printer className="w-4 h-4" />
+              พิมพ์ Barcode
+            </button>
+            <button
+              onClick={onClose}
+              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold text-xs transition-all"
+            >
+              ปิด
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 const DeleteConfirmModal = ({
   deleteConfirmData,
@@ -145,6 +235,9 @@ function BalanceCheckContent() {
 
   // สำหรับ Modal เลือกลบ Tag
   const [deleteConfirmData, setDeleteConfirmData] = useState<{ tagId: string | number, rfid: string } | null>(null)
+
+  // สำหรับ Barcode Modal
+  const [barcodeRfid, setBarcodeRfid] = useState<string | null>(null)
 
   const openTagModal = async (productId: number, productName: string, branchId: number, branchName: string) => {
     setTagModalData({ productId, productName, branchId, branchName })
@@ -564,13 +657,22 @@ function BalanceCheckContent() {
                           <span className="text-[10px] text-emerald-600 font-medium">● {t.status}</span>
                         </div>
                       </div>
-                      <button
-                        onClick={() => promptDeleteTag(t.id, t.rfid)}
-                        className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all opacity-0 group-hover:opacity-100"
-                        title="ลบ Tag นี้"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                        <button
+                          onClick={() => setBarcodeRfid(t.rfid)}
+                          className="p-1.5 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                          title="สร้าง Barcode จาก RFID นี้"
+                        >
+                          <Barcode className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => promptDeleteTag(t.id, t.rfid)}
+                          className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all"
+                          title="ลบ Tag นี้"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -590,6 +692,14 @@ function BalanceCheckContent() {
 
           </div>
         </div>
+      )}
+
+      {/* Barcode Modal */}
+      {barcodeRfid && (
+        <BarcodeModal
+          rfid={barcodeRfid}
+          onClose={() => setBarcodeRfid(null)}
+        />
       )}
 
       {/* Modal เลือกลบเหตุผล */}

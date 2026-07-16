@@ -76,4 +76,15 @@ export const RfidTagsController = {
       return handleError(err);
     }
   },
+
+  async updateRfidTag(req: NextRequest, user: any) {
+    try {
+      const oldRfid = req.nextUrl.searchParams.get("rfid")?.replace("eq.", "") || "";
+      const { rfid: newRfid } = await req.json();
+      const data = await MobileRfidService.updateRfidTag(oldRfid, newRfid);
+      return NextResponse.json(data);
+    } catch (err) {
+      return handleError(err);
+    }
+  },
 };

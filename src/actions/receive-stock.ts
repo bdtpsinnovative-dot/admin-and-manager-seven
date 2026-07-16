@@ -2,6 +2,7 @@
 
 import { createClient } from '@/utils/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { supabaseAdmin } from '@/lib/supabase/admin'
 
 // 1. ดึงรายการใบโอนทั้งหมด
 export async function getTransfersList() {
@@ -126,7 +127,7 @@ export async function receiveStockAction(transferId: number, items: any[]) {
 
       // --- 1. หักสต็อกสาขาต้นทาง (หักด้วยจำนวนที่เขาส่งมา คือ transferQty) ---
       if (transferQty > 0) {
-        const { data: fromStock } = await supabase
+        const { data: fromStock } = await supabaseAdmin
           .from('stock')
           .select('qty')
           .eq('product_id', item.product_id)
@@ -134,14 +135,14 @@ export async function receiveStockAction(transferId: number, items: any[]) {
           .single()
 
         if (fromStock) {
-          await supabase.from('stock')
+          await supabaseAdmin.from('stock')
             .update({ qty: fromStock.qty - transferQty, updated_at: new Date().toISOString() })
             .eq('product_id', item.product_id)
             .eq('branch_id', header.from_branch_id)
         }
 
         // เก็บ Log ขาออก (ต้องเป็นยอดโอนออก)
-        await supabase.from('stock_movements').insert({
+        await supabaseAdmin.from('stock_movements').insert({
           product_id_bigint: item.product_id,
           branch_id: header.from_branch_id,
           type: 'TRANSFER_OUT',
@@ -155,7 +156,7 @@ export async function receiveStockAction(transferId: number, items: any[]) {
 
       // --- 2. เพิ่มสต็อกสาขาปลายทาง (เพิ่มด้วยจำนวนที่รับจริง คือ receivedQty) ---
       if (receivedQty > 0) {
-        const { data: toStock } = await supabase
+        const { data: toStock } = await supabaseAdmin
           .from('stock')
           .select('qty')
           .eq('product_id', item.product_id)
@@ -163,17 +164,17 @@ export async function receiveStockAction(transferId: number, items: any[]) {
           .single()
 
         if (toStock) {
-          await supabase.from('stock')
+          await supabaseAdmin.from('stock')
             .update({ qty: toStock.qty + receivedQty, updated_at: new Date().toISOString() })
             .eq('product_id', item.product_id)
             .eq('branch_id', header.to_branch_id)
         } else {
-          await supabase.from('stock')
+          await supabaseAdmin.from('stock')
             .insert({ product_id: item.product_id, branch_id: header.to_branch_id, qty: receivedQty })
         }
 
         // เก็บ Log ขาเข้า (ต้องเป็นยอดรับจริง)
-        await supabase.from('stock_movements').insert({
+        await supabaseAdmin.from('stock_movements').insert({
           product_id_bigint: item.product_id,
           branch_id: header.to_branch_id,
           type: 'TRANSFER_IN',
