@@ -192,32 +192,7 @@ export default function ManagerPOSPage() {
       try { setCart(JSON.parse(savedCart)) } catch (e) { console.error("โหลดตะกร้าเก่าไม่สำเร็จ", e) }
     }
 
-    // ✨ โหลดข้อมูลลูกค้าที่กรอกค้างไว้
-    const savedCustomer = localStorage.getItem('pos_customer_info')
-    if (savedCustomer) {
-      try { 
-        const info = JSON.parse(savedCustomer)
-        if (info.saleMode) setSaleMode(info.saleMode)
-        if (info.shippingName) setShippingName(info.shippingName)
-        if (info.shippingPhone) setShippingPhone(info.shippingPhone)
-        if (info.shippingAddress) setShippingAddress(info.shippingAddress)
-        if (info.latitude) setLatitude(info.latitude)
-        if (info.longitude) setLongitude(info.longitude)
-        if (info.companyNameTh) setCompanyNameTh(info.companyNameTh)
-        if (info.companyNameEn) setCompanyNameEn(info.companyNameEn)
-        if (info.companyAddress) setCompanyAddress(info.companyAddress)
-        if (info.taxId) setTaxId(info.taxId)
-      } catch (e) { console.error("โหลดข้อมูลลูกค้าไม่สำเร็จ", e) }
-    }
   }, [])
-
-  // ✨ บันทึกข้อมูลลูกค้าลง Local Storage ทุกครั้งที่มีการเปลี่ยนแปลง
-  useEffect(() => {
-    if (hasLoadedEdit && !editOrderId) {
-      const customerInfo = { saleMode, shippingName, shippingPhone, shippingAddress, latitude, longitude, companyNameTh, companyNameEn, companyAddress, taxId }
-      localStorage.setItem('pos_customer_info', JSON.stringify(customerInfo))
-    }
-  }, [saleMode, shippingName, shippingPhone, shippingAddress, latitude, longitude, companyNameTh, companyNameEn, companyAddress, taxId])
 
   useEffect(() => {
     if (cart.length > 0) {
@@ -496,8 +471,8 @@ export default function ManagerPOSPage() {
         ? `[รับหน้าร้าน] ${finalAddressText}`
         : finalAddressText;
 
-      const vatAmount = totalFinalPrice * 0.07;
-      const grandTotal = totalFinalPrice + vatAmount;
+      const grandTotal = totalFinalPrice;
+      const vatAmount = grandTotal - (grandTotal / 1.07);
 
       const payload: any = {
         orderId: editOrderId,
@@ -836,7 +811,18 @@ export default function ManagerPOSPage() {
                           setIsConfirmingClear(false)
                           setSpecialDiscountPercent('0')
                           setSpecialDiscountBaht('0')
-                          toast.success('ลบสินค้าทั้งหมดออกจากรายการขายแล้ว')
+                          setShippingName('')
+                          setShippingPhone('')
+                          setShippingAddress('')
+                          setCompanyNameTh('')
+                          setCompanyNameEn('')
+                          setCompanyAddress('')
+                          setTaxId('')
+                          setLatitude(null)
+                          setLongitude(null)
+                          setSaleMode('TAKE_AWAY')
+                          localStorage.removeItem('pos_customer_info')
+                          toast.success('ล้างข้อมูลและสินค้าทั้งหมดแล้ว')
                         }}
                         className="text-[9px] bg-red-600 hover:bg-red-700 text-white font-bold px-1.5 py-0.5 rounded transition-colors cursor-pointer"
                       >
@@ -952,10 +938,10 @@ export default function ManagerPOSPage() {
                 <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">
                   ส่วนลดพิเศษท้ายบิล (Special Discount)
                 </span>
-                {Number(specialDiscountPercent || 0) > 0 && (
+                {cart.length > 0 && (
                   <button 
                     onClick={() => {
-                      setTargetRoundingTotal(Math.floor(totalFinalPrice * 1.07).toString())
+                      setTargetRoundingTotal(Math.floor(totalFinalPrice).toString())
                       setCalculatedRoundingBaht(null)
                       setIsRoundingModalOpen(true)
                     }}
@@ -971,14 +957,13 @@ export default function ManagerPOSPage() {
                   <span className="text-[10px] text-slate-400 font-bold mr-1.5">฿</span>
                   <input
                     type="number"
-                    min="0"
                     placeholder="0"
                     value={specialDiscountBaht}
                     onChange={(e) => {
                       const val = e.target.value;
                       if (val === '') {
                         setSpecialDiscountBaht('');
-                      } else if (Number(val) >= 0) {
+                      } else {
                         // Strip leading zeros unless it's a decimal starting with 0.
                         const cleanVal = val.length > 1 && val.startsWith('0') && !val.includes('.') ? val.replace(/^0+/, '') : val;
                         setSpecialDiscountBaht(cleanVal || '0');
@@ -1013,11 +998,16 @@ export default function ManagerPOSPage() {
             <div className="space-y-1.5 text-xs font-semibold text-slate-500 mb-4">
               <div className="flex justify-between"><span>ยอดรวมสินค้า</span><span>{totalOriginalPrice.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span></div>
               {promotionDiscountAmount > 0 && <div className="flex justify-between text-orange-600"><span>ส่วนลดโปรโมชัน</span><span>- {promotionDiscountAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span></div>}
-              {totalSpecialDiscountAmount > 0 && <div className="flex justify-between text-red-500"><span>ส่วนลดพิเศษ</span><span>- {totalSpecialDiscountAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span></div>}
-              <div className="flex justify-between pt-1 border-t border-dashed border-slate-200"><span>ยอดก่อนภาษี (Subtotal)</span><span>{totalFinalPrice.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span></div>
-              <div className="flex justify-between"><span>ภาษีมูลค่าเพิ่ม (VAT 7%)</span><span>{(totalFinalPrice * 0.07).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span></div>
+              {totalSpecialDiscountAmount !== 0 && (
+                <div className={`flex justify-between ${totalSpecialDiscountAmount > 0 ? 'text-red-500' : 'text-emerald-600'}`}>
+                  <span>{totalSpecialDiscountAmount > 0 ? 'ส่วนลดพิเศษ' : 'ปัดเศษเพิ่ม'}</span>
+                  <span>{totalSpecialDiscountAmount > 0 ? '-' : '+'} {Math.abs(totalSpecialDiscountAmount).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span>
+                </div>
+              )}
+              <div className="flex justify-between pt-1 border-t border-dashed border-slate-200"><span>ยอดก่อนภาษี (Subtotal)</span><span>{(totalFinalPrice / 1.07).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span></div>
+              <div className="flex justify-between"><span>ภาษีมูลค่าเพิ่ม (VAT 7%)</span><span>{(totalFinalPrice - (totalFinalPrice / 1.07)).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span></div>
               <div className="flex justify-between text-xs font-bold text-slate-800 pt-3 mt-1 border-t border-dashed border-slate-200">
-                <span>ยอดสุทธิใบขาย (Grand Total)</span><span className="text-base text-blue-600 font-black">{(totalFinalPrice * 1.07).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span>
+                <span>ยอดสุทธิใบขาย (Grand Total)</span><span className="text-base text-blue-600 font-black">{totalFinalPrice.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span>
               </div>
             </div>
 
@@ -1056,6 +1046,19 @@ export default function ManagerPOSPage() {
             </div>
             
             <div className="p-5 overflow-y-auto">
+              <button
+                type="button"
+                onClick={() => {
+                  setShippingPhone('-')
+                  setShippingAddress('-')
+                  if (!shippingName.trim()) {
+                    setShippingName('ลูกค้าทั่วไป')
+                  }
+                }}
+                className="w-full mb-3 text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 py-2.5 px-3 rounded-xl font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer"
+              >
+                ⚡ ไม่ระบุเบอร์โทร/ที่อยู่ (ใส่ "-")
+              </button>
               <div className="space-y-3">
                 <div>
                   <label className="text-[10px] font-bold text-slate-500 mb-1 block">ชื่อลูกค้า/ผู้รับ <span className="text-red-500">*</span></label>
@@ -1331,7 +1334,7 @@ export default function ManagerPOSPage() {
               <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
                 <div className="text-xs text-slate-500 font-semibold mb-1">ยอดสุทธิปัจจุบัน (รวม VAT)</div>
                 <div className="text-2xl font-black text-slate-800">
-                  {(totalFinalPrice * 1.07).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-sm font-medium text-slate-500">฿</span>
+                  {totalFinalPrice.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-sm font-medium text-slate-500">฿</span>
                 </div>
               </div>
 
@@ -1356,63 +1359,79 @@ export default function ManagerPOSPage() {
                 <div className="pt-4 border-t border-slate-100">
                   {(() => {
                     const target = Number(targetRoundingTotal);
-                    const currentGrandTotal = totalFinalPrice * 1.07;
-                    const D = currentGrandTotal - target;
-                    const percent = Number(specialDiscountPercent || 0);
-                    const currentBaht = Number(specialDiscountBaht || 0);
                     
-                    if (D <= 0 && target !== currentGrandTotal) {
+                    if (target <= 0) {
                       return (
                         <div className="text-xs text-rose-500 bg-rose-50 p-3 rounded-lg font-medium flex items-start gap-2">
                           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
-                          ยอดเป้าหมายต้องน้อยกว่ายอดปัจจุบันครับ
+                          ยอดเป้าหมายต้องมากกว่า 0 ครับ
                         </div>
                       );
                     }
 
-                    // Delta = D / ((1 - percent / 100) * 1.07)
-                    const delta = D / ((1 - percent / 100) * 1.07);
-                    const newBaht = currentBaht + delta;
-                    // Format to 5 decimal places for precision, but strip trailing zeros
-                    const newBahtFormatted = parseFloat(newBaht.toFixed(5));
-                    
-                    // Notify parent component safely in a timeout or effect, but here we just render
-                    // We'll update the state when "Apply" is clicked.
+                    // 1. คำนวณความต้องการส่วนลดรวม (จากราคาของในตะกร้าทั้งหมดก่อนลดพิเศษ)
+                    const subtotal = totalFinalPriceBeforeSpecial;
+                    const totalDiscountNeeded = subtotal - target;
+
+                    // 2. คำนวณเป็นเปอร์เซ็นต์ (%) ใหม่ทั้งหมด
+                    const targetPercentDiscount = subtotal > 0 ? (totalDiscountNeeded / subtotal) * 100 : 0;
+                    const targetPercentFormatted = parseFloat(targetPercentDiscount.toFixed(4));
+
+                    // 3. คำนวณเป็นบาท (฿) ใหม่ทั้งหมด
+                    const targetBahtFormatted = parseFloat(totalDiscountNeeded.toFixed(2));
+
+                    const isRoundUp = totalDiscountNeeded < 0;
                     
                     return (
-                      <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4">
-                        <div className="text-xs text-emerald-700 font-bold mb-2 flex items-center gap-1.5">
+                      <div className="bg-indigo-50/50 border border-indigo-100 rounded-xl p-4 space-y-4">
+                        <div className="text-xs text-indigo-700 font-bold flex items-center gap-1.5">
                           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>
-                          ระบบคำนวณสำเร็จ!
-                        </div>
-                        <div className="text-sm text-emerald-800 font-medium leading-relaxed mb-3">
-                          เพื่อให้ยอดสุทธิเป็น <span className="font-bold underline decoration-emerald-300 decoration-2 underline-offset-2">{target.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span><br/>
-                          คุณต้องให้ส่วนลด <span className="font-bold">(ก่อนรวมภาษี)</span> เป็นจำนวน:
-                        </div>
-                        <div className="text-2xl font-black text-emerald-600 bg-white rounded-lg px-4 py-2 border border-emerald-100 shadow-sm text-center mb-4">
-                          {newBahtFormatted} ฿
+                          คำนวณยอดเป้าหมาย {target.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿ สำเร็จ!
                         </div>
                         
-                        <div className="bg-white/60 p-3 rounded-lg border border-emerald-100/50 mb-4">
-                          <p className="text-[10px] text-emerald-700 font-bold mb-1 flex items-center gap-1">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
-                            ทำไมตัวเลขส่วนลดถึงมีเศษสตางค์?
-                          </p>
-                          <p className="text-[10px] text-emerald-600/90 leading-relaxed">
-                            เพื่อความถูกต้องตามหลักบัญชีสรรพากร ส่วนลดจะต้องถูกหักออก <span className="font-bold underline">ก่อน</span> คิดภาษี (VAT 7%) เสมอ ระบบจึงช่วยคำนวณส่วนลดก่อนภาษีที่แม่นยำที่สุดให้ เพื่อให้ยอดสุทธิออกมาลงตัวตรงใจคุณพอดีครับ
-                          </p>
+                        <div className="text-[10px] text-slate-500 leading-normal">
+                          ระบบช่วยคำนวณสัดส่วนภาษี (VAT 7%) เรียบร้อยแล้ว นายสามารถเลือกปรับแต่งรูปแบบส่วนลด/ส่วนเพิ่ม ได้ 2 รูปแบบดังนี้ครับ:
                         </div>
-                        
-                        <button
-                          onClick={() => {
-                            setSpecialDiscountBaht(newBahtFormatted.toString());
-                            setIsRoundingModalOpen(false);
-                          }}
-                          className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 px-4 rounded-lg shadow-sm shadow-emerald-200 transition-colors flex items-center justify-center gap-2"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12l5 5L20 7"/></svg>
-                          ใช้ตัวเลขนี้ (Apply)
-                        </button>
+
+                        {/* รูปแบบที่ 1: ปรับเป็นเปอร์เซ็นต์ */}
+                        <div className="bg-white p-3 rounded-xl border border-slate-100 space-y-2 shadow-2xs">
+                          <div className="flex justify-between items-center text-xs">
+                            <span className="font-bold text-slate-700">รูปแบบที่ 1: ปรับเป็นเปอร์เซ็นต์ (%)</span>
+                            <span className={`font-black ${targetPercentFormatted > 0 ? 'text-red-500' : 'text-emerald-600'}`}>
+                              {targetPercentFormatted > 0 ? '-' : '+'} {Math.abs(targetPercentFormatted)} %
+                            </span>
+                          </div>
+                          <button
+                            onClick={() => {
+                              setSpecialDiscountPercent(targetPercentFormatted.toString());
+                              setSpecialDiscountBaht('0');
+                              setIsRoundingModalOpen(false);
+                            }}
+                            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-3 rounded-lg text-[11px] transition-colors cursor-pointer"
+                          >
+                            ใช้ส่วนลด {Math.abs(targetPercentFormatted)} % (ล้างช่องบาท)
+                          </button>
+                        </div>
+
+                        {/* รูปแบบที่ 2: ปรับเป็นบาท */}
+                        <div className="bg-white p-3 rounded-xl border border-slate-100 space-y-2 shadow-2xs">
+                          <div className="flex justify-between items-center text-xs">
+                            <span className="font-bold text-slate-700">รูปแบบที่ 2: ปรับเป็นบาท (฿)</span>
+                            <span className={`font-black ${targetBahtFormatted > 0 ? 'text-red-500' : 'text-emerald-600'}`}>
+                              {targetBahtFormatted > 0 ? '-' : '+'} {Math.abs(targetBahtFormatted)} ฿
+                            </span>
+                          </div>
+                          <button
+                            onClick={() => {
+                              setSpecialDiscountBaht(targetBahtFormatted.toString());
+                              setSpecialDiscountPercent('0');
+                              setIsRoundingModalOpen(false);
+                            }}
+                            className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2 px-3 rounded-lg text-[11px] transition-colors cursor-pointer"
+                          >
+                            ใช้ส่วนลด {Math.abs(targetBahtFormatted)} ฿ (ล้างช่อง %)
+                          </button>
+                        </div>
                       </div>
                     );
                   })()}

@@ -31,9 +31,9 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
   const specialDiscountPercentAmount = afterBaht * (specialDiscountPercent / 100);
   const totalSpecialDiscount = specialDiscountBaht + specialDiscountPercentAmount;
 
-  const subTotalWithoutVat = Math.max(0, totalItemsPrice - totalSpecialDiscount);
-  const vatAmount = subTotalWithoutVat * 0.07;
-  const grandTotal = subTotalWithoutVat + vatAmount;
+  const grandTotal = Math.max(0, totalItemsPrice - totalSpecialDiscount);
+  const vatAmount = grandTotal - (grandTotal / 1.07);
+  const subTotalWithoutVat = grandTotal - vatAmount;
 
   return (
     <div 
@@ -150,8 +150,8 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
 
               const price = item.price_at_sale ?? item.products?.price ?? 0;
               const total = price * item.qty;
-              const rowVat = isOutOfStock ? 0 : total * 0.07;
-              const totalWithVat = total + rowVat;
+              const rowVat = isOutOfStock ? 0 : (total - (total / 1.07));
+              const totalWithVat = total;
               const imageUrl = item.products?.image_url || 'https://placehold.co/150x150?text=No+Image';
 
               return (
@@ -190,16 +190,16 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
                     {isOutOfStock ? <span className="line-through">{item.qty}</span> : item.qty}
                   </td>
                   <td className="py-2 text-right align-top text-[10px] text-neutral-600">
-                    {isOutOfStock ? '-' : price.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+                    {isOutOfStock ? '-' : (price / 1.07).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </td>
                   <td className="py-2 text-right align-top text-[10px] text-neutral-600">
-                    {isOutOfStock ? '-' : rowVat.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+                    {isOutOfStock ? '-' : rowVat.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </td>
                   <td className="py-2 text-right align-top text-[11px] font-semibold text-neutral-800">
                     {isOutOfStock ? (
                       <span className="text-red-500 font-bold">0.00</span>
                     ) : (
-                      totalWithVat.toLocaleString('th-TH', { minimumFractionDigits: 2 })
+                      totalWithVat.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
                     )}
                   </td>
                 </tr>
@@ -221,15 +221,15 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
             </p>
           </div>
           <div className="w-56">
-            {totalSpecialDiscount > 0 ? (
+            {totalSpecialDiscount !== 0 ? (
               <>
                 <div className="flex justify-between py-1 text-[9px] text-neutral-500">
                   <span>Subtotal</span>
                   <span>{totalItemsPrice.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
-                <div className="flex justify-between py-1 text-[9px] text-red-600">
-                  <span>Special Discount</span>
-                  <span>- {totalSpecialDiscount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                <div className={`flex justify-between py-1 text-[9px] ${totalSpecialDiscount > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                  <span>{totalSpecialDiscount > 0 ? 'Special Discount' : 'Rounding Surcharge'}</span>
+                  <span>{totalSpecialDiscount > 0 ? '-' : '+'} {Math.abs(totalSpecialDiscount).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
                 <div className="flex justify-between py-1 text-[9px] text-neutral-500 border-t border-neutral-100">
                   <span>Subtotal (Before VAT)</span>
@@ -262,7 +262,7 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
           <div>
             <div className="h-6 border-b border-neutral-300 w-full mb-1.5"></div>
             <p className="font-medium text-neutral-900 text-[8px] uppercase tracking-wider">Accepted By</p>
-            <p className="text-neutral-400 text-[7px] mt-0.5">Customer / Client</p>
+            <p className="text-neutral-600 font-bold text-[7px] mt-0.5">{data?.profiles?.full_name || 'Customer / Client'}</p>
           </div>
         </div>
 

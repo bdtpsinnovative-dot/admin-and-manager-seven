@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { getSalesHistory } from '@/actions/sales-check'
 import { toast } from 'sonner'
-import { BarChart3, DollarSign, Building2, Truck, Printer } from 'lucide-react'
+import { BarChart3, DollarSign, Building2, Truck, Printer, Check, XCircle, Clock } from 'lucide-react'
 import PrintDispatchModal from '@/components/PrintDispatchModal'
 
 interface RemoteDetail {
@@ -29,6 +29,7 @@ export default function SalesCheckPage() {
   const [sales, setSales] = useState<SaleOrder[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'COMPLETED' | 'CANCELLED'>('ALL')
   const [printOrderCode, setPrintOrderCode] = useState<string | null>(null)
 
   useEffect(() => {
@@ -46,16 +47,23 @@ export default function SalesCheckPage() {
     setLoading(false)
   }
 
-  // ฟิลเตอร์ค้นหาจากเลขที่ใบขาย หรือ ชื่อลูกค้าจัดส่ง
-  const filteredSales = sales.filter(s =>
+  // ฟิลเตอร์ค้นหาจากเลขที่ใบขาย หรือ ชื่อลูกค้าจัดส่ง และสถานะที่เลือกกรอง
+  const filteredSales = sales.filter(s => {
+    const matchesSearch = s.orderCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (s.shippingName && s.shippingName.toLowerCase().includes(searchTerm.toLowerCase()))
+    const matchesStatus = statusFilter === 'ALL' || s.status === statusFilter
+    return matchesSearch && matchesStatus
+  })
+
+  // ✨ คำนวณยอดสรุปรวมทั้งหมดในหน้าจอ (ไม่รวมออเดอร์ที่ถูกยกเลิก โดยอ้างอิงตามคำค้นหา)
+  const baseSalesForTotals = sales.filter(s => 
     s.orderCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (s.shippingName && s.shippingName.toLowerCase().includes(searchTerm.toLowerCase()))
   )
-
-  // ✨ คำนวณยอดสรุปรวมทั้งหมดในหน้าจอ
-  const totalInvoiced = filteredSales.reduce((sum, s) => sum + s.totalAmount, 0)
-  const totalMyRevenue = filteredSales.reduce((sum, s) => sum + s.myBranchRevenue, 0)
-  const totalDropShip = filteredSales.reduce((sum, s) => sum + s.otherBranchRevenue, 0)
+  const totalInvoiced = baseSalesForTotals.filter(s => s.status !== 'CANCELLED').reduce((sum, s) => sum + s.totalAmount, 0)
+  const totalMyRevenue = baseSalesForTotals.filter(s => s.status !== 'CANCELLED').reduce((sum, s) => sum + s.myBranchRevenue, 0)
+  const totalDropShip = baseSalesForTotals.filter(s => s.status !== 'CANCELLED').reduce((sum, s) => sum + s.otherBranchRevenue, 0)
+  const totalCancelled = baseSalesForTotals.filter(s => s.status === 'CANCELLED').reduce((sum, s) => sum + s.totalAmount, 0)
 
   if (loading) return <div className="p-6 text-center font-bold text-slate-500 bg-[#F4F7F9] min-h-screen flex items-center justify-center">กำลังดึงประวัติใบขาย...</div>
 
@@ -94,11 +102,11 @@ export default function SalesCheckPage() {
           </div>
 
           <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
-            <span className="text-[11px] font-black text-emerald-600 uppercase tracking-wider flex items-center gap-1.5">
-              <Building2 className="w-3.5 h-3.5 text-emerald-500" /> ยอดเงินเข้าคลังเรา
+            <span className="text-[11px] font-black text-red-600 uppercase tracking-wider flex items-center gap-1.5 flex-row">
+              <XCircle className="w-3.5 h-3.5 text-red-500" /> ยอดเงินบิลยกเลิก
             </span>
-            <div className="text-2xl font-black text-emerald-600 mt-2">{totalMyRevenue.toLocaleString()} ฿</div>
-            <span className="text-[10px] text-slate-400 block mt-1 font-medium">ยอดขายที่เป็นสินค้าจากสต็อกสาขาตัวเอง</span>
+            <div className="text-2xl font-black text-red-600 mt-2">{totalCancelled.toLocaleString()} ฿</div>
+            <span className="text-[10px] text-slate-400 block mt-1 font-medium">รวมมูลค่าบิลทั้งหมดที่ทำการยกเลิก</span>
           </div>
 
           <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
@@ -108,6 +116,40 @@ export default function SalesCheckPage() {
             <div className="text-2xl font-black text-orange-600 mt-2">{totalDropShip.toLocaleString()} ฿</div>
             <span className="text-[10px] text-slate-400 block mt-1 font-medium">ยอดเงินของสินค้าที่ต้องให้สาขาอื่นแพ็คส่ง</span>
           </div>
+        </div>
+
+        {/* แท็บกรองสถานะ */}
+        <div className="flex gap-2 p-1 bg-white rounded-2xl w-full md:max-w-md border border-slate-100 shadow-3xs">
+          <button
+            onClick={() => setStatusFilter('ALL')}
+            className={`flex-1 py-2 px-4 text-xs font-black rounded-xl transition-all cursor-pointer ${
+              statusFilter === 'ALL'
+                ? 'bg-slate-800 text-white shadow-xs'
+                : 'text-slate-500 hover:bg-slate-50'
+            }`}
+          >
+            ทั้งหมด ({sales.length})
+          </button>
+          <button
+            onClick={() => setStatusFilter('COMPLETED')}
+            className={`flex-1 py-2 px-4 text-xs font-black rounded-xl transition-all cursor-pointer ${
+              statusFilter === 'COMPLETED'
+                ? 'bg-emerald-600 text-white shadow-xs'
+                : 'text-slate-500 hover:bg-slate-50'
+            }`}
+          >
+            ขายสำเร็จ ({sales.filter(s => s.status === 'COMPLETED').length})
+          </button>
+          <button
+            onClick={() => setStatusFilter('CANCELLED')}
+            className={`flex-1 py-2 px-4 text-xs font-black rounded-xl transition-all cursor-pointer ${
+              statusFilter === 'CANCELLED'
+                ? 'bg-red-600 text-white shadow-xs'
+                : 'text-slate-500 hover:bg-slate-50'
+            }`}
+          >
+            ยกเลิกแล้ว ({sales.filter(s => s.status === 'CANCELLED').length})
+          </button>
         </div>
 
         {/* ตารางรายการหลัก */}
@@ -132,7 +174,14 @@ export default function SalesCheckPage() {
                   </tr>
                 ) : (
                   filteredSales.map((order) => (
-                    <tr key={order.id} className="hover:bg-slate-50/50 transition-colors">
+                    <tr
+                      key={order.id}
+                      className={`transition-all border-l-4 ${
+                        order.status === 'CANCELLED'
+                          ? 'bg-red-50/90 text-red-900 border-l-red-500 hover:bg-red-100/60'
+                          : 'hover:bg-slate-50/50 border-l-transparent'
+                      }`}
+                    >
                       {/* เลขที่ใบขาย & รูปแบบขาย */}
                       <td className="p-4 font-bold text-slate-800">
                         <div className="flex items-center justify-between gap-2">
@@ -176,7 +225,7 @@ export default function SalesCheckPage() {
                       </td>
 
                       {/* ยอดเงินคลังเพื่อน (Drop Ship) */}
-                      <td className="p-4 text-right bg-orange-50/30">
+                      <td className={`p-4 text-right ${order.status === 'CANCELLED' ? '' : 'bg-orange-50/30'}`}>
                         {order.otherBranchRevenue > 0 ? (
                           <>
                             <span className="font-black text-orange-600 text-sm block">
@@ -204,9 +253,17 @@ export default function SalesCheckPage() {
                       <td className="p-4 text-center">
                         <span className={`inline-block px-3 py-1.5 rounded-full text-[10px] font-black shadow-sm ${order.status === 'COMPLETED'
                             ? 'bg-emerald-50 text-emerald-600 border border-emerald-200'
+                            : order.status === 'CANCELLED'
+                            ? 'bg-red-50 text-red-600 border border-red-200'
                             : 'bg-amber-50 text-amber-600 border border-amber-200 animate-pulse'
                           }`}>
-                          {order.status === 'COMPLETED' ? '✓ สำเร็จแล้ว' : '⏳ รอสาขาแพ็ค'}
+                          {order.status === 'COMPLETED' ? (
+                            <span className="flex items-center justify-center gap-1"><Check className="w-3 h-3" /> สำเร็จแล้ว</span>
+                          ) : order.status === 'CANCELLED' ? (
+                            <span className="flex items-center justify-center gap-1"><XCircle className="w-3 h-3" /> ยกเลิกแล้ว</span>
+                          ) : (
+                            <span className="flex items-center justify-center gap-1"><Clock className="w-3 h-3" /> รอสาขาแพ็ค</span>
+                          )}
                         </span>
                       </td>
                     </tr>

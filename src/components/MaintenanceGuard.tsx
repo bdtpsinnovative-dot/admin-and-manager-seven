@@ -13,6 +13,16 @@ export default function MaintenanceGuard({ type, children }: Props) {
   const [isMaintenance, setIsMaintenance] = useState(false);
 
   useEffect(() => {
+    // Bypass maintenance page on local development environments (localhost, 127.0.0.1, 192.168.x.x)
+    if (typeof window !== "undefined" && (
+      window.location.hostname === "localhost" || 
+      window.location.hostname === "127.0.0.1" ||
+      window.location.hostname.startsWith("192.168.")
+    )) {
+      setIsMaintenance(false);
+      return;
+    }
+
     const checkMaintenance = async () => {
       try {
         const res = await fetch("/api/system-settings");

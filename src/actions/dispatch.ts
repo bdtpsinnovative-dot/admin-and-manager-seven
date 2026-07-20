@@ -3,6 +3,7 @@
 
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
+import { revalidatePath } from 'next/cache'
 
 export async function getGroupedDispatches() {
   const cookieStore = await cookies()
@@ -187,6 +188,11 @@ export async function markOrderItemsShipped(orderId: number, itemIds: number[], 
     await supabase.from('orders').update({ status: 'COMPLETED' }).eq('id', orderId)
   }
 
+  revalidatePath('/sale/sales-history')
+  revalidatePath('/sale/vanguard-dispatch')
+  revalidatePath('/manager/sales-history')
+  revalidatePath('/manager/vanguard-dispatch')
+
   return { success: true }
 }
 
@@ -219,6 +225,7 @@ export async function getPrintDispatchData(orderCode: string) {
       special_discount_percent,
       special_discount_baht,
       branches!orders_branch_fk ( branch_name ),
+      profiles ( full_name ),
       order_items (
         id, 
         qty, 
@@ -325,6 +332,11 @@ export async function approveAndCutStock(orderId: number, orderCode: string, ite
       await supabase.from('orders').update({ status: 'PROCESSING' }).eq('id', orderId)
     }
 
+    revalidatePath('/sale/sales-history')
+    revalidatePath('/sale/vanguard-dispatch')
+    revalidatePath('/manager/sales-history')
+    revalidatePath('/manager/vanguard-dispatch')
+
     return { success: true }
   } catch (error: any) {
     return { success: false, error: error.message }
@@ -389,6 +401,11 @@ export async function cancelOrder(orderId: number, orderCode: string, items: any
       .update({ status: 'CANCELLED' })
       .like('note', `%${orderCode}%`)
       .in('status', ['PENDING', 'AWAITING_SHIPMENT'])
+
+    revalidatePath('/sale/sales-history')
+    revalidatePath('/sale/vanguard-dispatch')
+    revalidatePath('/manager/sales-history')
+    revalidatePath('/manager/vanguard-dispatch')
 
     return { success: true }
   } catch (error: any) {

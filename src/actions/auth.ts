@@ -11,7 +11,6 @@ export async function login(formData: FormData) {
 
   const email = (formData.get("email") as string || "").trim();
   const password = formData.get("password") as string || "";
-  console.log("DEBUG LOGIN - Email:", JSON.stringify(email), "Password:", JSON.stringify(password));
   try {
     // ส่งข้อมูลไปตรวจสอบกับ Supabase Auth
     const { data, error } = await supabase.auth.signInWithPassword({

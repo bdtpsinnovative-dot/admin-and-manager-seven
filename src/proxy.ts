@@ -2,11 +2,32 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function proxy(request: NextRequest) {
+  const path = request.nextUrl.pathname
+
+  // --- นิยาม Path ---
+  const isLoginPage = path === '/login'
+  const isAdminPath = path.startsWith('/dashboard') || 
+                      path.startsWith('/employees') || 
+                      path.startsWith('/branches') ||
+                      path.startsWith('/inventory') ||
+                      path.startsWith('/lots') ||
+                      path.startsWith('/props') ||
+                      path.startsWith('/CheckRfid') ||
+                      path.startsWith('/rfid-mismatch')
+  const isManagerPath = path.startsWith('/manager')
+  const isSalePath = path.startsWith('/sale')
+  const isProtectedPath = isAdminPath || isManagerPath || isSalePath
+
+  // ถ้าไม่ใช่ path ที่ต้อง protect (เช่น API, public pages) → ปล่อยผ่านทันที (ไม่ต้องเชื่อมต่อ Supabase)
+  if (!isProtectedPath && !isLoginPage) {
+    return NextResponse.next()
+  }
+
   let response = NextResponse.next({
     request: { headers: request.headers },
   })
 
-  // ✅ ใช้ Env ฝั่ง Server (ถูกต้องแล้วครับ)
+  // ✅ ใช้ Env ฝั่ง Server
   const supabase = createServerClient(
     process.env.SUPABASE_URL!,
     process.env.SUPABASE_ANON_KEY!,
@@ -23,42 +44,16 @@ export async function proxy(request: NextRequest) {
   )
 
   const { data: { user } } = await supabase.auth.getUser()
-  const path = request.nextUrl.pathname
 
   // 🛠️ Helper สำหรับ Redirect โดยรักษาคุกกี้ (ป้องกันเซสชันหลุดเมื่อถูก Redirect)
   const redirect = (targetPath: string) => {
     const redirectResponse = NextResponse.redirect(new URL(targetPath, request.url))
-    response.cookies.getAll().forEach((cookie) => {
-      redirectResponse.cookies.set(cookie.name, cookie.value, {
-        path: cookie.path,
-        domain: cookie.domain,
-        maxAge: cookie.maxAge,
-        expires: cookie.expires,
-        secure: cookie.secure,
-        httpOnly: cookie.httpOnly,
-        sameSite: cookie.sameSite,
-      })
+    // ดึงค่า Set-Cookie headers ทั้งหมดที่มีทั้งค่าและ attribute ครบถ้วน (เช่น Max-Age, HttpOnly, Secure)
+    const setCookies = response.headers.getSetCookie()
+    setCookies.forEach((cookieStr) => {
+      redirectResponse.headers.append('set-cookie', cookieStr)
     })
     return redirectResponse
-  }
-
-  // --- นิยาม Path ---
-  const isLoginPage = path === '/login'
-  const isAdminPath = path.startsWith('/dashboard') || 
-                      path.startsWith('/employees') || 
-                      path.startsWith('/branches') ||
-                      path.startsWith('/inventory') ||
-                      path.startsWith('/lots') ||
-                      path.startsWith('/props') ||
-                      path.startsWith('/CheckRfid') ||
-                      path.startsWith('/rfid-mismatch')
-  const isManagerPath = path.startsWith('/manager')
-  const isSalePath = path.startsWith('/sale')
-  const isProtectedPath = isAdminPath || isManagerPath || isSalePath
-
-  // ถ้าไม่ใช่ path ที่ต้อง protect (เช่น API, public pages) → ปล่อยผ่าน (แต่ token ถูก refresh ไปแล้ว)
-  if (!isProtectedPath && !isLoginPage) {
-    return response
   }
 
   // 1. ถ้ายังไม่ Login แต่จะเข้าหน้าหวงห้าม -> ไป Login
