@@ -29,9 +29,24 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
   const specialDiscountBaht = Number(data?.special_discount_baht || 0);
   const afterBaht = Math.max(0, totalItemsPrice - specialDiscountBaht);
   const specialDiscountPercentAmount = afterBaht * (specialDiscountPercent / 100);
-  const totalSpecialDiscount = specialDiscountBaht + specialDiscountPercentAmount;
 
-  const grandTotal = Math.max(0, totalItemsPrice - totalSpecialDiscount);
+  // Prioritize values from database if they exist
+  const totalItemsPriceFromDb = data?.subtotal !== undefined && data?.subtotal !== null && Number(data.subtotal) > 0
+    ? Number(data.subtotal)
+    : null;
+
+  const totalSpecialDiscountFromDb = data?.discount_amount !== undefined && data?.discount_amount !== null
+    ? Number(data.discount_amount)
+    : null;
+
+  const grandTotalFromDb = data?.total_amount !== undefined && data?.total_amount !== null && Number(data.total_amount) > 0
+    ? Number(data.total_amount)
+    : null;
+
+  const subtotal = totalItemsPriceFromDb ?? totalItemsPrice;
+  const totalSpecialDiscount = totalSpecialDiscountFromDb !== null ? totalSpecialDiscountFromDb : (specialDiscountBaht + specialDiscountPercentAmount);
+  const grandTotal = grandTotalFromDb ?? Math.max(0, subtotal - totalSpecialDiscount);
+
   const vatAmount = grandTotal - (grandTotal / 1.07);
   const subTotalWithoutVat = grandTotal - vatAmount;
 
@@ -225,7 +240,7 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
               <>
                 <div className="flex justify-between py-1 text-[9px] text-neutral-500">
                   <span>Subtotal</span>
-                  <span>{totalItemsPrice.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  <span>{subtotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
                 <div className={`flex justify-between py-1 text-[9px] ${totalSpecialDiscount > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
                   <span>{totalSpecialDiscount > 0 ? 'Special Discount' : 'Rounding Surcharge'}</span>

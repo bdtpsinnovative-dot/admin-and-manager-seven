@@ -224,6 +224,10 @@ export async function getPrintDispatchData(orderCode: string) {
       tax_id,
       special_discount_percent,
       special_discount_baht,
+      subtotal,
+      discount_amount,
+      vat_amount,
+      total_amount,
       branches!orders_branch_fk ( branch_name ),
       profiles ( full_name ),
       order_items (
