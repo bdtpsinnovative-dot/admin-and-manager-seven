@@ -190,6 +190,12 @@ export async function bulkCreateProducts(productsArray: any[]) {
         id: p.collection_group_id, // รหัสกลุ่ม เช่น FA-D2089
         product_sup: p._temp_product_sup // ✅ คำหมวดหมู่ เช่น Doll Animal
       }
+      if (p._temp_name_image_group) {
+        groupData.name = p._temp_name_image_group // ✅ ชื่อภาพรวมกลุ่มสินค้า (Name Image Group)
+      }
+      if (p._temp_image_group) {
+        groupData.cover_image_url = p._temp_image_group // ✅ รูปภาพภาพรวมคอลเลกชัน (Image Group)
+      }
       if (p.category_id === 'prop') {
         groupData.tag = 'Props'
       } else if (p.category_id === 'furniture') {
@@ -213,9 +219,9 @@ export async function bulkCreateProducts(productsArray: any[]) {
     }
   }
 
-  // 3. ⚡ ลบฟิลด์ _temp_product_sup ออกก่อนบันทึกลงตาราง Products หลัก
+  // 3. ⚡ ลบฟิลด์ชั่วคราวออกก่อนบันทึกลงตาราง Products หลัก
   const cleanProductsArray = productsArray.map(p => {
-    const { _temp_product_sup, ...actualProductData } = p;
+    const { _temp_product_sup, _temp_name_image_group, _temp_image_group, ...actualProductData } = p;
     return actualProductData;
   });
 
@@ -307,7 +313,8 @@ export async function getCollectionGroupsWithCounts(tag: 'furniture' | 'prop') {
     name: g.name,
     description: g.description,
     product_sup: g.product_sup,
-    image_url: g.image_url,
+    cover_image_url: g.cover_image_url,
+    image_url: g.cover_image_url || g.image_url,
     tag: g.tag,
     itemCount: g.products?.length || 0
   }))

@@ -237,7 +237,7 @@ export default function PropsClient({ products }: Props) {
       .group { 
         display: flex;
         flex-direction: column;
-        justify-content: space-between;
+        justify-content: flex-start;
         border-right: 1px solid #bbb; 
         border-bottom: 1px solid #bbb; 
         background: #fff; 
@@ -248,7 +248,7 @@ export default function PropsClient({ products }: Props) {
       
       .top-sec {
         display: flex;
-        height: 44mm;
+        height: 52mm;
         min-height: 0;
         margin-bottom: 2mm;
         border-bottom: 1px solid #ddd;
@@ -299,8 +299,8 @@ export default function PropsClient({ products }: Props) {
       
       .qr-container-half img {
         width: 100%;
-        max-width: 17mm;
-        max-height: 17mm;
+        max-width: 20mm;
+        max-height: 20mm;
         object-fit: contain;
       }
       
@@ -318,8 +318,9 @@ export default function PropsClient({ products }: Props) {
         flex: 1;
         display: flex;
         flex-direction: column;
-        justify-content: space-between;
-        padding-top: 2mm;
+        justify-content: flex-start;
+        gap: 1.5mm;
+        padding-top: 1mm;
         min-height: 0;
       }
       
@@ -328,12 +329,12 @@ export default function PropsClient({ products }: Props) {
         font-weight: 800;
         color: #000;
         line-height: 1.2;
-        height: 8.5mm;
+        max-height: 8.5mm;
         overflow: hidden;
         display: -webkit-box;
         -webkit-line-clamp: 2;
         -webkit-box-orient: vertical;
-        margin-bottom: 1.5mm;
+        margin-bottom: 1mm;
       }
       
       .details-list {

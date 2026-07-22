@@ -30,7 +30,7 @@ export default function BulkUploadProducts() {
   const [existingGroupIds, setExistingGroupIds] = useState<string[]>([])
   
   // ✅ State เก็บรายชื่อกลุ่มใหม่ที่จะสร้างเพื่อเอาไปโชว์พรีวิว
-  const [newGroupsPreview, setNewGroupsPreview] = useState<{id: string, product_sup: string}[]>([]) 
+  const [newGroupsPreview, setNewGroupsPreview] = useState<{id: string, product_sup: string, name?: string | null, cover_image_url?: string | null}[]>([]) 
   
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState<{ type: 'success' | 'error' | 'info', msg: string } | null>(null)
@@ -66,6 +66,8 @@ const downloadTemplate = () => {
         "Picture": "",
         "Link Picture": "https://pub-258bd10e7e8c4a7690a74c54cfbdef93.r2.dev/original/...",
         "Description": "",
+        "Name Group": "Natural Travertine",
+        "Image Group": "https://pub-258bd10e7e8c4a7690a74c54cfbdef93.r2.dev/group/...",
         "Collection Group": "3D1026",
         "Product Sup": "Vase Normal",
         "Material": "Ceramic",
@@ -155,6 +157,8 @@ const downloadTemplate = () => {
             // ดึงข้อมูลผ่าน getVal ไม่ว่า Excel จะเขียน CollectionGroup หรือ Collection Group ก็หาเจอชัวร์!
             const collectionGroupId = getVal("Collection Group")?.toString() || null;
             const productSupValue = getVal("Product Sup")?.toString() || null;
+            const nameImageGroupValue = getVal("Name Group")?.toString() || getVal("NameGroup")?.toString() || getVal("Name Image Group")?.toString() || getVal("NameImageGroup")?.toString() || null;
+            const imageGroupValue = getVal("Image Group")?.toString() || getVal("ImageGroup")?.toString() || null;
             const factoryName = getVal("Factory")?.toString() || null;
             const productName = getVal("Name Product")?.toString() || `${selectedType === 'furniture' ? 'Furniture' : 'Prop'} - ${sheetSku}`;
 
@@ -175,6 +179,8 @@ const downloadTemplate = () => {
               collection_group_id: collectionGroupId, 
               factory_name: itemNo, 
               _temp_product_sup: productSupValue, 
+              _temp_name_image_group: nameImageGroupValue,
+              _temp_image_group: imageGroupValue, 
               
               specs: {
                 width_cm: w,
@@ -262,16 +268,20 @@ const downloadTemplate = () => {
         // ---------------------------------------------------------
         // ✅ เช็คคอลัมน์กลุ่มสินค้า (Product Sup) 
         // ---------------------------------------------------------
-        const uniqueGroupsMap = new Map<string, string>();
+        const uniqueGroupsMap = new Map<string, { id: string, product_sup: string, name?: string | null, cover_image_url?: string | null }>();
         uniqueData.forEach(item => {
           if (item.collection_group_id) {
-            // เก็บ รหัสกลุ่ม เป็น Key และ ชื่อ product_sup เป็น Value
-            uniqueGroupsMap.set(item.collection_group_id, item._temp_product_sup || 'ไม่มีชื่อหมวดหมู่');
+            uniqueGroupsMap.set(item.collection_group_id, {
+              id: item.collection_group_id,
+              product_sup: item._temp_product_sup || 'ไม่มีชื่อหมวดหมู่',
+              name: item._temp_name_image_group || null,
+              cover_image_url: item._temp_image_group || null
+            });
           }
         });
         
         // แปลง Map กลับเป็น Array
-        const allExtractedGroups = Array.from(uniqueGroupsMap.entries()).map(([id, sup]) => ({ id, product_sup: sup }));
+        const allExtractedGroups = Array.from(uniqueGroupsMap.values());
 
         if (allExtractedGroups.length > 0) {
           const groupIdsOnly = allExtractedGroups.map(g => g.id);
@@ -544,11 +554,15 @@ const downloadTemplate = () => {
               {/* ตาราง/กล่อง เล็กๆ เอาไว้โชว์รายการ */}
               <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
                 {newGroupsPreview.map((g) => (
-                  <div key={g.id} className="bg-white p-2 rounded-lg border border-purple-100 shadow-sm flex flex-col gap-1">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">ID: <span className="text-purple-600">{g.id}</span></span>
-                    <span className="text-xs font-medium text-slate-700 truncate" title={g.product_sup}>
-                      {g.product_sup}
-                    </span>
+                  <div key={g.id} className="bg-white p-2 rounded-lg border border-purple-100 shadow-sm flex items-center gap-2">
+                    {g.cover_image_url && (
+                      <img src={g.cover_image_url} alt="" className="w-9 h-9 object-cover rounded-md border border-slate-100 flex-shrink-0" />
+                    )}
+                    <div className="flex flex-col min-w-0 flex-1">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">ID: <span className="text-purple-600">{g.id}</span></span>
+                      {g.name && <span className="text-xs font-bold text-slate-800 truncate" title={g.name}>{g.name}</span>}
+                      <span className="text-[11px] text-slate-500 truncate" title={g.product_sup}>{g.product_sup}</span>
+                    </div>
                   </div>
                 ))}
               </div>

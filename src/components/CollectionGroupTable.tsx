@@ -83,30 +83,37 @@ export default function CollectionGroupTable({ tag }: { tag: 'furniture' | 'prop
               </td>
             </tr>
           ) : (
-            groups.map((group) => (
-              <tr key={group.id} className="hover:bg-slate-50/80 transition-colors group">
-                <td className="p-4">
-                  <div className="w-16 h-16 rounded-lg border border-slate-200 bg-slate-100 overflow-hidden relative">
-                    {group.image_url ? (
-                      <img src={group.image_url} alt={group.product_sup || group.id} className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-slate-300">
-                        <FolderOpen className="w-6 h-6" />
-                      </div>
-                    )}
-                  </div>
-                </td>
-                <td className="p-4 align-middle">
-                  <span className="font-bold text-slate-800 text-sm">{group.id}</span>
-                </td>
-                <td className="p-4 align-middle">
-                  <span className="text-sm font-semibold text-slate-700">{group.product_sup || "ไม่มีชื่อหมวดหมู่"}</span>
-                </td>
-                <td className="p-4 text-center align-middle">
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 font-bold">
-                    {group.itemCount} ชิ้น
-                  </span>
-                </td>
+            groups.map((group) => {
+              const displayImage = group.cover_image_url || group.image_url;
+              return (
+                <tr key={group.id} className="hover:bg-slate-50/80 transition-colors group">
+                  <td className="p-4">
+                    <div className="w-16 h-16 rounded-lg border border-slate-200 bg-slate-100 overflow-hidden relative">
+                      {displayImage ? (
+                        <img src={displayImage} alt={group.name || group.product_sup || group.id} className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-slate-300">
+                          <FolderOpen className="w-6 h-6" />
+                        </div>
+                      )}
+                    </div>
+                  </td>
+                  <td className="p-4 align-middle">
+                    <span className="font-bold text-slate-800 text-sm">{group.id}</span>
+                  </td>
+                  <td className="p-4 align-middle">
+                    <div className="flex flex-col">
+                      {group.name && (
+                        <span className="text-sm font-bold text-slate-800">{group.name}</span>
+                      )}
+                      <span className="text-xs font-semibold text-slate-500">{group.product_sup || "ไม่มีชื่อหมวดหมู่"}</span>
+                    </div>
+                  </td>
+                  <td className="p-4 text-center align-middle">
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 font-bold">
+                      {group.itemCount} ชิ้น
+                    </span>
+                  </td>
                 <td className="p-4 text-right align-middle">
                   <button
                     onClick={() => handleDelete(group.id, group.itemCount)}
@@ -118,8 +125,9 @@ export default function CollectionGroupTable({ tag }: { tag: 'furniture' | 'prop
                   </button>
                 </td>
               </tr>
-            ))
-          )}
+            );
+          })
+        )}
         </tbody>
       </table>
     </div>
