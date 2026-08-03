@@ -12,7 +12,7 @@ import {
 
 // 1. เมนูที่ใช้บ่อย (งานประจำวัน)
 const primaryItems = [
-  // { name: "Dashboard",       href: "/dashboard",    icon: LayoutDashboard },
+  { name: "Dashboard",       href: "/dashboard",    icon: LayoutDashboard },
   // { name: "สต็อกทุกสาขา",   href: "/stock-all",    icon: Package },
   // { name: "ประวัติสต็อก",    href: "/stockmovement",icon: History },
   // { name: "ขายสินค้า (Slab)",href: "/sale_slab",    icon: ShoppingCart },
