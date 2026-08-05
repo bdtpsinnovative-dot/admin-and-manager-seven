@@ -138,6 +138,7 @@ export default function ManagerPOSPage() {
        setCart(newCart)
        setEditOrderId(res.order.id)
        setEditOrderCode(res.order.order_code)
+       setCustomOrderCode(res.order.order_code)
        
        if (res.order.shipping_name) setShippingName(res.order.shipping_name)
        if (res.order.shipping_phone) setShippingPhone(res.order.shipping_phone)
@@ -1060,6 +1061,22 @@ export default function ManagerPOSPage() {
                 ⚡ ไม่ระบุเบอร์โทร/ที่อยู่ (ใส่ "-")
               </button>
               <div className="space-y-3">
+                <div className={`rounded-xl border p-3 ${editOrderId ? 'border-orange-200 bg-orange-50/60' : 'border-blue-200 bg-blue-50/50'}`}>
+                  <label className="mb-1 flex items-center justify-between text-[10px] font-bold text-slate-600">
+                    <span>เลข Invoice / รหัสออเดอร์</span>
+                    <span className="font-normal text-slate-400">ระบุเองได้</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="เว้นว่างเพื่อให้ระบบสร้างเลข INV อัตโนมัติ"
+                    value={customOrderCode}
+                    onChange={e => setCustomOrderCode(e.target.value.toUpperCase().replace(/\s/g, ''))}
+                    className="w-full rounded-lg border border-slate-200 bg-white p-3 font-mono text-xs uppercase outline-none transition-colors focus:border-blue-400"
+                  />
+                  <p className="mt-1.5 text-[9px] leading-relaxed text-slate-400">
+                    {editOrderId ? 'แก้เลขได้ขณะที่บิลยังรอชำระเงิน โดยไม่ต้องรับชำระทันที' : 'เลขต้องไม่ซ้ำกับบิลอื่น หากเว้นว่างระบบจะสร้างให้ก่อนยืนยัน'}
+                  </p>
+                </div>
                 <div>
                   <label className="text-[10px] font-bold text-slate-500 mb-1 block">ชื่อลูกค้า/ผู้รับ <span className="text-red-500">*</span></label>
                   <input type="text" placeholder="ระบุชื่อลูกค้า..." value={shippingName} onChange={e => setShippingName(e.target.value)} className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-blue-400 focus:bg-white transition-colors" />
@@ -1232,7 +1249,7 @@ export default function ManagerPOSPage() {
 
             {!editOrderId && (
               <div className="w-full mb-6 text-left">
-                <label className="text-[10px] font-bold text-slate-500 mb-1 block">รหัสออเดอร์ (ระบุเองได้ - ไม่บังคับ)</label>
+                <label className="text-[10px] font-bold text-slate-500 mb-1 block">เลข Invoice / รหัสออเดอร์ (ระบุเองได้)</label>
                 <input 
                   type="text" 
                   placeholder="เช่น INV-1234 (ลบแล้วตั้งเองได้)" 

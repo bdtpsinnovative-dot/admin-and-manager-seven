@@ -152,9 +152,9 @@ export async function processCheckout(payload: CheckoutPayload) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) throw new Error("Unauthorized")
 
-    const orderCode = payload.orderId 
-      ? payload.orderCode 
-      : (payload.customOrderCode || `INV${Date.now()}`)
+    const previousOrderCode = payload.orderCode?.trim()
+    const requestedOrderCode = payload.customOrderCode?.trim()
+    const orderCode = requestedOrderCode || previousOrderCode || `INV${Date.now()}`
 
     const usedDiscounts = payload.items
       .filter(item => item.discountId)
@@ -196,9 +196,11 @@ export async function processCheckout(payload: CheckoutPayload) {
       const { data: existingOrder } = await supabase.from('orders').select('status').eq('id', payload.orderId).single()
       if (existingOrder?.status !== 'PENDING') throw new Error("บิลนี้ชำระเงินหรือประมวลผลไปแล้ว ไม่สามารถแก้ไขได้")
 
-      const updateOrderPromise = supabase
+      // อัปเดตหัวบิลและตรวจเลขซ้ำให้ผ่านก่อน จึงค่อยลบ/สร้างรายการสินค้าใหม่
+      const updateRes = await supabase
         .from('orders')
         .update({
+          order_code: orderCode,
           subtotal: payload.subtotal, 
           discount_amount: payload.discountAmount, 
           total_amount: payload.totalAmount, 
@@ -218,17 +220,19 @@ export async function processCheckout(payload: CheckoutPayload) {
         .eq('id', payload.orderId)
         .select('id').single()
 
-      const deleteItemsPromise = supabase.from('order_items').delete().eq('order_id', payload.orderId)
-      const fetchOldTransfersPromise = supabase.from('stock_transfers').select('id').like('note', `%${orderCode}%`)
-
-      const [updateRes, deleteRes, oldTransfersRes] = await Promise.all([
-        updateOrderPromise,
-        deleteItemsPromise,
-        fetchOldTransfersPromise
-      ])
-
-      if (updateRes.error) throw new Error("อัปเดตบิลไม่สำเร็จ: " + updateRes.error.message)
+      if (updateRes.error) {
+        if (updateRes.error.code === '23505') {
+          throw new Error("เลข Invoice นี้มีอยู่ในระบบแล้ว กรุณาใช้เลขอื่น")
+        }
+        throw new Error("อัปเดตบิลไม่สำเร็จ: " + updateRes.error.message)
+      }
       order = updateRes.data
+
+      const [deleteRes, oldTransfersRes] = await Promise.all([
+        supabase.from('order_items').delete().eq('order_id', payload.orderId),
+        supabase.from('stock_transfers').select('id').like('note', `%${previousOrderCode || orderCode}%`)
+      ])
+      if (deleteRes.error) throw new Error("ล้างรายการสินค้าเดิมไม่สำเร็จ: " + deleteRes.error.message)
       
       // ลบ stock_transfers ของเดิมทิ้งก่อน (ถ้ามี)
       const oldTransfers = oldTransfersRes.data

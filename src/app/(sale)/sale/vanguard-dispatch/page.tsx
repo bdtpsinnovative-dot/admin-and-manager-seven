@@ -25,6 +25,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import PrintDispatchModal from '@/components/PrintDispatchModal'
+import PaymentSlipUploader from '@/components/PaymentSlipUploader'
 
 export default function SaleDispatchMonitorPage() {
   const [activeTab, setActiveTab] = useState<'overview' | 'my_tasks' | 'follow_ups' | 'completed' | 'cancelled'>('overview')
@@ -433,11 +434,15 @@ export default function SaleDispatchMonitorPage() {
                               </div>
                             ) : (
                                 <>
+                                  {(order.status === 'PENDING' || order.status === 'PROCESSING') && (
+                                    <PaymentSlipUploader orderId={order.id} orderCode={order.order_code} />
+                                  )}
+
                                   {order.status === 'PENDING' && (
                                     <button
                                       onClick={() => handleApproveStock(order.id, order.order_code, order.order_items)}
                                       disabled={approvingId === order.id || isAnyItemOutOfStock}
-                                      className={`w-full py-2.5 text-white rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2 shadow-sm 
+                                      className={`w-full py-2.5 text-white rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2 shadow-sm
                                         ${isAnyItemOutOfStock ? 'bg-red-400 cursor-not-allowed' : 'bg-emerald-500 hover:bg-emerald-600'}`}
                                     >
                                       {isAnyItemOutOfStock ? (
