@@ -106,6 +106,25 @@ export async function getManagerStockLog(params: {
   const pageSize = 60
 
   try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error("Unauthorized")
+
+    const { data: profile, error: profileError } = await supabaseAdmin
+      .from("profiles")
+      .select("branch_id, role")
+      .eq("user_id", user.id)
+      .single()
+    if (profileError || !profile) throw new Error("ไม่พบข้อมูลผู้ใช้งาน")
+    if (!["admin", "manager", "sale"].includes(profile.role)) {
+      throw new Error("ไม่มีสิทธิ์ดูประวัติสต็อก")
+    }
+
+    // sale/manager ดูได้เฉพาะสาขาตัวเอง ส่วน admin ยังคงเลือกสาขาได้
+    const effectiveBranchId = profile.role === "admin"
+      ? branchId
+      : Number(profile.branch_id)
+
     let query = supabaseAdmin
       .from("stock_movements")
       .select(`
@@ -113,7 +132,7 @@ export async function getManagerStockLog(params: {
         created_at_ts, created_by_name, product_id_bigint,
         products:product_id_bigint (name, sku, barcode, unit, image_url)
       `, { count: "exact" })
-      .eq("branch_id", branchId)
+      .eq("branch_id", effectiveBranchId)
       .order("created_at_ts", { ascending: false })
 
     if (productSearch) {

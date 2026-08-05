@@ -76,6 +76,7 @@ export default function SaleSidebar({ userName, branchName, userAvatar }: SaleSi
         { name: "ขายสินค้า (POS)", href: "/sale/pos", icon: Store },
         { name: "มอนิเตอร์ค้างส่ง", href: "/sale/vanguard-dispatch", icon: Truck },
         { name: "สต็อกหน้าร้าน", href: "/sale/publicstock", icon: Box },
+        { name: "ประวัติเคลื่อนไหวสต็อก", href: "/sale/stocklog", icon: History },
         { name: "ประวัติการขายหน้าร้าน", href: "/sale/sales-history", icon: History },
       ]
     }
