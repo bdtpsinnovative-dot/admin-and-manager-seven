@@ -1,10 +1,11 @@
 "use client"
 
 import React, { useState, useEffect } from 'react'
-import { getSalesHistory } from '@/actions/sales-check'
-import { History, DollarSign, Building2, Truck, User, Check, Clock, ChevronDown, ChevronUp, Printer, XCircle } from 'lucide-react'
+import { getSalesHistory, hideCancelledOrder, restoreHiddenOrder } from '@/actions/sales-check'
+import { History, DollarSign, Truck, User, Check, Clock, ChevronDown, ChevronUp, Printer, XCircle, EyeOff, Eye, Loader2, ArrowLeft } from 'lucide-react'
 import { toast } from 'sonner'
 import PrintDispatchModal from '@/components/PrintDispatchModal'
+import PaymentSlipViewer from '@/components/PaymentSlipViewer'
 
 interface RemoteDetail {
   branch_name: string;
@@ -42,6 +43,9 @@ export default function SaleSalesHistoryPage() {
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'COMPLETED' | 'CANCELLED'>('ALL')
   const [expandedOrders, setExpandedOrders] = useState<number[]>([])
   const [printOrderCode, setPrintOrderCode] = useState<string | null>(null)
+  const [showHidden, setShowHidden] = useState(false)
+  const [hiddenCount, setHiddenCount] = useState(0)
+  const [updatingOrderId, setUpdatingOrderId] = useState<number | null>(null)
 
   const toggleExpand = (orderId: number) => {
     setExpandedOrders(prev =>
@@ -50,18 +54,35 @@ export default function SaleSalesHistoryPage() {
   }
 
   useEffect(() => {
-    loadSalesData()
-  }, [])
+    let isActive = true
+    getSalesHistory(showHidden).then(res => {
+      if (!isActive) return
+      if (res.success && res.data) {
+        setSales(res.data)
+        setHiddenCount(res.hiddenCount || 0)
+      } else {
+        toast.error("โหลดข้อมูลยอดขายล้มเหลว: " + res.error)
+      }
+      setLoading(false)
+    })
 
-  async function loadSalesData() {
-    setLoading(true)
-    const res = await getSalesHistory()
-    if (res.success && res.data) {
-      setSales(res.data)
+    return () => { isActive = false }
+  }, [showHidden])
+
+  async function handleVisibilityChange(order: SaleOrder) {
+    setUpdatingOrderId(order.id)
+    const res = showHidden
+      ? await restoreHiddenOrder(order.id)
+      : await hideCancelledOrder(order.id)
+
+    if (res.success) {
+      setSales(current => current.filter(item => item.id !== order.id))
+      setHiddenCount(current => Math.max(0, current + (showHidden ? -1 : 1)))
+      toast.success(showHidden ? 'นำบิลกลับมาแสดงแล้ว' : 'ซ่อนบิลจากรายการของคุณแล้ว')
     } else {
-      toast.error("โหลดข้อมูลยอดขายล้มเหลว: " + res.error)
+      toast.error(res.error || 'เปลี่ยนการแสดงผลไม่สำเร็จ')
     }
-    setLoading(false)
+    setUpdatingOrderId(null)
   }
 
   // ฟิลเตอร์ค้นหาจากเลขที่ใบขาย หรือ ชื่อลูกค้าจัดส่ง และสถานะที่เลือกกรอง
@@ -78,7 +99,6 @@ export default function SaleSalesHistoryPage() {
     (s.shippingName && s.shippingName.toLowerCase().includes(searchTerm.toLowerCase()))
   )
   const totalInvoiced = baseSalesForTotals.filter(s => s.status !== 'CANCELLED').reduce((sum, s) => sum + s.totalAmount, 0)
-  const totalMyRevenue = baseSalesForTotals.filter(s => s.status !== 'CANCELLED').reduce((sum, s) => sum + s.myBranchRevenue, 0)
   const totalDropShip = baseSalesForTotals.filter(s => s.status !== 'CANCELLED').reduce((sum, s) => sum + s.otherBranchRevenue, 0)
   const totalCancelled = baseSalesForTotals.filter(s => s.status === 'CANCELLED').reduce((sum, s) => sum + s.totalAmount, 0)
 
@@ -109,7 +129,7 @@ export default function SaleSalesHistoryPage() {
         </div>
 
         {/* Stat Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {!showHidden && <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
             <span className="text-[11px] font-black text-slate-400 uppercase tracking-wider flex items-center gap-1">
               <DollarSign className="w-3.5 h-3.5 text-slate-400" /> ยอดสุทธิใบขายรวม
@@ -133,10 +153,11 @@ export default function SaleSalesHistoryPage() {
             <div className="text-2xl font-black text-orange-600 mt-2">{totalDropShip.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</div>
             <span className="text-[10px] text-slate-400 block mt-1 font-medium">ยอดเงินของสินค้าที่ต้องให้สาขาอื่นแพ็คส่ง</span>
           </div>
-        </div>
+        </div>}
 
         {/* แท็บกรองสถานะ */}
-        <div className="flex gap-2 p-1 bg-white rounded-2xl w-full md:max-w-md border border-slate-100 shadow-3xs">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+        {!showHidden ? <div className="flex gap-2 p-1 bg-white rounded-2xl w-full md:max-w-md border border-slate-100 shadow-3xs">
           <button
             onClick={() => setStatusFilter('ALL')}
             className={`flex-1 py-2 px-4 text-xs font-black rounded-xl transition-all cursor-pointer ${
@@ -167,6 +188,21 @@ export default function SaleSalesHistoryPage() {
           >
             ยกเลิกแล้ว ({sales.filter(s => s.status === 'CANCELLED').length})
           </button>
+        </div> : (
+          <div className="flex items-center gap-2 text-sm font-bold text-slate-600">
+            <EyeOff className="w-4 h-4 text-slate-400" /> รายการที่ซ่อน ({hiddenCount})
+          </div>
+        )}
+          <button
+            onClick={() => {
+              setLoading(true)
+              setShowHidden(current => !current)
+              setStatusFilter('ALL')
+            }}
+            className="inline-flex items-center gap-1.5 self-start md:self-auto px-1 py-1 text-[11px] font-semibold text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+          >
+            {showHidden ? <><ArrowLeft className="w-3.5 h-3.5" /> กลับรายการปกติ</> : <><EyeOff className="w-3.5 h-3.5" /> รายการที่ซ่อน{hiddenCount > 0 ? ` (${hiddenCount})` : ''}</>}
+          </button>
         </div>
 
         {/* ตารางรายการหลัก */}
@@ -177,17 +213,21 @@ export default function SaleSalesHistoryPage() {
                 <tr>
                   <th className="p-4 w-48">เลขที่ใบขาย / รูปแบบ</th>
                   <th className="p-4">วันที่ออกเอกสาร</th>
+                  <th className="p-4 text-center w-24">สลิป</th>
                   <th className="p-4">พนักงานขาย (Sale)</th>
-                  <th className="p-4 text-right">ยอดคลังเรา</th>
-                  <th className="p-4 text-right">ยอดคลังอื่น (Drop Ship)</th>
-                  <th className="p-4 text-right">ยอดสุทธิรวม</th>
+                  <th className="p-4 text-right whitespace-nowrap">ยอดคลังเรา</th>
+                  <th className="p-4 text-right whitespace-nowrap">ยอดคลังอื่น (Drop Ship)</th>
+                  <th className="p-4 text-right whitespace-nowrap">ยอดสุทธิรวม</th>
                   <th className="p-4 text-center w-32">สถานะใบขาย</th>
+                  <th className="p-2 w-12"><span className="sr-only">ตัวเลือก</span></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium">
                 {filteredSales.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="p-12 text-center text-slate-400 font-bold">ไม่พบประวัติใบขายตามเงื่อนไขที่ค้นหา</td>
+                    <td colSpan={9} className="p-12 text-center text-slate-400 font-bold">
+                      {showHidden ? 'ยังไม่มีบิลที่ซ่อนไว้' : 'ไม่พบประวัติใบขายตามเงื่อนไขที่ค้นหา'}
+                    </td>
                   </tr>
                 ) : (
                   filteredSales.map((order) => {
@@ -195,7 +235,7 @@ export default function SaleSalesHistoryPage() {
                     return (
                       <React.Fragment key={order.id}>
                         <tr
-                          className={`transition-all cursor-pointer border-l-4 ${
+                          className={`group transition-all cursor-pointer border-l-4 ${
                             order.status === 'CANCELLED'
                               ? 'bg-red-50/90 text-red-900 border-l-red-500 hover:bg-red-100/60'
                               : 'hover:bg-slate-50/50 border-l-transparent'
@@ -239,16 +279,21 @@ export default function SaleSalesHistoryPage() {
                             })} น.
                           </td>
 
+                          {/* หลักฐานการชำระเงิน */}
+                          <td className="p-3 text-center" onClick={event => event.stopPropagation()}>
+                            <PaymentSlipViewer orderId={order.id} orderCode={order.orderCode} compact />
+                          </td>
+
                           {/* ชื่อ Sale */}
                           <td className="p-4 text-slate-700 font-bold">{order.saleName}</td>
 
                           {/* ยอดเงินคลังเรา */}
-                          <td className="p-4 text-right font-black text-slate-800 text-sm">
+                          <td className="p-4 text-right font-black text-slate-800 text-sm whitespace-nowrap">
                             {order.myBranchRevenue.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿
                           </td>
 
                           {/* ยอดเงินคลังเพื่อน (Drop Ship) */}
-                          <td className={`p-4 text-right ${order.status === 'CANCELLED' ? '' : 'bg-orange-50/30'}`}>
+                          <td className={`p-4 text-right whitespace-nowrap ${order.status === 'CANCELLED' ? '' : 'bg-orange-50/30'}`}>
                             {order.otherBranchRevenue > 0 ? (
                               <>
                                 <span className="font-black text-orange-600 text-sm block">
@@ -268,7 +313,7 @@ export default function SaleSalesHistoryPage() {
                           </td>
 
                           {/* ยอดสุทธิรวมของบิล */}
-                          <td className="p-4 text-right font-black text-emerald-600 text-sm">
+                          <td className="p-4 text-right font-black text-emerald-600 text-sm whitespace-nowrap">
                             {order.totalAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿
                           </td>
 
@@ -289,14 +334,33 @@ export default function SaleSalesHistoryPage() {
                               )}
                             </span>
                           </td>
+
+                          {/* เมนูซ่อนแบบไม่รบกวนสายตา */}
+                          <td className="p-2 text-center relative" onClick={event => event.stopPropagation()}>
+                            {order.status === 'CANCELLED' && (
+                              <button
+                                onClick={() => handleVisibilityChange(order)}
+                                disabled={updatingOrderId === order.id}
+                                className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-slate-300 hover:text-slate-600 hover:bg-slate-100 opacity-35 group-hover:opacity-100 focus:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 disabled:opacity-50 transition-all cursor-pointer"
+                                aria-label={showHidden ? `นำบิล ${order.orderCode} กลับมาแสดง` : `ซ่อนบิล ${order.orderCode} จากรายการ`}
+                                title={showHidden ? 'นำกลับมาแสดง' : 'ซ่อนจากรายการ'}
+                              >
+                                {updatingOrderId === order.id
+                                  ? <Loader2 className="w-4 h-4 animate-spin" />
+                                  : showHidden
+                                    ? <Eye className="w-4 h-4" />
+                                    : <EyeOff className="w-4 h-4" />}
+                              </button>
+                            )}
+                          </td>
                         </tr>
                         {isExpanded && (
                           <tr className="bg-slate-50/30">
-                            <td colSpan={7} className="p-4 border-t border-slate-100">
+                            <td colSpan={9} className="p-4 border-t border-slate-100">
                               <div className="space-y-2 pl-6 pr-6">
                                 <h4 className="font-bold text-xs text-slate-500 uppercase tracking-wider mb-2">รายการสินค้าในบิล:</h4>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                  {order.items?.map((item: any, itemIndex: number) => (
+                                  {order.items?.map((item, itemIndex) => (
                                     <div key={item.id || itemIndex} className="flex items-center gap-3 p-3 bg-white rounded-xl border border-slate-200 shadow-2xs">
                                       <div className="w-10 h-10 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center shrink-0 overflow-hidden">
                                         {item.imageUrl ? (

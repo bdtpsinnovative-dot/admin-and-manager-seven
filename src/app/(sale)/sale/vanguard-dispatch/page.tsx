@@ -26,6 +26,7 @@ import {
 import { toast } from 'sonner'
 import PrintDispatchModal from '@/components/PrintDispatchModal'
 import PaymentSlipUploader from '@/components/PaymentSlipUploader'
+import PaymentSlipViewer from '@/components/PaymentSlipViewer'
 
 export default function SaleDispatchMonitorPage() {
   const [activeTab, setActiveTab] = useState<'overview' | 'my_tasks' | 'follow_ups' | 'completed' | 'cancelled'>('overview')
@@ -429,8 +430,11 @@ export default function SaleDispatchMonitorPage() {
                                 <XCircle className="w-4 h-4" /> บิลนี้ถูกยกเลิกแล้ว
                               </div>
                             ) : activeTab === 'completed' || order.status === 'COMPLETED' ? (
-                              <div className="w-full py-3 bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-lg text-sm font-bold flex items-center justify-center gap-2 shadow-sm cursor-not-allowed">
-                                <CheckCircle className="w-4 h-4" /> บิลนี้ปิดงาน/ส่งมอบสำเร็จแล้ว
+                              <div className="space-y-2.5">
+                                <div className="w-full py-3 bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-lg text-sm font-bold flex items-center justify-center gap-2 shadow-sm cursor-not-allowed">
+                                  <CheckCircle className="w-4 h-4" /> บิลนี้ปิดงาน/ส่งมอบสำเร็จแล้ว
+                                </div>
+                                <PaymentSlipViewer orderId={order.id} orderCode={order.order_code} />
                               </div>
                             ) : (
                                 <>

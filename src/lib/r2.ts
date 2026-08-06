@@ -77,3 +77,7 @@ export async function requestR2Object(
 export function paymentSlipKey(orderId: number) {
   return `payment-slips/orders/${orderId}.jpg`
 }
+
+export function paymentSlipThumbnailKey(orderId: number) {
+  return `payment-slips/orders/${orderId}-thumbnail.jpg`
+}

@@ -17,6 +17,14 @@ export async function getGroupedDispatches() {
   const { data: profile } = await supabase.from('profiles').select('branch_id').eq('user_id', user.id).single()
   const myBranchId = profile?.branch_id || 1
 
+  const { data: hiddenRows, error: hiddenError } = await supabase
+    .from('order_hidden_by_users')
+    .select('order_id')
+    .eq('user_id', user.id)
+
+  if (hiddenError) return { success: false, error: "ดึงข้อมูลรายการที่ซ่อนไม่สำเร็จ" }
+  const hiddenOrderIds = new Set((hiddenRows || []).map(row => Number(row.order_id)))
+
   // 1. งานที่คลังเราต้องจัดส่ง 
   // ✨ เพิ่ม latitude, longitude 
   const { data: myDispatchOrders, error: err1 } = await supabase
@@ -155,7 +163,7 @@ export async function getGroupedDispatches() {
     myDispatchOrders: myDispatchOrders || [],
     followUpOrders: followUpOrders || [],
     completedOrders: completedOrders || [],
-    cancelledOrders: cancelledOrders || []
+    cancelledOrders: (cancelledOrders || []).filter(order => !hiddenOrderIds.has(order.id))
   }
 }
 

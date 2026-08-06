@@ -2,8 +2,30 @@
 
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
+import { revalidatePath } from 'next/cache'
 
-export async function getSalesHistory() {
+interface SalesOrderItemRow {
+  id: number
+  qty: number
+  price_at_sale: number
+  total_item_amount: number
+  fulfill_branch_id: number
+  products: { name: string; sku: string; image_url: string | null } | null
+  branches: { branch_name: string } | null
+}
+
+interface SalesOrderRow {
+  id: number
+  order_code: string
+  created_at: string
+  total_amount: number
+  status: string
+  shipping_name: string | null
+  profiles: { full_name: string | null } | null
+  order_items: SalesOrderItemRow[] | null
+}
+
+export async function getSalesHistory(showHidden = false) {
   const cookieStore = await cookies()
   const supabase = createServerClient(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!, {
     cookies: { getAll() { return cookieStore.getAll() } }
@@ -16,8 +38,15 @@ export async function getSalesHistory() {
   const { data: profile } = await supabase.from('profiles').select('branch_id').eq('user_id', user.id).single()
   const myBranchId = profile?.branch_id || 1
 
+  const { data: hiddenRows, error: hiddenError } = await supabase
+    .from('order_hidden_by_users')
+    .select('order_id')
+    .eq('user_id', user.id)
+
+  if (hiddenError) return { success: false, error: hiddenError.message }
+  const hiddenOrderIds = new Set((hiddenRows || []).map(row => Number(row.order_id)))
+
   // 2. คิวรีใบขายทั้งหมดที่ "สาขาเราเป็นคนออกบิล" พร้อมดึงรายการสินค้าข้างในออกมาด้วย
-// 2. คิวรีใบขายทั้งหมดที่ "สาขาเราเป็นคนออกบิล" พร้อมดึงรายการสินค้าข้างในออกมาด้วย
   const { data: orders, error } = await supabase
     .from('orders')
     .select(`
@@ -46,12 +75,15 @@ export async function getSalesHistory() {
   if (error) return { success: false, error: error.message }
 
   // 2. ปรับตัวแปรตอนวนลูป map ส่งค่าออกไปหน้าบ้าน
-  const formattedSales = orders.map((order: any) => {
+  const orderRows = (orders || []) as unknown as SalesOrderRow[]
+  const formattedSales = orderRows
+  .filter(order => showHidden ? hiddenOrderIds.has(order.id) : !hiddenOrderIds.has(order.id))
+  .map(order => {
     let myBranchRevenue = 0
     let otherBranchRevenue = 0
-    const remoteDetails: any[] = []
+    const remoteDetails: { branch_name: string; amount: number; qty: number }[] = []
 
-    order.order_items?.forEach((item: any) => {
+    order.order_items?.forEach(item => {
       if (item.fulfill_branch_id === myBranchId) {
         myBranchRevenue += Number(item.total_item_amount) || 0
       } else {
@@ -64,7 +96,7 @@ export async function getSalesHistory() {
       }
     })
 
-    const items = order.order_items?.map((item: any) => ({
+    const items = order.order_items?.map(item => ({
       id: item.id,
       qty: item.qty,
       priceAtSale: item.price_at_sale,
@@ -89,5 +121,59 @@ export async function getSalesHistory() {
       items
     }
   })
-  return { success: true, data: formattedSales }
+  return { success: true, data: formattedSales, hiddenCount: hiddenOrderIds.size }
+}
+
+export async function hideCancelledOrder(orderId: number) {
+  const cookieStore = await cookies()
+  const supabase = createServerClient(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!, {
+    cookies: { getAll() { return cookieStore.getAll() } }
+  })
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { success: false, error: 'Unauthorized' }
+
+  const [{ data: profile }, { data: order, error: orderError }] = await Promise.all([
+    supabase.from('profiles').select('branch_id').eq('user_id', user.id).single(),
+    supabase.from('orders').select('id, branch_id, status').eq('id', orderId).single()
+  ])
+
+  if (orderError || !order) return { success: false, error: 'ไม่พบออเดอร์นี้' }
+  if (order.status !== 'CANCELLED') return { success: false, error: 'ซ่อนได้เฉพาะบิลที่ยกเลิกแล้ว' }
+  if (!profile?.branch_id || order.branch_id !== profile.branch_id) {
+    return { success: false, error: 'ไม่มีสิทธิ์ซ่อนออเดอร์ของสาขาอื่น' }
+  }
+
+  const { error } = await supabase.from('order_hidden_by_users').insert({
+    order_id: orderId,
+    user_id: user.id
+  })
+
+  if (error && error.code !== '23505') return { success: false, error: error.message }
+  revalidatePath('/sale/sales-history')
+  revalidatePath('/sale/vanguard-dispatch')
+  revalidatePath('/manager/vanguard-dispatch')
+  return { success: true }
+}
+
+export async function restoreHiddenOrder(orderId: number) {
+  const cookieStore = await cookies()
+  const supabase = createServerClient(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!, {
+    cookies: { getAll() { return cookieStore.getAll() } }
+  })
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { success: false, error: 'Unauthorized' }
+
+  const { error } = await supabase
+    .from('order_hidden_by_users')
+    .delete()
+    .eq('order_id', orderId)
+    .eq('user_id', user.id)
+
+  if (error) return { success: false, error: error.message }
+  revalidatePath('/sale/sales-history')
+  revalidatePath('/sale/vanguard-dispatch')
+  revalidatePath('/manager/vanguard-dispatch')
+  return { success: true }
 }
