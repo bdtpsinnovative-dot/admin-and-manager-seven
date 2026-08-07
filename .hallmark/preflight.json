@@ -1,0 +1,10 @@
+{
+  "date": "2026-08-07",
+  "framework": "Next.js 16 App Router",
+  "fontStack": "Inter body with system fallback",
+  "palette": "Tailwind primary blue and Slate",
+  "motion": "motion-cut; no motion library detected",
+  "spacing": "Tailwind default spacing scale",
+  "preserve": ["existing admin shell", "Supabase clients", "Inter body stack"],
+  "introduce": ["Stat-Led macrostructure", "Cobalt tokens", "responsive state discipline"]
+}

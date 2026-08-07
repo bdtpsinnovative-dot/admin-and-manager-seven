@@ -28,6 +28,11 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       .single();
 
     const name = profile?.full_name || user.email || "Admin User";
+
+    if (profile?.role !== "admin") {
+      redirect(profile?.role === "manager" ? "/manager/dashboard" : "/login");
+    }
+
     let avatarUrl = "";
 
     // ✅ 4. Logic สร้าง URL รูปภาพที่ถูกต้อง (แก้ตรงนี้)
