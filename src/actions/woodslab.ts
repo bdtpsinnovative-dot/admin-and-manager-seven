@@ -90,6 +90,56 @@ export async function getProducts(category?: string, specType?: string, searchQu
   return { data: processedData, error: null }
 }
 
+export async function getAllProductsForExport() {
+  const supabase = await createClient()
+  let allData: any[] = []
+  let hasMore = true
+  let page = 0
+  const limit = 1000
+
+  while (hasMore) {
+    const from = page * limit
+    const to = from + limit - 1
+
+    const { data, error } = await supabase
+      .from(TABLE_NAME)
+      .select('*')
+      .order('created_at', { ascending: false })
+      .range(from, to)
+
+    if (error) {
+      console.error("Error fetching all products:", error)
+      return { data: [], error: error.message }
+    }
+
+    if (data && data.length > 0) {
+      allData = [...allData, ...data]
+      if (data.length < limit) {
+        hasMore = false
+      } else {
+        page++
+      }
+    } else {
+      hasMore = false
+    }
+  }
+
+  const processedData = allData.map((item) => {
+    let publicUrl = null
+    if (item.image_url) {
+       if(item.image_url.startsWith('http')) {
+           publicUrl = item.image_url
+       } else {
+           const { data } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(item.image_url)
+           publicUrl = data.publicUrl
+       }
+    }
+    return { ...item, image_url: publicUrl }
+  })
+
+  return { data: processedData, error: null }
+}
+
 // ✅ 3. ดึงสินค้าชิ้นเดียว (Edit Page ใช้ตัวนี้)
 export async function getProductById(id: string) {
   const supabase = await createClient()

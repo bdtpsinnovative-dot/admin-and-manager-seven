@@ -37,7 +37,7 @@ const TABLE_RELATIONS: Record<string, string[]> = {
   stock_initial_counts: ["branches", "profiles"],
   stock_initial_count_items: ["stock_initial_counts", "products"],
   profiles: ["branches"],
-  orders: ["profiles", "branches", "customers"],
+  orders: ["profiles", "branches"],
   order_items: ["orders", "products", "branches"], // + fulfill_branch_id
   cart_items: ["products"],
   favorites: ["products"],

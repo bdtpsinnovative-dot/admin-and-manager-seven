@@ -1,12 +1,12 @@
 // src/components/BulkUploadProducts.tsx
 "use client"
-import { bulkCreateProducts, checkExistingSkus, checkExistingGroups } from '../actions/woodslab'
+import { bulkCreateProducts, checkExistingSkus, checkExistingGroups, getProducts, getAllProductsForExport } from '../actions/woodslab'
 import { useState } from 'react'
 import * as XLSX from 'xlsx'
 
 import { 
   FileUp, CheckCircle, AlertCircle, Loader2, 
-  Table as TableIcon, Trash2, Save, X, Layers, Hammer, Info, Armchair
+  Table as TableIcon, Trash2, Save, X, Layers, Hammer, Info, Armchair, DownloadCloud, Image as ImageIcon, Tag, Sparkles, RefreshCw, Folder
 } from 'lucide-react'
 
 const SLAB_TYPES = [
@@ -33,6 +33,8 @@ export default function BulkUploadProducts() {
   const [newGroupsPreview, setNewGroupsPreview] = useState<{id: string, product_sup: string, name?: string | null, cover_image_url?: string | null}[]>([]) 
   
   const [loading, setLoading] = useState(false)
+  const [downloading, setDownloading] = useState(false)
+  const [downloadOptions, setDownloadOptions] = useState<{ slabs: any[], rough: any[], props: any[], furniture: any[] } | null>(null)
   const [status, setStatus] = useState<{ type: 'success' | 'error' | 'info', msg: string } | null>(null)
 
   const [defaultCategory, setDefaultCategory] = useState<'SLABS' | 'rough_wood' | 'prop' | 'furniture'>('SLABS')
@@ -111,6 +113,117 @@ const downloadTemplate = () => {
       }];
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(templateHeader), "Template");
       XLSX.writeFile(wb, "product_import_template.xlsx");
+    }
+  };
+
+  const fetchDataForDownload = async () => {
+    try {
+      setDownloading(true);
+      setStatus({ type: 'info', msg: 'กำลังประมวลผลข้อมูล (อาจใช้เวลาสักครู่เนื่องจากข้อมูลมีจำนวนมาก)...' });
+      
+      const { data: allProducts, error } = await getAllProductsForExport();
+      
+      if (error) throw new Error(error);
+      if (!allProducts || allProducts.length === 0) {
+        setStatus({ type: 'info', msg: 'ไม่พบข้อมูลสินค้าในระบบ' });
+        setDownloading(false);
+        return;
+      }
+
+      const props = allProducts.filter(p => p.category_id === 'prop');
+      const furniture = allProducts.filter(p => p.category_id === 'furniture');
+      const rough = allProducts.filter(p => p.category_id === 'rough_wood');
+      const slabs = allProducts.filter(p => p.category_id !== 'prop' && p.category_id !== 'furniture' && p.category_id !== 'rough_wood');
+
+      setDownloadOptions({ slabs, rough, props, furniture });
+      setStatus(null);
+    } catch (err: any) {
+      console.error(err);
+      setStatus({ type: 'error', msg: err.message || 'เกิดข้อผิดพลาดในการดึงข้อมูล' });
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const confirmDownload = (type: 'slabs' | 'rough' | 'props' | 'furniture' | 'all') => {
+    if (!downloadOptions) return;
+
+    try {
+      const wb = XLSX.utils.book_new();
+
+      const getSlabsData = (source: any[]) => source.map(p => ({
+        Barcode: p.barcode || "",
+        sku: p.sku || "",
+        name: p.name || "",
+        category_id: p.category_id || "",
+        color: p.color || "",
+        unit: p.unit || "แผ่น",
+        description: p.description || "",
+        cost: p.cost || 0,
+        price: p.price || 0,
+        status: p.status || "active",
+        image_url: p.image_url || "",
+        size: p.specs?.size || "",
+        width: p.specs?.width_cm || "",
+        length: p.specs?.length_cm || "",
+        thickness: p.specs?.thickness_cm || "",
+        weight: p.weight || "",
+        material: p.specs?.material || "",
+        finish: p.specs?.finish || "",
+        grade: p.specs?.grade || "",
+        spec_type: p.specs?.spec_type || p.specs?.type || "",
+        panel_design: p.specs?.panel_design || "",
+        edge_design: p.specs?.edge_design || "",
+        color_craft: p.specs?.color_craft || "",
+        panel_craft: p.specs?.panel_craft || "",
+      }));
+
+      const getPropsData = (source: any[]) => source.map(p => ({
+        "Item NO.": p.factory_name || "",
+        "Factory": p.specs?.brand || "",
+        "Name Product": p.name || "",
+        "Group Sisz": p.specs?.group_size || "",
+        "Picture": "",
+        "Link Picture": p.image_url || "",
+        "Description": p.description || "",
+        "Name Group": "", 
+        "Image Group": "",
+        "Collection Group": p.collection_group_id || "",
+        "Product Sup": "",
+        "Material": p.specs?.material || "",
+        "Color": p.color || "",
+        "SKU": p.sku || "",
+        "BARCODE": p.barcode || "",
+        "W": p.specs?.width_cm || "",
+        "D": p.specs?.length_cm || "",
+        "H": p.specs?.thickness_cm || "",
+        "Cost TH": p.cost || 0,
+        "Price": p.price || 0
+      }));
+
+      if ((type === 'slabs' || type === 'all') && downloadOptions.slabs.length > 0) {
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(getSlabsData(downloadOptions.slabs)), "Wood Slabs");
+      }
+      
+      if ((type === 'rough' || type === 'all') && downloadOptions.rough.length > 0) {
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(getSlabsData(downloadOptions.rough)), "Rough Wood");
+      }
+
+      if ((type === 'props' || type === 'all') && downloadOptions.props.length > 0) {
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(getPropsData(downloadOptions.props)), "Props");
+      }
+      
+      if ((type === 'furniture' || type === 'all') && downloadOptions.furniture.length > 0) {
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(getPropsData(downloadOptions.furniture)), "Furniture");
+      }
+
+      XLSX.writeFile(wb, `products_export_${type}_${new Date().toISOString().split('T')[0]}.xlsx`);
+      setStatus({ type: 'success', msg: 'ดาวน์โหลดข้อมูลสำเร็จ!' });
+    } catch (err: any) {
+      console.error(err);
+      setStatus({ type: 'error', msg: err.message || 'เกิดข้อผิดพลาดในการดาวน์โหลดข้อมูล' });
+    } finally {
+      setDownloadOptions(null);
     }
   };
 
@@ -367,6 +480,16 @@ const downloadTemplate = () => {
           >
             <TableIcon className="w-4 h-4" /> ดาวน์โหลดไฟล์ตัวอย่าง
           </button>
+
+          <button 
+            type="button"
+            onClick={fetchDataForDownload}
+            disabled={downloading}
+            className="px-4 py-2 text-sm font-medium text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-colors flex items-center gap-2 disabled:opacity-50"
+          >
+            {downloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <DownloadCloud className="w-4 h-4" />} 
+            ดาวน์โหลดข้อมูลทั้งหมด
+          </button>
           
           {data.length > 0 && (
             <button 
@@ -424,7 +547,7 @@ const downloadTemplate = () => {
           {/* Props */}
           <div className="border-t border-slate-200 pt-3">
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1">
-              🖼️ Props / Decor
+              <ImageIcon size={12} /> Props / Decor
             </p>
             <button
               type="button"
@@ -483,7 +606,7 @@ const downloadTemplate = () => {
 
               {newGroupCount > 0 && (
                 <div className="px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 bg-purple-100 text-purple-800 border border-purple-200 shadow-sm cursor-default">
-                  🏷️ จะสร้างหมวดหมู่ใหม่: {newGroupCount} หมวดหมู่
+                  <Tag size={16} /> จะสร้างหมวดหมู่ใหม่: {newGroupCount} หมวดหมู่
                 </div>
               )}
               {/* ปุ่มดูทั้งหมด */}
@@ -501,7 +624,7 @@ const downloadTemplate = () => {
                 className={`px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 transition-all 
                   ${filterMode === 'NEW' ? 'bg-green-500 text-white shadow-md ring-2 ring-green-300 ring-offset-1' : 'bg-green-100 text-green-800 hover:bg-green-200 opacity-80'}`}
               >
-                ✨ สร้างใหม่: {newItemsCount} รายการ
+                <Sparkles size={16} /> สร้างใหม่: {newItemsCount} รายการ
               </button>
 
               {/* ปุ่มดูเฉพาะอัปเดต */}
@@ -510,7 +633,7 @@ const downloadTemplate = () => {
                 className={`px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 transition-all 
                   ${filterMode === 'UPDATE' ? 'bg-blue-500 text-white shadow-md ring-2 ring-blue-300 ring-offset-1' : 'bg-blue-100 text-blue-800 hover:bg-blue-200 opacity-80'}`}
               >
-                🔄 อัปเดตของเดิม: {updatedItemsCount} รายการ
+                <RefreshCw size={16} /> อัปเดตของเดิม: {updatedItemsCount} รายการ
               </button>
             </div>
             <button onClick={handleClearData} className="px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg flex items-center gap-2 transition mt-3 sm:mt-0">
@@ -530,8 +653,8 @@ const downloadTemplate = () => {
               <div className="md:ml-6 mt-2 flex flex-wrap gap-1.5">
                 {/* โชว์แค่ 15 อันแรก จะได้ไม่รกหน้าจอ */}
                 {existingGroupIds.slice(0, 15).map(id => (
-                  <span key={id} className="px-2 py-0.5 bg-amber-200/60 text-amber-900 border border-amber-300/80 rounded text-[11px] font-bold shadow-sm">
-                    📁 {id}
+                  <span key={id} className="px-2 py-0.5 bg-amber-200/60 text-amber-900 border border-amber-300/80 rounded flex items-center gap-1 text-[11px] font-bold shadow-sm">
+                    <Folder size={12} /> {id}
                   </span>
                 ))}
                 {/* ถ้ามีมากกว่า 15 อัน ให้แสดงป้ายบอกว่ามีอีกเท่าไหร่ */}
@@ -548,7 +671,7 @@ const downloadTemplate = () => {
           {newGroupsPreview.length > 0 && (
             <div className="w-full mt-3 px-4 py-3 bg-purple-50 border border-purple-200 rounded-xl text-purple-800 text-sm shadow-sm animate-in fade-in duration-300">
               <p className="font-bold flex items-center gap-2 text-purple-700">
-                ✨ ระบบจะสร้างหมวดหมู่ใหม่ทั้งหมด {newGroupsPreview.length} รายการ
+                <Sparkles size={18} /> ระบบจะสร้างหมวดหมู่ใหม่ทั้งหมด {newGroupsPreview.length} รายการ
               </p>
               
               {/* ตาราง/กล่อง เล็กๆ เอาไว้โชว์รายการ */}
@@ -601,7 +724,7 @@ const downloadTemplate = () => {
                     <tr key={idx} className="hover:bg-slate-50 transition border-b border-slate-100 last:border-0">
                       <td className="p-3 text-center">
                         <span className={`px-2 py-1 rounded text-[10px] font-bold ${isUpdate ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
-                          {isUpdate ? '🔄 Update' : '✨ New'}
+                          {isUpdate ? 'Update' : 'New'}
                         </span>
                       </td>
                       
@@ -649,6 +772,99 @@ const downloadTemplate = () => {
            status.type === 'info' ? <Info className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
           <span className="text-sm font-bold">{status.msg}</span>
           <button onClick={() => setStatus(null)} className="ml-auto hover:bg-white/50 p-1 rounded-full transition"><X className="w-4 h-4" /></button>
+        </div>
+      )}
+
+      {/* Download Options Modal */}
+      {downloadOptions && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-3 bg-emerald-100 text-emerald-600 rounded-xl">
+                  <DownloadCloud size={24} />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-slate-800">เลือกข้อมูลที่ต้องการดาวน์โหลด</h3>
+                  <p className="text-sm text-slate-500">พบข้อมูลในระบบทั้งหมด {downloadOptions.slabs.length + downloadOptions.rough.length + downloadOptions.props.length + downloadOptions.furniture.length} รายการ</p>
+                </div>
+              </div>
+              
+              <div className="space-y-3 mt-6">
+                <button 
+                  onClick={() => confirmDownload('slabs')}
+                  disabled={downloadOptions.slabs.length === 0}
+                  className="w-full flex items-center justify-between p-4 rounded-xl border border-slate-200 hover:border-blue-300 hover:bg-blue-50 transition disabled:opacity-50 disabled:cursor-not-allowed group"
+                >
+                  <div className="flex items-center gap-3">
+                    <Layers className="text-slate-400 group-hover:text-blue-500 transition" size={20} />
+                    <span className="font-bold text-slate-700 group-hover:text-blue-700 text-left">Wood Slabs (ไม้แผ่น)</span>
+                  </div>
+                  <span className="bg-slate-100 text-slate-600 group-hover:bg-blue-100 group-hover:text-blue-700 py-1 px-3 rounded-full text-xs font-bold transition">
+                    {downloadOptions.slabs.length} รายการ
+                  </span>
+                </button>
+
+                <button 
+                  onClick={() => confirmDownload('rough')}
+                  disabled={downloadOptions.rough.length === 0}
+                  className="w-full flex items-center justify-between p-4 rounded-xl border border-slate-200 hover:border-orange-300 hover:bg-orange-50 transition disabled:opacity-50 disabled:cursor-not-allowed group"
+                >
+                  <div className="flex items-center gap-3">
+                    <Hammer className="text-slate-400 group-hover:text-orange-500 transition" size={20} />
+                    <span className="font-bold text-slate-700 group-hover:text-orange-700 text-left">Rough Wood (ไม้ดิบ)</span>
+                  </div>
+                  <span className="bg-slate-100 text-slate-600 group-hover:bg-orange-100 group-hover:text-orange-700 py-1 px-3 rounded-full text-xs font-bold transition">
+                    {downloadOptions.rough.length} รายการ
+                  </span>
+                </button>
+                
+                <button 
+                  onClick={() => confirmDownload('props')}
+                  disabled={downloadOptions.props.length === 0}
+                  className="w-full flex items-center justify-between p-4 rounded-xl border border-slate-200 hover:border-purple-300 hover:bg-purple-50 transition disabled:opacity-50 disabled:cursor-not-allowed group"
+                >
+                  <div className="flex items-center gap-3">
+                    <ImageIcon className="text-slate-400 group-hover:text-purple-500 transition" size={20} />
+                    <span className="font-bold text-slate-700 group-hover:text-purple-700 text-left">Props / Decor (ของตกแต่ง)</span>
+                  </div>
+                  <span className="bg-slate-100 text-slate-600 group-hover:bg-purple-100 group-hover:text-purple-700 py-1 px-3 rounded-full text-xs font-bold transition">
+                    {downloadOptions.props.length} รายการ
+                  </span>
+                </button>
+
+                <button 
+                  onClick={() => confirmDownload('furniture')}
+                  disabled={downloadOptions.furniture.length === 0}
+                  className="w-full flex items-center justify-between p-4 rounded-xl border border-slate-200 hover:border-emerald-300 hover:bg-emerald-50 transition disabled:opacity-50 disabled:cursor-not-allowed group"
+                >
+                  <div className="flex items-center gap-3">
+                    <Armchair className="text-slate-400 group-hover:text-emerald-500 transition" size={20} />
+                    <span className="font-bold text-slate-700 group-hover:text-emerald-700 text-left">Furniture (เฟอร์นิเจอร์)</span>
+                  </div>
+                  <span className="bg-slate-100 text-slate-600 group-hover:bg-emerald-100 group-hover:text-emerald-700 py-1 px-3 rounded-full text-xs font-bold transition">
+                    {downloadOptions.furniture.length} รายการ
+                  </span>
+                </button>
+
+                <button 
+                  onClick={() => confirmDownload('all')}
+                  className="w-full flex items-center justify-center gap-2 p-4 rounded-xl bg-slate-800 text-white font-bold hover:bg-slate-700 transition shadow-md shadow-slate-200 mt-4"
+                >
+                  <TableIcon size={18} /> ดาวน์โหลดทั้งหมด (แยก 4 Sheet)
+                </button>
+              </div>
+            </div>
+            
+            <div className="bg-slate-50 p-4 border-t border-slate-100 flex justify-end">
+              <button 
+                onClick={() => setDownloadOptions(null)}
+                className="px-5 py-2 font-bold text-slate-500 hover:bg-slate-200 rounded-lg transition"
+              >
+                ยกเลิก
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

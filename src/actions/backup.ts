@@ -7,12 +7,10 @@ import path from "path"
 // ---- Constants ----
 
 const SNAPSHOT_DIR  = path.join(process.cwd(), "data", "snapshots")
-
 // Tables ที่ snapshot+restore ได้ (เรียงตาม FK order — parent ก่อน)
 const RESTORABLE_TABLES = [
   { key: "branches",                  label: "Branches",                  pk: "id",         orderCol: "id" },
   { key: "profiles",                  label: "Profiles",                  pk: "user_id",    orderCol: "user_id" },
-  { key: "customers",                 label: "Customers",                 pk: "id",         orderCol: "id" },
   { key: "collection_groups",         label: "Collection Groups",         pk: "id",         orderCol: "id" },
   { key: "products",                  label: "Products",                  pk: "id",         orderCol: "id" },
   { key: "discounts",                 label: "Discounts",                 pk: "id",         orderCol: "id" },
@@ -110,7 +108,6 @@ const TABLE_DESC: Record<string, string> = {
   stock_transfers:            "ใบโอนย้ายสินค้าระหว่างสาขา",
   stock_transfer_items:       "รายการสินค้าในใบโอนย้าย",
   profiles:                   "ข้อมูลพนักงาน (export only)",
-  customers:                  "ข้อมูลลูกค้า (export only)",
   sale_dasbrode:              "สรุปยอดขายรายวัน (export only)",
   orders:                     "ออเดอร์ (export only)",
   order_items:                "รายการออเดอร์ (export only)",

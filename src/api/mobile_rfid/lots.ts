@@ -7,11 +7,13 @@ export const LotsController = {
   async getLots(req: NextRequest, user: any) {
     try {
       const branchId = user.branchId;
-      const statusParam = req.nextUrl.searchParams.get("status") || "in.(SENT,PARTIAL)";
-      let statuses = ["SENT", "PARTIAL"];
+      const statusParam = req.nextUrl.searchParams.get("status") || "SENT,PARTIAL";
+      let statuses: string[] = [];
       const match = statusParam.match(/in\.\(([^)]+)\)/);
       if (match) {
         statuses = match[1].split(",");
+      } else {
+        statuses = statusParam.split(",");
       }
 
       const data = await MobileRfidService.fetchActiveLots(branchId, statuses);
