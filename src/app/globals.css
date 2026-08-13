@@ -30,3 +30,40 @@ input::-webkit-inner-spin-button {
 input[type=number] {
   -moz-appearance: textfield;
 }
+
+/* The overview keeps the compact Hot Item card; the full Top 20 table lives
+   on the dedicated product analytics views. */
+.algorithm-shell #hot-items,
+.algorithm-shell [href="/algorithm#hot-items"] {
+  display: none;
+}
+
+/* The flex parent uses min-width: 0 so this element, rather than the page
+   viewport, owns the horizontal overflow on desktop and touch devices. */
+.algorithm-table-scroll {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto !important;
+  overflow-y: hidden;
+  overscroll-behavior-inline: contain;
+  touch-action: pan-x pan-y;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
+}
+
+/* The overview embeds the exact Audience Analytics workspace, but keeps the
+   overview's own navigation and date-range controls instead of duplicating them. */
+.algorithm-audience-embedded > .algorithm-shell {
+  min-height: auto;
+  background: transparent;
+}
+
+.algorithm-audience-embedded > .algorithm-shell > main {
+  padding-top: 0;
+}
+
+.algorithm-audience-embedded > .algorithm-shell > main > div > header {
+  display: none;
+}

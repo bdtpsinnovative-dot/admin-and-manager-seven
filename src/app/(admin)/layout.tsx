@@ -71,7 +71,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     <div className="flex min-h-screen bg-slate-50">
       {/* ส่งข้อมูล User ที่ประมวลผลแล้วไปให้ Sidebar */}
       <AdminSidebar user={userData} />
-      <main className="flex-1 pl-[80px]">
+      <main className="min-w-0 flex-1 pl-0 md:pl-[80px]">
         {children}
       </main>
     </div>

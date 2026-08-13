@@ -1,3 +1,8 @@
+"use client"
+
+/* Hallmark · pre-emit critique: P5 H5 E5 S5 R5 V4 */
+
+import { useState } from "react"
 import Link from "next/link"
 import {
   Activity,
@@ -30,11 +35,11 @@ function rangeLabel(days: AlgorithmRange) {
 }
 
 function trafficLabel(value: string) {
-  return ({ internal: "ภายในบริษัท", bot: "บอท", unknown: "ไม่ทราบประเภท" } as Record<string, string>)[value] || value
+  return ({ internal: "ภายในบริษัท", bot: "บอท", unknown: "ผู้เข้าชมที่นับได้" } as Record<string, string>)[value] || value
 }
 
 function trafficNote(value: string) {
-  return ({ internal: "IP/CIDR บริษัท", bot: "ตรวจจาก User Agent", unknown: "ยังไม่พบสัญญาณคัดกรอง" } as Record<string, string>)[value] || ""
+  return ({ internal: "IP/CIDR บริษัท", bot: "ตรวจจาก User Agent", unknown: "ไม่พบสัญญาณว่าเป็นบอทหรือภายในบริษัท" } as Record<string, string>)[value] || ""
 }
 
 function trafficCount(data: AlgorithmOverview, label: string) {
@@ -49,22 +54,54 @@ function identityLabel(value: "user" | "visitor") {
   return value === "user" ? "บัญชีที่ล็อกอิน" : "ผู้เข้าชมที่ไม่ได้ล็อกอิน"
 }
 
-function countryName(code: string) {
-  try {
-    return new Intl.DisplayNames(["th"], { type: "region" }).of(code) || code
-  } catch {
-    return code
-  }
-}
-
 function countryFlag(code: string) {
   return /^[A-Z]{2}$/.test(code)
     ? code.split("").map((letter) => String.fromCodePoint(127397 + letter.charCodeAt(0))).join("")
     : "🌐"
 }
 
+const thaiProvinceLabels: Record<string, string> = {
+  "10": "กรุงเทพมหานคร", "11": "สมุทรปราการ", "12": "นนทบุรี", "13": "ปทุมธานี", "14": "พระนครศรีอยุธยา",
+  "15": "อ่างทอง", "16": "ลพบุรี", "17": "สิงห์บุรี", "18": "ชัยนาท", "19": "สระบุรี",
+  "20": "ชลบุรี", "21": "ระยอง", "22": "จันทบุรี", "23": "ตราด", "24": "ฉะเชิงเทรา", "25": "ปราจีนบุรี",
+  "26": "นครนายก", "27": "สระแก้ว", "30": "นครราชสีมา", "31": "บุรีรัมย์", "32": "สุรินทร์", "33": "ศรีสะเกษ",
+  "34": "อุบลราชธานี", "35": "ยโสธร", "36": "ชัยภูมิ", "37": "อำนาจเจริญ", "38": "บึงกาฬ", "39": "หนองบัวลำภู",
+  "40": "ขอนแก่น", "41": "อุดรธานี", "42": "เลย", "43": "หนองคาย", "44": "มหาสารคาม", "45": "ร้อยเอ็ด",
+  "46": "กาฬสินธุ์", "47": "สกลนคร", "48": "นครพนม", "49": "มุกดาหาร", "50": "เชียงใหม่", "51": "ลำพูน",
+  "52": "ลำปาง", "53": "อุตรดิตถ์", "54": "แพร่", "55": "น่าน", "56": "พะเยา", "57": "เชียงราย", "58": "แม่ฮ่องสอน",
+  "60": "นครสวรรค์", "61": "อุทัยธานี", "62": "กำแพงเพชร", "63": "ตาก", "64": "สุโขทัย", "65": "พิษณุโลก",
+  "66": "พิจิตร", "67": "เพชรบูรณ์", "70": "ราชบุรี", "71": "กาญจนบุรี", "72": "สุพรรณบุรี", "73": "นครปฐม",
+  "74": "สมุทรสาคร", "75": "สมุทรสงคราม", "76": "เพชรบุรี", "77": "ประจวบคีรีขันธ์", "80": "นครศรีธรรมราช",
+  "81": "กระบี่", "82": "พังงา", "83": "ภูเก็ต", "84": "สุราษฎร์ธานี", "85": "ระนอง", "86": "ชุมพร",
+  "90": "สงขลา", "91": "สตูล", "92": "ตรัง", "93": "พัทลุง", "94": "ปัตตานี", "95": "ยะลา", "96": "นราธิวาส",
+}
+
+function regionDisplayLabel(countryCode: string | null, region: string) {
+  if (countryCode === "TH" && thaiProvinceLabels[region]) return thaiProvinceLabels[region]
+  return /^\d+$/.test(region) ? `รหัสพื้นที่ ${region}` : region
+}
+
+function normalizePlace(value: string) {
+  return value.toLowerCase().replace(/[\s.\-_/()]/g, "")
+}
+
+function isSameRegionAndCity(countryCode: string | null, region: string, city: string) {
+  const regionName = regionDisplayLabel(countryCode, region)
+  const normalizedRegion = normalizePlace(regionName)
+  const normalizedCity = normalizePlace(city)
+  if (normalizedRegion === normalizedCity) return true
+  if (countryCode === "TH" && normalizedRegion === "กรุงเทพมหานคร" && ["bangkok", "กรุงเทพ", "กรุงเทพมหานคร"].includes(normalizedCity)) return true
+  return false
+}
+
 function trendLabel(value: string, rangeDays: AlgorithmRange) {
   return new Intl.DateTimeFormat("th-TH", rangeDays === 1 ? { hour: "2-digit" } : { day: "numeric", month: "short" }).format(new Date(value))
+}
+
+function trendTooltipLabel(value: string, rangeDays: AlgorithmRange) {
+  return new Intl.DateTimeFormat("th-TH", rangeDays === 1
+    ? { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }
+    : { day: "numeric", month: "long", year: "numeric" }).format(new Date(value))
 }
 
 function availabilityLabel(item: HotItem) {
@@ -85,12 +122,15 @@ function MetricCard({ icon: Icon, label, value, note, accent = "green" }: { icon
 }
 
 function TrendChart({ trend, rangeDays }: { trend: TrendPoint[]; rangeDays: AlgorithmRange }) {
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const maxViews = Math.max(...trend.map((point) => point.views), 1)
   const barWidth = trend.length > 0 ? Math.max(700 / trend.length - 5, 4) : 0
   const maxIndex = trend.reduce((best, point, index) => point.views > (trend[best]?.views ?? -1) ? index : best, 0)
   const labelStep = Math.max(Math.ceil(trend.length / 6), 1)
+  const hoveredPoint = hoveredIndex === null ? null : trend[hoveredIndex]
+  const hoveredX = hoveredIndex === null ? 50 : Math.min(Math.max(((hoveredIndex + 0.5) / Math.max(trend.length, 1)) * 100, 12), 88)
 
-  return <div className="mt-5 rounded-[1.25rem] border border-[var(--algorithm-rule)] bg-[var(--algorithm-surface-soft)] p-4 sm:p-5"><div className="flex items-center justify-between gap-3"><div className="flex items-center gap-2 text-xs font-semibold text-[var(--algorithm-muted)]"><span className="h-2.5 w-2.5 rounded-full bg-[var(--algorithm-accent)]" />ยอดดูไม่ซ้ำ</div><span className="font-mono text-[10px] text-[var(--algorithm-muted)]">สูงสุด {number(Math.max(...trend.map((point) => point.views), 0))}</span></div>{trend.length === 0 ? <div className="flex h-56 items-center justify-center text-sm text-[var(--algorithm-muted)]">ยังไม่มีข้อมูลแนวโน้ม</div> : <><svg viewBox="0 0 700 220" className="mt-4 h-auto w-full" role="img" aria-label="กราฟยอดดูไม่ซ้ำตามช่วงเวลา"><line x1="0" x2="700" y1="28" y2="28" stroke="var(--algorithm-rule)" strokeWidth="1" /><line x1="0" x2="700" y1="103" y2="103" stroke="var(--algorithm-rule)" strokeWidth="1" /><line x1="0" x2="700" y1="178" y2="178" stroke="var(--algorithm-rule-strong)" strokeWidth="1" />{trend.map((point, index) => { const height = Math.max((point.views / maxViews) * 150, point.views > 0 ? 5 : 1); const x = (index / trend.length) * 700 + 2; const y = 178 - height; const active = index === maxIndex && point.views > 0; return <rect key={point.bucket} x={x} y={y} width={barWidth} height={height} rx="3" fill={active ? "var(--algorithm-accent-strong)" : "var(--algorithm-accent)"} opacity={active ? "1" : "0.75"} className="cursor-help"><title>{`${trendLabel(point.bucket, rangeDays)} · ยอดดูไม่ซ้ำ ${number(point.views)} ครั้ง`}</title></rect> })}</svg><div className="mt-1 flex justify-between gap-2 font-mono text-[10px] text-[var(--algorithm-muted)]">{trend.map((point, index) => index % labelStep === 0 || index === trend.length - 1 ? <span key={point.bucket}>{trendLabel(point.bucket, rangeDays)}</span> : <span key={point.bucket} aria-hidden="true" />)}</div></>}</div>
+  return <div className="mt-5 rounded-[1.25rem] border border-[var(--algorithm-rule)] bg-[var(--algorithm-surface-soft)] p-4 sm:p-5"><div className="flex items-center justify-between gap-3"><div className="flex items-center gap-2 text-xs font-semibold text-[var(--algorithm-muted)]"><span className="h-2.5 w-2.5 rounded-full bg-[var(--algorithm-accent)]" />ยอดดูไม่ซ้ำ</div><span className="font-mono text-[10px] text-[var(--algorithm-muted)]">สูงสุด {number(Math.max(...trend.map((point) => point.views), 0))}</span></div>{trend.length === 0 ? <div className="flex h-56 items-center justify-center text-sm text-[var(--algorithm-muted)]">ยังไม่มีข้อมูลแนวโน้ม</div> : <><div className="relative mt-4"><svg viewBox="0 0 700 220" className="h-auto w-full" role="img" aria-label="กราฟยอดดูไม่ซ้ำตามช่วงเวลา"><line x1="0" x2="700" y1="28" y2="28" stroke="var(--algorithm-rule)" strokeWidth="1" /><line x1="0" x2="700" y1="103" y2="103" stroke="var(--algorithm-rule)" strokeWidth="1" /><line x1="0" x2="700" y1="178" y2="178" stroke="var(--algorithm-rule-strong)" strokeWidth="1" />{trend.map((point, index) => { const height = Math.max((point.views / maxViews) * 150, point.views > 0 ? 5 : 1); const x = (index / trend.length) * 700 + 2; const y = 178 - height; const active = index === maxIndex && point.views > 0; return <rect key={point.bucket} x={x} y={y} width={barWidth} height={height} rx="3" fill={active ? "var(--algorithm-accent-strong)" : "var(--algorithm-accent)"} opacity={hoveredIndex === index ? "1" : active ? "1" : "0.75"} className="cursor-help" onMouseEnter={() => setHoveredIndex(index)} onMouseLeave={() => setHoveredIndex(null)} onFocus={() => setHoveredIndex(index)} onBlur={() => setHoveredIndex(null)} tabIndex={0}><title>{`${trendTooltipLabel(point.bucket, rangeDays)} · ยอดดูไม่ซ้ำ ${number(point.views)} ครั้ง`}</title></rect> })}</svg>{hoveredPoint && <div className="pointer-events-none absolute top-2 z-10 -translate-x-1/2 rounded-xl border border-[var(--algorithm-rule-strong)] bg-[var(--algorithm-ink)] px-3 py-2 text-center text-white shadow-lg" style={{ left: `${hoveredX}%` }}><p className="whitespace-nowrap text-[10px] text-white/70">{trendTooltipLabel(hoveredPoint.bucket, rangeDays)}</p><p className="mt-0.5 whitespace-nowrap font-mono text-sm font-bold">{number(hoveredPoint.views)} ครั้ง</p><p className="text-[10px] text-white/70">ยอดดูไม่ซ้ำ</p></div>}</div><div className="mt-1 flex justify-between gap-2 font-mono text-[10px] text-[var(--algorithm-muted)]">{trend.map((point, index) => index % labelStep === 0 || index === trend.length - 1 ? <span key={point.bucket}>{trendLabel(point.bucket, rangeDays)}</span> : <span key={point.bucket} aria-hidden="true" />)}</div></>}</div>
 }
 
 function ProductThumb({ item }: { item: HotItem }) {
@@ -107,6 +147,7 @@ function TopProductRow({ item }: { item: HotItem }) {
 }
 
 function LocationBars({ data }: { data: AlgorithmOverview }) {
+  const [expandedCountries, setExpandedCountries] = useState<Record<string, boolean>>({})
   const maxViews = Math.max(data.locationHierarchy[0]?.views ?? 1, 1)
   const hasLocation = data.locationHierarchy.length > 0 || data.unspecifiedLocationViews > 0
 
@@ -115,10 +156,14 @@ function LocationBars({ data }: { data: AlgorithmOverview }) {
   }
 
   return <div className="mt-5 space-y-3">
-    <p className="text-[10px] font-semibold text-[var(--algorithm-muted)]">ยอดดูไม่ซ้ำ · เปิดดูรายละเอียดจากประเทศลงไปถึงเมือง</p>
+    <p className="text-[10px] font-semibold text-[var(--algorithm-muted)]">ยอดดูไม่ซ้ำ · แสดง 5 จังหวัด/ภูมิภาคแรก กดเพื่อดูเมืองเพิ่มเติม</p>
     {data.locationHierarchy.map((country, countryIndex) => {
-      const displayName = country.code ? countryName(country.code) : country.label
+      const displayName = country.label
       const displayFlag = country.code ? countryFlag(country.code) : "🌐"
+      const countryKey = country.code || country.label
+      const isExpanded = Boolean(expandedCountries[countryKey])
+      const visibleRegions = isExpanded ? country.regions : country.regions.slice(0, 5)
+      const hiddenRegionCount = Math.max(country.regions.length - visibleRegions.length, 0)
       return <details key={country.code || country.label} open={countryIndex === 0} className="group rounded-2xl border border-[var(--algorithm-rule)] bg-[var(--algorithm-surface-soft)]">
         <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3 marker:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--algorithm-blue)]">
           <span aria-hidden="true" className="text-lg leading-none">{displayFlag}</span>
@@ -127,11 +172,17 @@ function LocationBars({ data }: { data: AlgorithmOverview }) {
           <span className="font-mono text-xs font-bold tabular-nums text-[var(--algorithm-muted)]">{number(country.views)}</span>
           <span aria-hidden="true" className="text-xs text-[var(--algorithm-muted)] transition-transform group-open:rotate-180">⌄</span>
         </summary>
-        <div className="space-y-3 border-t border-[var(--algorithm-rule)] px-4 py-3 pl-11">
-          {country.regions.map((region) => <div key={region.label}>
-            <div className="flex items-center justify-between gap-3 text-xs font-semibold text-[var(--algorithm-ink-soft)]"><span className="truncate">{region.label}</span><span className="shrink-0 font-mono text-[10px] tabular-nums text-[var(--algorithm-muted)]">{number(region.views)}</span></div>
-            {region.cities.length > 0 && <div className="mt-2 space-y-1.5 border-l border-[var(--algorithm-rule-strong)] pl-3">{region.cities.map((city) => <div key={city.label} className="flex items-center justify-between gap-3 text-xs text-[var(--algorithm-muted)]"><span className="truncate">{city.label}</span><span className="shrink-0 font-mono text-[10px] tabular-nums">{number(city.views)}</span></div>)}</div>}
-          </div>)}
+        <div className="space-y-2 border-t border-[var(--algorithm-rule)] px-4 py-3 sm:pl-11">
+          {visibleRegions.map((region) => {
+            const regionName = regionDisplayLabel(country.code, region.label)
+            const distinctCities = region.cities.filter((city) => !isSameRegionAndCity(country.code, region.label, city.label))
+            if (distinctCities.length === 0) return <div key={region.label} className="flex min-h-9 items-center justify-between gap-3 rounded-xl px-2 text-xs font-semibold text-[var(--algorithm-ink-soft)]"><span className="truncate">{regionName}</span><span className="shrink-0 font-mono text-[10px] tabular-nums text-[var(--algorithm-muted)]">{number(region.views)}</span></div>
+            return <details key={region.label} className="group/region rounded-xl bg-[var(--algorithm-surface)]">
+              <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-xl px-3 text-xs font-semibold text-[var(--algorithm-ink-soft)] marker:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--algorithm-blue)]"><span className="min-w-0 flex-1 truncate">{regionName}</span><span className="shrink-0 font-mono text-[10px] tabular-nums text-[var(--algorithm-muted)]">{number(region.views)}</span><span aria-hidden="true" className="text-[10px] text-[var(--algorithm-muted)] transition-transform group-open/region:rotate-180">⌄</span></summary>
+              <div className="space-y-1.5 border-t border-[var(--algorithm-rule)] px-3 py-2">{distinctCities.map((city) => <div key={city.label} className="flex items-center justify-between gap-3 text-xs text-[var(--algorithm-muted)]"><span className="truncate">{city.label}</span><span className="shrink-0 font-mono text-[10px] tabular-nums">{number(city.views)}</span></div>)}</div>
+            </details>
+          })}
+          {country.regions.length > 5 && <button type="button" onClick={() => setExpandedCountries((current) => ({ ...current, [countryKey]: !isExpanded }))} className="mt-1 inline-flex min-h-11 w-full items-center justify-center whitespace-nowrap rounded-xl border border-[var(--algorithm-rule)] bg-[var(--algorithm-surface)] px-3 text-xs font-bold text-[var(--algorithm-blue)] transition-colors hover:bg-[var(--algorithm-blue-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--algorithm-blue)] active:bg-[var(--algorithm-rule)]">{isExpanded ? "ย่อรายการจังหวัด/ภูมิภาค" : `ดูเพิ่มอีก ${number(hiddenRegionCount)} จังหวัด/ภูมิภาค`}</button>}
         </div>
       </details>
     })}
@@ -151,7 +202,7 @@ export default function AlgorithmDashboard({ data }: { data: AlgorithmOverview }
   const rangeLinks: Array<{ days: AlgorithmRange; label: string }> = [{ days: 1, label: "24 ชม." }, { days: 7, label: "7 วัน" }, { days: 30, label: "30 วัน" }]
 
   return <div className="algorithm-shell relative min-h-screen overflow-x-clip bg-[var(--algorithm-paper)] font-[var(--font-body)] text-[var(--algorithm-ink)]"><div className="pointer-events-none absolute -left-24 top-20 h-72 w-72 rounded-full bg-[var(--algorithm-paper-deep)] opacity-80 blur-3xl" /><div className="pointer-events-none absolute -right-28 bottom-24 h-96 w-96 rounded-full bg-[var(--algorithm-paper-blue)] opacity-80 blur-3xl" /><main className="relative mx-auto max-w-[1680px] px-3 py-3 sm:px-5 sm:py-5 lg:px-8 lg:py-8"><div className="rounded-[2rem] border border-[var(--algorithm-rule)] bg-[var(--algorithm-surface)] p-3 shadow-[var(--algorithm-shadow)] sm:p-5 lg:p-7">
-    <header className="flex flex-col gap-4 border-b border-[var(--algorithm-rule)] pb-5 lg:flex-row lg:items-center lg:justify-between"><div className="flex items-center gap-3"><div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[var(--algorithm-ink)] text-lg font-black text-[var(--algorithm-surface)]">W</div><div><p className="font-[var(--font-display)] text-lg font-semibold tracking-[-0.04em]">Dashboard</p><p className="text-[10px] font-bold uppercase tracking-[0.15em] text-[var(--algorithm-muted)]">Algorithm</p></div></div><nav className="order-3 flex min-w-0 items-center gap-1 overflow-x-auto rounded-full bg-[var(--algorithm-surface-soft)] p-1 lg:order-none" aria-label="เมนู Algorithm"><Link href="/algorithm" className="whitespace-nowrap rounded-full bg-[var(--algorithm-accent)] px-4 py-2 text-xs font-bold text-[var(--algorithm-ink)]">ภาพรวม</Link><Link href="/algorithm#hot-items" className="whitespace-nowrap rounded-full px-3 py-2 text-xs font-semibold text-[var(--algorithm-muted)] transition-colors hover:bg-[var(--algorithm-surface)] hover:text-[var(--algorithm-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--algorithm-blue)]">Hot Item</Link><Link href={recommendationHref} className="whitespace-nowrap rounded-full px-3 py-2 text-xs font-semibold text-[var(--algorithm-muted)] transition-colors hover:bg-[var(--algorithm-surface)] hover:text-[var(--algorithm-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--algorithm-blue)]">สินค้าแนะนำ</Link></nav><div className="flex items-center justify-between gap-3 lg:justify-end"><div className="flex items-center gap-1 rounded-full border border-[var(--algorithm-rule)] bg-[var(--algorithm-surface)] p-1">{rangeLinks.map((range) => <Link key={range.days} href={`/algorithm?range=${range.days}`} className={`whitespace-nowrap rounded-full px-3 py-2 text-xs font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--algorithm-blue)] ${data.rangeDays === range.days ? "bg-[var(--algorithm-ink)] text-[var(--algorithm-surface)]" : "text-[var(--algorithm-muted)] hover:bg-[var(--algorithm-accent-soft)] hover:text-[var(--algorithm-ink)]"}`}>{range.label}</Link>)}</div><div className="hidden items-center gap-2 sm:flex"><span className="grid h-9 w-9 place-items-center rounded-full bg-[var(--algorithm-blue-soft)] text-xs font-bold text-[var(--algorithm-blue)]">A</span><span className="hidden text-right xl:block"><span className="block text-xs font-bold text-[var(--algorithm-ink)]">Admin</span><span className="block text-[10px] text-[var(--algorithm-muted)]">ดูข้อมูลอย่างเดียว</span></span></div></div></header>
+    <header className="flex flex-col gap-4 border-b border-[var(--algorithm-rule)] pb-5 lg:flex-row lg:items-center lg:justify-between"><div className="flex items-center gap-3"><div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[var(--algorithm-ink)] text-lg font-black text-[var(--algorithm-surface)]">W</div><div><p className="font-[var(--font-display)] text-lg font-semibold tracking-[-0.04em]">Dashboard</p><p className="text-[10px] font-bold uppercase tracking-[0.15em] text-[var(--algorithm-muted)]">Algorithm</p></div></div><nav className="order-3 flex min-w-0 items-center gap-1 overflow-x-auto rounded-full bg-[var(--algorithm-surface-soft)] p-1 lg:order-none" aria-label="เมนู Algorithm"><Link href="/algorithm" className="whitespace-nowrap rounded-full bg-[var(--algorithm-accent)] px-4 py-2 text-xs font-bold text-[var(--algorithm-ink)]">ภาพรวม</Link><Link href="/algorithm/audience" className="whitespace-nowrap rounded-full px-3 py-2 text-xs font-semibold text-[var(--algorithm-muted)] transition-colors hover:bg-[var(--algorithm-surface)] hover:text-[var(--algorithm-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--algorithm-blue)]">Audience Analytics</Link><Link href="/algorithm#hot-items" className="whitespace-nowrap rounded-full px-3 py-2 text-xs font-semibold text-[var(--algorithm-muted)] transition-colors hover:bg-[var(--algorithm-surface)] hover:text-[var(--algorithm-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--algorithm-blue)]">Hot Item</Link><Link href={recommendationHref} className="whitespace-nowrap rounded-full px-3 py-2 text-xs font-semibold text-[var(--algorithm-muted)] transition-colors hover:bg-[var(--algorithm-surface)] hover:text-[var(--algorithm-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--algorithm-blue)]">สินค้าแนะนำ</Link></nav><div className="flex items-center justify-between gap-3 lg:justify-end"><div className="flex items-center gap-1 rounded-full border border-[var(--algorithm-rule)] bg-[var(--algorithm-surface)] p-1">{rangeLinks.map((range) => <Link key={range.days} href={`/algorithm?range=${range.days}`} className={`whitespace-nowrap rounded-full px-3 py-2 text-xs font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--algorithm-blue)] ${data.rangeDays === range.days ? "bg-[var(--algorithm-ink)] text-[var(--algorithm-surface)]" : "text-[var(--algorithm-muted)] hover:bg-[var(--algorithm-accent-soft)] hover:text-[var(--algorithm-ink)]"}`}>{range.label}</Link>)}</div><div className="hidden items-center gap-2 sm:flex"><span className="grid h-9 w-9 place-items-center rounded-full bg-[var(--algorithm-blue-soft)] text-xs font-bold text-[var(--algorithm-blue)]">A</span><span className="hidden text-right xl:block"><span className="block text-xs font-bold text-[var(--algorithm-ink)]">Admin</span><span className="block text-[10px] text-[var(--algorithm-muted)]">ดูข้อมูลอย่างเดียว</span></span></div></div></header>
 
     <section className="flex flex-col justify-between gap-6 py-7 sm:py-9 lg:flex-row lg:items-end"><div className="max-w-2xl"><div className="mb-3 inline-flex items-center gap-2 rounded-full bg-[var(--algorithm-accent-soft)] px-3 py-1.5 text-[10px] font-bold text-[var(--algorithm-accent-strong)]"><Sparkles className="h-3.5 w-3.5" /></div><h1 className="max-w-xl break-words font-[var(--font-display)] text-4xl font-semibold leading-[1.05] tracking-[-0.06em] text-[var(--algorithm-ink)] sm:text-5xl">ภาพรวมการจัดอันดับสินค้า Prop</h1><p className="mt-4 max-w-xl text-sm leading-6 text-[var(--algorithm-muted)]"> {rangeLabel(data.rangeDays)}</p></div><div className="flex items-center gap-3 text-xs text-[var(--algorithm-muted)]"><span className="h-2 w-2 rounded-full bg-[var(--algorithm-accent-strong)]" />อัปเดต {dateTime(data.generatedAt)}</div></section>
 

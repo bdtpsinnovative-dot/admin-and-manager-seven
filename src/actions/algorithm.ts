@@ -123,6 +123,12 @@ export type AlgorithmEventRow = {
   isInternal: boolean
   userAgent: string | null
   referrer: string | null
+  sourcePlatform: string | null
+  sessionSource: string | null
+  referrerHost: string | null
+  sourceEvidence: string | null
+  sourceConfidence: string | null
+  sourceDetail: string | null
   sessionLabel: string | null
   previousProductId: number | null
 }
@@ -197,6 +203,10 @@ const EVENT_FIELDS = [
   "asn",
   "user_agent",
   "referrer",
+  "source_platform",
+  "session_source",
+  "referrer_host",
+  "metadata",
   "traffic_type",
   "is_bot",
   "is_internal",
@@ -224,6 +234,22 @@ function getRecencyWeight(createdAt: string) {
 function getTrafficWeight(trafficType: string, isCountable: boolean) {
   if (!isCountable || trafficType === "bot" || trafficType === "internal") return 0
   return 1
+}
+
+function rollingUniqueScoreEvents(events: ScoreEvent[]) {
+  const sorted = [...events]
+    .filter((event) => event.is_countable && event.identity_key && event.product_id)
+    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+  const lastSeen = new Map<string, number>()
+  const unique: ScoreEvent[] = []
+  for (const event of sorted) {
+    const key = `${event.product_id}:${event.identity_key}`
+    const createdAt = new Date(event.created_at).getTime()
+    const previousAt = lastSeen.get(key)
+    if (previousAt === undefined || createdAt - previousAt >= dayInMs) unique.push(event)
+    lastSeen.set(key, createdAt)
+  }
+  return unique
 }
 
 function formatLocation(country: string | null, region: string | null, city: string | null) {
@@ -444,7 +470,13 @@ function normalizeLocationPart(value: string | null) {
 
 function countryLabel(key: string) {
   const code = normalizeCountryCode(key)
-  if (code) return code
+  if (code) {
+    try {
+      return new Intl.DisplayNames(["th"], { type: "region" }).of(code) || code
+    } catch {
+      return code
+    }
+  }
   return key
 }
 
@@ -486,19 +518,10 @@ function countrySummaryFromCounts(countryCounts: Map<string, number>): CountrySu
 }
 
 function rankProductCatalog(events: ScoreEvent[], productMap: Map<number, AlgorithmProduct>): AlgorithmProductListItem[] {
-  const uniqueEvents = new Map<string, ScoreEvent>()
-
-  for (const event of events) {
-    if (!event.is_countable) continue
-    const key = `${event.product_id}:${event.identity_key}:${event.view_bucket}`
-    const current = uniqueEvents.get(key)
-    if (!current || new Date(event.created_at).getTime() > new Date(current.created_at).getTime()) {
-      uniqueEvents.set(key, event)
-    }
-  }
+  const uniqueEvents = rollingUniqueScoreEvents(events)
 
   const aggregate = new Map<number, ProductAggregate>()
-  for (const event of uniqueEvents.values()) {
+  for (const event of uniqueEvents) {
     const productId = Number(event.product_id)
     if (!productMap.has(productId)) continue
     const current = aggregate.get(productId) ?? {
@@ -547,7 +570,7 @@ export async function getAlgorithmOverview(rangeValue: number): Promise<Algorith
 
   try {
     const events = await fetchScoreEvents(getCutoff(rangeDays))
-    const uniqueEvents = new Map<string, ScoreEvent>()
+    let uniqueEvents: ScoreEvent[] = []
     const identityCounts = new Map<"user" | "visitor", number>()
     const trafficCounts = new Map<string, number>()
     const countryCounts = new Map<string, number>()
@@ -559,19 +582,15 @@ export async function getAlgorithmOverview(rangeValue: number): Promise<Algorith
       identityCounts.set(identityType, (identityCounts.get(identityType) ?? 0) + 1)
       const trafficType = event.traffic_type === "customer" ? "unknown" : event.traffic_type || "unknown"
       trafficCounts.set(trafficType, (trafficCounts.get(trafficType) ?? 0) + 1)
-      if (!event.is_countable) continue
-      const key = `${event.product_id}:${event.identity_key}:${event.view_bucket}`
-      const current = uniqueEvents.get(key)
-      if (!current || new Date(event.created_at).getTime() > new Date(current.created_at).getTime()) {
-        uniqueEvents.set(key, event)
-      }
     }
 
-    const productMap = await fetchPropProducts(Array.from(uniqueEvents.values()).map((event) => Number(event.product_id)))
+    uniqueEvents = rollingUniqueScoreEvents(events)
+
+    const productMap = await fetchPropProducts(uniqueEvents.map((event) => Number(event.product_id)))
     const aggregate = new Map<number, { uniqueViews: number; recencyScore: number; lastViewedAt: string; location: Map<string, number> }>()
     const trendTotals = new Map<string, number>()
 
-    for (const event of uniqueEvents.values()) {
+    for (const event of uniqueEvents) {
       const productId = Number(event.product_id)
       if (!productMap.has(productId)) continue
       const current = aggregate.get(productId) ?? {
@@ -740,6 +759,9 @@ function mapEventRow(event: Record<string, unknown>): AlgorithmEventRow {
   const region = typeof event.region === "string" ? event.region : null
   const city = typeof event.city === "string" ? event.city : null
   const countryCode = normalizeCountryCode(event.country_code) || normalizeCountryCode(country)
+  const metadata = event.metadata && typeof event.metadata === "object" && !Array.isArray(event.metadata)
+    ? event.metadata as Record<string, unknown>
+    : {}
 
   return {
     id: String(event.id),
@@ -760,6 +782,12 @@ function mapEventRow(event: Record<string, unknown>): AlgorithmEventRow {
     isInternal: Boolean(event.is_internal),
     userAgent: typeof event.user_agent === "string" ? event.user_agent : null,
     referrer: typeof event.referrer === "string" ? event.referrer : null,
+    sourcePlatform: typeof event.source_platform === "string" ? event.source_platform : null,
+    sessionSource: typeof event.session_source === "string" ? event.session_source : null,
+    referrerHost: typeof event.referrer_host === "string" ? event.referrer_host : null,
+    sourceEvidence: typeof metadata.source_evidence === "string" ? metadata.source_evidence : null,
+    sourceConfidence: typeof metadata.source_confidence === "string" ? metadata.source_confidence : null,
+    sourceDetail: typeof metadata.source_detail === "string" ? metadata.source_detail : null,
     sessionLabel: maskIdentifier(typeof event.session_id === "string" ? event.session_id : null),
     previousProductId: typeof event.previous_product_id === "number" ? event.previous_product_id : null,
   }
