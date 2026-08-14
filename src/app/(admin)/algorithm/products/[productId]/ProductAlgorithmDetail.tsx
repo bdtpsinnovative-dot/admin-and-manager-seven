@@ -1,3 +1,6 @@
+/* Hallmark · component: raw-event table · genre: modern-minimal · theme: existing Algorithm Cobalt */
+/* Hallmark · pre-emit critique: P5 H5 E4 S5 R5 V4 */
+
 import Link from "next/link"
 import {
   ArrowLeft,
@@ -14,6 +17,7 @@ import {
 } from "lucide-react"
 import type { AlgorithmEventRow, AlgorithmProductDetail, RelatedProduct } from "../../../../../actions/algorithm"
 import SourceBadge from "../../SourceBadge"
+import TechnologyBadge from "../../TechnologyBadge"
 
 function number(value: number) {
   return new Intl.NumberFormat("th-TH").format(value)
@@ -61,6 +65,72 @@ function sourceConfidenceLabel(value: string | null) {
   return ({ high: "ความมั่นใจสูง", medium: "ความมั่นใจปานกลาง", low: "ระบุไม่ได้แน่ชัด" } as Record<string, string>)[value || ""] || "ไม่ระบุความมั่นใจ"
 }
 
+type EventTechnology = {
+  device: string
+  os: string
+  browser: string
+}
+
+function parseUserAgent(userAgent: string | null): EventTechnology {
+  if (!userAgent) return { device: "ไม่ระบุอุปกรณ์", os: "ไม่ระบุระบบ", browser: "ไม่ระบุ Browser" }
+
+  const device = /ipad|tablet|macintosh.*mobile/i.test(userAgent)
+    ? "แท็บเล็ต"
+    : /mobile|iphone|ipod|android/i.test(userAgent)
+      ? "มือถือ"
+      : /windows|macintosh|linux|cros/i.test(userAgent)
+        ? "คอมพิวเตอร์"
+        : "อุปกรณ์อื่น"
+
+  const androidVersion = userAgent.match(/Android\s([\d.]+)/i)?.[1]
+  const iosVersion = userAgent.match(/(?:CPU (?:iPhone )?OS|iPhone OS)\s([\d_]+)/i)?.[1]?.replaceAll("_", ".")
+  const macVersion = userAgent.match(/Mac OS X\s([\d_]+)/i)?.[1]?.replaceAll("_", ".")
+  const os = androidVersion
+    ? `Android ${androidVersion}`
+    : iosVersion
+      ? `iOS ${iosVersion}`
+      : /Windows NT/i.test(userAgent)
+        ? "Windows"
+        : macVersion
+          ? `macOS ${macVersion}`
+          : /CrOS/i.test(userAgent)
+            ? "ChromeOS"
+            : /Linux/i.test(userAgent)
+              ? "Linux"
+              : "ไม่ระบุระบบ"
+
+  const edgeVersion = userAgent.match(/Edg(?:A|iOS)?\/([\d.]+)/i)?.[1]
+  const operaVersion = userAgent.match(/(?:OPR|Opera)\/([\d.]+)/i)?.[1]
+  const samsungVersion = userAgent.match(/SamsungBrowser\/([\d.]+)/i)?.[1]
+  const firefoxVersion = userAgent.match(/(?:Firefox|FxiOS)\/([\d.]+)/i)?.[1]
+  const chromeVersion = userAgent.match(/(?:Chrome|CriOS)\/([\d.]+)/i)?.[1]
+  const safariVersion = userAgent.match(/Version\/([\d.]+).*Safari/i)?.[1]
+  const browser = edgeVersion
+    ? `Microsoft Edge ${edgeVersion}`
+    : operaVersion
+      ? `Opera ${operaVersion}`
+      : samsungVersion
+        ? `Samsung Internet ${samsungVersion}`
+        : firefoxVersion
+          ? `Firefox ${firefoxVersion}`
+          : chromeVersion
+            ? `Chrome ${chromeVersion}`
+            : safariVersion
+              ? `Safari ${safariVersion}`
+              : "ไม่ระบุ Browser"
+
+  return { device, os, browser }
+}
+
+function sourceValue(event: AlgorithmEventRow) {
+  return event.sessionSource || event.sourcePlatform || "Direct"
+}
+
+function countryValue(event: AlgorithmEventRow) {
+  if (event.countryCode) return `${countryFlag(event.countryCode)} ${countryName(event.countryCode)}`
+  return event.country || "ไม่ระบุประเทศ"
+}
+
 function ProductImage({ src, alt, size = "medium" }: { src: string | null; alt: string; size?: "small" | "medium" }) {
   const sizeClass = size === "small" ? "h-12 w-12 rounded-xl" : "h-24 w-24 rounded-2xl sm:h-32 sm:w-32"
   return <div className={`grid shrink-0 place-items-center overflow-hidden bg-[var(--algorithm-surface-soft)] ${sizeClass}`}>{src ? <img src={src} alt={alt} width={128} height={128} className="h-full w-full object-contain p-2" /> : <PackageCheck className="h-7 w-7 text-[var(--algorithm-muted)]" />}</div>
@@ -70,16 +140,30 @@ function RelatedCard({ item }: { item: RelatedProduct }) {
   return <Link href={`/algorithm/products/${item.id}`} className="group block rounded-2xl border border-[var(--algorithm-rule)] bg-[var(--algorithm-surface)] p-4 transition-transform duration-[var(--dur-fast)] hover:-translate-y-0.5 hover:border-[var(--algorithm-blue)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--algorithm-blue)]"><div className="flex items-start gap-3"><ProductImage src={item.imageUrl} alt="" size="small" /><div className="min-w-0 flex-1"><p className="truncate text-sm font-bold text-[var(--algorithm-ink)]">{item.name}</p><p className="mt-1 truncate font-mono text-[10px] text-[var(--algorithm-muted)]">{item.sku || "ไม่มี SKU"}</p><p className="mt-2 text-xs leading-5 text-[var(--algorithm-accent-strong)]">{item.reason}</p></div><ArrowUpRight className="h-4 w-4 shrink-0 text-[var(--algorithm-muted)] transition-colors group-hover:text-[var(--algorithm-blue)]" /></div><div className="mt-4 grid grid-cols-3 gap-2 border-t border-[var(--algorithm-rule)] pt-3"><div><p className="font-mono text-sm font-bold tabular-nums text-[var(--algorithm-ink)]">{item.availability === "available" ? `มีสต็อก ${number(item.stockTotal)}` : "พรีออเดอร์"}</p><p className="text-[10px] text-[var(--algorithm-muted)]">สถานะสินค้า</p></div><div><p className="font-mono text-sm font-bold tabular-nums text-[var(--algorithm-ink)]">{number(item.sequentialViews)}</p><p className="text-[10px] text-[var(--algorithm-muted)]">ดูต่อทันที</p></div><div><p className="font-mono text-sm font-bold tabular-nums text-[var(--algorithm-ink)]">{number(item.categoryViews)}</p><p className="text-[10px] text-[var(--algorithm-muted)]">หมวดเดียวกัน</p></div></div></Link>
 }
 
-function EventMeta({ event }: { event: AlgorithmEventRow }) {
-  return <div className="space-y-1 text-xs text-[var(--algorithm-muted)]"><p className="flex items-center gap-1.5"><Globe2 className="h-3.5 w-3.5 text-[var(--algorithm-blue)]" />{event.countryCode ? `${countryFlag(event.countryCode)} ${countryName(event.countryCode)}` : "ไม่ระบุประเทศ"}</p><p>{event.location}</p><p>{event.isp || "ไม่ระบุ ISP"} {event.asn ? `· ASN ${event.asn}` : ""}</p><p className="break-all font-mono text-[10px]">{event.ipHash ? `IP hash ${event.ipHash}` : "ไม่มี IP hash"}</p><div className="mt-3 rounded-xl bg-[var(--algorithm-surface-soft)] p-2.5 text-[10px]"><SourceBadge value={event.sessionSource || event.sourcePlatform || "Direct"} /><p className="mt-2">{sourceEvidenceLabel(event.sourceEvidence)} · {sourceConfidenceLabel(event.sourceConfidence)}</p>{(event.sourceDetail || event.referrerHost) && <p className="mt-1 break-all font-mono">หลักฐาน: {event.sourceDetail || event.referrerHost}</p>}</div></div>
+function TechnicalDetails({ event }: { event: AlgorithmEventRow }) {
+  return <details className="group min-w-[180px] text-xs text-[var(--algorithm-muted)]"><summary className="inline-flex min-h-10 cursor-pointer list-none items-center whitespace-nowrap rounded-full border border-[var(--algorithm-rule)] px-3 text-[10px] font-bold text-[var(--algorithm-blue)] marker:hidden hover:border-[var(--algorithm-blue)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--algorithm-blue)]">ดูข้อมูลเทคนิค</summary><div className="mt-2 space-y-1.5 border-l border-[var(--algorithm-rule-strong)] pl-3 text-[10px]"><p><span className="font-bold text-[var(--algorithm-ink-soft)]">เครือข่าย:</span> {event.isp || "ไม่ระบุ ISP"}{event.asn ? ` · ASN ${event.asn}` : ""}</p><p className="break-all font-mono"><span className="font-sans font-bold text-[var(--algorithm-ink-soft)]">IP hash:</span> {event.ipHash || "—"}</p><p><span className="font-bold text-[var(--algorithm-ink-soft)]">หลักฐานช่องทาง:</span> {sourceEvidenceLabel(event.sourceEvidence)} · {sourceConfidenceLabel(event.sourceConfidence)}</p>{(event.sourceDetail || event.referrerHost) && <p className="break-all font-mono"><span className="font-sans font-bold text-[var(--algorithm-ink-soft)]">รายละเอียด:</span> {event.sourceDetail || event.referrerHost}</p>}{event.userAgent && <p className="break-all font-mono"><span className="font-sans font-bold text-[var(--algorithm-ink-soft)]">User Agent:</span> {event.userAgent}</p>}</div></details>
 }
 
 function EventCard({ event }: { event: AlgorithmEventRow }) {
-  return <article className="rounded-2xl border border-[var(--algorithm-rule)] bg-[var(--algorithm-surface)] p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-mono text-xs text-[var(--algorithm-muted)]">{dateTime(event.createdAt)}</p><p className="mt-2 flex items-center gap-2 text-sm font-bold text-[var(--algorithm-ink)]">{event.identityType === "user" ? <UserRound className="h-4 w-4 text-[var(--algorithm-blue)]" /> : <Eye className="h-4 w-4 text-[var(--algorithm-muted)]" />}{identityLabel(event.identityType)} · {event.identityLabel}</p></div><span className={`rounded-full px-2 py-1 text-[10px] font-bold ${event.isCountable ? "bg-[var(--algorithm-accent-soft)] text-[var(--algorithm-accent-strong)]" : "bg-[var(--algorithm-hot-soft)] text-[var(--algorithm-hot)]"}`}>{countableLabel(event.isCountable)}</span></div><div className="mt-4"><EventMeta event={event} /></div><div className="mt-4 flex flex-wrap gap-2 text-[10px] font-bold"><span className="rounded-full bg-[var(--algorithm-surface-soft)] px-2.5 py-1 text-[var(--algorithm-muted)]">{trafficLabel(event.trafficType)}</span>{event.isBot && <span className="rounded-full bg-[var(--algorithm-hot-soft)] text-[var(--algorithm-hot)]">บอท</span>}{event.isInternal && <span className="rounded-full bg-[var(--algorithm-hot-soft)] text-[var(--algorithm-hot)]">ภายในบริษัท</span>}</div>{event.userAgent && <details className="mt-3 text-xs text-[var(--algorithm-muted)]"><summary className="cursor-pointer font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--algorithm-blue)]">ดู User Agent</summary><p className="mt-2 break-all rounded-xl bg-[var(--algorithm-surface-soft)] p-2 font-mono text-[10px]">{event.userAgent}</p></details>}</article>
+  const technology = parseUserAgent(event.userAgent)
+
+  const facts = [
+    ["สถานะผู้ชม", identityLabel(event.identityType)],
+    [event.identityType === "user" ? "อีเมล" : "รหัสผู้ชม", event.identityLabel],
+    ["ประเทศ", countryValue(event)],
+    ["จังหวัด / ภูมิภาค", event.region || "—"],
+    ["เมือง", event.city || "—"],
+    ["ทราฟฟิก", trafficLabel(event.trafficType)],
+    ["เซสชัน", event.sessionLabel || "—"],
+  ]
+
+  return <article className="rounded-2xl border border-[var(--algorithm-rule)] bg-[var(--algorithm-surface)] p-4"><div className="flex items-start justify-between gap-3"><p className="font-mono text-xs tabular-nums text-[var(--algorithm-muted)]">{dateTime(event.createdAt)}</p><span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-bold ${event.isCountable ? "bg-[var(--algorithm-accent-soft)] text-[var(--algorithm-accent-strong)]" : "bg-[var(--algorithm-hot-soft)] text-[var(--algorithm-hot)]"}`}>{countableLabel(event.isCountable)}</span></div><dl className="mt-4 grid grid-cols-2 gap-x-4 border-t border-[var(--algorithm-rule)]">{facts.map(([label, value]) => <div key={label} className="min-w-0 border-b border-[var(--algorithm-rule)] py-3"><dt className="text-[10px] font-bold text-[var(--algorithm-muted)]">{label}</dt><dd className="mt-1 break-words text-xs font-semibold text-[var(--algorithm-ink-soft)]">{value}</dd></div>)}</dl><div className="grid grid-cols-2 gap-x-4 border-b border-[var(--algorithm-rule)] py-3"><div><p className="text-[10px] font-bold text-[var(--algorithm-muted)]">ช่องทาง</p><div className="mt-1"><SourceBadge value={sourceValue(event)} /></div></div><div><p className="text-[10px] font-bold text-[var(--algorithm-muted)]">สถานะทราฟฟิก</p><div className="mt-1 flex flex-wrap gap-1 text-[10px] font-bold">{event.isBot && <span className="rounded-full bg-[var(--algorithm-hot-soft)] px-2 py-1 text-[var(--algorithm-hot)]">บอท</span>}{event.isInternal && <span className="rounded-full bg-[var(--algorithm-hot-soft)] px-2 py-1 text-[var(--algorithm-hot)]">ภายในบริษัท</span>}{!event.isBot && !event.isInternal && <span className="text-[var(--algorithm-muted)]">ทั่วไป</span>}</div></div></div><div className="grid gap-3 border-b border-[var(--algorithm-rule)] py-3 sm:grid-cols-3"><TechnologyBadge kind="device" value={technology.device} /><TechnologyBadge kind="os" value={technology.os} /><TechnologyBadge kind="browser" value={technology.browser} /></div><div className="pt-3"><TechnicalDetails event={event} /></div></article>
 }
 
 function EventRow({ event }: { event: AlgorithmEventRow }) {
-  return <tr className="border-t border-[var(--algorithm-rule)] align-top transition-colors hover:bg-[var(--algorithm-surface-soft)]"><td className="whitespace-nowrap px-4 py-4 font-mono text-[10px] text-[var(--algorithm-muted)]">{dateTime(event.createdAt)}</td><td className="px-4 py-4"><div className="flex items-center gap-2 text-xs font-bold text-[var(--algorithm-ink)]">{event.identityType === "user" ? <UserRound className="h-3.5 w-3.5 text-[var(--algorithm-blue)]" /> : <Eye className="h-3.5 w-3.5 text-[var(--algorithm-muted)]" />}{identityLabel(event.identityType)}</div><p className="mt-1 font-mono text-[10px] text-[var(--algorithm-muted)]">{event.identityLabel}</p></td><td className="px-4 py-4"><EventMeta event={event} /></td><td className="px-4 py-4"><span className="rounded-full bg-[var(--algorithm-surface-soft)] px-2 py-1 text-[10px] font-bold text-[var(--algorithm-muted)]">{trafficLabel(event.trafficType)}</span><p className={`mt-2 text-[10px] font-bold ${event.isCountable ? "text-[var(--algorithm-accent-strong)]" : "text-[var(--algorithm-hot)]"}`}>{countableLabel(event.isCountable)}</p></td><td className="max-w-[260px] px-4 py-4"><p className="truncate text-[10px] text-[var(--algorithm-muted)]" title={event.userAgent || undefined}>{event.userAgent || "ไม่มี User Agent"}</p><p className="mt-2 font-mono text-[10px] text-[var(--algorithm-muted)]">เซสชัน {event.sessionLabel || "—"}</p></td></tr>
+  const technology = parseUserAgent(event.userAgent)
+
+  return <tr className="border-t border-[var(--algorithm-rule)] align-top transition-colors hover:bg-[var(--algorithm-surface-soft)]"><td className="whitespace-nowrap px-4 py-4 font-mono text-[10px] tabular-nums text-[var(--algorithm-muted)]">{dateTime(event.createdAt)}</td><td className="px-4 py-4"><div className="flex min-w-[150px] items-center gap-2 text-xs font-bold text-[var(--algorithm-ink)]">{event.identityType === "user" ? <UserRound className="h-3.5 w-3.5 shrink-0 text-[var(--algorithm-blue)]" /> : <Eye className="h-3.5 w-3.5 shrink-0 text-[var(--algorithm-muted)]" />}{identityLabel(event.identityType)}</div></td><td className="px-4 py-4 font-mono text-[10px] text-[var(--algorithm-muted)]">{event.identityLabel}</td><td className="whitespace-nowrap px-4 py-4 text-xs text-[var(--algorithm-ink-soft)]"><span className="inline-flex items-center gap-2"><Globe2 className="h-3.5 w-3.5 shrink-0 text-[var(--algorithm-blue)]" />{countryValue(event)}</span></td><td className="min-w-[150px] px-4 py-4 text-xs text-[var(--algorithm-ink-soft)]">{event.region || "—"}</td><td className="min-w-[130px] px-4 py-4 text-xs text-[var(--algorithm-ink-soft)]">{event.city || "—"}</td><td className="min-w-[140px] px-4 py-4"><SourceBadge value={sourceValue(event)} /></td><td className="min-w-[140px] px-4 py-4"><span className="rounded-full bg-[var(--algorithm-surface-soft)] px-2 py-1 text-[10px] font-bold text-[var(--algorithm-muted)]">{trafficLabel(event.trafficType)}</span>{(event.isBot || event.isInternal) && <p className="mt-2 text-[10px] font-bold text-[var(--algorithm-hot)]">{event.isBot ? "บอท" : "ภายในบริษัท"}</p>}</td><td className={`whitespace-nowrap px-4 py-4 text-[10px] font-bold ${event.isCountable ? "text-[var(--algorithm-accent-strong)]" : "text-[var(--algorithm-hot)]"}`}>{countableLabel(event.isCountable)}</td><td className="min-w-[150px] px-4 py-4 text-xs"><TechnologyBadge kind="device" value={technology.device} /></td><td className="min-w-[170px] px-4 py-4 text-xs"><TechnologyBadge kind="os" value={technology.os} /></td><td className="min-w-[190px] px-4 py-4 text-xs"><TechnologyBadge kind="browser" value={technology.browser} /></td><td className="px-4 py-4 font-mono text-[10px] text-[var(--algorithm-muted)]">{event.sessionLabel || "—"}</td><td className="px-4 py-4"><TechnicalDetails event={event} /></td></tr>
 }
 
 export default function ProductAlgorithmDetail({ detail }: { detail: AlgorithmProductDetail }) {
@@ -101,7 +185,7 @@ export default function ProductAlgorithmDetail({ detail }: { detail: AlgorithmPr
     <section className="pt-7 lg:pt-9"><div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end"><div><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--algorithm-blue)]">เหตุการณ์การเข้าชม / 02</p><h2 className="mt-2 text-2xl font-semibold tracking-[-0.05em]">ทุกการเข้าชมสินค้าที่บันทึกไว้</h2><p className="mt-2 text-sm text-[var(--algorithm-muted)]">ข้อมูลดิบแบบอ่านอย่างเดียว · {number(detail.eventTotal)} เหตุการณ์ตามตัวกรอง</p></div><div className="flex items-center gap-2 text-xs text-[var(--algorithm-muted)]"><ShieldCheck className="h-4 w-4 text-[var(--algorithm-accent-strong)]" />IP แสดงเป็น hash เท่านั้น</div></div>
       <form method="get" className="mt-6 grid gap-3 rounded-2xl border border-[var(--algorithm-rule)] bg-[var(--algorithm-surface-soft)] p-4 sm:grid-cols-2 lg:grid-cols-5"><label className="text-xs font-bold text-[var(--algorithm-ink-soft)]">ช่วงเวลา<select name="range" defaultValue={String(filters.rangeDays)} className="mt-2 block min-h-11 w-full rounded-xl border border-[var(--algorithm-rule-strong)] bg-[var(--algorithm-surface)] px-3 text-sm outline-none focus:border-[var(--algorithm-blue)] focus-visible:ring-2 focus-visible:ring-[var(--algorithm-blue)]"><option value="1">24 ชั่วโมง</option><option value="7">7 วัน</option><option value="30">30 วัน</option></select></label><label className="text-xs font-bold text-[var(--algorithm-ink-soft)]">การคัดกรองทราฟฟิก<select name="traffic" defaultValue={filters.trafficType} className="mt-2 block min-h-11 w-full rounded-xl border border-[var(--algorithm-rule-strong)] bg-[var(--algorithm-surface)] px-3 text-sm outline-none focus:border-[var(--algorithm-blue)] focus-visible:ring-2 focus-visible:ring-[var(--algorithm-blue)]"><option value="all">ทั้งหมด</option><option value="unknown">ผู้เข้าชมที่นับได้</option><option value="internal">ภายในบริษัท</option><option value="bot">บอท</option></select></label><label className="text-xs font-bold text-[var(--algorithm-ink-soft)]">การนับคะแนน<select name="countable" defaultValue={filters.countable} className="mt-2 block min-h-11 w-full rounded-xl border border-[var(--algorithm-rule-strong)] bg-[var(--algorithm-surface)] px-3 text-sm outline-none focus:border-[var(--algorithm-blue)] focus-visible:ring-2 focus-visible:ring-[var(--algorithm-blue)]"><option value="all">ทั้งหมด</option><option value="countable">นับคะแนน</option><option value="excluded">ไม่นับคะแนน</option></select></label><label className="text-xs font-bold text-[var(--algorithm-ink-soft)]">สถานะการเข้าสู่ระบบ<select name="identity" defaultValue={filters.identityType} className="mt-2 block min-h-11 w-full rounded-xl border border-[var(--algorithm-rule-strong)] bg-[var(--algorithm-surface)] px-3 text-sm outline-none focus:border-[var(--algorithm-blue)] focus-visible:ring-2 focus-visible:ring-[var(--algorithm-blue)]"><option value="all">ทั้งหมด</option><option value="user">บัญชีที่ล็อกอิน</option><option value="visitor">ไม่ได้ล็อกอิน</option></select></label><label className="text-xs font-bold text-[var(--algorithm-ink-soft)]">สถานที่<input name="location" defaultValue={filters.location} placeholder="เมือง / ภูมิภาค / ประเทศ" className="mt-2 block min-h-11 w-full rounded-xl border border-[var(--algorithm-rule-strong)] bg-[var(--algorithm-surface)] px-3 text-sm outline-none placeholder:text-[var(--algorithm-muted)] focus:border-[var(--algorithm-blue)] focus-visible:ring-2 focus-visible:ring-[var(--algorithm-blue)]" /></label><div className="sm:col-span-2 lg:col-span-5"><button type="submit" className="min-h-11 whitespace-nowrap rounded-full bg-[var(--algorithm-ink)] px-5 text-xs font-bold text-[var(--algorithm-surface)] transition-transform duration-[var(--dur-fast)] hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--algorithm-blue)] active:translate-y-0">ใช้ตัวกรอง</button></div></form>
 
-      {detail.eventError ? <div className="mt-6 flex gap-3 rounded-2xl border border-[var(--algorithm-danger)]/25 bg-[var(--algorithm-hot-soft)] p-4" role="alert"><CircleAlert className="h-5 w-5 shrink-0 text-[var(--algorithm-danger)]" /><div><p className="text-sm font-bold text-[var(--algorithm-danger)]">อ่านเหตุการณ์การเข้าชมไม่สำเร็จ</p><p className="mt-1 text-xs text-[var(--algorithm-ink-soft)]">{detail.eventError}</p></div></div> : detail.events.length === 0 ? <div className="mt-6 rounded-2xl border border-dashed border-[var(--algorithm-rule-strong)] bg-[var(--algorithm-surface)] p-12 text-center"><Bot className="mx-auto h-7 w-7 text-[var(--algorithm-muted)]" /><p className="mt-3 text-sm font-bold">ไม่พบเหตุการณ์ตามตัวกรอง</p><p className="mt-1 text-xs text-[var(--algorithm-muted)]">ลองเปลี่ยนช่วงเวลา หรือประเภททราฟฟิก</p></div> : <><div className="mt-6 grid gap-3 lg:hidden">{detail.events.map((event) => <EventCard key={event.id} event={event} />)}</div><div className="mt-6 hidden overflow-x-auto rounded-2xl border border-[var(--algorithm-rule)] bg-[var(--algorithm-surface)] lg:block"><table className="w-full min-w-[1040px] border-collapse text-left"><thead className="bg-[var(--algorithm-surface-soft)] text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--algorithm-muted)]"><tr><th className="px-4 py-3">เวลาที่เกิดเหตุการณ์</th><th className="px-4 py-3">ผู้ชม</th><th className="px-4 py-3">สถานที่ / เครือข่าย</th><th className="px-4 py-3">ทราฟฟิก</th><th className="px-4 py-3">User Agent / เซสชัน</th></tr></thead><tbody>{detail.events.map((event) => <EventRow key={event.id} event={event} />)}</tbody></table></div></>}
+      {detail.eventError ? <div className="mt-6 flex gap-3 rounded-2xl border border-[var(--algorithm-danger)]/25 bg-[var(--algorithm-hot-soft)] p-4" role="alert"><CircleAlert className="h-5 w-5 shrink-0 text-[var(--algorithm-danger)]" /><div><p className="text-sm font-bold text-[var(--algorithm-danger)]">อ่านเหตุการณ์การเข้าชมไม่สำเร็จ</p><p className="mt-1 text-xs text-[var(--algorithm-ink-soft)]">{detail.eventError}</p></div></div> : detail.events.length === 0 ? <div className="mt-6 rounded-2xl border border-dashed border-[var(--algorithm-rule-strong)] bg-[var(--algorithm-surface)] p-12 text-center"><Bot className="mx-auto h-7 w-7 text-[var(--algorithm-muted)]" /><p className="mt-3 text-sm font-bold">ไม่พบเหตุการณ์ตามตัวกรอง</p><p className="mt-1 text-xs text-[var(--algorithm-muted)]">ลองเปลี่ยนช่วงเวลา หรือประเภททราฟฟิก</p></div> : <><div className="mt-6 grid gap-3 lg:hidden">{detail.events.map((event) => <EventCard key={event.id} event={event} />)}</div><div className="mt-6 hidden overflow-x-auto overscroll-x-contain rounded-2xl border border-[var(--algorithm-rule)] bg-[var(--algorithm-surface)] lg:block"><table className="w-full min-w-[2240px] border-collapse text-left"><thead className="bg-[var(--algorithm-surface-soft)] text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--algorithm-muted)]"><tr><th className="px-4 py-3">เวลาที่เกิดเหตุการณ์</th><th className="px-4 py-3">สถานะผู้ชม</th><th className="px-4 py-3">อีเมล / รหัสผู้ชม</th><th className="px-4 py-3">ประเทศ</th><th className="px-4 py-3">จังหวัด / ภูมิภาค</th><th className="px-4 py-3">เมือง</th><th className="px-4 py-3">ช่องทาง</th><th className="px-4 py-3">ประเภททราฟฟิก</th><th className="px-4 py-3">การนับคะแนน</th><th className="px-4 py-3">อุปกรณ์</th><th className="px-4 py-3">ระบบ</th><th className="px-4 py-3">เบราว์เซอร์</th><th className="px-4 py-3">เซสชัน</th><th className="px-4 py-3">รายละเอียด</th></tr></thead><tbody>{detail.events.map((event) => <EventRow key={event.id} event={event} />)}</tbody></table></div></>}
 
       <nav className="mt-6 flex items-center justify-between border-t border-[var(--algorithm-rule)] pt-4" aria-label="การแบ่งหน้าเหตุการณ์"><p className="font-mono text-[10px] text-[var(--algorithm-muted)]">หน้า {detail.eventPage} / {detail.eventPageCount}</p><div className="flex items-center gap-2">{detail.eventPage > 1 ? <Link href={query(detail.eventPage - 1)} className="inline-flex min-h-10 items-center gap-1 rounded-full border border-[var(--algorithm-rule-strong)] px-4 text-xs font-bold text-[var(--algorithm-ink-soft)] hover:border-[var(--algorithm-blue)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--algorithm-blue)]"><ChevronLeft className="h-4 w-4" />ก่อนหน้า</Link> : <span className="inline-flex min-h-10 items-center gap-1 rounded-full border border-[var(--algorithm-rule)] px-4 text-xs font-bold text-[var(--algorithm-muted)] opacity-50"><ChevronLeft className="h-4 w-4" />ก่อนหน้า</span>}{detail.eventPage < detail.eventPageCount ? <Link href={query(detail.eventPage + 1)} className="inline-flex min-h-10 items-center gap-1 rounded-full border border-[var(--algorithm-rule-strong)] px-4 text-xs font-bold text-[var(--algorithm-ink-soft)] hover:border-[var(--algorithm-blue)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--algorithm-blue)]">ถัดไป<ChevronRight className="h-4 w-4" /></Link> : <span className="inline-flex min-h-10 items-center gap-1 rounded-full border border-[var(--algorithm-rule)] px-4 text-xs font-bold text-[var(--algorithm-muted)] opacity-50">ถัดไป<ChevronRight className="h-4 w-4" /></span>}</div></nav>
     </section>

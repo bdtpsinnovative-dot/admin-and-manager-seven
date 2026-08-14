@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
 import { supabaseAdmin } from "@/lib/supabase/admin"
+import { countryLabel, normalizeCountryCode, normalizeLocation } from "@/lib/algorithm-normalization"
 
 export type AlgorithmRange = 1 | 7 | 30
 
@@ -156,6 +157,9 @@ type ScoreEvent = {
   product_id: number
   identity_key: string
   identity_type: "user" | "visitor"
+  user_id: string | null
+  visitor_id: string | null
+  metadata: Record<string, unknown> | null
   view_bucket: number
   created_at: string
   traffic_type: string
@@ -174,6 +178,14 @@ type ProductRow = {
   status: string | null
   category_id: string | null
   collection_group_id: string | number | null
+}
+
+type ProductSnapshotRow = {
+  product_id: number
+  collection_group_id: string | number | null
+  product_category_snapshot: string | null
+  product_name_snapshot: string | null
+  product_sku_snapshot: string | null
 }
 
 type CollectionRow = {
@@ -231,42 +243,63 @@ function getRecencyWeight(createdAt: string) {
   return Math.pow(0.5, ageDays / 7)
 }
 
+function explorationKey(productId: number, rangeDays: AlgorithmRange) {
+  let hash = productId * 2654435761 + rangeDays * 101
+  hash = Math.imul(hash ^ (hash >>> 16), 2246822519)
+  return hash >>> 0
+}
+
 function getTrafficWeight(trafficType: string, isCountable: boolean) {
   if (!isCountable || trafficType === "bot" || trafficType === "internal") return 0
   return 1
 }
 
-function rollingUniqueScoreEvents(events: ScoreEvent[]) {
+function buildIdentityLinks(events: ScoreEvent[]) {
+  const links = new Map<string, string>()
+  for (const event of events) {
+    const linkedVisitor = event.metadata && typeof event.metadata.linked_visitor_id === "string"
+      ? event.metadata.linked_visitor_id
+      : event.visitor_id
+    if (event.identity_type === "user" && event.user_id && linkedVisitor) {
+      links.set(linkedVisitor, `user:${event.user_id}`)
+    }
+  }
+  return links
+}
+
+function scoreIdentityKey(event: ScoreEvent, links: ReadonlyMap<string, string>) {
+  if (event.identity_type === "user" && event.user_id) return `user:${event.user_id}`
+  if (event.visitor_id && links.has(event.visitor_id)) return links.get(event.visitor_id)!
+  if (event.identity_key.startsWith("visitor:") && links.has(event.identity_key.slice("visitor:".length))) {
+    return links.get(event.identity_key.slice("visitor:".length))!
+  }
+  return event.identity_key
+}
+
+function rollingUniqueScoreEvents(events: ScoreEvent[], cutoff: string) {
+  const cutoffMs = new Date(cutoff).getTime()
+  const links = buildIdentityLinks(events)
   const sorted = [...events]
-    .filter((event) => event.is_countable && event.identity_key && event.product_id)
+    .filter((event) => event.is_countable
+      && event.traffic_type !== "bot"
+      && event.traffic_type !== "internal"
+      && event.identity_key
+      && event.product_id)
     .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
   const lastSeen = new Map<string, number>()
   const unique: ScoreEvent[] = []
   for (const event of sorted) {
-    const key = `${event.product_id}:${event.identity_key}`
+    const key = `${event.product_id}:${scoreIdentityKey(event, links)}`
     const createdAt = new Date(event.created_at).getTime()
     const previousAt = lastSeen.get(key)
-    if (previousAt === undefined || createdAt - previousAt >= dayInMs) unique.push(event)
+    if (createdAt >= cutoffMs && (previousAt === undefined || createdAt - previousAt >= dayInMs)) unique.push(event)
     lastSeen.set(key, createdAt)
   }
   return unique
 }
 
 function formatLocation(country: string | null, region: string | null, city: string | null) {
-  const values = [city, region, country].filter(Boolean)
-  return values.length > 0 ? values.join(", ") : "ไม่ระบุ location"
-}
-
-function normalizeCountryCode(value: unknown) {
-  const normalized = typeof value === "string" ? value.trim().toUpperCase() : ""
-  if (/^[A-Z]{2}$/.test(normalized) && normalized !== "XX") return normalized
-
-  const legacyCountryAliases: Record<string, string> = {
-    THAILAND: "TH",
-    "ประเทศไทย": "TH",
-    "ไทย": "TH",
-  }
-  return legacyCountryAliases[normalized] || null
+  return normalizeLocation({ country, region, city }).label || "ไม่ระบุ location"
 }
 
 function maskIdentifier(value: string | null | undefined) {
@@ -302,14 +335,15 @@ async function requireAdmin() {
 async function fetchScoreEvents(cutoff: string) {
   const rows: ScoreEvent[] = []
   const pageSize = 1000
+  const queryCutoff = new Date(new Date(cutoff).getTime() - dayInMs).toISOString()
 
   for (let offset = 0; ; offset += pageSize) {
     const { data, error } = await supabaseAdmin
       .from("algorithm_events")
-      .select("product_id, identity_key, identity_type, view_bucket, created_at, traffic_type, is_countable, country_code, country, region, city")
+      .select("product_id, identity_key, identity_type, user_id, visitor_id, metadata, view_bucket, created_at, traffic_type, is_countable, country_code, country, region, city")
       .eq("source_tag", "prop")
       .eq("event_type", "product_view")
-      .gte("created_at", cutoff)
+      .gte("created_at", queryCutoff)
       .order("created_at", { ascending: false })
       .range(offset, offset + pageSize - 1)
 
@@ -340,18 +374,11 @@ async function fetchPropProducts(productIds: number[], includeInactive = false) 
     .map((product) => product.collection_group_id)
     .filter((id): id is string | number => id !== null && id !== undefined)
 
-  if (groupIds.length === 0) return productMap
-
   const [{ data: groupRows, error: groupError }, { data: stockRows, error: stockError }] = await Promise.all([
-    supabaseAdmin
-      .from("collection_groups")
-      .select("id, product_sup, tag")
-      .in("id", groupIds)
-      .ilike("tag", "%prop%"),
-    supabaseAdmin
-      .from("stock")
-      .select("product_id, qty")
-      .in("product_id", cleanIds),
+    groupIds.length
+      ? supabaseAdmin.from("collection_groups").select("id, product_sup, tag").in("id", groupIds).ilike("tag", "%prop%")
+      : Promise.resolve({ data: [], error: null }),
+    supabaseAdmin.from("stock").select("product_id, qty").in("product_id", cleanIds),
   ])
 
   if (groupError) throw new Error(groupError.message)
@@ -386,6 +413,37 @@ async function fetchPropProducts(productIds: number[], includeInactive = false) 
     })
   }
 
+  if (includeInactive) {
+    const missingIds = cleanIds.filter((id) => !productMap.has(id))
+    if (missingIds.length) {
+      const { data: snapshotRows, error: snapshotError } = await supabaseAdmin
+        .from("algorithm_events")
+        .select("product_id, collection_group_id, product_category_snapshot, product_name_snapshot, product_sku_snapshot")
+        .eq("source_tag", "prop")
+        .eq("event_type", "product_view")
+        .in("product_id", missingIds)
+        .order("created_at", { ascending: false })
+      if (snapshotError) throw new Error(snapshotError.message)
+      const snapshots = new Map<number, ProductSnapshotRow>()
+      for (const row of (snapshotRows ?? []) as ProductSnapshotRow[]) {
+        if (!snapshots.has(Number(row.product_id)) && row.product_name_snapshot) snapshots.set(Number(row.product_id), row)
+      }
+      for (const [id, snapshot] of snapshots) {
+        productMap.set(id, {
+          id,
+          name: snapshot.product_name_snapshot || "สินค้าเดิมที่ถูกลบ",
+          sku: snapshot.product_sku_snapshot,
+          imageUrl: null,
+          status: "deleted",
+          collectionGroupId: snapshot.collection_group_id === null ? "ไม่ระบุ" : String(snapshot.collection_group_id),
+          collectionName: snapshot.product_category_snapshot || "ไม่ระบุหมวดหมู่",
+          stockTotal: 0,
+          availability: "preorder",
+        })
+      }
+    }
+  }
+
   return productMap
 }
 
@@ -407,7 +465,22 @@ async function fetchAllPropProductIds() {
     if (batch.length < pageSize) break
   }
 
-  return productIds
+  const eventIds: number[] = []
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await supabaseAdmin
+      .from("algorithm_events")
+      .select("product_id")
+      .eq("source_tag", "prop")
+      .eq("event_type", "product_view")
+      .not("product_id", "is", null)
+      .range(offset, offset + pageSize - 1)
+    if (error) throw new Error(error.message)
+    const batch = (data ?? []) as Array<{ product_id: number | null }>
+    eventIds.push(...batch.map((row) => Number(row.product_id)).filter(Number.isSafeInteger))
+    if (batch.length < pageSize) break
+  }
+
+  return Array.from(new Set([...productIds, ...eventIds]))
 }
 
 function emptyOverview(rangeDays: AlgorithmRange, error: string | null): AlgorithmOverview {
@@ -459,25 +532,8 @@ type ProductAggregate = {
 }
 
 function getCountryKey(event: ScoreEvent) {
-  const countryCode = normalizeCountryCode(event.country_code) || normalizeCountryCode(event.country)
-  return countryCode || (event.country?.trim().toLowerCase() || null)
-}
-
-function normalizeLocationPart(value: string | null) {
-  const normalized = value?.trim()
-  return normalized || null
-}
-
-function countryLabel(key: string) {
-  const code = normalizeCountryCode(key)
-  if (code) {
-    try {
-      return new Intl.DisplayNames(["th"], { type: "region" }).of(code) || code
-    } catch {
-      return code
-    }
-  }
-  return key
+  const location = normalizeLocation({ countryCode: event.country_code, country: event.country })
+  return location.countryCode || location.country?.toLowerCase() || null
 }
 
 type LocationAggregate = {
@@ -512,13 +568,13 @@ function countrySummaryFromCounts(countryCounts: Map<string, number>): CountrySu
   const [key, views] = top
   return {
     code: normalizeCountryCode(key),
-    label: normalizeCountryCode(key) ? key : key.replace(/\b\w/g, (letter) => letter.toUpperCase()),
+    label: countryLabel(key) || key,
     views,
   }
 }
 
-function rankProductCatalog(events: ScoreEvent[], productMap: Map<number, AlgorithmProduct>): AlgorithmProductListItem[] {
-  const uniqueEvents = rollingUniqueScoreEvents(events)
+function rankProductCatalog(events: ScoreEvent[], productMap: Map<number, AlgorithmProduct>, cutoff: string): AlgorithmProductListItem[] {
+  const uniqueEvents = rollingUniqueScoreEvents(events, cutoff)
 
   const aggregate = new Map<number, ProductAggregate>()
   for (const event of uniqueEvents) {
@@ -558,10 +614,11 @@ function rankProductCatalog(events: ScoreEvent[], productMap: Map<number, Algori
     .sort((a, b) => Number(b.uniqueViews > 0) - Number(a.uniqueViews > 0) || Number(b.isActive) - Number(a.isActive) || b.score - a.score || b.uniqueViews - a.uniqueViews || a.id - b.id)
 
   let rank = 0
-  return ranked.map(({ isActive, score: _score, ...item }) => ({
-    ...item,
-    rank: isActive && item.uniqueViews > 0 ? ++rank : null,
-  }))
+  return ranked.map((item) => {
+    const { isActive, score, ...rest } = item
+    void score
+    return { ...rest, rank: isActive && rest.uniqueViews > 0 ? ++rank : null }
+  })
 }
 
 export async function getAlgorithmOverview(rangeValue: number): Promise<AlgorithmOverview> {
@@ -569,7 +626,10 @@ export async function getAlgorithmOverview(rangeValue: number): Promise<Algorith
   const rangeDays = normalizeRange(rangeValue)
 
   try {
-    const events = await fetchScoreEvents(getCutoff(rangeDays))
+    const cutoff = getCutoff(rangeDays)
+    const events = await fetchScoreEvents(cutoff)
+    const cutoffMs = new Date(cutoff).getTime()
+    const inRangeEvents = events.filter((event) => new Date(event.created_at).getTime() >= cutoffMs)
     let uniqueEvents: ScoreEvent[] = []
     const identityCounts = new Map<"user" | "visitor", number>()
     const trafficCounts = new Map<string, number>()
@@ -577,16 +637,19 @@ export async function getAlgorithmOverview(rangeValue: number): Promise<Algorith
     const locationAggregates = new Map<string, LocationAggregate>()
     let unspecifiedLocationViews = 0
 
-    for (const event of events) {
+    for (const event of rollingUniqueScoreEvents(events, cutoff)) {
       const identityType = event.identity_type === "user" ? "user" : "visitor"
       identityCounts.set(identityType, (identityCounts.get(identityType) ?? 0) + 1)
+    }
+    for (const event of inRangeEvents) {
       const trafficType = event.traffic_type === "customer" ? "unknown" : event.traffic_type || "unknown"
       trafficCounts.set(trafficType, (trafficCounts.get(trafficType) ?? 0) + 1)
     }
 
-    uniqueEvents = rollingUniqueScoreEvents(events)
+    uniqueEvents = rollingUniqueScoreEvents(events, cutoff)
 
-    const productMap = await fetchPropProducts(uniqueEvents.map((event) => Number(event.product_id)))
+    const allProductIds = await fetchAllPropProductIds()
+    const productMap = await fetchPropProducts(allProductIds)
     const aggregate = new Map<number, { uniqueViews: number; recencyScore: number; lastViewedAt: string; location: Map<string, number> }>()
     const trendTotals = new Map<string, number>()
 
@@ -605,16 +668,17 @@ export async function getAlgorithmOverview(rangeValue: number): Promise<Algorith
       if (new Date(event.created_at).getTime() > new Date(current.lastViewedAt).getTime()) current.lastViewedAt = event.created_at
       const location = formatLocation(event.country, event.region, event.city)
       current.location.set(location, (current.location.get(location) ?? 0) + 1)
-      const countryCode = normalizeCountryCode(event.country_code) || normalizeCountryCode(event.country)
-      const countryKey = countryCode || (event.country?.trim().toLowerCase() || null)
+      const normalizedLocation = normalizeLocation({ countryCode: event.country_code, country: event.country, region: event.region, city: event.city })
+      const countryCode = normalizedLocation.countryCode
+      const countryKey = countryCode || normalizedLocation.country?.trim().toLowerCase() || null
       if (countryKey) {
         countryCounts.set(countryKey, (countryCounts.get(countryKey) ?? 0) + 1)
         const locationAggregate = locationAggregates.get(countryKey) ?? { views: 0, regions: new Map() }
         locationAggregate.views += 1
-        const regionKey = normalizeLocationPart(event.region) || "ไม่ระบุภูมิภาค"
+        const regionKey = normalizedLocation.region || "ไม่ระบุภูมิภาค"
         const regionAggregate = locationAggregate.regions.get(regionKey) ?? { views: 0, cities: new Map<string, number>() }
         regionAggregate.views += 1
-        const cityKey = normalizeLocationPart(event.city)
+        const cityKey = normalizedLocation.city
         if (cityKey) regionAggregate.cities.set(cityKey, (regionAggregate.cities.get(cityKey) ?? 0) + 1)
         locationAggregate.regions.set(regionKey, regionAggregate)
         locationAggregates.set(countryKey, locationAggregate)
@@ -626,7 +690,7 @@ export async function getAlgorithmOverview(rangeValue: number): Promise<Algorith
       trendTotals.set(trendBucket, (trendTotals.get(trendBucket) ?? 0) + 1)
     }
 
-    const ranked = Array.from(aggregate.entries())
+    const scored = Array.from(aggregate.entries())
       .map(([productId, score]) => {
         const product = productMap.get(productId)!
         const stockFactor = product.availability === "available" ? 1 : 0.6
@@ -641,8 +705,28 @@ export async function getAlgorithmOverview(rangeValue: number): Promise<Algorith
         }
       })
       .sort((a, b) => b.score - a.score || b.uniqueViews - a.uniqueViews || a.id - b.id)
+    const rankedIds = new Set(scored.slice(0, 18).map((item) => item.id))
+    const exploration = Array.from(productMap.values())
+      .filter((product) => product.availability === "available" && !rankedIds.has(product.id))
+      .map((product) => ({
+        ...product,
+        rank: 0,
+        uniqueViews: 0,
+        recencyScore: 0,
+        stockFactor: 1,
+        score: 0,
+        lastViewedAt: null,
+        explorationKey: explorationKey(product.id, rangeDays),
+      }))
+      .sort((a, b) => a.explorationKey - b.explorationKey || a.id - b.id)
+      .slice(0, 2)
+    const ranked = [...scored.slice(0, 18).map((item) => ({ ...item, explorationKey: Number.MAX_SAFE_INTEGER })), ...exploration]
       .slice(0, 20)
-      .map((item, index) => ({ ...item, rank: index + 1 }))
+      .map((item, index) => {
+        const { explorationKey, ...rest } = item
+        void explorationKey
+        return { ...rest, rank: index + 1 }
+      })
 
     const locationTotals = new Map<string, number>()
     for (const score of aggregate.values()) {
@@ -656,7 +740,7 @@ export async function getAlgorithmOverview(rangeValue: number): Promise<Algorith
       generatedAt: new Date().toISOString(),
       topItems: ranked,
       totalUniqueViews: Array.from(aggregate.values()).reduce((total, item) => total + item.uniqueViews, 0),
-      totalEvents: events.length,
+      totalEvents: inRangeEvents.length,
       locationSummary: Array.from(locationTotals.entries())
         .filter(([label]) => label !== "ไม่ระบุ location")
         .map(([label, views]) => ({ label, views }))
@@ -712,7 +796,7 @@ export async function getAlgorithmProducts(rangeValue: number, pageValue: number
       fetchAllPropProductIds(),
     ])
     const productMap = await fetchPropProducts(productIds, true)
-    const rankedProducts = rankProductCatalog(events, productMap)
+    const rankedProducts = rankProductCatalog(events, productMap, getCutoff(rangeDays))
     const pageCount = Math.max(1, Math.ceil(rankedProducts.length / pageSize))
     const safePage = Math.min(page, pageCount)
 
@@ -752,9 +836,10 @@ function normalizeEventFilters(input: Partial<AlgorithmEventFilters>): Algorithm
   }
 }
 
-function mapEventRow(event: Record<string, unknown>): AlgorithmEventRow {
+function mapEventRow(event: Record<string, unknown>, emailByUserId: ReadonlyMap<string, string>): AlgorithmEventRow {
   const identityType = event.identity_type === "user" ? "user" : "visitor"
   const identityValue = identityType === "user" ? event.user_id : event.visitor_id
+  const userId = identityType === "user" && typeof event.user_id === "string" ? event.user_id : null
   const country = typeof event.country === "string" ? event.country : null
   const region = typeof event.region === "string" ? event.region : null
   const city = typeof event.city === "string" ? event.city : null
@@ -767,7 +852,9 @@ function mapEventRow(event: Record<string, unknown>): AlgorithmEventRow {
     id: String(event.id),
     createdAt: String(event.created_at),
     identityType,
-    identityLabel: maskIdentifier(typeof identityValue === "string" ? identityValue : null),
+    identityLabel: userId
+      ? emailByUserId.get(userId) || maskIdentifier(userId)
+      : maskIdentifier(typeof identityValue === "string" ? identityValue : null),
     ipHash: maskIpHash(typeof event.ip_hash === "string" ? event.ip_hash : null),
     countryCode,
     location: formatLocation(country, region, city),
@@ -800,7 +887,7 @@ export async function getAlgorithmProductDetail(
   await requireAdmin()
   const productId = Number(productIdValue)
   const filters = normalizeEventFilters(inputFilters)
-  const products = await fetchPropProducts([productId])
+  const products = await fetchPropProducts([productId], true)
   const product = products.get(productId)
   if (!product) return null
 
@@ -846,10 +933,10 @@ export async function getAlgorithmProductDetail(
     .eq("source_tag", "prop")
     .eq("event_type", "product_view")
     .eq("product_id", productId)
-    .eq("collection_group_id", product.collectionGroupId)
     .gte("created_at", getCutoff(filters.rangeDays))
 
-  if (filters.trafficType !== "all") eventQuery = eventQuery.eq("traffic_type", filters.trafficType)
+  if (filters.trafficType === "unknown") eventQuery = eventQuery.in("traffic_type", ["unknown", "customer"])
+  else if (filters.trafficType !== "all") eventQuery = eventQuery.eq("traffic_type", filters.trafficType)
   if (filters.countable === "countable") eventQuery = eventQuery.eq("is_countable", true)
   if (filters.countable === "excluded") eventQuery = eventQuery.eq("is_countable", false)
   if (filters.identityType !== "all") eventQuery = eventQuery.eq("identity_type", filters.identityType)
@@ -865,12 +952,33 @@ export async function getAlgorithmProductDetail(
   const { data: eventRows, error: eventError, count } = await eventQuery
     .order("created_at", { ascending: false })
     .range(from, from + rawPageSize - 1)
+  const rawEventRows = (eventRows ?? []) as unknown as Record<string, unknown>[]
+
+  const userIds = eventError
+    ? []
+    : [...new Set(rawEventRows
+      .map((event) => typeof event.user_id === "string" ? event.user_id : null)
+      .filter((userId): userId is string => Boolean(userId)))]
+  const { data: profileRows, error: profileError } = userIds.length
+    ? await supabaseAdmin.from("profiles").select("user_id, email").in("user_id", userIds)
+    : { data: [], error: null }
+
+  if (profileError) console.warn("[algorithm-admin] profile email lookup failed", profileError.message)
+  const emailByUserId = new Map(
+    (profileRows ?? [])
+      .filter((profile): profile is { user_id: string; email: string } => (
+        typeof profile.user_id === "string"
+        && typeof profile.email === "string"
+        && profile.email.length > 0
+      ))
+      .map((profile) => [profile.user_id, profile.email]),
+  )
 
   return {
     product,
     relatedProducts,
     relatedError,
-    events: eventError ? [] : (eventRows ?? []).map((event) => mapEventRow(event as unknown as Record<string, unknown>)),
+    events: eventError ? [] : rawEventRows.map((event) => mapEventRow(event, emailByUserId)),
     eventTotal: count ?? 0,
     eventPage: filters.page,
     eventPageCount: Math.max(1, Math.ceil((count ?? 0) / rawPageSize)),
