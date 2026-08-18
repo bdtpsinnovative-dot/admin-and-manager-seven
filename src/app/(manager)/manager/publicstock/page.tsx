@@ -23,6 +23,13 @@ export default function PublicStockPage() {
   const [profile, setProfile] = useState<{ branch_id: number, branch_name: string } | null>(null)
   const [exporting, setExporting] = useState(false)
   const [showExportModal, setShowExportModal] = useState(false)
+  const [exportOnlyInStock, setExportOnlyInStock] = useState(true)
+  const [exportProgress, setExportProgress] = useState<{
+    percent: number
+    current: number
+    total: number
+    message: string
+  }>({ percent: 0, current: 0, total: 0, message: "" })
 
   const [page, setPage] = useState(1)
   const [totalCount, setTotalCount] = useState(0)
@@ -82,32 +89,106 @@ export default function PublicStockPage() {
   const handleReset = () => { setSearchQ(""); setOnlyNeg(false); setPage(1) }
   const pageAll = Math.max(1, Math.ceil(totalCount / pageSize))
 
-  const triggerExport = async (includeImages: boolean) => {
+  const triggerExport = async (includeImages: boolean, onlyInStock: boolean = true) => {
     if (!profile) return
     setExporting(true)
+    setExportProgress({
+      percent: 0,
+      current: 0,
+      total: 0,
+      message: "กำลังเชื่อมต่อเพื่อสร้างไฟล์ Excel...",
+    })
+
     try {
-      // เรียกใช้ Server Action เพื่อสร้าง Excel บน Server ทั้งไฟล์
-      const excelBase64 = await generateExcelFile(profile.branch_id, includeImages)
-      
-      if (excelBase64) {
-        // แปลง Base64 กลับเป็นไฟล์และดาวน์โหลด
-        const byteCharacters = atob(excelBase64);
-        const byteNumbers = new Array(byteCharacters.length);
-        for (let j = 0; j < byteCharacters.length; j++) {
-            byteNumbers[j] = byteCharacters.charCodeAt(j);
-        }
-        const byteArray = new Uint8Array(byteNumbers);
-        const blob = new Blob([byteArray], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-        
-        saveAs(blob, `Stock_${profile.branch_name}_${new Date().toISOString().split('T')[0]}.xlsx`)
-      } else {
-        alert("ไม่สามารถสร้างไฟล์ Excel ได้ หรือไม่มีข้อมูล")
+      const params = new URLSearchParams({
+        branchId: String(profile.branch_id),
+        includeImages: String(includeImages),
+        onlyInStock: String(onlyInStock),
+      })
+
+      const response = await fetch(`/api/stock/export-excel?${params.toString()}`)
+      if (!response.ok || !response.body) {
+        throw new Error("ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์เพื่อสร้างไฟล์ได้")
       }
-    } catch (err) {
+
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ""
+      let excelBase64 = ""
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split("\n\n")
+        buffer = lines.pop() || ""
+
+        for (const line of lines) {
+          const trimmed = line.trim()
+          if (trimmed.startsWith("data: ")) {
+            try {
+              const data = JSON.parse(trimmed.slice(6))
+              if (data.error) {
+                throw new Error(data.error)
+              }
+              if (data.progress !== undefined) {
+                setExportProgress({
+                  percent: data.progress,
+                  current: data.current || 0,
+                  total: data.total || 0,
+                  message: data.message || "",
+                })
+              }
+              if (data.done && data.data) {
+                excelBase64 = data.data
+              }
+            } catch (e: any) {
+              if (e.message && !e.message.includes("Unexpected end of JSON")) {
+                console.error(e)
+              }
+            }
+          }
+        }
+      }
+
+      if (excelBase64) {
+        const byteCharacters = atob(excelBase64)
+        const byteNumbers = new Array(byteCharacters.length)
+        for (let j = 0; j < byteCharacters.length; j++) {
+          byteNumbers[j] = byteCharacters.charCodeAt(j)
+        }
+        const byteArray = new Uint8Array(byteNumbers)
+        const blob = new Blob([byteArray], {
+          type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        })
+
+        const suffix = onlyInStock ? "_InStock" : "_All"
+        saveAs(
+          blob,
+          `Stock_${profile.branch_name}${suffix}_${new Date().toISOString().split("T")[0]}.xlsx`
+        )
+
+        setExportProgress((prev) => ({
+          ...prev,
+          percent: 100,
+          message: "ดาวน์โหลดเสร็จสมบูรณ์!",
+        }))
+
+        setTimeout(() => {
+          setExporting(false)
+          setShowExportModal(false)
+          setExportProgress({ percent: 0, current: 0, total: 0, message: "" })
+        }, 1000)
+      } else {
+        alert("ไม่สามารถสร้างไฟล์ Excel ได้ หรือไม่มีข้อมูลสินค้า")
+        setExporting(false)
+      }
+    } catch (err: any) {
       console.error(err)
-      alert("เกิดข้อผิดพลาดในการดาวน์โหลด Excel")
+      alert(err.message || "เกิดข้อผิดพลาดในการดาวน์โหลด Excel")
+      setExporting(false)
     }
-    setExporting(false)
   }
 
   const handleExportExcel = () => {
@@ -351,49 +432,141 @@ export default function PublicStockPage() {
         </div>
       </div>
 
-      {/* Export Options Modal */}
+      {/* Export Options & Progress Modal */}
       {showExportModal && (
         <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-[2rem] p-6 max-w-sm w-full shadow-2xl border border-slate-100 animate-in fade-in zoom-in-95 duration-150">
-            <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
-              <Download className="w-5 h-5 text-blue-600" />
-              ดาวน์โหลด Excel
-            </h3>
-            <p className="text-slate-500 text-sm mt-2 leading-relaxed">
-              กรุณาเลือกรูปแบบไฟล์ Excel ที่ต้องการดาวน์โหลดข้อมูลสต็อกสินค้า
-            </p>
-            
-            <div className="mt-6 space-y-2.5">
-              <button
-                onClick={() => {
-                  setShowExportModal(false)
-                  triggerExport(false)
-                }}
-                className="w-full py-3 px-4 bg-slate-900 text-white rounded-2xl text-sm font-bold hover:bg-slate-800 transition-all flex items-center justify-center gap-2 active:scale-[0.98]"
-              >
-                ดาวน์โหลดปกติ (ไม่มีรูปภาพ) - โหลดเร็ว
-              </button>
-              
-              <button
-                onClick={() => {
-                  const confirmWithImages = window.confirm("คำเตือน: การดาวน์โหลดพร้อมรูปภาพจะใช้เวลานานในการดาวน์โหลด (ประมาณ 1-2 นาที ขึ้นอยู่กับจำนวนสินค้า)\n\nคุณต้องการดำเนินการต่อหรือไม่?")
-                  if (confirmWithImages) {
-                    setShowExportModal(false)
-                    triggerExport(true)
-                  }
-                }}
-                className="w-full py-3 px-4 bg-blue-50 text-blue-600 rounded-2xl text-sm font-bold hover:bg-blue-100 transition-all border border-blue-100 flex items-center justify-center gap-2 active:scale-[0.98]"
-              >
-                ดาวน์โหลดพร้อมรูปภาพ (ใช้เวลานาน)
-              </button>
-              
-              <button
-                onClick={() => setShowExportModal(false)}
-                className="w-full py-2.5 px-4 text-slate-400 hover:text-slate-600 transition-all text-xs font-bold text-center"
-              >
-                ยกเลิก
-              </button>
-            </div>
+            {exporting ? (
+              <div className="py-2 flex flex-col items-center text-center space-y-4">
+                <div className="relative mt-2">
+                  <div className="w-16 h-16 rounded-3xl bg-emerald-50 text-[#107c41] flex items-center justify-center border border-emerald-100 shadow-inner">
+                    <Download className="w-8 h-8 animate-bounce text-[#107c41]" />
+                  </div>
+                  <div className="absolute -bottom-1 -right-1 bg-white p-1 rounded-full shadow-sm border border-slate-100">
+                    <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+                  </div>
+                </div>
+
+                <div>
+                  <h4 className="text-lg font-black text-slate-900">กำลังสร้างไฟล์ Excel</h4>
+                  <p className="text-xs text-slate-500 mt-1 min-h-[1.25rem] px-2 leading-relaxed">
+                    {exportProgress.message || "กำลังเตรียมข้อมูลสินค้า..."}
+                  </p>
+                </div>
+
+                {/* Percentage Display & Progress Bar */}
+                <div className="w-full space-y-2 pt-1">
+                  <div className="flex items-center justify-between text-xs font-bold text-slate-700 px-1">
+                    <span className="text-[11px] text-slate-400">ความคืบหน้า</span>
+                    <span className="text-base font-black text-[#107c41] font-mono">
+                      {exportProgress.percent}%
+                    </span>
+                  </div>
+
+                  <div className="w-full h-3.5 bg-slate-100 rounded-full p-0.5 border border-slate-200 overflow-hidden shadow-inner">
+                    <div
+                      className="h-full bg-gradient-to-r from-blue-500 via-emerald-500 to-[#107c41] rounded-full transition-all duration-300 ease-out shadow-sm"
+                      style={{ width: `${Math.max(5, exportProgress.percent)}%` }}
+                    />
+                  </div>
+
+                  <div className="flex justify-between items-center text-[10px] text-slate-400 font-mono pt-1 px-1">
+                    <span>
+                      {exportProgress.total > 0
+                        ? `${exportProgress.current.toLocaleString()} / ${exportProgress.total.toLocaleString()} รายการ`
+                        : "กำลังเชื่อมต่อ..."}
+                    </span>
+                    <span className="text-[10px] text-slate-400">
+                      {exportProgress.percent === 100 ? "ดาวน์โหลดเรียบร้อย" : "กรุณารอสักครู่"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <>
+                <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                  <Download className="w-5 h-5 text-blue-600" />
+                  ดาวน์โหลด Excel
+                </h3>
+                <p className="text-slate-500 text-xs mt-1.5 leading-relaxed">
+                  กำหนดเงื่อนไขและรูปแบบไฟล์ Excel ที่ต้องการดาวน์โหลดข้อมูลสต็อกสินค้า
+                </p>
+
+                {/* ตัวกรองสต็อก */}
+                <div className="mt-4 p-3 bg-slate-50 rounded-2xl border border-slate-100 space-y-2">
+                  <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                    ตัวกรองจำนวนสต็อก
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setExportOnlyInStock(true)}
+                      className={`p-2.5 rounded-xl border text-left transition-all flex flex-col gap-0.5 ${
+                        exportOnlyInStock
+                          ? "border-blue-600 bg-white text-blue-950 font-bold shadow-sm ring-2 ring-blue-500/20"
+                          : "border-slate-200 bg-transparent text-slate-500 hover:bg-white/60"
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5 text-xs font-bold">
+                        <span className={`w-2 h-2 rounded-full ${exportOnlyInStock ? "bg-blue-600" : "bg-slate-300"}`} />
+                        มีสต็อกเท่านั้น
+                      </div>
+                      <div className="text-[10px] text-slate-400 font-normal">
+                        เฉพาะจำนวน &gt; 0
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setExportOnlyInStock(false)}
+                      className={`p-2.5 rounded-xl border text-left transition-all flex flex-col gap-0.5 ${
+                        !exportOnlyInStock
+                          ? "border-blue-600 bg-white text-blue-950 font-bold shadow-sm ring-2 ring-blue-500/20"
+                          : "border-slate-200 bg-transparent text-slate-500 hover:bg-white/60"
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5 text-xs font-bold">
+                        <span className={`w-2 h-2 rounded-full ${!exportOnlyInStock ? "bg-blue-600" : "bg-slate-300"}`} />
+                        สินค้าทั้งหมด
+                      </div>
+                      <div className="text-[10px] text-slate-400 font-normal">
+                        รวมสต็อก 0 และติดลบ
+                      </div>
+                    </button>
+                  </div>
+                </div>
+                
+                <div className="mt-4 space-y-2">
+                  <button
+                    onClick={() => {
+                      triggerExport(false, exportOnlyInStock)
+                    }}
+                    className="w-full py-3 px-4 bg-slate-900 text-white rounded-2xl text-sm font-bold hover:bg-slate-800 transition-all flex items-center justify-center gap-2 active:scale-[0.98]"
+                  >
+                    ดาวน์โหลดปกติ (ไม่มีรูปภาพ) - โหลดเร็ว
+                  </button>
+                  
+                  <button
+                    onClick={() => {
+                      const confirmWithImages = window.confirm("คำเตือน: การดาวน์โหลดพร้อมรูปภาพจะใช้เวลานานในการดาวน์โหลด (ประมาณ 1-2 นาที ขึ้นอยู่กับจำนวนสินค้า)\n\nคุณต้องการดำเนินการต่อหรือไม่?")
+                      if (confirmWithImages) {
+                        triggerExport(true, exportOnlyInStock)
+                      }
+                    }}
+                    className="w-full py-3 px-4 bg-blue-50 text-blue-600 rounded-2xl text-sm font-bold hover:bg-blue-100 transition-all border border-blue-100 flex items-center justify-center gap-2 active:scale-[0.98]"
+                  >
+                    ดาวน์โหลดพร้อมรูปภาพ (ใช้เวลานาน)
+                  </button>
+                  
+                  <button
+                    onClick={() => setShowExportModal(false)}
+                    className="w-full py-2 px-4 text-slate-400 hover:text-slate-600 transition-all text-xs font-bold text-center"
+                  >
+                    ยกเลิก
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

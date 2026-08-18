@@ -155,17 +155,28 @@ export async function getBase64Image(url: string) {
 import ExcelJS from "exceljs"
 
 // ✅ 7. สร้างไฟล์ Excel บน Server เลย เพื่อให้ชัวร์ว่า exceljs และรูปภาพทำงานได้ 100%
-export async function generateExcelFile(branchId: number, includeImages: boolean = false): Promise<string | null> {
+export async function generateExcelFile(
+  branchId: number,
+  includeImages: boolean = false,
+  onlyInStock: boolean = false
+): Promise<string | null> {
   const supabase = await createClient()
   try {
-    const { data, error } = await supabase
+    let query = supabase
       .from('stock')
       .select(`
         qty,
         products!inner (name, price, specs, image_url, sku, barcode)
       `)
       .eq('branch_id', branchId)
-      .order('qty', { ascending: false })
+
+    if (onlyInStock) {
+      query = query.gt('qty', 0)
+    }
+
+    query = query.order('qty', { ascending: false })
+
+    const { data, error } = await query
 
     if (error) throw error
     if (!data) return null

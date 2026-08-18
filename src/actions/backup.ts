@@ -240,6 +240,70 @@ export async function restoreSnapshot(snapId: string, selectedTables?: string[])
       stats[t.key] = { upserted: 0, deleted: 0 }
     }
 
+    // products มี unique constraint ที่ sku นอกเหนือจาก primary key (id)
+    // ถ้าแถวปัจจุบันใช้ SKU เดียวกับ Snapshot แต่คนละ id การ upsert ด้วย id
+    // จะชน products_sku_key ก่อนถึง Phase ลบข้อมูลส่วนเกิน จึงต้องเคลียร์
+    // เจ้าของ SKU ปัจจุบันที่ไม่ใช่แถวใน Snapshot ก่อน
+    if (tablesToRestore.some(t => t.key === "products")) {
+      const snapshotProducts = data.products ?? []
+      const snapshotIdBySku = new Map<string, string>()
+
+      for (const row of snapshotProducts) {
+        const sku = typeof row.sku === "string" ? row.sku.trim() : ""
+        if (!sku) continue
+
+        const rowId = String(row.id)
+        const existingId = snapshotIdBySku.get(sku)
+        if (existingId && existingId !== rowId) {
+          throw new Error(`Snapshot มี SKU ซ้ำกันเอง: ${sku}`)
+        }
+        snapshotIdBySku.set(sku, rowId)
+      }
+
+      const snapshotSkus = [...snapshotIdBySku.keys()]
+      const conflictingProductIds: string[] = []
+
+      // แบ่งเป็นชุดเล็กเพื่อไม่ให้ URL ของ PostgREST ยาวเกินไป
+      for (let i = 0; i < snapshotSkus.length; i += 100) {
+        const skuChunk = snapshotSkus.slice(i, i + 100)
+        const { data: currentProducts, error: conflictFetchError } = await supabaseAdmin
+          .from("products")
+          .select("id,sku")
+          .in("sku", skuChunk)
+
+        if (conflictFetchError) {
+          throw new Error(`ตรวจสอบ SKU ซ้ำไม่สำเร็จ: ${conflictFetchError.message}`)
+        }
+
+        for (const currentProduct of currentProducts ?? []) {
+          const sku = typeof currentProduct.sku === "string" ? currentProduct.sku.trim() : ""
+          const expectedId = snapshotIdBySku.get(sku)
+          if (expectedId && String(currentProduct.id) !== expectedId) {
+            conflictingProductIds.push(String(currentProduct.id))
+          }
+        }
+      }
+
+      if (conflictingProductIds.length > 0) {
+        // ลบเฉพาะแถวที่เป็นเจ้าของ SKU ผิดตัวก่อน ส่วนแถวอื่นจะถูกจัดการ
+        // ตามการเปรียบเทียบ Snapshot ใน Phase 2 เหมือนเดิม
+        for (let i = 0; i < conflictingProductIds.length; i += 100) {
+          const idChunk = conflictingProductIds.slice(i, i + 100)
+          const { error: conflictDeleteError } = await supabaseAdmin
+            .from("products")
+            .delete()
+            .in("id", idChunk)
+
+          if (conflictDeleteError) {
+            throw new Error(
+              `ลบสินค้าเดิมที่ชน SKU ไม่สำเร็จ: ${conflictDeleteError.message}`
+            )
+          }
+          stats.products.deleted += idChunk.length
+        }
+      }
+    }
+
     // Helper function to serialize keys for comparing/deleting
     const getRowKey = (r: any, pk: string | string[]) => {
       if (Array.isArray(pk)) {
@@ -334,7 +398,7 @@ export async function restoreSnapshot(snapId: string, selectedTables?: string[])
             throw new Error(`ลบข้อมูลตาราง ${t.key} ไม่สำเร็จ! เกิดจาก: ${error.message}`)
           }
         }
-        stats[t.key].deleted = toDelete.length
+        stats[t.key].deleted += toDelete.length
       }
     }
 
