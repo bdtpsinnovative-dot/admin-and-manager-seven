@@ -531,6 +531,7 @@ export default function PropsClient({ products }: Props) {
                   </div>
                   <button onClick={(e) => openEditImage(e, item)}
                     title="เปลี่ยนรูปภาพ"
+                    suppressHydrationWarning
                     className="absolute top-1.5 right-1.5 z-10 w-6 h-6 rounded bg-white/90 hover:bg-white border border-slate-200 flex items-center justify-center shadow-sm transition active:scale-95">
                     <Edit className="w-3.5 h-3.5 text-slate-500" />
                   </button>
