@@ -196,6 +196,7 @@ export default function PropsClient({ products }: Props) {
               </div>
               <div class="qr-cell">
                 <img src="${qrImg}" />
+                <img src="${qrImg}" />
               </div>
             </div>
             
@@ -307,16 +308,18 @@ export default function PropsClient({ products }: Props) {
       .qr-cell {
         flex: 1;
         display: flex;
+        flex-direction: column;
         align-items: center;
         justify-content: center;
+        gap: 1mm;
         height: 100%;
         overflow: hidden;
       }
       
       .qr-cell img {
         width: 100%;
-        max-width: 17mm;
-        max-height: 17mm;
+        max-width: 11.5mm;
+        max-height: 11.5mm;
         object-fit: contain;
       }
       
