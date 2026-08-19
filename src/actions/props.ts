@@ -46,7 +46,7 @@ export async function addProp(formData: FormData) {
 
 export async function getAllProps() {
   const supabase = await createClient();
-  let allProducts: any[] = [];
+  const productMap = new Map<number, any>();
   let page = 0;
   const limit = 1000;
   let hasMore = true;
@@ -59,7 +59,7 @@ export async function getAllProps() {
       .from("products")
       .select("*")
       .eq("category_id", "prop")
-      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
       .range(from, to);
 
     if (error) {
@@ -68,7 +68,11 @@ export async function getAllProps() {
     }
 
     if (data && data.length > 0) {
-      allProducts.push(...data);
+      for (const item of data) {
+        if (item && item.id != null) {
+          productMap.set(item.id, item);
+        }
+      }
       if (data.length < limit) {
         hasMore = false;
       } else {
@@ -79,7 +83,7 @@ export async function getAllProps() {
     }
   }
 
-  return allProducts;
+  return Array.from(productMap.values());
 }
 
 export async function updatePropImageUrl(id: number, imageUrl: string) {
