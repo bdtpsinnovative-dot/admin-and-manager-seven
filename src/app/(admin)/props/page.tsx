@@ -1,16 +1,11 @@
 //src/app/(admin)/props/page.tsx
+export const dynamic = "force-dynamic";
 
-import { createClient } from "@/lib/supabase/server";
+import { getAllProps } from "@/actions/props";
 import PropsClient from "./PropsClient";
 
 export default async function PropsListPage() {
-  const supabase = await createClient();
-
-  const { data: products } = await supabase
-    .from("products")
-    .select("*")
-    .eq("category_id", "prop")
-    .order("created_at", { ascending: false });
+  const products = await getAllProps();
 
   return <PropsClient products={products ?? []} />;
 }

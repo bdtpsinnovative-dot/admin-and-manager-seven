@@ -44,6 +44,44 @@ export async function addProp(formData: FormData) {
   }
 }
 
+export async function getAllProps() {
+  const supabase = await createClient();
+  let allProducts: any[] = [];
+  let page = 0;
+  const limit = 1000;
+  let hasMore = true;
+
+  while (hasMore) {
+    const from = page * limit;
+    const to = from + limit - 1;
+
+    const { data, error } = await supabase
+      .from("products")
+      .select("*")
+      .eq("category_id", "prop")
+      .order("created_at", { ascending: false })
+      .range(from, to);
+
+    if (error) {
+      console.error("Error fetching props:", error);
+      break;
+    }
+
+    if (data && data.length > 0) {
+      allProducts.push(...data);
+      if (data.length < limit) {
+        hasMore = false;
+      } else {
+        page++;
+      }
+    } else {
+      hasMore = false;
+    }
+  }
+
+  return allProducts;
+}
+
 export async function updatePropImageUrl(id: number, imageUrl: string) {
   const supabase = await createClient();
 

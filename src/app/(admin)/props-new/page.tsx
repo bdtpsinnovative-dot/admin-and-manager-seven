@@ -1,15 +1,12 @@
+import { getAllProps } from "@/actions/props";
 import { createClient } from "@/lib/supabase/server";
 import PropsClient from "./PropsClient";
 
 export default async function PropsListPage() {
   const supabase = await createClient();
 
-  // ดึงข้อมูลสินค้า
-  const { data: products } = await supabase
-    .from("products")
-    .select("*")
-    .eq("category_id", "prop")
-    .order("created_at", { ascending: false });
+  // ดึงข้อมูลสินค้าทั้งหมด (ไม่ติด limit 1000)
+  const products = await getAllProps();
 
   // ดึงข้อมูลส่วนลด (discounts) และกฎเกณฑ์ (discount_rules)
   const { data: discountRules } = await supabase

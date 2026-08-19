@@ -52,7 +52,7 @@ export default function PropsClient({ products }: Props) {
 
   const filteredProducts = searchQuery.trim()
     ? products.filter(p => {
-        const q = searchQuery.toLowerCase();
+        const q = searchQuery.toLowerCase().trim();
         return (
           (p.name || "").toLowerCase().includes(q) ||
           (p.sku || "").toLowerCase().includes(q) ||
