@@ -233,6 +233,15 @@ const EVENT_FIELDS = [
 
 const dayInMs = 24 * 60 * 60 * 1000
 const rawPageSize = 50
+const lookupBatchSize = 200
+
+function chunkValues<T>(values: T[], size = lookupBatchSize) {
+  const chunks: T[][] = []
+  for (let index = 0; index < values.length; index += size) {
+    chunks.push(values.slice(index, index + size))
+  }
+  return chunks
+}
 
 function getCutoff(rangeDays: AlgorithmRange) {
   return new Date(Date.now() - rangeDays * dayInMs).toISOString()
@@ -361,34 +370,42 @@ async function fetchPropProducts(productIds: number[], includeInactive = false) 
   const cleanIds = Array.from(new Set(productIds.filter(Number.isSafeInteger)))
   if (cleanIds.length === 0) return productMap
 
-  const { data: productRows, error: productError } = await supabaseAdmin
+  const productResults = await Promise.all(chunkValues(cleanIds).map((idBatch) => supabaseAdmin
     .from("products")
     .select("id, name, sku, image_url, status, category_id, collection_group_id")
-    .in("id", cleanIds)
-    .eq("category_id", "prop")
-
+    .in("id", idBatch)
+    .eq("category_id", "prop")))
+  const productError = productResults.find((result) => result.error)?.error
   if (productError) throw new Error(productError.message)
+  const products = productResults.flatMap((result) => (result.data ?? []) as ProductRow[])
 
-  const products = (productRows ?? []) as ProductRow[]
-  const groupIds = products
+  const groupIds = Array.from(new Set(products
     .map((product) => product.collection_group_id)
     .filter((id): id is string | number => id !== null && id !== undefined)
+    .map(String)))
 
-  const [{ data: groupRows, error: groupError }, { data: stockRows, error: stockError }] = await Promise.all([
-    groupIds.length
-      ? supabaseAdmin.from("collection_groups").select("id, product_sup, tag").in("id", groupIds).ilike("tag", "%prop%")
-      : Promise.resolve({ data: [], error: null }),
-    supabaseAdmin.from("stock").select("product_id, qty").in("product_id", cleanIds),
+  const [groupResults, stockResults] = await Promise.all([
+    Promise.all(chunkValues(groupIds).map((idBatch) => supabaseAdmin
+      .from("collection_groups")
+      .select("id, product_sup, tag")
+      .in("id", idBatch)
+      .ilike("tag", "%prop%"))),
+    Promise.all(chunkValues(cleanIds).map((idBatch) => supabaseAdmin
+      .from("stock")
+      .select("product_id, qty")
+      .in("product_id", idBatch))),
   ])
-
+  const groupError = groupResults.find((result) => result.error)?.error
   if (groupError) throw new Error(groupError.message)
+  const stockError = stockResults.find((result) => result.error)?.error
   if (stockError) throw new Error(stockError.message)
 
-  const groups = (groupRows ?? []) as CollectionRow[]
+  const groups = groupResults.flatMap((result) => (result.data ?? []) as CollectionRow[])
+  const stockRows = stockResults.flatMap((result) => (result.data ?? []) as StockRow[])
   const groupMap = new Map(groups.map((group) => [String(group.id), group]))
   const stockByProduct = new Map<number, number>()
 
-  for (const stock of (stockRows ?? []) as StockRow[]) {
+  for (const stock of stockRows) {
     stockByProduct.set(stock.product_id, (stockByProduct.get(stock.product_id) ?? 0) + Number(stock.qty ?? 0))
   }
 
@@ -416,16 +433,18 @@ async function fetchPropProducts(productIds: number[], includeInactive = false) 
   if (includeInactive) {
     const missingIds = cleanIds.filter((id) => !productMap.has(id))
     if (missingIds.length) {
-      const { data: snapshotRows, error: snapshotError } = await supabaseAdmin
+      const snapshotResults = await Promise.all(chunkValues(missingIds).map((idBatch) => supabaseAdmin
         .from("algorithm_events")
         .select("product_id, collection_group_id, product_category_snapshot, product_name_snapshot, product_sku_snapshot")
         .eq("source_tag", "prop")
         .eq("event_type", "product_view")
-        .in("product_id", missingIds)
-        .order("created_at", { ascending: false })
+        .in("product_id", idBatch)
+        .order("created_at", { ascending: false })))
+      const snapshotError = snapshotResults.find((result) => result.error)?.error
       if (snapshotError) throw new Error(snapshotError.message)
+      const snapshotRows = snapshotResults.flatMap((result) => (result.data ?? []) as ProductSnapshotRow[])
       const snapshots = new Map<number, ProductSnapshotRow>()
-      for (const row of (snapshotRows ?? []) as ProductSnapshotRow[]) {
+      for (const row of snapshotRows) {
         if (!snapshots.has(Number(row.product_id)) && row.product_name_snapshot) snapshots.set(Number(row.product_id), row)
       }
       for (const [id, snapshot] of snapshots) {
