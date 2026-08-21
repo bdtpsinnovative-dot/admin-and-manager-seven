@@ -355,6 +355,25 @@ async function fetchPagedActivities(cutoff: string) {
   return rows
 }
 
+async function fetchPagedPropProducts() {
+  const rows: RawProduct[] = []
+  const pageSize = 1000
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await supabaseAdmin
+      .from("products")
+      .select("id, name, sku, image_url, price, status, collection_group_id, color, specs, collection_groups!inner(id, product_sup, tag)")
+      .eq("category_id", "prop")
+      .ilike("collection_groups.tag", "%prop%")
+      .order("id", { ascending: true })
+      .range(offset, offset + pageSize - 1)
+    if (error) throw new Error(error.message)
+    const batch = (data || []) as unknown as RawProduct[]
+    rows.push(...batch)
+    if (batch.length < pageSize) break
+  }
+  return rows
+}
+
 async function fetchPagedViewerLinks() {
   const rows: Array<{ user_id: string | null; metadata: Record<string, unknown> | null }> = []
   const pageSize = 1000
@@ -421,24 +440,20 @@ export async function getAudienceAnalytics(rangeValue: number): Promise<Audience
   try {
     await requireAdmin()
     const cutoff = new Date(Date.now() - rangeDays * dayMs).toISOString()
-    const [{ data: productRows, error: productError }, eventRows, activityRows, linkRows] = await Promise.all([
-      supabaseAdmin
-        .from("products")
-        .select("id, name, sku, image_url, price, status, collection_group_id, color, specs, collection_groups!inner(id, product_sup, tag)")
-        .eq("category_id", "prop")
-        .ilike("collection_groups.tag", "%prop%"),
+    const [productRows, eventRows, activityRows, linkRows] = await Promise.all([
+      fetchPagedPropProducts(),
       fetchPagedAlgorithmEvents(cutoff),
       fetchPagedActivities(cutoff),
       fetchPagedViewerLinks(),
     ])
-    if (productError) throw new Error(productError.message)
 
-    const currentProducts = (productRows || []) as unknown as RawProduct[]
+    const currentProducts = productRows
     const events = eventRows as RawEvent[]
     const activities = activityRows as RawActivity[]
+    const currentProductIds = new Set(currentProducts.map((product) => Number(product.id)))
     const historicalProducts = new Map<number, RawProduct>()
     for (const event of events) {
-      if (event.event_type !== "product_view" || !event.product_id || currentProducts.some((product) => Number(product.id) === Number(event.product_id))) continue
+      if (event.event_type !== "product_view" || !event.product_id || currentProductIds.has(Number(event.product_id))) continue
       if (!event.product_name_snapshot && !event.product_sku_snapshot) continue
       historicalProducts.set(Number(event.product_id), {
         id: Number(event.product_id),
