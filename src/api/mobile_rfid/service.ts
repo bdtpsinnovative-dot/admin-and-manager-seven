@@ -273,7 +273,7 @@ export const MobileRfidService = {
   async findConflictingTags(tagList: string[]) {
     const { data, error } = await supabaseAdmin
       .from("product_rfid_tags")
-      .select("rfid, product_id")
+      .select("rfid, product_id, branch_id, lot_id, status, products(name, sku, barcode, image_url)")
       .in("rfid", tagList);
     if (error) throw error;
     return data;
@@ -538,6 +538,63 @@ export const MobileRfidService = {
       .eq("rfid", oldRfid)
       .select();
     if (error) throw error;
+    return data;
+  },
+
+  async replaceRfidTag(oldRfidRaw: string, newRfidRaw: string, expectedProductId: number) {
+    const oldRfid = oldRfidRaw.trim().toUpperCase();
+    const newRfid = newRfidRaw.trim().toUpperCase();
+
+    if (!oldRfid || !newRfid || !Number.isFinite(expectedProductId) || expectedProductId <= 0) {
+      throw Object.assign(new Error("ข้อมูล Tag เดิม, Tag ใหม่ หรือสินค้าไม่ครบถ้วน"), { status: 422 });
+    }
+    if (!/^[A-Z0-9]+$/.test(oldRfid) || !/^[A-Z0-9]+$/.test(newRfid)) {
+      throw Object.assign(new Error("รูปแบบ RFID Tag ไม่ถูกต้อง"), { status: 422 });
+    }
+    if (oldRfid === newRfid) {
+      throw Object.assign(new Error("Tag ใหม่ต้องไม่ซ้ำกับ Tag เดิม"), { status: 422 });
+    }
+
+    const { data: oldTag, error: oldTagError } = await supabaseAdmin
+      .from("product_rfid_tags")
+      .select("id, product_id, rfid")
+      .eq("rfid", oldRfid)
+      .maybeSingle();
+    if (oldTagError) throw oldTagError;
+    if (!oldTag) {
+      throw Object.assign(new Error("ไม่พบ Tag เดิมในระบบ กรุณาตรวจสอบอีกครั้ง"), { status: 404 });
+    }
+    if (Number(oldTag.product_id) !== expectedProductId) {
+      throw Object.assign(new Error("Tag เดิมไม่ได้อยู่กับสินค้าที่เลือก ข้อมูลอาจถูกแก้ไขไปแล้ว"), { status: 409 });
+    }
+
+    const { data: occupiedTag, error: occupiedError } = await supabaseAdmin
+      .from("product_rfid_tags")
+      .select("rfid, product_id")
+      .eq("rfid", newRfid)
+      .maybeSingle();
+    if (occupiedError) throw occupiedError;
+    if (occupiedTag) {
+      throw Object.assign(new Error("Tag ใหม่ถูกใช้งานอยู่แล้ว กรุณาเลือก Tag อื่น"), { status: 409 });
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from("product_rfid_tags")
+      .update({ rfid: newRfid })
+      .eq("rfid", oldRfid)
+      .eq("product_id", expectedProductId)
+      .select("id, rfid, product_id, branch_id, lot_id, status")
+      .maybeSingle();
+
+    if (error) {
+      if (error.code === "23505") {
+        throw Object.assign(new Error("Tag ใหม่ถูกใช้งานอยู่แล้ว กรุณาเลือก Tag อื่น"), { status: 409 });
+      }
+      throw error;
+    }
+    if (!data) {
+      throw Object.assign(new Error("เปลี่ยน Tag ไม่สำเร็จ เพราะข้อมูลเดิมถูกแก้ไขไปแล้ว"), { status: 409 });
+    }
     return data;
   },
 

@@ -195,6 +195,9 @@ async function dispatch(request: NextRequest, params: { path: string[] }) {
     if (subpath === "rfid-tags/insert") {
       if (method === "POST") return await RfidTagsController.insertRfidTag(request, verifiedUser);
     }
+    if (subpath === "rfid-tags/replace") {
+      if (method === "POST") return await RfidTagsController.replaceRfidTag(request, verifiedUser);
+    }
     if (subpath === "rfid-tags/delete") {
       if (method === "DELETE") return await RfidTagsController.deleteRfidTag(request, verifiedUser);
     }

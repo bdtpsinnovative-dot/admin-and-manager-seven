@@ -3,30 +3,53 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
-// 1. ดึงข้อมูลมากางให้ดูว่ากลุ่มไหนมีรูป/ไม่มีรูป (ไม่ต้องค้นหา)
+// 1. ดึงข้อมูลมากางให้ดูว่ากลุ่มไหนมีรูป/ไม่มีรูป และเป็นหมวด Prop หรือ Furniture
 export async function getCategoryOverview() {
   const cookieStore = await cookies();
   const supabase = createServerClient(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!, {
     cookies: { getAll() { return cookieStore.getAll(); }, setAll() {} },
   });
 
-  // ดึงมาแค่ชื่อกลุ่ม กับ รูปภาพ
-  const { data, error } = await supabase.from("collection_groups").select("product_sup, image_url");
+  // ดึงชื่อกลุ่ม รูปภาพ สถานะรูปชั่วคราว และ tag (เพื่อแยกเว็บ)
+  const { data, error } = await supabase
+    .from("collection_groups")
+    .select("product_sup, image_url, is_temp_image, tag");
   if (error) throw new Error(error.message);
 
-  // จัดกลุ่มให้ดูง่ายๆ ว่าแต่ละ product_sup มีกี่ชิ้น และมีรูปหรือยัง
-  const groups: Record<string, { productSup: string, currentImage: string | null, itemCount: number }> = {};
+  const groups: Record<string, { 
+    productSup: string, 
+    currentImage: string | null, 
+    isTempImage: boolean, 
+    itemCount: number,
+    isProp: boolean,
+    tag: string 
+  }> = {};
   
   data.forEach((row) => {
     const sup = row.product_sup;
     if (!sup) return;
     
+    const isProp = (row.tag || "").toLowerCase().includes("prop");
+
     if (!groups[sup]) {
-      groups[sup] = { productSup: sup, currentImage: row.image_url, itemCount: 0 };
+      groups[sup] = { 
+        productSup: sup, 
+        currentImage: row.image_url, 
+        isTempImage: !!row.is_temp_image, 
+        itemCount: 0,
+        isProp: isProp,
+        tag: row.tag || ""
+      };
     }
-    // ถ้ากลุ่มนี้มีรูปภาพโผล่มาแม้แต่ชิ้นเดียว ให้ถือว่ามีรูปปกแล้ว
+    
     if (row.image_url && !groups[sup].currentImage) {
       groups[sup].currentImage = row.image_url;
+    }
+    if (row.is_temp_image) {
+      groups[sup].isTempImage = true;
+    }
+    if (isProp) {
+      groups[sup].isProp = true;
     }
     groups[sup].itemCount += 1;
   });
@@ -35,16 +58,34 @@ export async function getCategoryOverview() {
 }
 
 // 2. ฟังก์ชันอัปเดตช่อง image_url ทีเดียวทุกแถว!
-export async function updateBulkImageUrl(productSup: string, newImageUrl: string) {
+export async function updateBulkImageUrl(productSup: string, newImageUrl: string, isTempImage: boolean = false) {
   const cookieStore = await cookies();
   const supabase = createServerClient(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!, {
     cookies: { getAll() { return cookieStore.getAll(); }, setAll() {} },
   });
 
-  // คีย์เวิร์ด: อัปเดตคอลัมน์ image_url ให้กับทุกแถวที่ชื่อ product_sup ตรงกัน
   const { error } = await supabase
     .from("collection_groups")
-    .update({ image_url: newImageUrl })
+    .update({ 
+      image_url: newImageUrl,
+      is_temp_image: isTempImage
+    })
+    .eq("product_sup", productSup);
+
+  if (error) throw new Error(error.message);
+  return { success: true };
+}
+
+// 3. ฟังก์ชันสลับสถานะรูปชั่วคราว (รอแก้)
+export async function toggleTempImageStatus(productSup: string, isTempImage: boolean) {
+  const cookieStore = await cookies();
+  const supabase = createServerClient(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!, {
+    cookies: { getAll() { return cookieStore.getAll(); }, setAll() {} },
+  });
+
+  const { error } = await supabase
+    .from("collection_groups")
+    .update({ is_temp_image: isTempImage })
     .eq("product_sup", productSup);
 
   if (error) throw new Error(error.message);
