@@ -71,14 +71,19 @@ export default function StockLogClient({ branchId, branchName }: Props) {
   const pageSize = 60
   const pageAll = Math.max(1, Math.ceil(totalCount / pageSize))
 
-  const fetchData = useCallback(async (p = 1) => {
+  const fetchData = useCallback(async (
+    p = 1,
+    currentSearch = search,
+    currentFrom = dateFrom,
+    currentTo = dateTo
+  ) => {
     setLoading(true)
     setError(null)
     const res = await getManagerStockLog({
       branchId,
-      productSearch: search.trim() || undefined,
-      dateFrom: dateFrom || undefined,
-      dateTo: dateTo || undefined,
+      productSearch: currentSearch.trim() || undefined,
+      dateFrom: currentFrom || undefined,
+      dateTo: currentTo || undefined,
       page: p,
     })
     if (res.error) {
@@ -93,28 +98,21 @@ export default function StockLogClient({ branchId, branchName }: Props) {
     setLoading(false)
   }, [branchId, search, dateFrom, dateTo])
 
-  // โหลดข้อมูลอัตโนมัติตอนเปิดหน้าแรก
+  // ⚡ ค้นหาแบบ Real-time ทันทีที่พิมพ์ (Debounce 300ms) ไม่ต้องกด Enter
   useEffect(() => {
-    fetchData(1)
-  }, [])
+    const timer = setTimeout(() => {
+      setPage(1)
+      fetchData(1, search, dateFrom, dateTo)
+    }, 300)
 
-  const handleSearch = () => { setPage(1); fetchData(1) }
-  const handleReset  = () => {
+    return () => clearTimeout(timer)
+  }, [search, dateFrom, dateTo])
+
+  const handleReset = () => {
     setSearch("")
     setDateFrom("")
     setDateTo("")
     setPage(1)
-    setLoading(true)
-    getManagerStockLog({ branchId, page: 1 }).then(res => {
-      if (!res.error) {
-        setMovements(res.data)
-        setTotalCount(res.totalCount)
-        setTotalIn(res.totalIn)
-        setTotalOut(res.totalOut)
-        setFetched(true)
-      }
-      setLoading(false)
-    })
   }
 
   // group by batch_ref for "รอบ" display
@@ -140,7 +138,7 @@ export default function StockLogClient({ branchId, branchName }: Props) {
             {fetched && <span className="text-slate-400"> · {totalCount.toLocaleString()} รายการ</span>}
           </p>
         </div>
-        <button onClick={() => fetchData(page)} className="p-2 bg-white border border-slate-200 rounded-xl shadow-sm text-slate-400 hover:text-blue-600 transition">
+        <button onClick={() => fetchData(page, search, dateFrom, dateTo)} className="p-2 bg-white border border-slate-200 rounded-xl shadow-sm text-slate-400 hover:text-blue-600 transition">
           <RefreshCcw className={`w-5 h-5 ${loading ? "animate-spin" : ""}`} />
         </button>
       </div>
@@ -151,12 +149,20 @@ export default function StockLogClient({ branchId, branchName }: Props) {
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
           <input
             type="text"
-            placeholder="ค้นหาชื่อสินค้า, SKU, Barcode..."
-            className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-blue-100 transition-all"
+            placeholder="พิมพ์ชื่อสินค้า, SKU, Barcode เพื่อค้นหาทันที..."
+            className="w-full pl-11 pr-10 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm outline-none focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
             value={search}
             onChange={e => setSearch(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && handleSearch()}
           />
+          {search && (
+            <button
+              onClick={() => setSearch("")}
+              className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-200/60 transition"
+              title="ล้างคำค้นหา"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
         </div>
         <div className="flex gap-3 flex-wrap items-center">
           <div className="flex items-center gap-2">
@@ -169,12 +175,13 @@ export default function StockLogClient({ branchId, branchName }: Props) {
             <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
               className="px-3 py-2 text-sm border border-slate-200 rounded-xl bg-slate-50 outline-none focus:ring-2 focus:ring-blue-100" />
           </div>
-          <div className="flex gap-2 ml-auto">
-            <button onClick={handleReset} className="px-4 py-2 text-sm font-bold text-slate-500 hover:bg-slate-100 rounded-xl transition">ล้าง</button>
-            <button onClick={handleSearch} className="px-6 py-2 text-sm font-bold bg-slate-900 text-white rounded-xl hover:bg-blue-700 transition">
-              ค้นหา
-            </button>
-          </div>
+          {(search || dateFrom || dateTo) && (
+            <div className="flex gap-2 ml-auto">
+              <button onClick={handleReset} className="px-4 py-2 text-xs font-bold text-slate-500 hover:bg-slate-100 rounded-xl transition flex items-center gap-1">
+                <X className="w-3.5 h-3.5" /> ล้างตัวกรอง
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

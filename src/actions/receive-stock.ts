@@ -1,12 +1,12 @@
 "use server"
 
-import { createClient } from '@/utils/supabase/server'
+import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 // 1. ดึงรายการใบโอนทั้งหมด
 export async function getTransfersList() {
-  const supabase = createClient()
+  const supabase = await createClient()
   
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   if (authError || !user) throw new Error('Unauthorized')
@@ -46,7 +46,7 @@ export async function getTransfersList() {
 
 // 2. ดึงรายการสินค้าในใบโอน
 export async function getTransferItems(transferId: number) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const { data, error } = await supabase
     .from('stock_transfer_items')
     .select(`
@@ -61,7 +61,7 @@ export async function getTransferItems(transferId: number) {
 
 // 3. ปรับปรุง: ดึงข้อมูลใบโอน + เช็คสิทธิ์อัตโนมัติว่าเป็นคนส่งหรือคนรับ
 export async function getTransferById(transferId: number) {
-  const supabase = createClient()
+  const supabase = await createClient()
   
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('Unauthorized')
@@ -92,7 +92,7 @@ export async function getTransferById(transferId: number) {
 
 // 4. ฟังก์ชันกดยืนยันรับสินค้า (สำหรับฝั่งขาเข้า)
 export async function receiveStockAction(transferId: number, items: any[]) {
-  const supabase = createClient()
+  const supabase = await createClient()
   
   try {
     const { data: { user } } = await supabase.auth.getUser()
@@ -208,7 +208,7 @@ export async function receiveStockAction(transferId: number, items: any[]) {
 
 // 5. ✨ ฟังก์ชันใหม่: กดยกเลิกการโอนสินค้า (สำหรับฝั่งขาออก)
 export async function cancelTransferAction(transferId: number) {
-  const supabase = createClient()
+  const supabase = await createClient()
   try {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) throw new Error('Unauthorized')
