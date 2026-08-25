@@ -4,7 +4,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useState, useEffect } from "react"
 import {
-  Store, Box, History, Truck, LogOut, User, Menu, X, Settings,
+  LayoutDashboard, Store, Box, History, Truck, LogOut, User, Menu, X, Settings,
   ChevronDown, Loader2
 } from "lucide-react"
 import { logoutAction } from "../actions/auth" 
@@ -73,6 +73,7 @@ export default function SaleSidebar({ userName, branchName, userAvatar }: SaleSi
       name: "งานขายและบริการ",
       icon: Store,
       subMenu: [
+        { name: "แดชบอร์ด (Dashboard)", href: "/sale/dashboard", icon: LayoutDashboard },
         { name: "ขายสินค้า (POS)", href: "/sale/pos", icon: Store },
         { name: "มอนิเตอร์ค้างส่ง", href: "/sale/vanguard-dispatch", icon: Truck },
         { name: "สต็อกหน้าร้าน", href: "/sale/publicstock", icon: Box },

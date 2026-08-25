@@ -19,7 +19,7 @@ export default async function RootPage() {
   if (role === 'manager') {
     redirect('/manager/dashboard');
   } else if (role === 'sale') {
-    redirect('/sale/pos');
+    redirect('/sale/dashboard');
   }
 
   redirect('/dashboard');
