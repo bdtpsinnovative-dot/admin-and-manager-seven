@@ -7,7 +7,8 @@ import {
   LayoutDashboard, Box, PlusCircle, ShoppingCart,
   MapPin, Tag, LogOut, Users, Receipt,
   BarChart3, History, Package, Settings, Frame,
-  Layers, ShieldCheck, AlertTriangle, Scale, Activity
+  Layers, ShieldCheck, AlertTriangle, Scale, Activity,
+  Images
 } from "lucide-react";
 
 // 1. เมนูที่ใช้บ่อย (งานประจำวัน)
@@ -26,6 +27,7 @@ const primaryItems = [
 
 // 2. เมนูการจัดการและรายงาน
 const secondaryItems = [
+  { name: "จัดการ แกลเลอลี่หน้าเว็ป", href: "/web-gallery", icon: Images },
   { name: "จัดการสาขา",      href: "/branches",     icon: MapPin },
   { name: "ส่วนลด",          href: "/discounts",    icon: Tag },
   { name: "พนักงาน",         href: "/employees",    icon: Users },

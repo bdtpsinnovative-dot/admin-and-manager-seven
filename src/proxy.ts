@@ -8,14 +8,15 @@ export async function proxy(request: NextRequest) {
 
   // นิยาม Protected Path และ Login Page
   const isLoginPage = path === '/login'
-  const isAdminPath = path.startsWith('/dashboard') || 
-                      path.startsWith('/employees') || 
-                      path.startsWith('/branches') ||
-                      path.startsWith('/inventory') ||
-                      path.startsWith('/lots') ||
-                      path.startsWith('/props') ||
-                      path.startsWith('/CheckRfid') ||
-                      path.startsWith('/rfid-mismatch')
+  const isAdminPath = path.startsWith('/dashboard') ||
+    path.startsWith('/employees') ||
+    path.startsWith('/branches') ||
+    path.startsWith('/inventory') ||
+    path.startsWith('/lots') ||
+    path.startsWith('/props') ||
+    path.startsWith('/CheckRfid') ||
+    path.startsWith('/rfid-mismatch') ||
+    path.startsWith('/web-gallery')
   const isManagerPath = path.startsWith('/manager')
   const isSalePath = path.startsWith('/sale')
   const isProtectedPath = isAdminPath || isManagerPath || isSalePath
@@ -111,4 +112,4 @@ export const config = {
      */
     '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
   ],
-};
+};
