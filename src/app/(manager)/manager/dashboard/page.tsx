@@ -1,222 +1,315 @@
-import React from 'react';
-import { 
-  DollarSign, 
-  ShoppingBag, 
-  Users, 
-  Package, 
-  ArrowUp, 
-  ArrowDown, 
+import {
+  AlertTriangle,
+  Building2,
+  Calendar,
+  CheckCircle2,
+  Clock,
+  DollarSign,
+  FileText,
   MoreHorizontal,
-  Calendar
-} from 'lucide-react';
+  Package,
+  ShoppingBag,
+  TrendingUp,
+  XCircle,
+} from "lucide-react"
+import { getDashboardData } from "../../../../actions/dashboard"
+import { createClient } from "../../../../lib/supabase/server"
 
-export default function DashboardPage() {
+const money = (value: number) =>
+  value.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+const dateTime = (value: string) =>
+  new Date(value).toLocaleDateString("th-TH", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  })
+
+const statusClass = (status: string) => {
+  if (status === "COMPLETED") return "bg-emerald-50 text-emerald-700 border-emerald-200"
+  if (status === "CANCELLED") return "bg-red-50 text-red-700 border-red-200"
+  return "bg-amber-50 text-amber-700 border-amber-200"
+}
+
+const statusLabel = (status: string) => {
+  if (status === "COMPLETED") return "สำเร็จแล้ว"
+  if (status === "CANCELLED") return "ยกเลิกแล้ว"
+  if (status === "PROCESSING") return "กำลังดำเนินการ"
+  return status || "ไม่ระบุสถานะ"
+}
+
+export default async function ManagerDashboardPage() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  // ดึงข้อมูลสาขาของ Manager
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("branch_id, branches(id, branch_name)")
+    .eq("user_id", user?.id || "")
+    .single()
+
+  const branchName = (profile?.branches as any)?.branch_name || "สาขาประจำการ"
   
-  // --- ข้อมูลจำลอง (Mock Data) ---
-  const stats = [
-    {
-      label: "ยอดขายรวม",
-      value: "฿1,259,300",
-      trend: "+12.5%",
-      isUp: true,
-      icon: DollarSign,
-      color: "text-blue-600",
-      bg: "bg-blue-50",
-    },
-    {
-      label: "ออเดอร์ทั้งหมด",
-      value: "452",
-      trend: "+8.2%",
-      isUp: true,
-      icon: ShoppingBag,
-      color: "text-purple-600",
-      bg: "bg-purple-50",
-    },
-    {
-      label: "ลูกค้าใหม่",
-      value: "89",
-      trend: "-2.4%",
-      isUp: false,
-      icon: Users,
-      color: "text-orange-600",
-      bg: "bg-orange-50",
-    },
-    {
-      label: "สินค้าในคลัง",
-      value: "1,240",
-      trend: "+4.1%",
-      isUp: true,
-      icon: Package,
-      color: "text-emerald-600",
-      bg: "bg-emerald-50",
-    },
-  ];
+  // เรียกข้อมูล Dashboard (ระบบจะกรองเฉพาะสาขาของ Manager ให้อัตโนมัติ)
+  const data = await getDashboardData()
+  const maxMonthlySales = Math.max(...data.monthlySales.map((month) => month.amount), 1)
 
-  const recentOrders = [
-    { id: "#ORD-7752", customer: "คุณสมชาย ใจดี", date: "19 Jan 2026", total: "฿12,500", status: "Completed" },
-    { id: "#ORD-7751", customer: "บจก. ไม้ไทย", date: "19 Jan 2026", total: "฿45,000", status: "Processing" },
-    { id: "#ORD-7750", customer: "คุณอารยา สวย", date: "18 Jan 2026", total: "฿8,900", status: "Completed" },
-    { id: "#ORD-7749", customer: "ร้านกาแฟอินดี้", date: "18 Jan 2026", total: "฿22,000", status: "Pending" },
-    { id: "#ORD-7748", customer: "คุณวิชัย", date: "17 Jan 2026", total: "฿5,500", status: "Cancelled" },
-  ];
-
-  const topProducts = [
-    { name: "ไม้ประดู่ แผ่นใหญ่ (Top Grade)", sales: "120 ชิ้น", price: "฿15,000" },
-    { name: "ไม้มะค่า (Slab)", sales: "85 ชิ้น", price: "฿8,500" },
-    { name: "ไม้สักทอง (ขาโต๊ะ)", sales: "64 ชิ้น", price: "฿4,200" },
-    { name: "น้ำยาเคลือบไม้ (Wood Oil)", sales: "210 กระป๋อง", price: "฿850" },
-  ];
-
-  // Helper สำหรับสี Status Badge
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'Completed': return 'bg-green-100 text-green-700';
-      case 'Processing': return 'bg-blue-100 text-blue-700';
-      case 'Pending': return 'bg-yellow-100 text-yellow-700';
-      case 'Cancelled': return 'bg-red-100 text-red-700';
-      default: return 'bg-slate-100 text-slate-700';
-    }
-  };
+  // คำนวณยอดขายเฉลี่ยต่อบิล
+  const avgPerBill = data.summary.billCount > 0
+    ? data.summary.netSales / data.summary.billCount
+    : 0
 
   return (
-    <div className="p-8 space-y-8 font-sans">
-      
-      {/* --- Header --- */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800">Dashboard</h1>
-          <p className="text-slate-500 text-sm">ภาพรวมธุรกิจประจำวันที่ 19 ม.ค. 2026</p>
-        </div>
-        <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl border border-slate-200 shadow-sm text-sm text-slate-600 cursor-pointer hover:bg-slate-50">
-           <Calendar className="w-4 h-4" />
-           <span>This Month</span>
-           <ArrowDown className="w-3 h-3 ml-2" />
-        </div>
-      </div>
-
-      {/* --- 1. KPI Stats Cards --- */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {stats.map((stat, idx) => (
-          <div key={idx} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md transition-shadow">
-            <div className="flex justify-between items-start">
-              <div>
-                <p className="text-sm font-medium text-slate-500 mb-1">{stat.label}</p>
-                <h3 className="text-2xl font-bold text-slate-800">{stat.value}</h3>
-              </div>
-              <div className={`p-3 rounded-xl ${stat.bg} ${stat.color}`}>
-                <stat.icon className="w-6 h-6" />
-              </div>
-            </div>
-            <div className="mt-4 flex items-center text-xs font-medium">
-              <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full ${stat.isUp ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
-                {stat.isUp ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}
-                {stat.trend}
-              </span>
-              <span className="ml-2 text-slate-400">จากเดือนที่แล้ว</span>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* --- 2. Charts & Top Products --- */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+    <div className="min-h-screen bg-[#F4F7F9] p-4 font-sans md:p-8">
+      <div className="mx-auto max-w-[1600px] space-y-6">
         
-        {/* Sales Overview Chart (จำลองด้วย CSS) */}
-        <div className="lg:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-           <div className="flex justify-between items-center mb-6">
-             <h3 className="font-bold text-slate-800 text-lg">สถิติยอดขาย (Sales Overview)</h3>
-             <button className="text-slate-400 hover:text-slate-600"><MoreHorizontal className="w-5 h-5"/></button>
-           </div>
-           
-           {/* Mock Bar Chart */}
-           <div className="h-64 flex items-end justify-between gap-2 px-2">
-              {[40, 65, 45, 80, 55, 90, 70, 85, 60, 75, 50, 95].map((h, i) => (
-                <div key={i} className="w-full flex flex-col justify-end items-center group cursor-pointer">
-                   <div 
-                    className="w-full bg-blue-100 rounded-t-lg group-hover:bg-blue-600 transition-all relative" 
-                    style={{ height: `${h}%` }}
-                   >
-                     {/* Tooltip on hover */}
-                     <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-[10px] py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
-                        ฿{h}k
-                     </div>
-                   </div>
+        {/* --- Header --- */}
+        <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
+          <div>
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-lg bg-blue-100/80 text-blue-800 text-xs font-bold mb-2">
+              <Building2 className="w-3.5 h-3.5" />
+              <span>{branchName}</span>
+            </div>
+            <h1 className="text-2xl font-black text-slate-800">Manager Dashboard</h1>
+            <p className="mt-1 text-sm text-slate-500">
+              ภาพรวมยอดขายและข้อมูลการดำเนินงานเฉพาะสาขา {branchName}
+            </p>
+          </div>
+          <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-600 shadow-sm">
+            <Calendar className="h-4 w-4 text-blue-600" />
+            <span>ข้อมูลสะสมทั้งหมด</span>
+          </div>
+        </div>
+
+        {/* --- Error Banner (ถ้ามี) --- */}
+        {data.error && (
+          <div className="flex items-center gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">
+            <AlertTriangle className="h-5 w-5 shrink-0" />
+            <span>{data.error}</span>
+          </div>
+        )}
+
+        {/* --- 1. KPI Stats Cards (4 การ์ดหลัก) --- */}
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          
+          {/* การ์ด 1: ยอดขายสุทธิ */}
+          <div className="rounded-2xl bg-slate-900 p-5 text-white shadow-sm hover:shadow-md transition-shadow">
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-400">ยอดขายสุทธิสาขา</p>
+            <p className="mt-2 text-3xl font-black">฿{money(data.summary.netSales)}</p>
+            <p className="mt-3 text-xs text-slate-400">เฉพาะบิลขายสำเร็จในสาขา {branchName}</p>
+          </div>
+
+          {/* การ์ด 2: ใบขายสำเร็จ */}
+          <div className="rounded-2xl border border-blue-100 bg-white p-5 shadow-sm hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-400">ใบขายที่สำเร็จ</p>
+              <FileText className="h-5 w-5 text-blue-500" />
+            </div>
+            <p className="mt-2 text-3xl font-black text-slate-800">{data.summary.billCount.toLocaleString()} บิล</p>
+            <p className="mt-3 text-xs text-slate-400">บิลที่ถูกนำมาคำนวณยอดสุทธิ</p>
+          </div>
+
+          {/* การ์ด 3: บิลยกเลิก */}
+          <div className="rounded-2xl border border-red-100 bg-white p-5 shadow-sm hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-bold uppercase tracking-wider text-red-500">บิลยกเลิก</p>
+              <XCircle className="h-5 w-5 text-red-500" />
+            </div>
+            <p className="mt-2 text-3xl font-black text-red-600">{data.summary.cancelledCount.toLocaleString()} บิล</p>
+            <p className="mt-3 text-xs text-slate-400">มูลค่ายกเลิกรวม ฿{money(data.summary.cancelledSales)}</p>
+          </div>
+
+          {/* การ์ด 4: ยอดขายเฉลี่ยต่อบิล */}
+          <div className="rounded-2xl border border-emerald-100 bg-white p-5 shadow-sm hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-400">ยอดเฉลี่ยต่อบิล (Avg Ticket)</p>
+              <TrendingUp className="h-5 w-5 text-emerald-500" />
+            </div>
+            <p className="mt-2 text-3xl font-black text-emerald-600">฿{money(avgPerBill)}</p>
+            <p className="mt-3 text-xs text-slate-400">ยอดขายเฉลี่ยต่อ 1 ใบเสร็จ</p>
+          </div>
+        </div>
+
+        {/* --- 2. กราฟยอดขายรายเดือน & สินค้าขายดี Top 5 --- */}
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+          
+          {/* กราฟแนวโน้มยอดขาย */}
+          <div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm xl:col-span-2">
+            <div className="mb-6 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-black text-slate-800">แนวโน้มยอดขายรายเดือน</h2>
+                <p className="mt-1 text-xs text-slate-400">ยอดสุทธิของสาขา {branchName} ย้อนหลัง 12 เดือน</p>
+              </div>
+              <MoreHorizontal className="h-5 w-5 text-slate-300" />
+            </div>
+            <div className="flex h-64 items-end gap-2 sm:gap-3">
+              {data.monthlySales.map((month) => (
+                <div key={month.label} className="group flex h-full flex-1 flex-col items-center justify-end gap-2">
+                  <div className="relative flex h-full w-full items-end">
+                    <div
+                      className="w-full rounded-t-lg bg-blue-100 transition-colors group-hover:bg-blue-600"
+                      style={{ height: `${Math.max((month.amount / maxMonthlySales) * 100, month.amount ? 4 : 1)}%` }}
+                    >
+                      <span className="absolute -top-8 left-1/2 hidden -translate-x-1/2 whitespace-nowrap rounded bg-slate-800 px-2 py-1 text-[10px] font-bold text-white group-hover:block z-10">
+                        ฿{money(month.amount)}
+                      </span>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-bold text-slate-400">{month.label}</span>
                 </div>
               ))}
-           </div>
-           {/* X-Axis Label */}
-           <div className="flex justify-between mt-2 text-xs text-slate-400 uppercase font-medium px-1">
-              {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map(m => (
-                <span key={m}>{m}</span>
-              ))}
-           </div>
-        </div>
+            </div>
+          </div>
 
-        {/* Top Products */}
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-           <h3 className="font-bold text-slate-800 text-lg mb-4">สินค้าขายดี (Top Products)</h3>
-           <div className="space-y-4">
-             {topProducts.map((product, i) => (
-               <div key={i} className="flex items-center justify-between p-3 hover:bg-slate-50 rounded-xl transition-colors cursor-pointer border border-transparent hover:border-slate-100">
-                  <div className="flex items-center gap-3">
-                     <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center text-slate-400 font-bold text-xs">
-                        {i + 1}
-                     </div>
-                     <div>
-                        <p className="text-sm font-bold text-slate-800 line-clamp-1">{product.name}</p>
-                        <p className="text-xs text-slate-500">{product.sales} sold</p>
-                     </div>
+          {/* สรุปสินค้าขายดี 5 อันดับแรก */}
+          <div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
+            <h2 className="text-lg font-black text-slate-800">สินค้าขายดีในสาขา</h2>
+            <p className="mt-1 text-xs text-slate-400">เรียงตามยอดขายสุทธิสูงสุด</p>
+            <div className="mt-5 space-y-4">
+              {data.products.slice(0, 5).map((product, index) => (
+                <div key={product.key} className="flex items-center gap-3">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-xs font-black text-slate-500">
+                    {index + 1}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-bold text-slate-700">{product.name}</p>
+                    <p className="text-[11px] text-slate-400">ขายได้ {product.quantity.toLocaleString()} ชิ้น ({product.billCount} บิล)</p>
+                    <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-100">
+                      <div
+                        className="h-full rounded-full bg-blue-500"
+                        style={{
+                          width: `${data.products[0]?.sales ? (product.sales / data.products[0].sales) * 100 : 0}%`,
+                        }}
+                      />
+                    </div>
                   </div>
-                  <span className="text-sm font-semibold text-blue-600">{product.price}</span>
-               </div>
-             ))}
-           </div>
-           <button className="w-full mt-4 py-2 text-sm font-medium text-slate-500 hover:text-slate-800 border-t border-slate-100 transition-colors">
-              ดูทั้งหมด
-           </button>
+                  <span className="text-xs font-black text-blue-600 whitespace-nowrap">฿{money(product.sales)}</span>
+                </div>
+              ))}
+              {data.products.length === 0 && (
+                <p className="py-12 text-center text-sm text-slate-400">ยังไม่มีข้อมูลยอดขายสินค้าในสาขานี้</p>
+              )}
+            </div>
+          </div>
         </div>
-      </div>
 
-      {/* --- 3. Recent Orders Table --- */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-         <div className="p-6 border-b border-slate-100 flex justify-between items-center">
-            <h3 className="font-bold text-slate-800 text-lg">ออเดอร์ล่าสุด (Recent Orders)</h3>
-            <button className="text-sm text-blue-600 hover:underline font-medium">ดูทั้งหมด</button>
-         </div>
-         <div className="overflow-x-auto">
-           <table className="w-full text-left">
-             <thead className="bg-slate-50 text-slate-500 text-xs uppercase font-semibold">
-               <tr>
-                 <th className="px-6 py-4">Order ID</th>
-                 <th className="px-6 py-4">ลูกค้า</th>
-                 <th className="px-6 py-4">วันที่</th>
-                 <th className="px-6 py-4">ยอดรวม</th>
-                 <th className="px-6 py-4">สถานะ</th>
-                 <th className="px-6 py-4 text-right">Action</th>
-               </tr>
-             </thead>
-             <tbody className="divide-y divide-slate-100">
-               {recentOrders.map((order, i) => (
-                 <tr key={i} className="hover:bg-slate-50 transition-colors cursor-pointer">
-                   <td className="px-6 py-4 font-medium text-slate-800">{order.id}</td>
-                   <td className="px-6 py-4 text-slate-600">{order.customer}</td>
-                   <td className="px-6 py-4 text-slate-500 text-sm">{order.date}</td>
-                   <td className="px-6 py-4 font-medium text-slate-800">{order.total}</td>
-                   <td className="px-6 py-4">
-                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ${getStatusColor(order.status)}`}>
-                       {order.status}
-                     </span>
-                   </td>
-                   <td className="px-6 py-4 text-right">
-                     <button className="text-slate-400 hover:text-blue-600"><MoreHorizontal className="w-5 h-5"/></button>
-                   </td>
-                 </tr>
-               ))}
-             </tbody>
-           </table>
-         </div>
-      </div>
+        {/* --- 3. ตารางสรุปยอดขายรายสินค้า (Product Sales Breakdown) --- */}
+        <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
+          <div className="flex flex-col justify-between gap-2 border-b border-slate-100 p-6 md:flex-row md:items-center">
+            <div>
+              <h2 className="text-lg font-black text-slate-800">สรุปยอดขายแยกตามสินค้า</h2>
+              <p className="mt-1 text-xs text-slate-400">รายการสินค้าทั้งหมดที่ขายได้ในสาขา {branchName}</p>
+            </div>
+            <span className="inline-flex items-center gap-1 text-xs font-bold text-blue-600">
+              <Package className="h-4 w-4" /> ทั้งหมด {data.products.length} รายการ
+            </span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-[720px] w-full text-left text-sm">
+              <thead className="bg-slate-50 text-[11px] uppercase tracking-wider text-slate-500">
+                <tr>
+                  <th className="px-5 py-4">สินค้า</th>
+                  <th className="px-5 py-4 text-right">จำนวนที่ขายได้</th>
+                  <th className="px-5 py-4 text-right">จำนวนบิล</th>
+                  <th className="px-5 py-4 text-right">ยอดขายรวม</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {data.products.map((product, index) => (
+                  <tr key={product.key} className="transition-colors hover:bg-slate-50">
+                    <td className="px-5 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+                          {product.imageUrl ? (
+                            <img src={product.imageUrl} alt={product.name} className="h-full w-full object-contain p-1" />
+                          ) : (
+                            <Package className="h-5 w-5 text-slate-300" />
+                          )}
+                        </div>
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-xs font-black text-slate-500">
+                          {index + 1}
+                        </span>
+                        <div>
+                          <p className="font-bold text-slate-800">{product.name}</p>
+                          <p className="text-[11px] text-slate-400">SKU: {product.sku || "-"}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-5 py-4 text-right font-bold text-slate-700">
+                      {product.quantity.toLocaleString()} ชิ้น
+                    </td>
+                    <td className="px-5 py-4 text-right text-slate-500">
+                      {product.billCount.toLocaleString()} บิล
+                    </td>
+                    <td className="px-5 py-4 text-right font-black text-emerald-600">
+                      ฿{money(product.sales)}
+                    </td>
+                  </tr>
+                ))}
+                {data.products.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="px-5 py-16 text-center text-slate-400">
+                      ยังไม่มีข้อมูลสินค้าที่ขายในสาขานี้
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
 
+        {/* --- 4. ตารางใบขายล่าสุดของสาขา (Recent Branch Orders) --- */}
+        <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
+          <div className="flex flex-col justify-between gap-2 border-b border-slate-100 p-6 md:flex-row md:items-center">
+            <div>
+              <h2 className="text-lg font-black text-slate-800">ใบขายล่าสุดในสาขา</h2>
+              <p className="mt-1 text-xs text-slate-400">รายการใบขายที่เกิดขึ้นในสาขา {branchName}</p>
+            </div>
+            <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-600">
+              <CheckCircle2 className="h-4 w-4" /> อัปเดตข้อมูลจริง
+            </span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-[760px] w-full text-left text-sm">
+              <thead className="bg-slate-50 text-[11px] uppercase tracking-wider text-slate-500">
+                <tr>
+                  <th className="px-5 py-4">เลขที่ใบขาย</th>
+                  <th className="px-5 py-4">สาขา</th>
+                  <th className="px-5 py-4">วันที่ออกบิล</th>
+                  <th className="px-5 py-4 text-right">ยอดรวม</th>
+                  <th className="px-5 py-4 text-center">สถานะ</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {data.recentOrders.map((order) => (
+                  <tr key={order.id} className="transition-colors hover:bg-slate-50">
+                    <td className="px-5 py-4 font-black text-slate-800">{order.orderCode}</td>
+                    <td className="px-5 py-4 font-bold text-blue-600">{order.branchName}</td>
+                    <td className="px-5 py-4 text-xs text-slate-500">{dateTime(order.createdAt)}</td>
+                    <td className="px-5 py-4 text-right font-black text-slate-800">฿{money(order.totalAmount)}</td>
+                    <td className="px-5 py-4 text-center">
+                      <span className={`inline-flex rounded-full border px-3 py-1 text-[10px] font-black ${statusClass(order.status)}`}>
+                        {statusLabel(order.status)}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+                {data.recentOrders.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="px-5 py-16 text-center text-slate-400">
+                      ยังไม่มีใบขายในสาขานี้
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
     </div>
-  );
-}
+  )
+}

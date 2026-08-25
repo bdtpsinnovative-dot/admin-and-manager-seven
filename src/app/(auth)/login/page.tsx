@@ -17,37 +17,25 @@ export default function LoginPage() {
     setError(null)
 
     const formData = new FormData()
-    formData.append('email', email)
+    formData.append('email', email.trim())
     formData.append('password', password)
-
-    let emailStr = email
-    if (emailStr && !emailStr.includes('@')) {
-      emailStr = `${emailStr.trim()}@gmail.com`
-      formData.set('email', emailStr)
-    }
 
     try {
       const result = await login(formData)
       
       if (result?.error) {
         setError(result.error)
-        setLoading(false) // ❌ ปิดโหลดแค่ตอนพัง (เพื่อให้ผู้ใช้แก้ไขข้อมูลต่อได้โดยไม่ต้องกรอกใหม่)
+        setLoading(false)
       } else if (result?.success) {
-        // ✅ 2. ล็อกอินผ่านแล้ว ไม่ต้องสั่ง setLoading(false) ให้มันโหลดค้างไว้เลย!
-        // 🌟 3. เพิ่มหน่วงเวลาเล็กน้อย (500ms) ให้คนใช้เห็น Spinner หมุนชัดเจนว่าระบบกำลังทำงาน
-        setTimeout(() => {
-          router.refresh() // รีเฟรชสถานะเผื่อเบราว์เซอร์จำค่าเก่า
-          const role = result.role
-          if (role === 'admin') {
-            router.push('/dashboard')
-          } else if (role === 'manager') {
-            router.push('/manager/dashboard')
-          } else if (role === 'sale') {
-            router.push('/sale/pos')
-          } else {
-            router.push('/dashboard')
-          }
-        }, 500)
+        // ✅ นำทางด้วย window.location.href เพื่อให้โหลด Cookie เซสชันเต็มรูปแบบ ไม่เด้งกลับ
+        const role = result.role
+        let targetUrl = '/dashboard'
+        if (role === 'manager') {
+          targetUrl = '/manager/dashboard'
+        } else if (role === 'sale') {
+          targetUrl = '/sale/pos'
+        }
+        window.location.href = targetUrl
       }
     } catch (err) {
       setError("ไม่สามารถเชื่อมต่ออินเทอร์เน็ตได้ กรุณาตรวจสอบการเชื่อมต่อของคุณ")

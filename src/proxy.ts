@@ -1,10 +1,12 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
+const COOKIE_MAX_AGE = 60 * 60 * 24 * 400 // 400 วัน (ค่าสูงสุดของ Browser / รีเซ็ตยืดเวลาให้ใหม่ทุกครั้งที่เปิดเว็บ)
+
 export async function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname
 
-  // --- นิยาม Path ---
+  // นิยาม Protected Path และ Login Page
   const isLoginPage = path === '/login'
   const isAdminPath = path.startsWith('/dashboard') || 
                       path.startsWith('/employees') || 
@@ -18,7 +20,7 @@ export async function proxy(request: NextRequest) {
   const isSalePath = path.startsWith('/sale')
   const isProtectedPath = isAdminPath || isManagerPath || isSalePath
 
-  // ถ้าไม่ใช่ path ที่ต้อง protect (เช่น API, public pages) → ปล่อยผ่านทันที (ไม่ต้องเชื่อมต่อ Supabase)
+  // ถ้าไม่ใช่ path ที่ต้อง protect และไม่ใช่หน้า login → ปล่อยผ่านทันที
   if (!isProtectedPath && !isLoginPage) {
     return NextResponse.next()
   }
@@ -27,78 +29,73 @@ export async function proxy(request: NextRequest) {
     request: { headers: request.headers },
   })
 
-  // ✅ ใช้ Env ฝั่ง Server
+  // ✅ ใช้งาน Supabase SSR Client สำหรับ Proxy / Middleware
   const supabase = createServerClient(
     process.env.SUPABASE_URL!,
     process.env.SUPABASE_ANON_KEY!,
     {
+      cookieOptions: {
+        maxAge: COOKIE_MAX_AGE,
+        sameSite: 'lax',
+        path: '/',
+      },
       cookies: {
-        getAll() { return request.cookies.getAll() },
+        getAll() {
+          return request.cookies.getAll()
+        },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => request.cookies.set(name, value))
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
           response = NextResponse.next({ request: { headers: request.headers } })
-          cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options))
+          cookiesToSet.forEach(({ name, value, options }) =>
+            response.cookies.set(name, value, {
+              ...options,
+              maxAge: COOKIE_MAX_AGE,
+              sameSite: 'lax',
+              path: '/',
+            })
+          )
         },
       },
     }
   )
 
+  // ดึง User ผ่าน getUser() เพื่อ Refresh Token อัตโนมัติในเบื้องหลัง
   const { data: { user } } = await supabase.auth.getUser()
 
-  // 🛠️ Helper สำหรับ Redirect โดยรักษาคุกกี้ (ป้องกันเซสชันหลุดเมื่อถูก Redirect)
-  const redirect = (targetPath: string) => {
+  // 🔄 Rolling Session: ยืดอายุคุกกี้ Token ทุกครั้งที่มีการใช้งานเว็บ เพื่อไม่ให้มีวันหมดอายุ
+  if (user) {
+    request.cookies.getAll().forEach((cookie) => {
+      if (cookie.name.includes('auth-token') || cookie.name.startsWith('sb-')) {
+        response.cookies.set(cookie.name, cookie.value, {
+          maxAge: COOKIE_MAX_AGE,
+          sameSite: 'lax',
+          path: '/',
+        })
+      }
+    })
+  }
+
+  // 🛠️ Helper สำหรับ Redirect โดยรักษาคุกกี้ทั้งหมดครบถ้วน ไม่ให้เซสชันหลุด
+  const redirectWithCookies = (targetPath: string) => {
     const redirectResponse = NextResponse.redirect(new URL(targetPath, request.url))
-    // ดึงค่า Set-Cookie headers ทั้งหมดที่มีทั้งค่าและ attribute ครบถ้วน (เช่น Max-Age, HttpOnly, Secure)
-    const setCookies = response.headers.getSetCookie()
-    setCookies.forEach((cookieStr) => {
-      redirectResponse.headers.append('set-cookie', cookieStr)
+    response.cookies.getAll().forEach((cookie) => {
+      redirectResponse.cookies.set(cookie.name, cookie.value, {
+        maxAge: COOKIE_MAX_AGE,
+        sameSite: 'lax',
+        path: '/',
+      })
     })
     return redirectResponse
   }
 
-  // 1. ถ้ายังไม่ Login แต่จะเข้าหน้าหวงห้าม -> ไป Login
+  // 1. ถ้ายังไม่ Login แต่จะเข้าหน้าที่ต้องล็อกอิน -> ส่งไปหน้า /login
   if (!user && isProtectedPath) {
-    return redirect('/login')
+    return redirectWithCookies('/login')
   }
 
-  // 2. ถ้า Login แล้ว
-  if (user) {
-    // ดึง Role
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('user_id', user.id)
-      .single()
-    
-    const role = profile?.role
-
-    // ✅ ถ้า Login แล้วแต่อยู่หน้า Login -> ดีดไปหน้า Dashboard ตาม Role
-    if (isLoginPage) {
-        if (role === 'admin') return redirect('/dashboard')
-        if (role === 'manager') return redirect('/manager/dashboard')
-        if (role === 'sale') return redirect('/sale/pos')
-    }
-
-    // ⛔ Admin Path Check
-    if (isAdminPath && role !== 'admin') {
-      if (role === 'manager') return redirect('/manager/dashboard')
-      if (role === 'sale') return redirect('/sale/pos')
-      return redirect('/login')
-    }
-
-    // ⛔ Manager Path Check
-    if (isManagerPath && role !== 'manager') {
-       if (role === 'admin') return redirect('/dashboard') 
-       if (role === 'sale') return redirect('/sale/pos')
-       return redirect('/login')
-    }
-
-    // ⛔ Sale Path Check
-    if (isSalePath && role !== 'sale') {
-       if (role === 'admin') return redirect('/dashboard')
-       if (role === 'manager') return redirect('/manager/dashboard')
-       return redirect('/login')
-    }
+  // 2. ถ้า Login แล้วแต่อยู่หน้า /login -> ปล่อยให้ผ่านไปหน้าแรกหรือ Layout จัดการ
+  if (user && isLoginPage) {
+    return redirectWithCookies('/dashboard')
   }
 
   return response
@@ -114,4 +111,4 @@ export const config = {
      */
     '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
   ],
-};
+};

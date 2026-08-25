@@ -1,7 +1,26 @@
-// src/app/page.tsx
+import { createClient } from '../lib/supabase/server';
 import { redirect } from 'next/navigation';
 
-export default function RootPage() {
-  // เมื่อใครเข้าหน้าแรกสุด ให้ดีดไปหน้า Login ทันที
-  redirect('/login');
-}
+export default async function RootPage() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect('/login');
+  }
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('user_id', user.id)
+    .single();
+
+  const role = profile?.role;
+  if (role === 'manager') {
+    redirect('/manager/dashboard');
+  } else if (role === 'sale') {
+    redirect('/sale/pos');
+  }
+
+  redirect('/dashboard');
+}

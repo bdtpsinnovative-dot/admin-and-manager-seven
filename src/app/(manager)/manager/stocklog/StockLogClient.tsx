@@ -1,9 +1,9 @@
 "use client"
 
-import React, { useState, useCallback } from "react"
+import React, { useState, useCallback, useEffect } from "react"
 import {
   History, Search, RefreshCcw, ChevronLeft, ChevronRight,
-  ArrowUpCircle, ArrowDownCircle, Loader2, AlertCircle, TrendingDown, Package
+  ArrowUpCircle, ArrowDownCircle, Loader2, AlertCircle, TrendingDown, Package, X
 } from "lucide-react"
 import { getManagerStockLog, type MovementWithBalance } from "@/actions/stockmovement"
 
@@ -62,6 +62,7 @@ export default function StockLogClient({ branchId, branchName }: Props) {
   const [loading, setLoading] = useState(false)
   const [fetched, setFetched] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [previewImage, setPreviewImage] = useState<string | null>(null)
 
   const [search, setSearch] = useState("")
   const [dateFrom, setDateFrom] = useState("")
@@ -75,7 +76,7 @@ export default function StockLogClient({ branchId, branchName }: Props) {
     setError(null)
     const res = await getManagerStockLog({
       branchId,
-      productSearch: search || undefined,
+      productSearch: search.trim() || undefined,
       dateFrom: dateFrom || undefined,
       dateTo: dateTo || undefined,
       page: p,
@@ -92,8 +93,29 @@ export default function StockLogClient({ branchId, branchName }: Props) {
     setLoading(false)
   }, [branchId, search, dateFrom, dateTo])
 
+  // โหลดข้อมูลอัตโนมัติตอนเปิดหน้าแรก
+  useEffect(() => {
+    fetchData(1)
+  }, [])
+
   const handleSearch = () => { setPage(1); fetchData(1) }
-  const handleReset  = () => { setSearch(""); setDateFrom(""); setDateTo(""); setPage(1); setFetched(false); setMovements([]) }
+  const handleReset  = () => {
+    setSearch("")
+    setDateFrom("")
+    setDateTo("")
+    setPage(1)
+    setLoading(true)
+    getManagerStockLog({ branchId, page: 1 }).then(res => {
+      if (!res.error) {
+        setMovements(res.data)
+        setTotalCount(res.totalCount)
+        setTotalIn(res.totalIn)
+        setTotalOut(res.totalOut)
+        setFetched(true)
+      }
+      setLoading(false)
+    })
+  }
 
   // group by batch_ref for "รอบ" display
   const batchGroups = movements.reduce<Map<string, MovementWithBalance[]>>((acc, m) => {
@@ -273,10 +295,35 @@ export default function StockLogClient({ branchId, branchName }: Props) {
                                   <div className="text-[9px] font-mono text-blue-400 mt-0.5">{m.batch_ref}</div>
                                 )}
                               </td>
-                              {/* สินค้า */}
+                              {/* สินค้า พร้อมรูปภาพ */}
                               <td className="px-5 py-3">
-                                <div className="font-bold text-slate-800 text-sm line-clamp-1">{m.products?.name ?? "—"}</div>
-                                <div className="text-[10px] font-mono text-slate-400">{m.products?.sku || m.products?.barcode || ""}</div>
+                                <div className="flex items-center gap-3">
+                                  <div
+                                    onClick={() => m.products?.image_url && setPreviewImage(m.products.image_url)}
+                                    className={`flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50 shadow-sm ${
+                                      m.products?.image_url ? "cursor-pointer hover:border-blue-400 hover:shadow-md transition-all" : ""
+                                    }`}
+                                  >
+                                    {m.products?.image_url ? (
+                                      <img
+                                        src={m.products.image_url}
+                                        alt={m.products.name || "Product"}
+                                        className="h-full w-full object-contain p-1 transition-transform hover:scale-110"
+                                        loading="lazy"
+                                      />
+                                    ) : (
+                                      <Package className="h-5 w-5 text-slate-300" />
+                                    )}
+                                  </div>
+                                  <div className="min-w-0 max-w-[320px]">
+                                    <div className="font-bold text-slate-800 text-sm line-clamp-1">
+                                      {m.products?.name ?? "—"}
+                                    </div>
+                                    <div className="text-[11px] font-mono text-slate-400 mt-0.5">
+                                      {m.products?.sku || m.products?.barcode || "-"}
+                                    </div>
+                                  </div>
+                                </div>
                               </td>
                               {/* ประเภท */}
                               <td className="px-5 py-3">
@@ -334,6 +381,33 @@ export default function StockLogClient({ branchId, branchName }: Props) {
               >
                 ถัดไป <ChevronRight className="w-4 h-4" />
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal ดูรูปภาพสินค้าขนาดใหญ่ */}
+      {previewImage && (
+        <div
+          onClick={() => setPreviewImage(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-fadeIn"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative max-w-lg w-full bg-white rounded-3xl p-6 shadow-2xl border border-slate-100 flex flex-col items-center"
+          >
+            <button
+              onClick={() => setPreviewImage(null)}
+              className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full transition"
+            >
+              <X className="w-6 h-6" />
+            </button>
+            <div className="w-full h-80 flex items-center justify-center bg-slate-50 rounded-2xl overflow-hidden mt-2 p-4">
+              <img
+                src={previewImage}
+                alt="Product preview"
+                className="max-h-full max-w-full object-contain"
+              />
             </div>
           </div>
         </div>

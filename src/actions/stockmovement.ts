@@ -135,11 +135,26 @@ export async function getManagerStockLog(params: {
       .eq("branch_id", effectiveBranchId)
       .order("created_at_ts", { ascending: false })
 
-    if (productSearch) {
-      query = query.or(
-        `name.ilike.%${productSearch}%,sku.ilike.%${productSearch}%,barcode.ilike.%${productSearch}%`,
-        { referencedTable: "products" }
-      )
+    if (productSearch && productSearch.trim().length > 0) {
+      const term = productSearch.trim()
+      const { data: matchedProducts } = await supabaseAdmin
+        .from("products")
+        .select("id")
+        .or(`name.ilike.%${term}%,sku.ilike.%${term}%,barcode.ilike.%${term}%`)
+        .limit(300)
+
+      if (matchedProducts && matchedProducts.length > 0) {
+        const productIds = matchedProducts.map((p) => p.id)
+        query = query.in("product_id_bigint", productIds)
+      } else {
+        return {
+          data: [],
+          totalCount: 0,
+          totalIn: 0,
+          totalOut: 0,
+          page,
+        }
+      }
     }
     if (dateFrom) query = query.gte("created_at_ts", dateFrom)
     if (dateTo)   query = query.lte("created_at_ts", dateTo + "T23:59:59+07:00")

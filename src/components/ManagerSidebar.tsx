@@ -78,10 +78,10 @@ export default function ManagerSidebar({ userName, branchName, userAvatar }: Man
       name: "ภาพรวมและหน้าร้าน",
       icon: Store,
       subMenu: [
-        // { name: "ภาพรวม (dashboard)", href: "/manager/dashboard", icon: LayoutDashboard },
+        { name: "แดชบอร์ด (Dashboard)", href: "/manager/dashboard", icon: LayoutDashboard },
         { name: "ขายสินค้า ", href: "/manager/pos", icon: Store },
-        { name: "สต็อกหน้าร้าน ", href: "/manager/publicstock", icon: Box },
         { name: "มอนิเตอร์ค้างส่ง", href: "/manager/vanguard-dispatch", icon: Truck },
+        { name: "สต็อกหน้าร้าน ", href: "/manager/publicstock", icon: Box },
         { name: "แสดงยอดนับ", href: "/manager/initial-count", icon: ClipboardList },
         { name: "ตรวจสอบยอดขาย", href: "/manager/sales-check", icon: UserCheck },
       ]
