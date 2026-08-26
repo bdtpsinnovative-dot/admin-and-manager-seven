@@ -12,5 +12,5 @@ export default async function LotDetailPage({ params }: Props) {
   const data = await getLotDetail(lotId)
   if (!data) notFound()
 
-  return <LotDetailClient lot={data.lot} items={data.items} />
+  return <LotDetailClient lot={data.lot} items={data.items} rfidTags={data.rfid_tags || []} />
 }

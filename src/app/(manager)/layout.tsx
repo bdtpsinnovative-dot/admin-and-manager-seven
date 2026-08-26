@@ -1,4 +1,5 @@
 import { createClient } from "../../lib/supabase/server"
+import { supabaseAdmin } from "../../lib/supabase/admin"
 import { redirect } from "next/navigation"
 import ManagerSidebar from "../../components/ManagerSidebar"
 import MaintenanceGuard from "../../components/MaintenanceGuard"
@@ -13,7 +14,7 @@ export default async function ManagerLayout({ children }: { children: React.Reac
   }
 
   // 2. Fetch Profile
-  const { data: profile } = await supabase
+  const { data: profile } = await supabaseAdmin
     .from('profiles')
     .select(`
       full_name,
@@ -22,7 +23,7 @@ export default async function ManagerLayout({ children }: { children: React.Reac
       branches ( branch_name )
     `)
     .eq('user_id', user.id)
-    .single()
+    .maybeSingle()
 
   // 3. ✅ Logic to build the image URL (Same as Admin)
   let avatarFullUrl = "";

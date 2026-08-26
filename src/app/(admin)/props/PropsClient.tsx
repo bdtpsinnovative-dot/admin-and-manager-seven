@@ -255,7 +255,7 @@ export default function PropsClient({ products }: Props) {
       }
       
       .photo-cell {
-        flex: 1.4;
+        flex: 1.5;
         height: 100%;
         background: #fff;
         display: flex;
@@ -272,7 +272,7 @@ export default function PropsClient({ products }: Props) {
       }
       
       .codes-cell {
-        flex: 1;
+        flex: 0.85;
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -289,7 +289,7 @@ export default function PropsClient({ products }: Props) {
         justify-content: center;
         flex: 1;
         width: 100%;
-        padding: 1mm;
+        padding: 2mm;
         overflow: hidden;
       }
       
@@ -299,8 +299,8 @@ export default function PropsClient({ products }: Props) {
       
       .qr-container-half img {
         width: 100%;
-        max-width: 20mm;
-        max-height: 20mm;
+        max-width: 14mm;
+        max-height: 14mm;
         object-fit: contain;
       }
       

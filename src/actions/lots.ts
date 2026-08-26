@@ -42,6 +42,23 @@ export interface LotItem {
   } | null
 }
 
+export interface LotRfidTag {
+  id: number
+  product_id: number
+  rfid: string
+  status: string
+  branch_id: number
+  created_at: string
+  lot_id: number | null
+  products: {
+    id: number
+    name: string
+    sku: string | null
+    barcode: string | null
+    image_url: string | null
+  } | null
+}
+
 export interface Branch {
   id: number
   branch_name: string
@@ -129,9 +146,17 @@ export async function getLotDetail(lotId: number) {
     .eq("lot_id", lotId)
     .order("id")
 
+  const { data: rfidTags } = await supabaseAdmin
+    .from("product_rfid_tags")
+    .select(`id, product_id, rfid, status, branch_id, created_at, lot_id,
+             products:product_id (id, name, sku, barcode, image_url)`)
+    .eq("lot_id", lotId)
+    .order("created_at", { ascending: false })
+
   return {
     lot: lot as unknown as StockLot,
     items: (items ?? []) as unknown as LotItem[],
+    rfid_tags: (rfidTags ?? []) as unknown as LotRfidTag[],
   }
 }
 
@@ -251,6 +276,75 @@ export async function updateLotReceived(
 
   revalidatePath(`/lots/${lotId}`)
   revalidatePath("/lots")
+}
+
+// ---- Sync Lot Received with RFID Tags (ปรับยอดให้ตรงกับจำนวน RFID Tag จริงอัตโนมัติ) ----
+
+export async function syncLotWithRfidTags(lotId: number) {
+  // 1. ดึงข้อมูล RFID Tags ทั้งหมดของลอตนี้มานับจำนวนแยกตามสินค้า
+  const { data: tags } = await supabaseAdmin
+    .from("product_rfid_tags")
+    .select("product_id, rfid")
+    .eq("lot_id", lotId)
+
+  const tagCounts: Record<number, number> = {}
+  for (const t of tags ?? []) {
+    tagCounts[t.product_id] = (tagCounts[t.product_id] || 0) + 1
+  }
+
+  // 2. อัปเดตตาราง stock_lot_items ให้ received_qty ตรงกับจำนวน Tag เป๊ะๆ
+  const { data: items } = await supabaseAdmin
+    .from("stock_lot_items")
+    .select("id, product_id, expected_qty, received_qty")
+    .eq("lot_id", lotId)
+
+  for (const item of items ?? []) {
+    const actualTagCount = tagCounts[item.product_id] ?? 0
+    await supabaseAdmin
+      .from("stock_lot_items")
+      .update({ received_qty: actualTagCount, updated_at: new Date().toISOString() })
+      .eq("id", item.id)
+  }
+
+  // 3. อัปเดตประวัติ stock_movements ให้ตรงกัน
+  for (const [prodId, count] of Object.entries(tagCounts)) {
+    await supabaseAdmin
+      .from("stock_movements")
+      .update({ qty: count })
+      .eq("lot_id", lotId)
+      .eq("product_id_bigint", Number(prodId))
+      .eq("type", "IN")
+  }
+
+  // 4. อัปเดตตาราง stock_receiving ให้ตรงกัน
+  for (const [prodId, count] of Object.entries(tagCounts)) {
+    await supabaseAdmin
+      .from("stock_receiving")
+      .update({ qty: count, updated_at: new Date().toISOString() })
+      .eq("lot_id", lotId)
+      .eq("product_id", Number(prodId))
+  }
+
+  // 5. คำนวณ status ลอตใหม่
+  const { data: updatedItems } = await supabaseAdmin
+    .from("stock_lot_items")
+    .select("expected_qty, received_qty")
+    .eq("lot_id", lotId)
+
+  if (updatedItems && updatedItems.length > 0) {
+    const anyReceived = updatedItems.some(i => Number(i.received_qty) > 0)
+    const allComplete = updatedItems.every(i => Number(i.received_qty) >= Number(i.expected_qty))
+    const newStatus: LotStatus = allComplete ? "COMPLETED" : anyReceived ? "PARTIAL" : "SENT"
+
+    await supabaseAdmin
+      .from("stock_lots")
+      .update({ status: newStatus })
+      .eq("id", lotId)
+  }
+
+  revalidatePath(`/lots/${lotId}`)
+  revalidatePath("/lots")
+  return { ok: true, syncedItems: items?.length ?? 0 }
 }
 
 // ---- Get Lots for Manager's Branch (SENT / PARTIAL) ----
