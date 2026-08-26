@@ -1,15 +1,10 @@
-import { getJournalCategories } from "@/actions/web-gallery"
-import WebGalleryClient from "./WebGalleryClient"
+import { getJournalCategoriesWithImages } from "@/actions/journal-collections";
+import WebGalleryClient from "./WebGalleryClient";
 
-export const dynamic = "force-dynamic"
-export const revalidate = 0
+export const dynamic = "force-dynamic";
 
 export default async function WebGalleryPage() {
-  const { data: categories, error } = await getJournalCategories()
+  const categories = await getJournalCategoriesWithImages();
 
-  return (
-    <div className="min-h-screen bg-slate-50/50 p-6 md:p-8 font-sans">
-      <WebGalleryClient initialCategories={categories || []} fetchError={error} />
-    </div>
-  )
+  return <WebGalleryClient initialCategories={categories} />;
 }

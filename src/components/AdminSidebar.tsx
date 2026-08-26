@@ -21,8 +21,9 @@ const primaryItems = [
   // { name: "เพิ่มสินค้า",     href: "/addproduct",   icon: PlusCircle },
   { name: "Props / Decor",   href: "/props",        icon: Frame },
   { name: "Props / Decor (ใหม่)", href: "/props-new",   icon: Frame },
+  { name: "Web Gallery & ผูกสินค้า", href: "/web-gallery", icon: Layers },
   { name: "Algorithm",      href: "/algorithm",    icon: Activity },
-  { name: "จัดการลอต",       href: "/lots",         icon: Layers },
+  { name: "จัดการลอต",       href: "/lots",         icon: Package },
 ];
 
 // 2. เมนูการจัดการและรายงาน
