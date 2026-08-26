@@ -174,27 +174,30 @@ export default function PropsClient({ products }: Props) {
       
       const sizeStr = (L || W || T) ? `${L}×${W}×${T} CM` : (specs.size || '');
       const colorStr = p.color || '';
-      const priceStr = p.price ? new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB', minimumFractionDigits: 0 }).format(p.price) : '';
+      const materialStr = p.material || specs.material || '';
+      const priceVal = Number(p.price);
+      const priceStr = priceVal > 0 ? new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB', minimumFractionDigits: 0 }).format(priceVal) : '';
 
       for (let i = 0; i < sets; i++) {
         groups.push(`
           <div class="group">
+            <div class="hole"></div>
+            <div class="logo-sec">
+              <img src="/logo.terra.home.png" alt="Logo" class="logo-img" />
+            </div>
+            
             <div class="top-sec">
               <div class="photo-cell">
                 <img src="${p.image_url || ''}" onerror="this.style.display='none'" />
               </div>
-              <div class="codes-cell">
-                <div class="qr-container-half">
-                  <img src="${qrImg}" />
-                </div>
-                <div class="qr-container-half">
-                  <img src="${qrImg}" />
-                </div>
+              <div class="qr-cell">
+                <img src="${qrImg}" />
+                <img src="${qrImg}" />
               </div>
             </div>
             
             <div class="info-sec">
-              <div class="pname">${p.name || ''}</div>
+              <div class="pname" title="${p.name || ''}">${p.name || ''}</div>
               <div class="details-list">
                 <div class="detail-row">
                   <span class="detail-label">SKU</span>
@@ -213,6 +216,11 @@ export default function PropsClient({ products }: Props) {
                   <span class="detail-label">SIZE</span>
                   <span class="detail-val" title="${sizeStr}">${sizeStr || '—'}</span>
                 </div>
+                ${materialStr ? `
+                <div class="detail-row">
+                  <span class="detail-label">MAT.</span>
+                  <span class="detail-val" title="${materialStr}">${materialStr}</span>
+                </div>` : ''}
               </div>
               ${priceStr ? `<div class="price-tag">${priceStr}</div>` : ''}
             </div>
@@ -220,8 +228,8 @@ export default function PropsClient({ products }: Props) {
       }
     }
     const pages: string[] = [];
-    for (let i = 0; i < groups.length; i += 9) {
-      const chunk = groups.slice(i, i + 9);
+    for (let i = 0; i < groups.length; i += 12) {
+      const chunk = groups.slice(i, i + 12);
       pages.push(`<div class="page"><div class="grid">${chunk.join("")}</div></div>`);
     }
     win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title></title>
@@ -232,7 +240,7 @@ export default function PropsClient({ products }: Props) {
       .page{width:calc(210mm - 16mm);height:calc(297mm - 16mm);overflow:hidden;page-break-after:always}
       .page:last-child{page-break-after:auto}
       
-      .grid{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);gap:0;height:100%; border-top:1px solid #bbb; border-left:1px solid #bbb;}
+      .grid{display:grid;grid-template-columns:repeat(4,1fr);grid-template-rows:repeat(3,75mm);gap:0; border-top:1px solid #bbb; border-left:1px solid #bbb;}
       
       .group { 
         display: flex;
@@ -241,21 +249,48 @@ export default function PropsClient({ products }: Props) {
         border-right: 1px solid #bbb; 
         border-bottom: 1px solid #bbb; 
         background: #fff; 
-        padding: 3mm;
+        padding: 2mm 3mm 3mm 3mm;
         height: 100%;
         overflow: hidden;
+        position: relative;
+      }
+      
+      .hole {
+        width: 1.8mm;
+        height: 1.8mm;
+        border: none;
+        background: transparent;
+        margin: 3.5mm auto 1.5mm auto;
+        flex-shrink: 0;
+        background: #fff;
+      }
+      
+      .logo-sec {
+        text-align: center;
+        margin-bottom: 1.5mm;
+        flex-shrink: 0;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+      }
+      
+      .logo-img {
+        height: 4.5mm;
+        object-fit: contain;
       }
       
       .top-sec {
         display: flex;
-        height: 52mm;
+        height: 26mm;
         min-height: 0;
-        margin-bottom: 2mm;
-        border-bottom: 1px solid #ddd;
+        margin-bottom: 1.5mm;
+        border-bottom: 1px solid #eee;
+        gap: 2mm;
+        padding-bottom: 1.5mm;
       }
       
       .photo-cell {
-        flex: 1.5;
+        flex: 1.3;
         height: 100%;
         background: #fff;
         display: flex;
@@ -265,53 +300,28 @@ export default function PropsClient({ products }: Props) {
       }
       
       .photo-cell img {
-        max-width: 100%;
-        max-height: 100%;
+        max-width: 22mm;
+        max-height: 22mm;
         object-fit: contain;
         display: block;
       }
       
-      .codes-cell {
-        flex: 0.85;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        height: 100%;
-        min-width: 0;
-        border-left: 1px solid #eee;
-      }
-      
-      .qr-container-half {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
+      .qr-cell {
         flex: 1;
-        width: 100%;
-        padding: 2mm;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 1mm;
+        height: 100%;
         overflow: hidden;
       }
       
-      .qr-container-half:first-child {
-        border-bottom: 1px solid #eee;
-      }
-      
-      .qr-container-half img {
+      .qr-cell img {
         width: 100%;
-        max-width: 14mm;
-        max-height: 14mm;
+        max-width: 11.5mm;
+        max-height: 11.5mm;
         object-fit: contain;
-      }
-      
-      .qr-code-text {
-        font-size: 5pt;
-        font-family: monospace;
-        color: #555;
-        text-align: center;
-        margin-top: 0.5mm;
-        word-break: break-all;
-        line-height: 1;
       }
       
       .info-sec {
@@ -319,22 +329,19 @@ export default function PropsClient({ products }: Props) {
         display: flex;
         flex-direction: column;
         justify-content: flex-start;
-        gap: 1.5mm;
-        padding-top: 1mm;
         min-height: 0;
       }
       
       .pname {
-        font-size: 8.5pt;
+        font-size: 7.5pt;
         font-weight: 800;
         color: #000;
-        line-height: 1.2;
-        max-height: 8.5mm;
+        line-height: 1.25;
+        white-space: nowrap;
         overflow: hidden;
-        display: -webkit-box;
-        -webkit-line-clamp: 2;
-        -webkit-box-orient: vertical;
-        margin-bottom: 1mm;
+        text-overflow: ellipsis;
+        margin-bottom: 1.5mm;
+        text-align: left;
       }
       
       .details-list {
@@ -345,15 +352,15 @@ export default function PropsClient({ products }: Props) {
       
       .detail-row {
         display: flex;
-        align-items: flex-start;
-        font-size: 7pt;
-        line-height: 1.25;
+        align-items: center;
+        font-size: 6.5pt;
+        line-height: 1.2;
       }
       
       .detail-label {
         color: #555;
         font-weight: 800;
-        width: 15mm;
+        width: 12mm;
         flex-shrink: 0;
       }
       
@@ -365,12 +372,12 @@ export default function PropsClient({ products }: Props) {
       }
       
       .price-tag {
-        font-size: 11pt;
+        font-size: 10.5pt;
         font-weight: 900;
         color: #000;
         border-top: 1px dashed #ccc;
         padding-top: 1.5mm;
-        margin-top: 1.5mm;
+        margin-top: auto;
         text-align: right;
       }
     </style></head><body>
