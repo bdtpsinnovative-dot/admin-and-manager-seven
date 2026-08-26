@@ -570,69 +570,80 @@ export default function WebGalleryClient({
         {currentCategory && (
           <div className="space-y-6 animate-in fade-in duration-200">
             
-            {/* Top Navigation Bar & Category Tabs */}
-            <div className="flex flex-col gap-4 rounded-3xl border border-slate-200 bg-white p-5 shadow-xs sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-4">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActiveCategoryId(null);
-                    setSelectedImageIds([]);
-                  }}
-                  className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 shadow-2xs"
-                  title="กลับสู่หน้ารวมหมวดหมู่"
-                >
-                  <ArrowLeft className="h-5 w-5" />
-                </button>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="rounded-md bg-blue-100 px-2.5 py-0.5 font-mono text-xs font-bold text-blue-700">
-                      ลำดับ {currentCategory.sortOrder}
-                    </span>
-                    <h1 className="text-xl font-bold text-slate-900 tracking-tight">
-                      {currentCategory.titleEn} {currentCategory.titleTh ? `(${currentCategory.titleTh})` : ""}
-                    </h1>
+            {/* Top Navigation Bar & Category Tabs (Hallmark Redesign) */}
+            <div className="flex flex-col gap-0 rounded-[20px] border border-slate-200 bg-white shadow-sm overflow-hidden">
+              
+              {/* Row 1: Main Header (Back, Title, Actions) */}
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between p-5 border-b border-slate-100 bg-slate-50/50">
+                <div className="flex items-center gap-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveCategoryId(null);
+                      setSelectedImageIds([]);
+                    }}
+                    className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 shadow-sm"
+                    title="กลับสู่หน้ารวมหมวดหมู่"
+                  >
+                    <ArrowLeft className="h-5 w-5" />
+                  </button>
+                  <div className="flex flex-col justify-center min-w-0">
+                    <div className="flex flex-wrap items-center gap-2 mb-1">
+                      <span className="rounded-md bg-blue-100/80 px-2 py-0.5 font-mono text-[11px] font-bold tracking-wider text-blue-700">
+                        ลำดับ {currentCategory.sortOrder}
+                      </span>
+                      <h1 className="text-xl font-black text-slate-900 tracking-tight uppercase truncate">
+                        {currentCategory.titleEn} {currentCategory.titleTh ? <span className="text-slate-500 font-medium">({currentCategory.titleTh})</span> : ""}
+                      </h1>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-slate-500 font-mono tracking-tight">
+                      <span>Slug: <span className="text-blue-600 font-semibold">{currentCategory.slug}</span></span>
+                      <span className="text-slate-300">•</span>
+                      <span>{currentCategory.images.length} รูป</span>
+                    </div>
                   </div>
-                  <p className="mt-1 text-xs text-slate-500 font-mono">
-                    Slug: <span className="text-blue-600 font-semibold">{currentCategory.slug}</span> · ทั้งหมด {currentCategory.images.length} รูป
-                  </p>
+                </div>
+
+                <div className="flex shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setIsAddImagesModalOpen(true)}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white shadow-md shadow-blue-600/20 hover:bg-blue-700 active:scale-95 transition w-full sm:w-auto"
+                  >
+                    <Plus className="h-4 w-4 stroke-[3]" />
+                    เพิ่มรูปภาพ <span className="opacity-80 font-normal ml-1">(วางหลายลิงก์)</span>
+                  </button>
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsAddImagesModalOpen(true)}
-                  className="inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white shadow-md shadow-blue-600/20 hover:bg-blue-700 active:scale-95 transition"
-                >
-                  <Plus className="h-4 w-4 stroke-[3]" />
-                  เพิ่มรูปภาพ (วางหลายลิงก์)
-                </button>
-
-                {/* Switcher */}
-                <div className="flex flex-wrap gap-1.5 ml-2 border-l border-slate-200 pl-3">
-                  {categories.map((cat) => {
-                    const active = cat.id === activeCategoryId;
-                    return (
-                      <button
-                        key={cat.id}
-                        type="button"
-                        onClick={() => {
-                          setActiveCategoryId(cat.id);
-                          setSelectedImageIds([]);
-                        }}
-                        className={`rounded-xl px-3 py-1.5 text-xs font-bold transition-all ${
-                          active
-                            ? "bg-slate-900 text-white shadow-xs"
-                            : "bg-slate-100 text-slate-600 hover:bg-slate-200/70"
-                        }`}
-                      >
-                        {cat.titleEn}
-                        <span className="ml-1.5 opacity-60 font-normal">({cat.images.length})</span>
-                      </button>
-                    );
-                  })}
-                </div>
+              {/* Row 2: Category Switcher (Scrollable) */}
+              <div className="flex items-center gap-2 overflow-x-auto p-4 scrollbar-hide">
+                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 shrink-0 mr-1">
+                  Jump to:
+                </span>
+                {categories.map((cat) => {
+                  const active = cat.id === activeCategoryId;
+                  return (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => {
+                        setActiveCategoryId(cat.id);
+                        setSelectedImageIds([]);
+                      }}
+                      className={`inline-flex shrink-0 items-center justify-center rounded-lg px-3.5 py-1.5 text-xs font-bold transition-all ${
+                        active
+                          ? "bg-slate-900 text-white shadow-sm ring-1 ring-slate-900"
+                          : "bg-slate-100/80 text-slate-500 hover:bg-slate-200 hover:text-slate-800"
+                      }`}
+                    >
+                      {cat.titleEn}
+                      <span className={`ml-1.5 px-1.5 py-0.5 rounded-md text-[9px] font-mono ${active ? 'bg-white/20' : 'bg-slate-200/60'}`}>
+                        {cat.images.length}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
