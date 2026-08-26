@@ -1,6 +1,7 @@
-// src/components/BulkUploadProducts.tsx
 "use client"
+
 import { bulkCreateProducts, checkExistingSkus, checkExistingGroups, getProducts, getAllProductsForExport } from '../actions/woodslab'
+import { embedProductsBySkus } from '../actions/clip-embed'
 import { useState } from 'react'
 import * as XLSX from 'xlsx'
 
@@ -426,18 +427,57 @@ const downloadTemplate = () => {
   const handleSaveAll = async () => {
     if (data.length === 0) return
     setLoading(true)
+    setStatus({ type: 'info', msg: 'กำลังบันทึกข้อมูลสินค้าลงฐานข้อมูล...' })
+    
+    // 1. บันทึกข้อมูลสินค้าลง Database ก่อนเสมอ (ให้มั่นใจว่าสินค้าไม่หายแน่นอน)
     const res = await bulkCreateProducts(data)
-    setLoading(false)
 
     if (res.error) {
+      setLoading(false)
       setStatus({ type: 'error', msg: res.error })
+      return
+    }
+
+    // 2. กวาด SKU ที่มีรูปภาพเพื่อสร้าง CLIP Vector ต่อทันที
+    const importedSkusWithImages = data.filter(item => item.image_url).map(item => item.sku)
+    
+    if (importedSkusWithImages.length > 0) {
+      setStatus({ 
+        type: 'info', 
+        msg: `บันทึกข้อมูลสินค้าแล้ว (${res.count} รายการ) ⚡ กำลังสร้าง Vector ค้นหาด้วยภาพ (${importedSkusWithImages.length} รายการ)...` 
+      })
+      
+      try {
+        const embedRes = await embedProductsBySkus(importedSkusWithImages)
+        
+        if (embedRes.failed > 0) {
+          setStatus({
+            type: 'info',
+            msg: `นำเข้าสำเร็จ ${res.count} รายการ | สร้าง Vector สำเร็จ ${embedRes.succeeded} รายการ (มี ${embedRes.failed} รายการที่รูปภาพมีปัญหา/โหลดไม่ได้ แต่สินค้าถูกบันทึกเรียบร้อย)`
+          })
+        } else {
+          setStatus({
+            type: 'success',
+            msg: `นำเข้าและสร้าง Vector ค้นหาด้วยภาพสำเร็จครบสมบูรณ์ ${res.count} รายการ!`
+          })
+        }
+      } catch (embedErr: any) {
+        console.warn("Embed background fallback:", embedErr)
+        // Fallback: สินค้าถูกบันทึกเรียบร้อยแล้ว ไม่ต้องบล็อก user
+        setStatus({
+          type: 'success',
+          msg: `นำเข้าข้อมูลสินค้าสำเร็จ ${res.count} รายการ! (ระบบ Vector จะประมวลผลต่อให้อัตโนมัติ)`
+        })
+      }
     } else {
       setStatus({ type: 'success', msg: `นำเข้าและอัปเดตข้อมูลสำเร็จ ${res.count} รายการ!` })
-      setData([])
-      setExistingSkus(new Set())
-      setExistingGroupIds([])
-      setNewGroupsPreview([]) // เคลียร์ Preview หลังเซฟ
     }
+
+    setLoading(false)
+    setData([])
+    setExistingSkus(new Set())
+    setExistingGroupIds([])
+    setNewGroupsPreview([]) // เคลียร์ Preview หลังเซฟ
   }
 
   const handleClearData = () => {

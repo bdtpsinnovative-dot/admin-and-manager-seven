@@ -22,7 +22,7 @@ const primaryItems = [
   { name: "Props / Decor",   href: "/props",        icon: Frame },
   { name: "Props / Decor (ใหม่)", href: "/props-new",   icon: Frame },
   { name: "Algorithm",      href: "/algorithm",    icon: Activity },
-  { name: "จัดการลอต",       href: "/lots",         icon: Layers },
+  { name: "จัดการลอต",       href: "/lots",         icon: Package },
 ];
 
 // 2. เมนูการจัดการและรายงาน

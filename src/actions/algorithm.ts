@@ -640,9 +640,17 @@ function rankProductCatalog(events: ScoreEvent[], productMap: Map<number, Algori
   })
 }
 
+const overviewCache = new Map<number, { data: AlgorithmOverview; expiresAt: number }>()
+const OVERVIEW_CACHE_TTL_MS = 3 * 60 * 1000 // 3 minutes
+
 export async function getAlgorithmOverview(rangeValue: number): Promise<AlgorithmOverview> {
   await requireAdmin()
   const rangeDays = normalizeRange(rangeValue)
+
+  const cached = overviewCache.get(rangeDays)
+  if (cached && Date.now() < cached.expiresAt) {
+    return cached.data
+  }
 
   try {
     const cutoff = getCutoff(rangeDays)
@@ -667,8 +675,22 @@ export async function getAlgorithmOverview(rangeValue: number): Promise<Algorith
 
     uniqueEvents = rollingUniqueScoreEvents(events, cutoff)
 
-    const allProductIds = await fetchAllPropProductIds()
-    const productMap = await fetchPropProducts(allProductIds)
+    const eventProductIds = Array.from(new Set(uniqueEvents.map((event) => Number(event.product_id)).filter(Number.isSafeInteger)))
+    const neededExtra = Math.max(0, 20 - eventProductIds.length)
+    let extraProductIds: number[] = []
+    if (neededExtra > 0) {
+      const { data: extraData } = await supabaseAdmin
+        .from("products")
+        .select("id")
+        .eq("category_id", "prop")
+        .eq("status", "active")
+        .limit(neededExtra + 5)
+      if (extraData) {
+        extraProductIds = extraData.map((row) => Number(row.id)).filter(Number.isSafeInteger)
+      }
+    }
+    const targetProductIds = Array.from(new Set([...eventProductIds, ...extraProductIds]))
+    const productMap = await fetchPropProducts(targetProductIds)
     const aggregate = new Map<number, { uniqueViews: number; recencyScore: number; lastViewedAt: string; location: Map<string, number> }>()
     const trendTotals = new Map<string, number>()
 
@@ -754,7 +776,7 @@ export async function getAlgorithmOverview(rangeValue: number): Promise<Algorith
       }
     }
 
-    return {
+    const result: AlgorithmOverview = {
       rangeDays,
       generatedAt: new Date().toISOString(),
       topItems: ranked,
@@ -786,6 +808,9 @@ export async function getAlgorithmOverview(rangeValue: number): Promise<Algorith
       })),
       error: null,
     }
+
+    overviewCache.set(rangeDays, { data: result, expiresAt: Date.now() + OVERVIEW_CACHE_TTL_MS })
+    return result
   } catch (error) {
     console.error("[algorithm-admin] overview query failed", error)
     return emptyOverview(rangeDays, error instanceof Error ? error.message : "ไม่สามารถอ่านข้อมูล Algorithm ได้")

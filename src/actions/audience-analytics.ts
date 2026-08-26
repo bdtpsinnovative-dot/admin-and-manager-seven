@@ -434,9 +434,18 @@ function mergedActiveSeconds(activities: RawActivity[]) {
   return Math.round(total / 1000)
 }
 
+const audienceCache = new Map<number, { data: AudienceAnalytics; expiresAt: number }>()
+const AUDIENCE_CACHE_TTL_MS = 3 * 60 * 1000 // 3 minutes
+
 export async function getAudienceAnalytics(rangeValue: number): Promise<AudienceAnalytics> {
   const rangeDays = normalizeRange(rangeValue)
   const productStartedAt = "ข้อมูลชุดนี้เริ่มเก็บตั้งแต่วันที่ deploy Audience Analytics"
+
+  const cached = audienceCache.get(rangeDays)
+  if (cached && Date.now() < cached.expiresAt) {
+    return cached.data
+  }
+
   try {
     await requireAdmin()
     const cutoff = new Date(Date.now() - rangeDays * dayMs).toISOString()
@@ -690,7 +699,9 @@ export async function getAudienceAnalytics(rangeValue: number): Promise<Audience
       persona: topWithShare(personaLabels),
     }
 
-    return { rangeDays, generatedAt: new Date().toISOString(), productStartedAt, products: productAnalytics, personas, summary: { products: productSummary, personas: personaSummary }, error: null }
+    const result: AudienceAnalytics = { rangeDays, generatedAt: new Date().toISOString(), productStartedAt, products: productAnalytics, personas, summary: { products: productSummary, personas: personaSummary }, error: null }
+    audienceCache.set(rangeDays, { data: result, expiresAt: Date.now() + AUDIENCE_CACHE_TTL_MS })
+    return result
   } catch (error) {
     console.error("[audience-analytics] query failed", error)
     return { rangeDays, generatedAt: new Date().toISOString(), productStartedAt, products: [], personas: [], summary: emptySummary(), error: error instanceof Error ? error.message : "ไม่สามารถอ่าน Audience Analytics ได้" }
