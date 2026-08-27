@@ -319,77 +319,125 @@ async function requireAdmin() {
 }
 
 async function fetchPagedAlgorithmEvents(cutoff: string) {
-  const rows: RawEvent[] = []
   const pageSize = 1000
-  for (let offset = 0; ; offset += pageSize) {
-    const { data, error } = await supabaseAdmin
-      .from("algorithm_events")
-      .select("id, product_id, collection_group_id, product_category_snapshot, product_price_snapshot, product_name_snapshot, product_sku_snapshot, product_color_snapshot, product_material_snapshot, identity_key, identity_type, user_id, visitor_id, session_id, page_instance_id, event_type, page_type, page_path, created_at, duration_seconds, is_bounce, is_quick_bounce, activity_interval_id, next_page_type, journey_outcome, is_countable, traffic_type, country_code, country, region, city, device_type, os_name, browser_name, source_platform, first_touch_source, session_source, referrer_host, metadata")
-      .eq("source_tag", "prop")
-      .gte("created_at", cutoff)
-      .order("created_at", { ascending: false })
-      .range(offset, offset + pageSize - 1)
-    if (error) throw new Error(error.message)
-    const batch = (data || []) as unknown as RawEvent[]
-    rows.push(...batch)
-    if (batch.length < pageSize) break
-  }
-  return rows
+  const { count, error: countError } = await supabaseAdmin
+    .from("algorithm_events")
+    .select("id", { count: "exact", head: true })
+    .eq("source_tag", "prop")
+    .in("event_type", ["product_view", "page_view", "session_end", "journey", "cta"])
+    .gte("created_at", cutoff)
+
+  if (countError) throw new Error(countError.message)
+  const total = count || 0
+  const pageCount = Math.ceil(total / pageSize)
+  if (pageCount === 0) return []
+
+  const pageIndexes = Array.from({ length: pageCount }, (_, i) => i)
+  const results = await Promise.all(
+    pageIndexes.map(async (pageIdx) => {
+      const offset = pageIdx * pageSize
+      const { data, error } = await supabaseAdmin
+        .from("algorithm_events")
+        .select("id, product_id, collection_group_id, product_category_snapshot, product_price_snapshot, product_name_snapshot, product_sku_snapshot, product_color_snapshot, product_material_snapshot, identity_key, identity_type, user_id, visitor_id, session_id, page_instance_id, event_type, page_type, page_path, created_at, duration_seconds, is_bounce, is_quick_bounce, activity_interval_id, next_page_type, journey_outcome, is_countable, traffic_type, country_code, country, region, city, device_type, os_name, browser_name, source_platform, first_touch_source, session_source, referrer_host, metadata")
+        .eq("source_tag", "prop")
+        .in("event_type", ["product_view", "page_view", "session_end", "journey", "cta"])
+        .gte("created_at", cutoff)
+        .order("created_at", { ascending: false })
+        .range(offset, offset + pageSize - 1)
+      if (error) throw new Error(error.message)
+      return (data || []) as unknown as RawEvent[]
+    })
+  )
+  return results.flat()
 }
 
 async function fetchPagedActivities(cutoff: string) {
-  const rows: RawActivity[] = []
   const pageSize = 1000
-  for (let offset = 0; ; offset += pageSize) {
-    const { data, error } = await supabaseAdmin
-      .from("algorithm_activity_intervals")
-      .select("id, identity_key, session_id, page_instance_id, product_id, active_seconds, started_at")
-      .gte("started_at", cutoff)
-      .order("started_at", { ascending: false })
-      .range(offset, offset + pageSize - 1)
-    if (error) throw new Error(error.message)
-    const batch = (data || []) as unknown as RawActivity[]
-    rows.push(...batch)
-    if (batch.length < pageSize) break
-  }
-  return rows
+  const { count, error: countError } = await supabaseAdmin
+    .from("algorithm_activity_intervals")
+    .select("id", { count: "exact", head: true })
+    .gte("started_at", cutoff)
+
+  if (countError) throw new Error(countError.message)
+  const total = count || 0
+  const pageCount = Math.ceil(total / pageSize)
+  if (pageCount === 0) return []
+
+  const pageIndexes = Array.from({ length: pageCount }, (_, i) => i)
+  const results = await Promise.all(
+    pageIndexes.map(async (pageIdx) => {
+      const offset = pageIdx * pageSize
+      const { data, error } = await supabaseAdmin
+        .from("algorithm_activity_intervals")
+        .select("id, identity_key, session_id, page_instance_id, product_id, active_seconds, started_at")
+        .gte("started_at", cutoff)
+        .order("started_at", { ascending: false })
+        .range(offset, offset + pageSize - 1)
+      if (error) throw new Error(error.message)
+      return (data || []) as unknown as RawActivity[]
+    })
+  )
+  return results.flat()
 }
 
 async function fetchPagedPropProducts() {
-  const rows: RawProduct[] = []
   const pageSize = 1000
-  for (let offset = 0; ; offset += pageSize) {
-    const { data, error } = await supabaseAdmin
-      .from("products")
-      .select("id, name, sku, image_url, price, status, collection_group_id, color, specs, collection_groups!inner(id, product_sup, tag)")
-      .eq("category_id", "prop")
-      .ilike("collection_groups.tag", "%prop%")
-      .order("id", { ascending: true })
-      .range(offset, offset + pageSize - 1)
-    if (error) throw new Error(error.message)
-    const batch = (data || []) as unknown as RawProduct[]
-    rows.push(...batch)
-    if (batch.length < pageSize) break
-  }
-  return rows
+  const { count, error: countError } = await supabaseAdmin
+    .from("products")
+    .select("id", { count: "exact", head: true })
+    .eq("category_id", "prop")
+
+  if (countError) throw new Error(countError.message)
+  const total = count || 0
+  const pageCount = Math.ceil(total / pageSize)
+  if (pageCount === 0) return []
+
+  const pageIndexes = Array.from({ length: pageCount }, (_, i) => i)
+  const results = await Promise.all(
+    pageIndexes.map(async (pageIdx) => {
+      const offset = pageIdx * pageSize
+      const { data, error } = await supabaseAdmin
+        .from("products")
+        .select("id, name, sku, image_url, price, status, collection_group_id, color, specs, collection_groups!inner(id, product_sup, tag)")
+        .eq("category_id", "prop")
+        .ilike("collection_groups.tag", "%prop%")
+        .order("id", { ascending: true })
+        .range(offset, offset + pageSize - 1)
+      if (error) throw new Error(error.message)
+      return (data || []) as unknown as RawProduct[]
+    })
+  )
+  return results.flat()
 }
 
 async function fetchPagedViewerLinks() {
-  const rows: Array<{ user_id: string | null; metadata: Record<string, unknown> | null }> = []
   const pageSize = 1000
-  for (let offset = 0; ; offset += pageSize) {
-    const { data, error } = await supabaseAdmin
-      .from("algorithm_events")
-      .select("user_id, metadata")
-      .eq("source_tag", "prop")
-      .not("user_id", "is", null)
-      .range(offset, offset + pageSize - 1)
-    if (error) throw new Error(error.message)
-    const batch = (data || []) as unknown as Array<{ user_id: string | null; metadata: Record<string, unknown> | null }>
-    rows.push(...batch)
-    if (batch.length < pageSize) break
-  }
-  return rows
+  const { count, error: countError } = await supabaseAdmin
+    .from("algorithm_events")
+    .select("id", { count: "exact", head: true })
+    .eq("source_tag", "prop")
+    .not("user_id", "is", null)
+
+  if (countError) throw new Error(countError.message)
+  const total = count || 0
+  const pageCount = Math.ceil(total / pageSize)
+  if (pageCount === 0) return []
+
+  const pageIndexes = Array.from({ length: pageCount }, (_, i) => i)
+  const results = await Promise.all(
+    pageIndexes.map(async (pageIdx) => {
+      const offset = pageIdx * pageSize
+      const { data, error } = await supabaseAdmin
+        .from("algorithm_events")
+        .select("user_id, metadata")
+        .eq("source_tag", "prop")
+        .not("user_id", "is", null)
+        .range(offset, offset + pageSize - 1)
+      if (error) throw new Error(error.message)
+      return (data || []) as unknown as Array<{ user_id: string | null; metadata: Record<string, unknown> | null }>
+    })
+  )
+  return results.flat()
 }
 
 function productActiveValues(activities: RawActivity[], views: RawEvent[]) {
@@ -478,12 +526,15 @@ export async function getAudienceAnalytics(rangeValue: number): Promise<Audience
       })
     }
     const products = [...currentProducts, ...historicalProducts.values()]
-    const { error: refreshError } = await supabaseAdmin.rpc("refresh_prop_analytics", {
+    
+    // Background aggregate refresh (non-blocking)
+    void supabaseAdmin.rpc("refresh_prop_analytics", {
       p_from: cutoff,
       p_to: new Date().toISOString(),
       p_range_days: rangeDays,
+    }).then(({ error: refreshError }) => {
+      if (refreshError) console.warn("[audience-analytics] aggregate refresh unavailable", refreshError.message)
     })
-    if (refreshError) console.warn("[audience-analytics] aggregate refresh unavailable", refreshError.message)
     const userIds = [...new Set(events.map((event) => event.user_id).filter((userId): userId is string => Boolean(userId)))]
     const { data: profileRows, error: profileError } = userIds.length
       ? await supabaseAdmin.from("profiles").select("user_id, email").in("user_id", userIds)
