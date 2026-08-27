@@ -31,6 +31,7 @@ import {
   JournalCategoryWithImages,
   JournalImageWithProducts,
   LinkedProduct,
+  getJournalCategoriesWithImages,
   addJournalImages,
   setJournalCoverImage,
   reorderJournalImage,
@@ -207,9 +208,10 @@ export default function WebGalleryClient({
     startTransition(async () => {
       try {
         await addJournalImages(currentCategory.id, urls);
+        const updated = await getJournalCategoriesWithImages();
+        setCategories(updated);
         setIsAddImagesModalOpen(false);
         setNewImageUrlsText("");
-        window.location.reload();
       } catch (err: any) {
         alert(err.message || "ไม่สามารถเพิ่มรูปภาพได้");
       }
@@ -223,8 +225,9 @@ export default function WebGalleryClient({
     startTransition(async () => {
       try {
         await moveJournalImagesCategory(selectedImageIds, targetMoveCategoryId);
+        const updated = await getJournalCategoriesWithImages();
+        setCategories(updated);
         setSelectedImageIds([]);
-        window.location.reload();
       } catch (err: any) {
         alert(err.message || "ไม่สามารถย้ายหมวดหมู่ได้");
       }
@@ -314,8 +317,9 @@ export default function WebGalleryClient({
           await createJournalCategory(payload);
         }
 
+        const updated = await getJournalCategoriesWithImages();
+        setCategories(updated);
         setIsCategoryModalOpen(false);
-        window.location.reload();
       } catch (err: any) {
         alert(err.message || "ไม่สามารถบันทึกหมวดหมู่ได้");
       }

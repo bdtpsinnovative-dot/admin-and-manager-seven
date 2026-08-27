@@ -6,8 +6,8 @@ import AudienceAnalyticsClient from "./audience/AudienceAnalyticsClient"
 
 export const dynamic = "force-dynamic"
 
-async function AudienceSection({ rangeValue }: { rangeValue: number }) {
-  const audience = await getAudienceAnalytics(rangeValue)
+async function AudienceSection({ rangeValue, offsetValue }: { rangeValue: number; offsetValue: number }) {
+  const audience = await getAudienceAnalytics(rangeValue, offsetValue)
   return <AudienceAnalyticsClient data={audience} embedded={true} />
 }
 
@@ -32,18 +32,19 @@ function AudienceSkeleton() {
 export default async function AlgorithmPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ range?: string | string[] }>
+  searchParams?: Promise<{ range?: string | string[]; offset?: string | string[] }>
 }) {
   const params = await searchParams
   const rangeValue = typeof params?.range === "string" ? Number(params.range) : 30
-  const data = await getAlgorithmOverview(rangeValue)
+  const offsetValue = typeof params?.offset === "string" ? Math.max(0, parseInt(params.offset, 10) || 0) : 0
+  const data = await getAlgorithmOverview(rangeValue, offsetValue)
 
   return (
     <div className="space-y-6 pb-12">
       <AlgorithmDashboard data={data} />
       <div className="algorithm-audience-embedded mx-auto max-w-[1680px] px-3 sm:px-5 lg:px-8">
         <Suspense fallback={<AudienceSkeleton />}>
-          <AudienceSection rangeValue={rangeValue} />
+          <AudienceSection rangeValue={rangeValue} offsetValue={offsetValue} />
         </Suspense>
       </div>
     </div>

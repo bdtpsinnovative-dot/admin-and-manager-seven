@@ -8,6 +8,8 @@ import {
   Activity,
   ArrowUpRight,
   BarChart3,
+  ChevronLeft,
+  ChevronRight,
   CircleAlert,
   Eye,
   Globe2,
@@ -28,6 +30,18 @@ function number(value: number) {
 function dateTime(value: string | null) {
   if (!value) return "ยังไม่มีข้อมูล"
   return new Intl.DateTimeFormat("th-TH", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value))
+}
+
+function dateTimeRangeLabel(startTime?: string, endTime?: string, rangeDays: AlgorithmRange = 30) {
+  if (!startTime || !endTime) return ""
+  const start = new Date(startTime)
+  const end = new Date(endTime)
+  if (rangeDays === 1) {
+    const opts: Intl.DateTimeFormatOptions = { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }
+    return `${start.toLocaleDateString("th-TH", opts)} – ${end.toLocaleDateString("th-TH", opts)}`
+  }
+  const opts: Intl.DateTimeFormatOptions = { day: "numeric", month: "short", year: "2-digit" }
+  return `${start.toLocaleDateString("th-TH", opts)} – ${end.toLocaleDateString("th-TH", opts)}`
 }
 
 function rangeLabel(days: AlgorithmRange) {
@@ -121,7 +135,19 @@ function MetricCard({ icon: Icon, label, value, note, accent = "green" }: { icon
   return <article className="min-w-0 rounded-[1.35rem] border border-[var(--algorithm-rule)] bg-[var(--algorithm-surface)] p-4 shadow-[var(--algorithm-shadow-soft)] sm:p-5"><div className="flex items-start justify-between gap-3"><p className="text-sm font-semibold text-[var(--algorithm-ink-soft)]">{label}</p><span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl ${iconClass}`}><Icon className="h-4 w-4" /></span></div><p className="mt-7 truncate font-[var(--font-display)] text-3xl font-semibold tracking-[-0.05em] tabular-nums text-[var(--algorithm-ink)]">{value}</p><p className="mt-2 truncate text-xs text-[var(--algorithm-muted)]">{note}</p></article>
 }
 
-function TrendChart({ trend, rangeDays }: { trend: TrendPoint[]; rangeDays: AlgorithmRange }) {
+function TrendChart({
+  trend,
+  rangeDays,
+  offset = 0,
+  startTime,
+  endTime,
+}: {
+  trend: TrendPoint[]
+  rangeDays: AlgorithmRange
+  offset?: number
+  startTime?: string
+  endTime?: string
+}) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const maxViews = Math.max(...trend.map((point) => point.views), 1)
   const barWidth = trend.length > 0 ? Math.max(700 / trend.length - 5, 4) : 0
@@ -130,7 +156,63 @@ function TrendChart({ trend, rangeDays }: { trend: TrendPoint[]; rangeDays: Algo
   const hoveredPoint = hoveredIndex === null ? null : trend[hoveredIndex]
   const hoveredX = hoveredIndex === null ? 50 : Math.min(Math.max(((hoveredIndex + 0.5) / Math.max(trend.length, 1)) * 100, 12), 88)
 
-  return <div className="mt-5 rounded-[1.25rem] border border-[var(--algorithm-rule)] bg-[var(--algorithm-surface-soft)] p-4 sm:p-5"><div className="flex items-center justify-between gap-3"><div className="flex items-center gap-2 text-xs font-semibold text-[var(--algorithm-muted)]"><span className="h-2.5 w-2.5 rounded-full bg-[var(--algorithm-accent)]" />ยอดดูไม่ซ้ำ</div><span className="font-mono text-[10px] text-[var(--algorithm-muted)]">สูงสุด {number(Math.max(...trend.map((point) => point.views), 0))}</span></div>{trend.length === 0 ? <div className="flex h-56 items-center justify-center text-sm text-[var(--algorithm-muted)]">ยังไม่มีข้อมูลแนวโน้ม</div> : <><div className="relative mt-4"><svg viewBox="0 0 700 220" className="h-auto w-full" role="img" aria-label="กราฟยอดดูไม่ซ้ำตามช่วงเวลา"><line x1="0" x2="700" y1="28" y2="28" stroke="var(--algorithm-rule)" strokeWidth="1" /><line x1="0" x2="700" y1="103" y2="103" stroke="var(--algorithm-rule)" strokeWidth="1" /><line x1="0" x2="700" y1="178" y2="178" stroke="var(--algorithm-rule-strong)" strokeWidth="1" />{trend.map((point, index) => { const height = Math.max((point.views / maxViews) * 150, point.views > 0 ? 5 : 1); const x = (index / trend.length) * 700 + 2; const y = 178 - height; const active = index === maxIndex && point.views > 0; return <rect key={point.bucket} x={x} y={y} width={barWidth} height={height} rx="3" fill={active ? "var(--algorithm-accent-strong)" : "var(--algorithm-accent)"} opacity={hoveredIndex === index ? "1" : active ? "1" : "0.75"} className="cursor-help" onMouseEnter={() => setHoveredIndex(index)} onMouseLeave={() => setHoveredIndex(null)} onFocus={() => setHoveredIndex(index)} onBlur={() => setHoveredIndex(null)} tabIndex={0}><title>{`${trendTooltipLabel(point.bucket, rangeDays)} · ยอดดูไม่ซ้ำ ${number(point.views)} ครั้ง`}</title></rect> })}</svg>{hoveredPoint && <div className="pointer-events-none absolute top-2 z-10 -translate-x-1/2 rounded-xl border border-[var(--algorithm-rule-strong)] bg-[var(--algorithm-ink)] px-3 py-2 text-center text-white shadow-lg" style={{ left: `${hoveredX}%` }}><p className="whitespace-nowrap text-[10px] text-white/70">{trendTooltipLabel(hoveredPoint.bucket, rangeDays)}</p><p className="mt-0.5 whitespace-nowrap font-mono text-sm font-bold">{number(hoveredPoint.views)} ครั้ง</p><p className="text-[10px] text-white/70">ยอดดูไม่ซ้ำ</p></div>}</div><div className="mt-1 flex justify-between gap-2 font-mono text-[10px] text-[var(--algorithm-muted)]">{trend.map((point, index) => index % labelStep === 0 || index === trend.length - 1 ? <span key={point.bucket}>{trendLabel(point.bucket, rangeDays)}</span> : <span key={point.bucket} aria-hidden="true" />)}</div></>}</div>
+  return (
+    <div className="mt-5 rounded-[1.25rem] border border-[var(--algorithm-rule)] bg-[var(--algorithm-surface-soft)] p-4 sm:p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-[var(--algorithm-muted)]">
+          <span className="h-2.5 w-2.5 rounded-full bg-[var(--algorithm-accent)]" />
+          <span>ยอดดูไม่ซ้ำ</span>
+          {startTime && endTime && (
+            <span className="rounded-md border border-[var(--algorithm-rule)] bg-[var(--algorithm-surface)] px-2 py-0.5 font-mono text-[11px] font-normal text-[var(--algorithm-ink)]">
+              {dateTimeRangeLabel(startTime, endTime, rangeDays)}
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-[10px] text-[var(--algorithm-muted)]">
+            สูงสุด {number(Math.max(...trend.map((point) => point.views), 0))}
+          </span>
+
+          <div className="flex items-center gap-1 border-l border-[var(--algorithm-rule)] pl-2">
+            <Link
+              href={`/algorithm?range=${rangeDays}&offset=${offset + 1}`}
+              className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-[var(--algorithm-rule)] bg-[var(--algorithm-surface)] text-[var(--algorithm-ink)] transition-colors hover:bg-[var(--algorithm-surface-soft)] hover:text-[var(--algorithm-blue)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--algorithm-blue)]"
+              title="ย้อนหลังช่วงก่อนหน้า"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Link>
+            {offset > 0 ? (
+              <Link
+                href={`/algorithm?range=${rangeDays}&offset=${offset - 1}`}
+                className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-[var(--algorithm-rule)] bg-[var(--algorithm-surface)] text-[var(--algorithm-ink)] transition-colors hover:bg-[var(--algorithm-surface-soft)] hover:text-[var(--algorithm-blue)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--algorithm-blue)]"
+                title="ช่วงถัดไป"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Link>
+            ) : (
+              <span
+                className="inline-flex h-7 w-7 cursor-not-allowed items-center justify-center rounded-lg border border-[var(--algorithm-rule)] bg-[var(--algorithm-surface-soft)] text-[var(--algorithm-muted)] opacity-30"
+                title="ช่วงเวลาปัจจุบันแล้ว"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </span>
+            )}
+            {offset > 0 && (
+              <Link
+                href={`/algorithm?range=${rangeDays}&offset=0`}
+                className="ml-1 inline-flex h-7 items-center justify-center rounded-lg border border-amber-300 bg-amber-50 px-2 text-[11px] font-bold text-amber-900 transition hover:bg-amber-100 dark:border-amber-700/60 dark:bg-amber-950/40 dark:text-amber-300"
+                title="กลับสู่ช่วงเวลาปัจจุบัน"
+              >
+                ปัจจุบัน
+              </Link>
+            )}
+          </div>
+        </div>
+      </div>
+      {trend.length === 0 ? <div className="flex h-56 items-center justify-center text-sm text-[var(--algorithm-muted)]">ยังไม่มีข้อมูลแนวโน้ม</div> : <><div className="relative mt-4"><svg viewBox="0 0 700 220" className="h-auto w-full" role="img" aria-label="กราฟยอดดูไม่ซ้ำตามช่วงเวลา"><line x1="0" x2="700" y1="28" y2="28" stroke="var(--algorithm-rule)" strokeWidth="1" /><line x1="0" x2="700" y1="103" y2="103" stroke="var(--algorithm-rule)" strokeWidth="1" /><line x1="0" x2="700" y1="178" y2="178" stroke="var(--algorithm-rule-strong)" strokeWidth="1" />{trend.map((point, index) => { const height = Math.max((point.views / maxViews) * 150, point.views > 0 ? 5 : 1); const x = (index / trend.length) * 700 + 2; const y = 178 - height; const active = index === maxIndex && point.views > 0; return <rect key={point.bucket} x={x} y={y} width={barWidth} height={height} rx="3" fill={active ? "var(--algorithm-accent-strong)" : "var(--algorithm-accent)"} opacity={hoveredIndex === index ? "1" : active ? "1" : "0.75"} className="cursor-help" onMouseEnter={() => setHoveredIndex(index)} onMouseLeave={() => setHoveredIndex(null)} onFocus={() => setHoveredIndex(index)} onBlur={() => setHoveredIndex(null)} tabIndex={0}><title>{`${trendTooltipLabel(point.bucket, rangeDays)} · ยอดดูไม่ซ้ำ ${number(point.views)} ครั้ง`}</title></rect> })}</svg>{hoveredPoint && <div className="pointer-events-none absolute top-2 z-10 -translate-x-1/2 rounded-xl border border-[var(--algorithm-rule-strong)] bg-[var(--algorithm-ink)] px-3 py-2 text-center text-white shadow-lg" style={{ left: `${hoveredX}%` }}><p className="whitespace-nowrap text-[10px] text-white/70">{trendTooltipLabel(hoveredPoint.bucket, rangeDays)}</p><p className="mt-0.5 whitespace-nowrap font-mono text-sm font-bold">{number(hoveredPoint.views)} ครั้ง</p><p className="text-[10px] text-white/70">ยอดดูไม่ซ้ำ</p></div>}</div><div className="mt-1 flex justify-between gap-2 font-mono text-[10px] text-[var(--algorithm-muted)]">{trend.map((point, index) => index % labelStep === 0 || index === trend.length - 1 ? <span key={point.bucket}>{trendLabel(point.bucket, rangeDays)}</span> : <span key={point.bucket} aria-hidden="true" />)}</div></>}
+    </div>
+  )
 }
 
 function ProductThumb({ item }: { item: HotItem }) {
@@ -200,15 +282,15 @@ export default function AlgorithmDashboard({ data }: { data: AlgorithmOverview }
   const rangeLinks: Array<{ days: AlgorithmRange; label: string }> = [{ days: 1, label: "24 ชม." }, { days: 7, label: "7 วัน" }, { days: 30, label: "30 วัน" }]
 
   return <div className="algorithm-shell relative overflow-x-clip bg-[var(--algorithm-paper)] font-[var(--font-body)] text-[var(--algorithm-ink)]"><div className="pointer-events-none absolute -left-24 top-20 h-72 w-72 rounded-full bg-[var(--algorithm-paper-deep)] opacity-80 blur-3xl" /><div className="pointer-events-none absolute -right-28 bottom-24 h-96 w-96 rounded-full bg-[var(--algorithm-paper-blue)] opacity-80 blur-3xl" /><main className="relative mx-auto max-w-[1680px] px-3 py-3 sm:px-5 sm:py-5 lg:px-8 lg:py-8"><div className="rounded-[2rem] border border-[var(--algorithm-rule)] bg-[var(--algorithm-surface)] p-3 shadow-[var(--algorithm-shadow)] sm:p-5 lg:p-7">
-    <header className="flex flex-col gap-4 border-b border-[var(--algorithm-rule)] pb-5 lg:flex-row lg:items-center lg:justify-between"><div className="flex items-center gap-3"><div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[var(--algorithm-ink)] text-lg font-black text-[var(--algorithm-surface)]">W</div><div><p className="font-[var(--font-display)] text-lg font-semibold tracking-[-0.04em]">Dashboard</p><p className="text-[10px] font-bold uppercase tracking-[0.15em] text-[var(--algorithm-muted)]">Algorithm</p></div></div><nav className="order-3 flex min-w-0 items-center gap-1 overflow-x-auto rounded-full bg-[var(--algorithm-surface-soft)] p-1 lg:order-none" aria-label="เมนู Algorithm"><Link href="/algorithm" className="whitespace-nowrap rounded-full bg-[var(--algorithm-accent)] px-4 py-2 text-xs font-bold text-[var(--algorithm-ink)]">ภาพรวม</Link><Link href="/algorithm/audience" className="whitespace-nowrap rounded-full px-3 py-2 text-xs font-semibold text-[var(--algorithm-muted)] transition-colors hover:bg-[var(--algorithm-surface)] hover:text-[var(--algorithm-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--algorithm-blue)]">Audience Analytics</Link><Link href="/algorithm#hot-items" className="whitespace-nowrap rounded-full px-3 py-2 text-xs font-semibold text-[var(--algorithm-muted)] transition-colors hover:bg-[var(--algorithm-surface)] hover:text-[var(--algorithm-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--algorithm-blue)]">Hot Item</Link><Link href={recommendationHref} className="whitespace-nowrap rounded-full px-3 py-2 text-xs font-semibold text-[var(--algorithm-muted)] transition-colors hover:bg-[var(--algorithm-surface)] hover:text-[var(--algorithm-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--algorithm-blue)]">สินค้าแนะนำ</Link></nav><div className="flex items-center justify-between gap-3 lg:justify-end"><div className="flex items-center gap-1 rounded-full border border-[var(--algorithm-rule)] bg-[var(--algorithm-surface)] p-1">{rangeLinks.map((range) => <Link key={range.days} href={`/algorithm?range=${range.days}`} className={`whitespace-nowrap rounded-full px-3 py-2 text-xs font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--algorithm-blue)] ${data.rangeDays === range.days ? "bg-[var(--algorithm-ink)] text-[var(--algorithm-surface)]" : "text-[var(--algorithm-muted)] hover:bg-[var(--algorithm-accent-soft)] hover:text-[var(--algorithm-ink)]"}`}>{range.label}</Link>)}</div><div className="hidden items-center gap-2 sm:flex"><span className="grid h-9 w-9 place-items-center rounded-full bg-[var(--algorithm-blue-soft)] text-xs font-bold text-[var(--algorithm-blue)]">A</span><span className="hidden text-right xl:block"><span className="block text-xs font-bold text-[var(--algorithm-ink)]">Admin</span></span></div></div></header>
+    <header className="flex flex-col gap-4 border-b border-[var(--algorithm-rule)] pb-5 lg:flex-row lg:items-center lg:justify-between"><div className="flex items-center gap-3"><div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[var(--algorithm-ink)] text-lg font-black text-[var(--algorithm-surface)]">W</div><div><p className="font-[var(--font-display)] text-lg font-semibold tracking-[-0.04em]">Dashboard</p><p className="text-[10px] font-bold uppercase tracking-[0.15em] text-[var(--algorithm-muted)]">Algorithm</p></div></div><nav className="order-3 flex min-w-0 items-center gap-1 overflow-x-auto rounded-full bg-[var(--algorithm-surface-soft)] p-1 lg:order-none" aria-label="เมนู Algorithm"><Link href="/algorithm" className="whitespace-nowrap rounded-full bg-[var(--algorithm-accent)] px-4 py-2 text-xs font-bold text-[var(--algorithm-ink)]">ภาพรวม</Link><Link href="/algorithm/audience" className="whitespace-nowrap rounded-full px-3 py-2 text-xs font-semibold text-[var(--algorithm-muted)] transition-colors hover:bg-[var(--algorithm-surface)] hover:text-[var(--algorithm-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--algorithm-blue)]">Audience Analytics</Link><Link href="/algorithm#hot-items" className="whitespace-nowrap rounded-full px-3 py-2 text-xs font-semibold text-[var(--algorithm-muted)] transition-colors hover:bg-[var(--algorithm-surface)] hover:text-[var(--algorithm-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--algorithm-blue)]">Hot Item</Link><Link href={recommendationHref} className="whitespace-nowrap rounded-full px-3 py-2 text-xs font-semibold text-[var(--algorithm-muted)] transition-colors hover:bg-[var(--algorithm-surface)] hover:text-[var(--algorithm-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--algorithm-blue)]">สินค้าแนะนำ</Link></nav><div className="flex items-center justify-between gap-3 lg:justify-end"><div className="flex items-center gap-1 rounded-full border border-[var(--algorithm-rule)] bg-[var(--algorithm-surface)] p-1">{rangeLinks.map((range) => <Link key={range.days} href={`/algorithm?range=${range.days}&offset=0`} className={`whitespace-nowrap rounded-full px-3 py-2 text-xs font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--algorithm-blue)] ${data.rangeDays === range.days ? "bg-[var(--algorithm-ink)] text-[var(--algorithm-surface)]" : "text-[var(--algorithm-muted)] hover:bg-[var(--algorithm-accent-soft)] hover:text-[var(--algorithm-ink)]"}`}>{range.label}</Link>)}</div><div className="hidden items-center gap-2 sm:flex"><span className="grid h-9 w-9 place-items-center rounded-full bg-[var(--algorithm-blue-soft)] text-xs font-bold text-[var(--algorithm-blue)]">A</span><span className="hidden text-right xl:block"><span className="block text-xs font-bold text-[var(--algorithm-ink)]">Admin</span></span></div></div></header>
 
-    <section className="flex flex-col justify-between gap-6 py-7 sm:py-9 lg:flex-row lg:items-end"><div className="max-w-2xl"><div className="mb-3 inline-flex items-center gap-2 rounded-full bg-[var(--algorithm-accent-soft)] px-3 py-1.5 text-[10px] font-bold text-[var(--algorithm-accent-strong)]"><Sparkles className="h-3.5 w-3.5" />ข้อมูลจัดอันดับ</div><h1 className="max-w-xl break-words font-[var(--font-display)] text-4xl font-semibold leading-[1.05] tracking-[-0.06em] text-[var(--algorithm-ink)] sm:text-5xl">ภาพรวมสินค้า Prop</h1><p className="mt-2 max-w-xl text-sm text-[var(--algorithm-muted)]">{rangeLabel(data.rangeDays)}</p></div><div className="flex items-center gap-2 text-xs text-[var(--algorithm-muted)]"><span className="h-2 w-2 rounded-full bg-[var(--algorithm-accent-strong)]" />อัปเดต {dateTime(data.generatedAt)}</div></section>
+    <section className="flex flex-col justify-between gap-6 py-7 sm:py-9 lg:flex-row lg:items-end"><div className="max-w-2xl"><div className="mb-3 inline-flex items-center gap-2 rounded-full bg-[var(--algorithm-accent-soft)] px-3 py-1.5 text-[10px] font-bold text-[var(--algorithm-accent-strong)]"><Sparkles className="h-3.5 w-3.5" />{data.offset > 0 ? `ข้อมูลย้อนหลัง ${data.offset} ช่วง` : "ข้อมูลจัดอันดับ"}</div><h1 className="max-w-xl break-words font-[var(--font-display)] text-4xl font-semibold leading-[1.05] tracking-[-0.06em] text-[var(--algorithm-ink)] sm:text-5xl">ภาพรวมสินค้า Prop</h1><p className="mt-2 max-w-xl text-sm text-[var(--algorithm-muted)]">{data.offset > 0 ? `ย้อนหลัง ${data.offset} ช่วง (${dateTimeRangeLabel(data.startTime, data.endTime, data.rangeDays)})` : rangeLabel(data.rangeDays)}</p></div><div className="flex items-center gap-2 text-xs text-[var(--algorithm-muted)]"><span className="h-2 w-2 rounded-full bg-[var(--algorithm-accent-strong)]" />อัปเดต {dateTime(data.generatedAt)}</div></section>
 
     <section className="grid min-w-0 grid-cols-2 gap-3 lg:grid-cols-4"><MetricCard icon={Eye} label="ยอดดูไม่ซ้ำ" value={data.error ? "—" : number(data.totalUniqueViews)} note={rangeLabel(data.rangeDays)} /><MetricCard icon={Activity} label="ยอดดูทั้งหมด" value={data.error ? "—" : number(data.totalEvents)} note="จำนวนครั้งทั้งหมด" accent="blue" /><MetricCard icon={Globe2} label="พื้นที่ที่ระบุได้" value={data.error ? "—" : number(data.locationSummary.length)} note="จังหวัด / ภูมิภาค" accent="amber" /><MetricCard icon={TrendingUp} label="อันดับ 1" value={data.error || !topItem ? "—" : "#1"} note={topItem ? topItem.name : "ยังไม่มีข้อมูล"} /></section>
 
     {data.error && <section className="mt-5 flex gap-3 rounded-2xl border border-[var(--algorithm-danger)]/25 bg-[var(--algorithm-hot-soft)] p-4" role="alert"><CircleAlert className="mt-0.5 h-5 w-5 shrink-0 text-[var(--algorithm-danger)]" /><div><p className="text-sm font-bold text-[var(--algorithm-danger)]">ยังอ่านข้อมูลอัลกอริทึมไม่ได้</p><p className="mt-1 text-xs leading-5 text-[var(--algorithm-ink-soft)]">{data.error}</p></div></section>}
 
-    <section className="mt-5 grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1.45fr)_minmax(300px,0.75fr)]"><article className="min-w-0 rounded-[1.5rem] border border-[var(--algorithm-rule)] bg-[var(--algorithm-surface)] p-4 sm:p-6"><div className="flex items-start justify-between gap-4"><div><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--algorithm-blue)]">แนวโน้ม</p><h2 className="mt-2 text-xl font-semibold tracking-[-0.04em]">ยอดดูไม่ซ้ำตามช่วงเวลา</h2></div><span aria-hidden="true" className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[var(--algorithm-muted)]"><MoreHorizontal className="h-5 w-5" /></span></div><TrendChart trend={data.trend} rangeDays={data.rangeDays} /></article><article className="min-w-0 rounded-[1.5rem] border border-[var(--algorithm-rule)] bg-[var(--algorithm-surface)] p-4 sm:p-6"><div className="flex items-start justify-between gap-4"><div><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--algorithm-accent-strong)]">Hot Item</p><h2 className="mt-2 text-xl font-semibold tracking-[-0.04em]">สินค้ายอดนิยม</h2></div><BarChart3 className="h-5 w-5 text-[var(--algorithm-muted)]" /></div><div className="mt-4">{data.topItems.length === 0 ? <div className="rounded-2xl border border-dashed border-[var(--algorithm-rule-strong)] px-4 py-10 text-center text-sm text-[var(--algorithm-muted)]">ยังไม่มีข้อมูล Hot Item</div> : data.topItems.slice(0, 5).map((item) => <TopProductRow key={item.id} item={item} />)}</div></article></section>
+    <section className="mt-5 grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1.45fr)_minmax(300px,0.75fr)]"><article className="min-w-0 rounded-[1.5rem] border border-[var(--algorithm-rule)] bg-[var(--algorithm-surface)] p-4 sm:p-6"><div className="flex items-start justify-between gap-4"><div><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--algorithm-blue)]">แนวโน้ม</p><h2 className="mt-2 text-xl font-semibold tracking-[-0.04em]">ยอดดูไม่ซ้ำตามช่วงเวลา</h2></div><span aria-hidden="true" className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[var(--algorithm-muted)]"><MoreHorizontal className="h-5 w-5" /></span></div><TrendChart trend={data.trend} rangeDays={data.rangeDays} offset={data.offset} startTime={data.startTime} endTime={data.endTime} /></article><article className="min-w-0 rounded-[1.5rem] border border-[var(--algorithm-rule)] bg-[var(--algorithm-surface)] p-4 sm:p-6"><div className="flex items-start justify-between gap-4"><div><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--algorithm-accent-strong)]">Hot Item</p><h2 className="mt-2 text-xl font-semibold tracking-[-0.04em]">สินค้ายอดนิยม</h2></div><BarChart3 className="h-5 w-5 text-[var(--algorithm-muted)]" /></div><div className="mt-4">{data.topItems.length === 0 ? <div className="rounded-2xl border border-dashed border-[var(--algorithm-rule-strong)] px-4 py-10 text-center text-sm text-[var(--algorithm-muted)]">ยังไม่มีข้อมูล Hot Item</div> : data.topItems.slice(0, 5).map((item) => <TopProductRow key={item.id} item={item} />)}</div></article></section>
 
     <section className="mt-5 grid min-w-0 gap-5 lg:grid-cols-[minmax(0,0.78fr)_minmax(0,1.22fr)]"><article className="min-w-0 rounded-[1.5rem] border border-[var(--algorithm-rule)] bg-[var(--algorithm-surface)] p-4 sm:p-6"><div className="flex items-start justify-between gap-4"><div><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--algorithm-blue)]">สถานที่</p><h2 className="mt-2 text-xl font-semibold tracking-[-0.04em]">ผู้ชมมาจากที่ไหน</h2></div><MapPinned className="h-5 w-5 text-[var(--algorithm-blue)]" /></div><LocationBars data={data} /></article><article className="min-w-0 rounded-[1.5rem] border border-[var(--algorithm-rule)] bg-[var(--algorithm-surface)] p-4 sm:p-6"><div className="flex items-start justify-between gap-4"><div><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--algorithm-hot)]">ประเภทผู้เข้าชม</p><h2 className="mt-2 text-xl font-semibold tracking-[-0.04em]">สถานะผู้ชมและการคัดกรอง</h2></div><UsersRound className="h-5 w-5 text-[var(--algorithm-hot)]" /></div><div className="mt-5"><p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--algorithm-muted)]">สถานะการเข้าสู่ระบบ</p><div className="mt-3 grid grid-cols-2 gap-3">{(["user", "visitor"] as const).map((label) => <div key={label} className="rounded-2xl bg-[var(--algorithm-surface-soft)] p-4"><p className="font-[var(--font-display)] text-2xl font-semibold tabular-nums text-[var(--algorithm-ink)]">{data.error ? "—" : number(identityCount(data, label))}</p><p className="mt-1 truncate text-xs font-semibold text-[var(--algorithm-ink-soft)]">{identityLabel(label)}</p></div>)}</div><div className="mt-5 border-t border-[var(--algorithm-rule)] pt-4"><p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--algorithm-muted)]">การคัดกรองทราฟฟิก</p><div className="mt-3 grid grid-cols-3 gap-3">{["internal", "bot", "unknown"].map((label) => <div key={label} className="rounded-2xl bg-[var(--algorithm-surface-soft)] p-3"><p className="font-[var(--font-display)] text-xl font-semibold tabular-nums text-[var(--algorithm-ink)]">{data.error ? "—" : number(trafficCount(data, label))}</p><p className="mt-1 truncate text-xs font-semibold text-[var(--algorithm-ink-soft)]">{trafficLabel(label)}</p></div>)}</div></div></div></article></section>
 

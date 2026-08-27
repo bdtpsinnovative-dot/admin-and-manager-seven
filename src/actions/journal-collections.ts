@@ -306,31 +306,66 @@ export async function syncJournalImageProducts(journalImageId: number, productId
 
 /**
  * 4. เพิ่มรูปภาพใหม่ในหมวดหมู่ (รองรับการวางหลาย URL)
+ * กฎ: รูปที่เพิ่มใหม่จะถูกจัดวางไว้ตำแหน่งแรกสุดถัดจากรูปปก (ลำดับที่ 2 เป็นต้นไป)
+ * โดยไม่ทับตำแหน่งรูปปกเดิม (ลำดับที่ 1)
  */
 export async function addJournalImages(categoryId: string, urls: string[]) {
   const supabase = supabaseAdmin;
   const validUrls = urls.map((u) => u.trim()).filter((u) => u.startsWith("http"));
   if (validUrls.length === 0) return { success: false, message: "ไม่มี URL ที่ถูกต้อง" };
 
-  // หาลำดับสูงสุดเดิม
+  // ดึงรูปทั้งหมดในหมวดเรียงตาม sort_order
   const { data: existing } = await supabase
     .from("journal_images")
-    .select("sort_order")
+    .select("id, sort_order")
     .eq("category_id", categoryId)
-    .order("sort_order", { ascending: false })
-    .limit(1);
+    .order("sort_order", { ascending: true });
 
-  const startOrder = existing && existing[0]?.sort_order ? Number(existing[0].sort_order) : 0;
+  const existingImages = existing || [];
 
-  const rows = validUrls.map((url, idx) => ({
-    category_id: categoryId,
-    image_url: url,
-    sort_order: startOrder + idx + 1,
-    is_active: true,
-  }));
+  if (existingImages.length === 0) {
+    // กรณีหมวดนี้ยังไม่มีรูปเลย -> รูปแรกจะเป็นรูปปก (ลำดับ 1)
+    const rows = validUrls.map((url, idx) => ({
+      category_id: categoryId,
+      image_url: url,
+      sort_order: idx + 1,
+      is_active: true,
+    }));
 
-  const { error } = await supabase.from("journal_images").insert(rows);
-  if (error) throw new Error(error.message);
+    const { error } = await supabase.from("journal_images").insert(rows);
+    if (error) throw new Error(error.message);
+
+    // อัปเดต cover_image_url ของหมวดหมู่ด้วย
+    await supabase
+      .from("journal_categories")
+      .update({ cover_image_url: validUrls[0] })
+      .eq("id", categoryId);
+  } else {
+    // กรณีมีรูปอยู่แล้ว:
+    // 1. รูปปกเดิม (index 0) ยังคงอยู่ที่ลำดับ 1
+    // 2. ขยับรูปเดิมอื่นๆ (ตั้งแต่ index 1 เป็นต้นไป) ถอยหลังไปตามจำนวนรูปใหม่
+    const newCount = validUrls.length;
+    const nonCoverImages = existingImages.slice(1);
+
+    for (let idx = nonCoverImages.length - 1; idx >= 0; idx--) {
+      const newSort = 1 + newCount + (idx + 1);
+      await supabase
+        .from("journal_images")
+        .update({ sort_order: newSort })
+        .eq("id", nonCoverImages[idx].id);
+    }
+
+    // 3. แทรกรูปใหม่ทั้งหมดเริ่มต้นที่ลำดับ 2 เป็นต้นไป (ต่อจากรูปปกทันที)
+    const newRows = validUrls.map((url, idx) => ({
+      category_id: categoryId,
+      image_url: url,
+      sort_order: 2 + idx,
+      is_active: true,
+    }));
+
+    const { error } = await supabase.from("journal_images").insert(newRows);
+    if (error) throw new Error(error.message);
+  }
 
   revalidatePath("/web-gallery");
   return { success: true, added: validUrls.length };

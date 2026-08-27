@@ -100,6 +100,9 @@ type RawProfile = {
 
 export type AudienceAnalytics = {
   rangeDays: Range
+  offset?: number
+  startTime?: string
+  endTime?: string
   generatedAt: string
   productStartedAt: string
   products: AudienceProduct[]
@@ -318,14 +321,18 @@ async function requireAdmin() {
   if (!profile || !["admin", "super_admin"].includes(String(profile.role))) throw new Error("ไม่มีสิทธิ์ดูข้อมูล Analytics")
 }
 
-async function fetchPagedAlgorithmEvents(cutoff: string) {
+async function fetchPagedAlgorithmEvents(cutoff: string, until?: string) {
   const pageSize = 1000
-  const { count, error: countError } = await supabaseAdmin
+  let countReq = supabaseAdmin
     .from("algorithm_events")
     .select("id", { count: "exact", head: true })
     .eq("source_tag", "prop")
     .in("event_type", ["product_view", "page_view", "session_end", "journey", "cta"])
     .gte("created_at", cutoff)
+
+  if (until) countReq = countReq.lte("created_at", until)
+
+  const { count, error: countError } = await countReq
 
   if (countError) throw new Error(countError.message)
   const total = count || 0
@@ -336,12 +343,16 @@ async function fetchPagedAlgorithmEvents(cutoff: string) {
   const results = await Promise.all(
     pageIndexes.map(async (pageIdx) => {
       const offset = pageIdx * pageSize
-      const { data, error } = await supabaseAdmin
+      let req = supabaseAdmin
         .from("algorithm_events")
         .select("id, product_id, collection_group_id, product_category_snapshot, product_price_snapshot, product_name_snapshot, product_sku_snapshot, product_color_snapshot, product_material_snapshot, identity_key, identity_type, user_id, visitor_id, session_id, page_instance_id, event_type, page_type, page_path, created_at, duration_seconds, is_bounce, is_quick_bounce, activity_interval_id, next_page_type, journey_outcome, is_countable, traffic_type, country_code, country, region, city, device_type, os_name, browser_name, source_platform, first_touch_source, session_source, referrer_host, metadata")
         .eq("source_tag", "prop")
         .in("event_type", ["product_view", "page_view", "session_end", "journey", "cta"])
         .gte("created_at", cutoff)
+
+      if (until) req = req.lte("created_at", until)
+
+      const { data, error } = await req
         .order("created_at", { ascending: false })
         .range(offset, offset + pageSize - 1)
       if (error) throw new Error(error.message)
@@ -351,12 +362,16 @@ async function fetchPagedAlgorithmEvents(cutoff: string) {
   return results.flat()
 }
 
-async function fetchPagedActivities(cutoff: string) {
+async function fetchPagedActivities(cutoff: string, until?: string) {
   const pageSize = 1000
-  const { count, error: countError } = await supabaseAdmin
+  let countReq = supabaseAdmin
     .from("algorithm_activity_intervals")
     .select("id", { count: "exact", head: true })
     .gte("started_at", cutoff)
+
+  if (until) countReq = countReq.lte("started_at", until)
+
+  const { count, error: countError } = await countReq
 
   if (countError) throw new Error(countError.message)
   const total = count || 0
@@ -367,10 +382,14 @@ async function fetchPagedActivities(cutoff: string) {
   const results = await Promise.all(
     pageIndexes.map(async (pageIdx) => {
       const offset = pageIdx * pageSize
-      const { data, error } = await supabaseAdmin
+      let req = supabaseAdmin
         .from("algorithm_activity_intervals")
         .select("id, identity_key, session_id, page_instance_id, product_id, active_seconds, started_at")
         .gte("started_at", cutoff)
+
+      if (until) req = req.lte("started_at", until)
+
+      const { data, error } = await req
         .order("started_at", { ascending: false })
         .range(offset, offset + pageSize - 1)
       if (error) throw new Error(error.message)
@@ -482,25 +501,30 @@ function mergedActiveSeconds(activities: RawActivity[]) {
   return Math.round(total / 1000)
 }
 
-const audienceCache = new Map<number, { data: AudienceAnalytics; expiresAt: number }>()
+const audienceCache = new Map<string, { data: AudienceAnalytics; expiresAt: number }>()
 const AUDIENCE_CACHE_TTL_MS = 3 * 60 * 1000 // 3 minutes
 
-export async function getAudienceAnalytics(rangeValue: number): Promise<AudienceAnalytics> {
+export async function getAudienceAnalytics(rangeValue: number, offset: number = 0): Promise<AudienceAnalytics> {
   const rangeDays = normalizeRange(rangeValue)
+  const safeOffset = Math.max(0, Number(offset) || 0)
   const productStartedAt = "ข้อมูลชุดนี้เริ่มเก็บตั้งแต่วันที่ deploy Audience Analytics"
 
-  const cached = audienceCache.get(rangeDays)
+  const cacheKey = `${rangeDays}:${safeOffset}`
+  const cached = audienceCache.get(cacheKey)
   if (cached && Date.now() < cached.expiresAt) {
     return cached.data
   }
 
+  const windowMs = rangeDays * dayMs
+  const endTime = safeOffset > 0 ? new Date(Date.now() - safeOffset * windowMs).toISOString() : new Date().toISOString()
+  const cutoff = new Date(new Date(endTime).getTime() - windowMs).toISOString()
+
   try {
     await requireAdmin()
-    const cutoff = new Date(Date.now() - rangeDays * dayMs).toISOString()
     const [productRows, eventRows, activityRows, linkRows] = await Promise.all([
       fetchPagedPropProducts(),
-      fetchPagedAlgorithmEvents(cutoff),
-      fetchPagedActivities(cutoff),
+      fetchPagedAlgorithmEvents(cutoff, endTime),
+      fetchPagedActivities(cutoff, endTime),
       fetchPagedViewerLinks(),
     ])
 
@@ -750,11 +774,33 @@ export async function getAudienceAnalytics(rangeValue: number): Promise<Audience
       persona: topWithShare(personaLabels),
     }
 
-    const result: AudienceAnalytics = { rangeDays, generatedAt: new Date().toISOString(), productStartedAt, products: productAnalytics, personas, summary: { products: productSummary, personas: personaSummary }, error: null }
-    audienceCache.set(rangeDays, { data: result, expiresAt: Date.now() + AUDIENCE_CACHE_TTL_MS })
+    const result: AudienceAnalytics = {
+      rangeDays,
+      offset: safeOffset,
+      startTime: cutoff,
+      endTime,
+      generatedAt: new Date().toISOString(),
+      productStartedAt,
+      products: productAnalytics,
+      personas,
+      summary: { products: productSummary, personas: personaSummary },
+      error: null,
+    }
+    audienceCache.set(cacheKey, { data: result, expiresAt: Date.now() + AUDIENCE_CACHE_TTL_MS })
     return result
   } catch (error) {
     console.error("[audience-analytics] query failed", error)
-    return { rangeDays, generatedAt: new Date().toISOString(), productStartedAt, products: [], personas: [], summary: emptySummary(), error: error instanceof Error ? error.message : "ไม่สามารถอ่าน Audience Analytics ได้" }
+    return {
+      rangeDays,
+      offset: safeOffset,
+      startTime: cutoff,
+      endTime,
+      generatedAt: new Date().toISOString(),
+      productStartedAt,
+      products: [],
+      personas: [],
+      summary: emptySummary(),
+      error: error instanceof Error ? error.message : "ไม่สามารถอ่าน Audience Analytics ได้",
+    }
   }
 }

@@ -3,29 +3,31 @@
 import { createClient } from "@/lib/supabase/server";
 import { AutoProcessor, CLIPVisionModelWithProjection, RawImage } from "@xenova/transformers";
 
-// In-memory singleton cache for CLIP model
-let cachedModel: any = null;
-let cachedProcessor: any = null;
-let modelPromise: Promise<[any, any]> | null = null;
+// Global singleton cache for CLIP model across Next.js HMR reloads
+const globalForClip = globalThis as unknown as {
+  cachedClipModel?: any;
+  cachedClipProcessor?: any;
+  clipModelPromise?: Promise<[any, any]> | null;
+};
 
 async function getClipModel() {
-  if (cachedModel && cachedProcessor) {
-    return [cachedModel, cachedProcessor];
+  if (globalForClip.cachedClipModel && globalForClip.cachedClipProcessor) {
+    return [globalForClip.cachedClipModel, globalForClip.cachedClipProcessor];
   }
 
-  if (modelPromise) {
-    return modelPromise;
+  if (globalForClip.clipModelPromise) {
+    return globalForClip.clipModelPromise;
   }
 
-  modelPromise = (async () => {
+  globalForClip.clipModelPromise = (async () => {
     const model = await CLIPVisionModelWithProjection.from_pretrained("Xenova/clip-vit-base-patch32");
     const processor = await AutoProcessor.from_pretrained("Xenova/clip-vit-base-patch32");
-    cachedModel = model;
-    cachedProcessor = processor;
+    globalForClip.cachedClipModel = model;
+    globalForClip.cachedClipProcessor = processor;
     return [model, processor];
   })();
 
-  return modelPromise;
+  return globalForClip.clipModelPromise;
 }
 
 export type ClipEmbedResult = {
