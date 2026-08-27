@@ -227,10 +227,14 @@ export async function searchPropsProducts(
  * 3. บันทึก/อัปเดตการผูกสินค้ากับรูปภาพ Collection นั้นๆ
  */
 export async function syncJournalImageProducts(journalImageId: number, productIds: number[]) {
+  // ตรวจสอบ auth ก่อน
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Unauthorized");
 
+  // ใช้ supabaseAdmin เพื่อ bypass RLS (ตาราง journal_image_products ไม่มี policy สำหรับ authenticated)
   // 1. ลบรายการเก่าของรูปนี้ออก
-  const { error: deleteError } = await supabase
+  const { error: deleteError } = await supabaseAdmin
     .from("journal_image_products")
     .delete()
     .eq("journal_image_id", journalImageId);
@@ -248,7 +252,7 @@ export async function syncJournalImageProducts(journalImageId: number, productId
       sort_order: idx + 1,
     }));
 
-    const { error: insertError } = await supabase
+    const { error: insertError } = await supabaseAdmin
       .from("journal_image_products")
       .insert(rows);
 
