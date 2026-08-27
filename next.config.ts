@@ -12,6 +12,8 @@ const nextConfig: NextConfig = {
     ],
   },
 
+  serverExternalPackages: ["@xenova/transformers", "sharp", "onnxruntime-node"],
+
   /* ✅ เพิ่มส่วนนี้เพื่อแก้ Error: Body exceeded 1 MB limit */
   experimental: {
     serverActions: {
