@@ -151,11 +151,13 @@ export async function getJournalCategoriesWithImages(): Promise<JournalCategoryW
 /**
  * 2. ค้นหาสินค้า Prop สำหรับแสดงใน Modal เลือกสินค้า (กรอง category_id = 'prop' พร้อม Pagination & Search ลึก)
  */
+import { CATEGORY_MAP } from "@/lib/propFilterModel";
+
 export async function searchPropsProducts(
   query: string = "",
   page: number = 0,
   limit: number = 80,
-  filterGroup: string = ""
+  filterCategory: string = ""
 ): Promise<{
   products: Array<{
     id: number;
@@ -172,6 +174,7 @@ export async function searchPropsProducts(
 }> {
   const supabase = supabaseAdmin;
   const trimmed = query.trim();
+  const catTrimmed = filterCategory.trim();
 
   const from = page * limit;
   const to = from + limit - 1;
@@ -181,10 +184,41 @@ export async function searchPropsProducts(
     .select("id, name, sku, price, image_url, status, collection_group_id, category_id", { count: "exact" })
     .eq("category_id", "prop");
 
-  if (filterGroup && filterGroup !== "all") {
-    req = req.ilike("collection_group_id", `%${filterGroup}%`);
+  // 1. กรองตาม Category Logic เดียวกับฝั่ง PROP (เช็คจาก collection_groups.product_sup)
+  if (catTrimmed && catTrimmed !== "all" && catTrimmed !== "All") {
+    const allowedSups = CATEGORY_MAP[catTrimmed] || CATEGORY_MAP[catTrimmed.toUpperCase()];
+
+    if (allowedSups && allowedSups.length > 0) {
+      // ดึง collection_groups ที่มี product_sup ตรงตามหมวด
+      const { data: matchedGroups } = await supabase
+        .from("collection_groups")
+        .select("id, product_sup")
+        .ilike("tag", "%prop%");
+
+      const allowedSet = new Set(allowedSups.map((s) => s.trim().toLowerCase()));
+      const matchingGroupIds = (matchedGroups || [])
+        .filter((g) => allowedSet.has(String(g.product_sup || "").trim().toLowerCase()))
+        .map((g) => String(g.id));
+
+      if (matchingGroupIds.length > 0) {
+        req = req.in("collection_group_id", matchingGroupIds);
+      } else {
+        // ถ้าไม่พบ group ที่ตรงกัน ให้คืนค่าว่าง
+        return { products: [], totalCount: 0, hasMore: false };
+      }
+    } else {
+      // Fallback กรณีเป็น Keyword ทั่วไป
+      const keywords = catTrimmed.split(/[,|\s]+/).map((k) => k.trim()).filter(Boolean);
+      if (keywords.length > 0) {
+        const orClauses = keywords
+          .map((k) => `name.ilike.%${k}%,sku.ilike.%${k}%,collection_group_id.ilike.%${k}%,barcode.ilike.%${k}%`)
+          .join(",");
+        req = req.or(orClauses);
+      }
+    }
   }
 
+  // 2. กรองตามคำค้นหาใน Search Bar
   if (trimmed) {
     req = req.or(
       `name.ilike.%${trimmed}%,sku.ilike.%${trimmed}%,barcode.ilike.%${trimmed}%,collection_group_id.ilike.%${trimmed}%`

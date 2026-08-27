@@ -246,6 +246,7 @@ export default function CollectionsManagerClient({
       <ProductPickerModal
         image={selectedImage}
         categoryTitle={currentCategory.titleEn}
+        categories={categories}
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onSuccess={handleSuccessUpdate}

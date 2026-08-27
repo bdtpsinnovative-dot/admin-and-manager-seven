@@ -2,13 +2,13 @@
 
 import { useState, useTransition, useMemo } from "react";
 import Link from "next/link";
-import { 
-  ArrowLeft, 
-  Layers, 
-  Package, 
-  Link2, 
-  CheckCircle2, 
-  Sparkles, 
+import {
+  ArrowLeft,
+  Layers,
+  Package,
+  Link2,
+  CheckCircle2,
+  Sparkles,
   Plus,
   ArrowUp,
   ArrowDown,
@@ -27,9 +27,9 @@ import {
   Grid,
   Database
 } from "lucide-react";
-import { 
-  JournalCategoryWithImages, 
-  JournalImageWithProducts, 
+import {
+  JournalCategoryWithImages,
+  JournalImageWithProducts,
   LinkedProduct,
   addJournalImages,
   setJournalCoverImage,
@@ -79,8 +79,8 @@ export default function WebGalleryClient({
 
   const [isPending, startTransition] = useTransition();
 
-  const currentCategory = activeCategoryId 
-    ? categories.find((c) => c.id === activeCategoryId) || null 
+  const currentCategory = activeCategoryId
+    ? categories.find((c) => c.id === activeCategoryId) || null
     : null;
 
   // Stats
@@ -344,7 +344,7 @@ export default function WebGalleryClient({
         {/* ========================================================================= */}
         {!currentCategory && (
           <div className="space-y-6 animate-in fade-in duration-200">
-            
+
             {/* --- 1. Top Header Banner --- */}
             <div className="flex flex-col gap-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-xs sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-4">
@@ -373,7 +373,7 @@ export default function WebGalleryClient({
 
             {/* --- 2. Stats Bar + Search --- */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              
+
               {/* Stat 1 */}
               <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-4 shadow-2xs">
                 <div>
@@ -459,11 +459,10 @@ export default function WebGalleryClient({
                       <button
                         type="button"
                         onClick={() => handleToggleCategoryActive(cat)}
-                        className={`absolute top-3 right-3 flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-bold backdrop-blur-xs shadow-xs transition ${
-                          cat.isActive
+                        className={`absolute top-3 right-3 flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-bold backdrop-blur-xs shadow-xs transition ${cat.isActive
                             ? "bg-emerald-500/90 text-white"
                             : "bg-slate-700/80 text-slate-300"
-                        }`}
+                          }`}
                       >
                         {cat.isActive ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
                         {cat.isActive ? "เปิดอยู่" : "ปิดอยู่"}
@@ -535,7 +534,7 @@ export default function WebGalleryClient({
                           <ImageIcon className="h-4 w-4" />
                           จัดการรูปภาพ ({cat.images.length})
                         </button>
-                        
+
                         <button
                           type="button"
                           onClick={() => handleOpenCategoryModal(cat)}
@@ -569,10 +568,10 @@ export default function WebGalleryClient({
         {/* ========================================================================= */}
         {currentCategory && (
           <div className="space-y-6 animate-in fade-in duration-200">
-            
+
             {/* Top Navigation Bar & Category Tabs (Hallmark Redesign) */}
             <div className="flex flex-col gap-0 rounded-[20px] border border-slate-200 bg-white shadow-sm overflow-hidden">
-              
+
               {/* Row 1: Main Header (Back, Title, Actions) */}
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between p-5 border-b border-slate-100 bg-slate-50/50">
                 <div className="flex items-center gap-4">
@@ -631,11 +630,10 @@ export default function WebGalleryClient({
                         setActiveCategoryId(cat.id);
                         setSelectedImageIds([]);
                       }}
-                      className={`inline-flex shrink-0 items-center justify-center rounded-lg px-3.5 py-1.5 text-xs font-bold transition-all ${
-                        active
+                      className={`inline-flex shrink-0 items-center justify-center rounded-lg px-3.5 py-1.5 text-xs font-bold transition-all ${active
                           ? "bg-slate-900 text-white shadow-sm ring-1 ring-slate-900"
                           : "bg-slate-100/80 text-slate-500 hover:bg-slate-200 hover:text-slate-800"
-                      }`}
+                        }`}
                     >
                       {cat.titleEn}
                       <span className={`ml-1.5 px-1.5 py-0.5 rounded-md text-[9px] font-mono ${active ? 'bg-white/20' : 'bg-slate-200/60'}`}>
@@ -734,11 +732,10 @@ export default function WebGalleryClient({
                     return (
                       <div
                         key={img.id}
-                        className={`group relative flex flex-col rounded-2xl border bg-white overflow-hidden transition-all duration-200 ${
-                          isSelected
+                        className={`group relative flex flex-col rounded-2xl border bg-white overflow-hidden transition-all duration-200 ${isSelected
                             ? "border-blue-600 ring-2 ring-blue-600/20 shadow-md"
                             : "border-slate-200 hover:border-slate-300 hover:shadow-md"
-                        }`}
+                          }`}
                       >
                         {/* Thumbnail Stage */}
                         <div className="relative aspect-square w-full bg-slate-100 overflow-hidden">
@@ -753,11 +750,10 @@ export default function WebGalleryClient({
                           <button
                             type="button"
                             onClick={() => handleToggleSelectImage(img.id)}
-                            className={`absolute top-2 left-2 z-10 flex h-6 w-6 items-center justify-center rounded-lg border shadow-xs transition-all ${
-                              isSelected
+                            className={`absolute top-2 left-2 z-10 flex h-6 w-6 items-center justify-center rounded-lg border shadow-xs transition-all ${isSelected
                                 ? "bg-blue-600 border-blue-600 text-white"
                                 : "bg-white/90 border-slate-300 text-transparent hover:border-slate-500"
-                            }`}
+                              }`}
                           >
                             <Check className="h-3.5 w-3.5 stroke-[3]" />
                           </button>
@@ -826,14 +822,13 @@ export default function WebGalleryClient({
                           <button
                             type="button"
                             onClick={() => handleOpenPicker(img)}
-                            className={`w-full inline-flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold transition-all shadow-xs active:scale-95 ${
-                              linkedCount > 0
+                            className={`w-full inline-flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold transition-all shadow-xs active:scale-95 ${linkedCount > 0
                                 ? "bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200"
                                 : "bg-blue-600 text-white hover:bg-blue-700 shadow-blue-600/20"
-                            }`}
+                              }`}
                           >
                             <Link2 className="h-3.5 w-3.5" />
-                            {linkedCount > 0 ? "แก้ไขสินค้าที่ผูก" : "🔗 ผูกสินค้าในรูปนี้"}
+                            {linkedCount > 0 ? "แก้ไขสินค้าที่ผูก" : "ผูกสินค้าในรูปนี้"}
                           </button>
 
                           {/* Action Bar (Reorder, Set Cover, Delete) */}
@@ -900,6 +895,7 @@ export default function WebGalleryClient({
       <ProductPickerModal
         image={selectedImageForPicker}
         categoryTitle={currentCategory?.titleEn || ""}
+        categories={categories}
         isOpen={isPickerOpen}
         onClose={() => setIsPickerOpen(false)}
         onSuccess={handleSuccessProductTag}
