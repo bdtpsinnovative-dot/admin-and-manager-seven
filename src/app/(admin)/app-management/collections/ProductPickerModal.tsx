@@ -11,7 +11,9 @@ import {
   Trash2,
   Crop,
   Sparkles,
-  Plus
+  Plus,
+  AlertTriangle,
+  Save
 } from "lucide-react";
 import { 
   JournalImageWithProducts, 
@@ -19,12 +21,28 @@ import {
   searchPropsProducts, 
   syncJournalImageProducts 
 } from "@/actions/journal-collections";
-import { searchProductsByVisualCrop, VisualSearchResult, CropBoxNormalized } from "@/actions/visual-search";
+import { searchProductsByVisualEmbedding, VisualSearchResult } from "@/actions/visual-search";
+import { extractImageEmbeddingFromUrl, CropBoxNormalized } from "@/lib/clipClient";
 import ImageCropperOverlay from "./ImageCropperOverlay";
+
+import { PRODUCT_FILTER_ITEMS, ProductFilterMenuItem } from "@/lib/propFilterModel";
+
+function formatPriceDisplay(price: number | null | undefined) {
+  const num = Number(price);
+  if (price !== null && price !== undefined && Number.isFinite(num) && num > 0) {
+    return `${num.toLocaleString()} ฿`;
+  }
+  return (
+    <span className="inline-flex items-center text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200/80 px-1.5 py-0.5 rounded leading-none">
+      Pre-order
+    </span>
+  );
+}
 
 interface ProductPickerModalProps {
   image: JournalImageWithProducts | null;
   categoryTitle: string;
+  categories?: Array<{ id: string; titleEn: string; categoryQuery?: string | null; slug?: string }>;
   isOpen: boolean;
   onClose: () => void;
   onSuccess: (imageId: number, selectedProducts: LinkedProduct[]) => void;
@@ -33,13 +51,18 @@ interface ProductPickerModalProps {
 export default function ProductPickerModal({
   image,
   categoryTitle,
+  categories,
   isOpen,
   onClose,
   onSuccess,
 }: ProductPickerModalProps) {
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedMainCategory, setSelectedMainCategory] = useState<string>("ALL");
+  const [selectedSubCategory, setSelectedSubCategory] = useState<string | null>(null);
   const [products, setProducts] = useState<LinkedProduct[]>([]);
   const [selectedProducts, setSelectedProducts] = useState<LinkedProduct[]>([]);
+  const [initialSelectedIds, setInitialSelectedIds] = useState<number[]>([]);
+  const [showConfirmClose, setShowConfirmClose] = useState(false);
   
   // Visual Search Mode
   const [showVisualModal, setShowVisualModal] = useState(false);
@@ -56,10 +79,16 @@ export default function ProductPickerModal({
   const [isPending, startTransition] = useTransition();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  // หา Subcategories ของ Main Category ที่เลือกอยู่
+  const activeMainItem = PRODUCT_FILTER_ITEMS.find((item) => item.label === selectedMainCategory);
+  const subCategories = activeMainItem?.items || [];
+
   // เมื่อเปิด Modal ให้เซ็ตค่าเริ่มต้น
   useEffect(() => {
     if (isOpen && image) {
       setSearchQuery("");
+      setSelectedMainCategory("ALL");
+      setSelectedSubCategory(null);
       setErrorMessage(null);
       setPage(0);
       setAiSuggestions([]);
@@ -77,17 +106,25 @@ export default function ProductPickerModal({
         sortOrder: p.sortOrder || idx + 1,
       }));
       setSelectedProducts(initialSelected);
+      setInitialSelectedIds(initialSelected.map((p) => p.id));
+      setShowConfirmClose(false);
 
-      loadInitialProducts("");
+      loadInitialProducts("", "ALL");
     }
   }, [isOpen, image]);
 
-  const loadInitialProducts = async (query: string) => {
+  const getCurrentFilterCategory = () => {
+    if (selectedSubCategory) return selectedSubCategory;
+    if (selectedMainCategory && selectedMainCategory !== "ALL") return selectedMainCategory;
+    return "";
+  };
+
+  const loadInitialProducts = async (query: string, filterCat: string) => {
     setIsLoading(true);
     setErrorMessage(null);
     setPage(0);
     try {
-      const res = await searchPropsProducts(query, 0, 60);
+      const res = await searchPropsProducts(query, 0, 60, filterCat === "ALL" ? "" : filterCat);
       setProducts(res.products as LinkedProduct[]);
       setTotalCount(res.totalCount);
       setHasMore(res.hasMore);
@@ -98,12 +135,30 @@ export default function ProductPickerModal({
     }
   };
 
+  const handleSelectMainCategory = (item: ProductFilterMenuItem) => {
+    setSelectedMainCategory(item.label);
+    setSelectedSubCategory(null);
+    loadInitialProducts(searchQuery, item.label);
+  };
+
+  const handleSelectSubCategory = (subValue: string) => {
+    if (selectedSubCategory === subValue) {
+      // ยกเลิก Subcategory กลับไปใช้ Main Category
+      setSelectedSubCategory(null);
+      loadInitialProducts(searchQuery, selectedMainCategory);
+    } else {
+      setSelectedSubCategory(subValue);
+      loadInitialProducts(searchQuery, subValue);
+    }
+  };
+
   const handleLoadMore = async () => {
     if (isLoadingMore || !hasMore) return;
     setIsLoadingMore(true);
     const nextPage = page + 1;
+    const currentCat = getCurrentFilterCategory();
     try {
-      const res = await searchPropsProducts(searchQuery, nextPage, 60);
+      const res = await searchPropsProducts(searchQuery, nextPage, 60, currentCat);
       setProducts((prev) => [...prev, ...(res.products as LinkedProduct[])]);
       setPage(nextPage);
       setHasMore(res.hasMore);
@@ -120,7 +175,8 @@ export default function ProductPickerModal({
     setIsVisualSearching(true);
     setErrorMessage(null);
     try {
-      const result = await searchProductsByVisualCrop(targetImageUrl, cropBox);
+      const embedding = await extractImageEmbeddingFromUrl(targetImageUrl, cropBox);
+      const result = await searchProductsByVisualEmbedding(embedding);
       setAiSuggestions(result.results);
       setShowVisualModal(false);
     } catch (err: any) {
@@ -134,12 +190,10 @@ export default function ProductPickerModal({
   useEffect(() => {
     if (!isOpen) return;
     const timer = setTimeout(() => {
-      loadInitialProducts(searchQuery);
+      loadInitialProducts(searchQuery, getCurrentFilterCategory());
     }, 250);
     return () => clearTimeout(timer);
   }, [searchQuery, isOpen]);
-
-  if (!isOpen || !image) return null;
 
   const isSelected = (id: number) => selectedProducts.some((p) => p.id === id);
 
@@ -166,7 +220,39 @@ export default function ProductPickerModal({
     setSelectedProducts((prev) => prev.filter((p) => p.id !== id));
   };
 
+  const currentIds = selectedProducts.map((p) => p.id);
+  const hasUnsavedChanges =
+    initialSelectedIds.length !== currentIds.length ||
+    initialSelectedIds.some((id, idx) => id !== currentIds[idx]);
+
+  const handleRequestClose = () => {
+    if (hasUnsavedChanges) {
+      setShowConfirmClose(true);
+    } else {
+      onClose();
+    }
+  };
+
+  // Keyboard shortcut (ESC)
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (showVisualModal) {
+          setShowVisualModal(false);
+        } else if (showConfirmClose) {
+          setShowConfirmClose(false);
+        } else {
+          handleRequestClose();
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, showVisualModal, showConfirmClose, hasUnsavedChanges]);
+
   const handleSave = () => {
+    if (!image) return;
     startTransition(async () => {
       try {
         const productIds = selectedProducts.map((p) => p.id);
@@ -181,6 +267,8 @@ export default function ProductPickerModal({
       }
     });
   };
+
+  if (!isOpen || !image) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-3 sm:p-5 md:p-6 animate-in fade-in duration-150 font-sans">
@@ -274,9 +362,9 @@ export default function ProductPickerModal({
                         <p className="text-[11px] text-slate-500 truncate mt-0.5">
                           {p.name}
                         </p>
-                        <p className="font-mono text-[11px] font-semibold text-slate-900 mt-0.5">
-                          {p.price !== null ? `${Number(p.price).toLocaleString()} ฿` : "—"}
-                        </p>
+                        <div className="font-mono text-[11px] font-semibold text-slate-900 mt-1 flex items-center">
+                          {formatPriceDisplay(p.price)}
+                        </div>
                       </div>
 
                       <button
@@ -301,33 +389,93 @@ export default function ProductPickerModal({
           <div className="lg:col-span-8 flex flex-col min-h-0 bg-white">
             
             {/* Top Toolbar on Right */}
-            <div className="p-4 border-b border-slate-200 flex items-center justify-between gap-3 bg-white">
-              <div className="relative flex-1">
-                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="พิมพ์ค้นหารหัส SKU, ชื่อสินค้า, รหัสกลุ่ม..."
-                  className="w-full rounded-xl border border-slate-300 bg-slate-50 pl-10 pr-10 py-2.5 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-slate-900 focus:bg-white focus:ring-1 focus:ring-slate-900"
-                  autoFocus
-                />
-                {searchQuery && (
-                  <button
-                    onClick={() => setSearchQuery("")}
-                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                )}
+            <div className="p-4 border-b border-slate-200 bg-white space-y-2.5">
+              <div className="flex items-center justify-between gap-3">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="พิมพ์ค้นหารหัส SKU, ชื่อสินค้า, รหัสกลุ่ม..."
+                    className="w-full rounded-xl border border-slate-300 bg-slate-50 pl-10 pr-10 py-2.5 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-slate-900 focus:bg-white focus:ring-1 focus:ring-slate-900"
+                    autoFocus
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery("")}
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleRequestClose}
+                  className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition shrink-0"
+                >
+                  <X className="h-5 w-5" />
+                </button>
               </div>
 
-              <button
-                onClick={onClose}
-                className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition"
-              >
-                <X className="h-5 w-5" />
-              </button>
+              {/* 1. Main Category Filter Pills (ตรงตามหน้าเว็บ Prop เป๊ะๆ) */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs scrollbar-thin">
+                {PRODUCT_FILTER_ITEMS.map((item) => {
+                  const isActive = selectedMainCategory === item.label;
+                  return (
+                    <button
+                      key={item.label}
+                      type="button"
+                      onClick={() => handleSelectMainCategory(item)}
+                      className={`whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-medium transition-all ${
+                        isActive
+                          ? "bg-slate-900 text-white shadow-xs font-semibold"
+                          : "bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900"
+                      }`}
+                    >
+                      <span>{item.displayLabel || item.label}</span>
+                      {item.thaiLabel && item.label !== "ALL" && (
+                        <span className={`ml-1 text-[10px] ${isActive ? "text-slate-300" : "text-slate-400"}`}>
+                          ({item.thaiLabel})
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* 2. Sub-Category Filter Pills (แสดงเมื่อหมวดหลักมีหมวดย่อย เช่น Ceramic Vases, Glass Vases) */}
+              {subCategories.length > 0 && (
+                <div className="flex items-center gap-1.5 overflow-x-auto pt-1 pb-0.5 text-xs border-t border-slate-100 animate-in fade-in duration-100 scrollbar-thin">
+                  <span className="text-[11px] text-slate-400 font-medium shrink-0 pl-1 mr-1">
+                    หมวดย่อย:
+                  </span>
+                  {subCategories.map((sub) => {
+                    const isSubActive = selectedSubCategory === sub.fullValue;
+                    return (
+                      <button
+                        key={sub.fullValue}
+                        type="button"
+                        onClick={() => handleSelectSubCategory(sub.fullValue)}
+                        className={`whitespace-nowrap rounded-lg px-2.5 py-1 text-[11px] font-medium transition-all ${
+                          isSubActive
+                            ? "bg-blue-600 text-white font-semibold shadow-xs"
+                            : "bg-blue-50/80 text-blue-700 hover:bg-blue-100 border border-blue-200/60"
+                        }`}
+                      >
+                        {sub.displayLabel}
+                        {sub.thaiLabel && (
+                          <span className={`ml-1 text-[9px] ${isSubActive ? "text-blue-100" : "text-blue-500"}`}>
+                            ({sub.thaiLabel})
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             {/* Scrollable Product Catalog Grid (Takes 100% of height) */}
@@ -403,9 +551,9 @@ export default function ProductPickerModal({
                               </p>
                             </div>
                             <div className="mt-2 pt-1.5 border-t border-slate-100 flex items-center justify-between">
-                              <span className="font-mono text-xs font-bold text-slate-900">
-                                {product.price !== null ? `${Number(product.price).toLocaleString()} ฿` : "—"}
-                              </span>
+                              <div className="font-mono text-xs font-bold text-slate-900 flex items-center">
+                                {formatPriceDisplay(product.price)}
+                              </div>
                               <span className={`text-[10px] font-medium ${selected ? "text-slate-900 font-semibold" : "text-slate-400"}`}>
                                 {selected ? "เลือกแล้ว" : "+ เลือก"}
                               </span>
@@ -422,7 +570,11 @@ export default function ProductPickerModal({
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                    {searchQuery ? `ผลการค้นหา "${searchQuery}"` : "รายการสินค้า Prop ทั้งหมด"} ({totalCount.toLocaleString()} รายการ)
+                    {searchQuery
+                      ? `ผลการค้นหา "${searchQuery}"`
+                      : selectedMainCategory !== "ALL"
+                      ? `รายการสินค้าในหมวด ${selectedMainCategory}${selectedSubCategory ? ` > ${selectedSubCategory}` : ""}`
+                      : "รายการสินค้า PROP ทั้งหมด"} ({totalCount.toLocaleString()} รายการ)
                   </span>
                 </div>
 
@@ -484,9 +636,9 @@ export default function ProductPickerModal({
                                 </p>
                               </div>
                               <div className="mt-2 pt-1.5 border-t border-slate-100 flex items-center justify-between">
-                                <span className="font-mono text-xs font-bold text-slate-900">
-                                  {product.price !== null ? `${Number(product.price).toLocaleString()} ฿` : "—"}
-                                </span>
+                                <div className="font-mono text-xs font-bold text-slate-900 flex items-center">
+                                  {formatPriceDisplay(product.price)}
+                                </div>
                                 <span className={`text-[10px] font-bold ${selected ? "text-slate-900" : "text-slate-400"}`}>
                                   {selected ? "✓ เลือกแล้ว" : "+ เลือก"}
                                 </span>
@@ -526,7 +678,7 @@ export default function ProductPickerModal({
               <div className="flex items-center gap-2.5">
                 <button
                   type="button"
-                  onClick={onClose}
+                  onClick={handleRequestClose}
                   className="rounded-xl border border-slate-300 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
                 >
                   ยกเลิก
@@ -574,6 +726,65 @@ export default function ProductPickerModal({
                 onCropAndSearch={handleVisualCropSearch}
                 isSearching={isVisualSearching}
               />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- Confirmation Modal for Unsaved Changes --- */}
+      {showConfirmClose && (
+        <div className="fixed inset-0 z-70 flex items-center justify-center bg-slate-950/75 backdrop-blur-md p-4 animate-in fade-in duration-150">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-150">
+            <div className="flex items-start gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-amber-100 text-amber-600 border border-amber-200">
+                <AlertTriangle className="h-6 w-6" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-base font-bold text-slate-900">
+                  ยังไม่ได้บันทึกการเปลี่ยนแปลง
+                </h3>
+                <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                  คุณได้แก้ไขรายการสินค้าที่ผูกไว้ในรูปภาพนี้ ต้องการบันทึกการเปลี่ยนแปลงก่อนปิด หรือปิดออกไปโดยไม่บันทึก?
+                </p>
+                <div className="mt-3 flex items-center gap-2 rounded-xl bg-slate-50 p-2.5 text-xs text-slate-600 border border-slate-200">
+                  <Package className="h-4 w-4 text-slate-400 shrink-0" />
+                  <span>สินค้าที่เลือกปัจจุบัน: <strong className="font-mono text-slate-900 font-bold">{selectedProducts.length}</strong> รายการ</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-6 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowConfirmClose(false)}
+                className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition"
+              >
+                แก้ไขต่อ
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowConfirmClose(false);
+                  onClose();
+                }}
+                className="inline-flex items-center justify-center rounded-xl border border-red-200 bg-red-50/80 px-3.5 py-2.5 text-xs font-semibold text-red-600 hover:bg-red-100 transition"
+              >
+                ปิดโดยไม่บันทึก
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowConfirmClose(false);
+                  handleSave();
+                }}
+                disabled={isPending}
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-bold text-white hover:bg-slate-800 transition shadow-xs disabled:opacity-50"
+              >
+                {isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                บันทึกและปิด
+              </button>
             </div>
           </div>
         </div>

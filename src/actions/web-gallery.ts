@@ -202,36 +202,63 @@ export async function addJournalImages(
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) throw new Error("Unauthorized")
 
-    if (!imageUrls || imageUrls.length === 0) {
+    const validUrls = imageUrls.map((u) => u.trim()).filter((u) => u.startsWith("http"))
+    if (validUrls.length === 0) {
       throw new Error("ไม่มีรายการรูปภาพ")
     }
 
-    // ดึง sort_order สูงสุดเดิม
-    const { data: latestImg } = await supabaseAdmin
+    // ดึงรูปทั้งหมดในหมวดเรียงตาม sort_order
+    const { data: existing } = await supabaseAdmin
       .from("journal_images")
-      .select("sort_order")
+      .select("id, sort_order")
       .eq("category_id", categoryId)
-      .order("sort_order", { ascending: false })
-      .limit(1)
-      .maybeSingle()
+      .order("sort_order", { ascending: true })
 
-    let startSort = (latestImg?.sort_order || 0) + 1
+    const existingImages = existing || []
 
-    const insertItems = imageUrls.map((url, idx) => ({
-      category_id: categoryId,
-      image_url: url.trim(),
-      sort_order: startSort + idx,
-      is_active: true,
-    }))
+    if (existingImages.length === 0) {
+      const insertItems = validUrls.map((url, idx) => ({
+        category_id: categoryId,
+        image_url: url,
+        sort_order: idx + 1,
+        is_active: true,
+      }))
 
-    const { error } = await supabaseAdmin
-      .from("journal_images")
-      .insert(insertItems)
+      const { error } = await supabaseAdmin.from("journal_images").insert(insertItems)
+      if (error) throw error
 
-    if (error) throw error
+      await supabaseAdmin
+        .from("journal_categories")
+        .update({ cover_image_url: validUrls[0] })
+        .eq("id", categoryId)
 
-    revalidatePath("/web-gallery")
-    return { success: true, count: insertItems.length }
+      revalidatePath("/web-gallery")
+      return { success: true, count: insertItems.length }
+    } else {
+      const newCount = validUrls.length
+      const nonCoverImages = existingImages.slice(1)
+
+      for (let idx = nonCoverImages.length - 1; idx >= 0; idx--) {
+        const newSort = 1 + newCount + (idx + 1)
+        await supabaseAdmin
+          .from("journal_images")
+          .update({ sort_order: newSort })
+          .eq("id", nonCoverImages[idx].id)
+      }
+
+      const insertItems = validUrls.map((url, idx) => ({
+        category_id: categoryId,
+        image_url: url,
+        sort_order: 2 + idx,
+        is_active: true,
+      }))
+
+      const { error } = await supabaseAdmin.from("journal_images").insert(insertItems)
+      if (error) throw error
+
+      revalidatePath("/web-gallery")
+      return { success: true, count: insertItems.length }
+    }
   } catch (err: any) {
     return { error: err.message || "Failed to add images" }
   }

@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
 
 export type LinkedProduct = {
@@ -43,7 +44,8 @@ export type JournalCategoryWithImages = {
  * 1. ดึงหมวดหมู่ Journal / Collection ทั้งหมด พร้อมรูปภาพ และสินค้าที่ผูกไว้
  */
 export async function getJournalCategoriesWithImages(): Promise<JournalCategoryWithImages[]> {
-  const supabase = await createClient();
+  // ใช้ supabaseAdmin (service role) เพื่อ bypass RLS — หน้านี้อยู่หลัง middleware auth แล้ว
+  const supabase = supabaseAdmin;
 
   // ดึง Categories
   const { data: categories, error: catError } = await supabase
@@ -149,11 +151,13 @@ export async function getJournalCategoriesWithImages(): Promise<JournalCategoryW
 /**
  * 2. ค้นหาสินค้า Prop สำหรับแสดงใน Modal เลือกสินค้า (กรอง category_id = 'prop' พร้อม Pagination & Search ลึก)
  */
+import { CATEGORY_MAP } from "@/lib/propFilterModel";
+
 export async function searchPropsProducts(
   query: string = "",
   page: number = 0,
   limit: number = 80,
-  filterGroup: string = ""
+  filterCategory: string = ""
 ): Promise<{
   products: Array<{
     id: number;
@@ -168,8 +172,9 @@ export async function searchPropsProducts(
   totalCount: number;
   hasMore: boolean;
 }> {
-  const supabase = await createClient();
+  const supabase = supabaseAdmin;
   const trimmed = query.trim();
+  const catTrimmed = filterCategory.trim();
 
   const from = page * limit;
   const to = from + limit - 1;
@@ -179,10 +184,41 @@ export async function searchPropsProducts(
     .select("id, name, sku, price, image_url, status, collection_group_id, category_id", { count: "exact" })
     .eq("category_id", "prop");
 
-  if (filterGroup && filterGroup !== "all") {
-    req = req.ilike("collection_group_id", `%${filterGroup}%`);
+  // 1. กรองตาม Category Logic เดียวกับฝั่ง PROP (เช็คจาก collection_groups.product_sup)
+  if (catTrimmed && catTrimmed !== "all" && catTrimmed !== "All") {
+    const allowedSups = CATEGORY_MAP[catTrimmed] || CATEGORY_MAP[catTrimmed.toUpperCase()];
+
+    if (allowedSups && allowedSups.length > 0) {
+      // ดึง collection_groups ที่มี product_sup ตรงตามหมวด
+      const { data: matchedGroups } = await supabase
+        .from("collection_groups")
+        .select("id, product_sup")
+        .ilike("tag", "%prop%");
+
+      const allowedSet = new Set(allowedSups.map((s) => s.trim().toLowerCase()));
+      const matchingGroupIds = (matchedGroups || [])
+        .filter((g) => allowedSet.has(String(g.product_sup || "").trim().toLowerCase()))
+        .map((g) => String(g.id));
+
+      if (matchingGroupIds.length > 0) {
+        req = req.in("collection_group_id", matchingGroupIds);
+      } else {
+        // ถ้าไม่พบ group ที่ตรงกัน ให้คืนค่าว่าง
+        return { products: [], totalCount: 0, hasMore: false };
+      }
+    } else {
+      // Fallback กรณีเป็น Keyword ทั่วไป
+      const keywords = catTrimmed.split(/[,|\s]+/).map((k) => k.trim()).filter(Boolean);
+      if (keywords.length > 0) {
+        const orClauses = keywords
+          .map((k) => `name.ilike.%${k}%,sku.ilike.%${k}%,collection_group_id.ilike.%${k}%,barcode.ilike.%${k}%`)
+          .join(",");
+        req = req.or(orClauses);
+      }
+    }
   }
 
+  // 2. กรองตามคำค้นหาใน Search Bar
   if (trimmed) {
     req = req.or(
       `name.ilike.%${trimmed}%,sku.ilike.%${trimmed}%,barcode.ilike.%${trimmed}%,collection_group_id.ilike.%${trimmed}%`
@@ -225,10 +261,14 @@ export async function searchPropsProducts(
  * 3. บันทึก/อัปเดตการผูกสินค้ากับรูปภาพ Collection นั้นๆ
  */
 export async function syncJournalImageProducts(journalImageId: number, productIds: number[]) {
+  // ตรวจสอบ auth ก่อน
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Unauthorized");
 
+  // ใช้ supabaseAdmin เพื่อ bypass RLS (ตาราง journal_image_products ไม่มี policy สำหรับ authenticated)
   // 1. ลบรายการเก่าของรูปนี้ออก
-  const { error: deleteError } = await supabase
+  const { error: deleteError } = await supabaseAdmin
     .from("journal_image_products")
     .delete()
     .eq("journal_image_id", journalImageId);
@@ -246,7 +286,7 @@ export async function syncJournalImageProducts(journalImageId: number, productId
       sort_order: idx + 1,
     }));
 
-    const { error: insertError } = await supabase
+    const { error: insertError } = await supabaseAdmin
       .from("journal_image_products")
       .insert(rows);
 
@@ -266,31 +306,66 @@ export async function syncJournalImageProducts(journalImageId: number, productId
 
 /**
  * 4. เพิ่มรูปภาพใหม่ในหมวดหมู่ (รองรับการวางหลาย URL)
+ * กฎ: รูปที่เพิ่มใหม่จะถูกจัดวางไว้ตำแหน่งแรกสุดถัดจากรูปปก (ลำดับที่ 2 เป็นต้นไป)
+ * โดยไม่ทับตำแหน่งรูปปกเดิม (ลำดับที่ 1)
  */
 export async function addJournalImages(categoryId: string, urls: string[]) {
-  const supabase = await createClient();
+  const supabase = supabaseAdmin;
   const validUrls = urls.map((u) => u.trim()).filter((u) => u.startsWith("http"));
   if (validUrls.length === 0) return { success: false, message: "ไม่มี URL ที่ถูกต้อง" };
 
-  // หาลำดับสูงสุดเดิม
+  // ดึงรูปทั้งหมดในหมวดเรียงตาม sort_order
   const { data: existing } = await supabase
     .from("journal_images")
-    .select("sort_order")
+    .select("id, sort_order")
     .eq("category_id", categoryId)
-    .order("sort_order", { ascending: false })
-    .limit(1);
+    .order("sort_order", { ascending: true });
 
-  const startOrder = existing && existing[0]?.sort_order ? Number(existing[0].sort_order) : 0;
+  const existingImages = existing || [];
 
-  const rows = validUrls.map((url, idx) => ({
-    category_id: categoryId,
-    image_url: url,
-    sort_order: startOrder + idx + 1,
-    is_active: true,
-  }));
+  if (existingImages.length === 0) {
+    // กรณีหมวดนี้ยังไม่มีรูปเลย -> รูปแรกจะเป็นรูปปก (ลำดับ 1)
+    const rows = validUrls.map((url, idx) => ({
+      category_id: categoryId,
+      image_url: url,
+      sort_order: idx + 1,
+      is_active: true,
+    }));
 
-  const { error } = await supabase.from("journal_images").insert(rows);
-  if (error) throw new Error(error.message);
+    const { error } = await supabase.from("journal_images").insert(rows);
+    if (error) throw new Error(error.message);
+
+    // อัปเดต cover_image_url ของหมวดหมู่ด้วย
+    await supabase
+      .from("journal_categories")
+      .update({ cover_image_url: validUrls[0] })
+      .eq("id", categoryId);
+  } else {
+    // กรณีมีรูปอยู่แล้ว:
+    // 1. รูปปกเดิม (index 0) ยังคงอยู่ที่ลำดับ 1
+    // 2. ขยับรูปเดิมอื่นๆ (ตั้งแต่ index 1 เป็นต้นไป) ถอยหลังไปตามจำนวนรูปใหม่
+    const newCount = validUrls.length;
+    const nonCoverImages = existingImages.slice(1);
+
+    for (let idx = nonCoverImages.length - 1; idx >= 0; idx--) {
+      const newSort = 1 + newCount + (idx + 1);
+      await supabase
+        .from("journal_images")
+        .update({ sort_order: newSort })
+        .eq("id", nonCoverImages[idx].id);
+    }
+
+    // 3. แทรกรูปใหม่ทั้งหมดเริ่มต้นที่ลำดับ 2 เป็นต้นไป (ต่อจากรูปปกทันที)
+    const newRows = validUrls.map((url, idx) => ({
+      category_id: categoryId,
+      image_url: url,
+      sort_order: 2 + idx,
+      is_active: true,
+    }));
+
+    const { error } = await supabase.from("journal_images").insert(newRows);
+    if (error) throw new Error(error.message);
+  }
 
   revalidatePath("/web-gallery");
   return { success: true, added: validUrls.length };
@@ -300,7 +375,7 @@ export async function addJournalImages(categoryId: string, urls: string[]) {
  * 5. ตั้งรูปภาพเป็นรูปปกของหมวดหมู่ (ย้ายไปอันดับ 1 และอัปเดต cover_image_url ใน journal_categories)
  */
 export async function setJournalCoverImage(categoryId: string, imageId: number) {
-  const supabase = await createClient();
+  const supabase = supabaseAdmin;
 
   const { data: targetImage } = await supabase
     .from("journal_images")
@@ -345,7 +420,7 @@ export async function setJournalCoverImage(categoryId: string, imageId: number) 
  * 6. สลับลำดับรูปภาพขึ้น/ลง (Reorder)
  */
 export async function reorderJournalImage(imageId: number, direction: "up" | "down", categoryId: string) {
-  const supabase = await createClient();
+  const supabase = supabaseAdmin;
 
   const { data: images } = await supabase
     .from("journal_images")
@@ -376,7 +451,7 @@ export async function reorderJournalImage(imageId: number, direction: "up" | "do
  * 7. ย้ายรูปภาพข้ามหมวดหมู่
  */
 export async function moveJournalImagesCategory(imageIds: number[], newCategoryId: string) {
-  const supabase = await createClient();
+  const supabase = supabaseAdmin;
 
   const { error } = await supabase
     .from("journal_images")
@@ -393,7 +468,7 @@ export async function moveJournalImagesCategory(imageIds: number[], newCategoryI
  * 8. ลบรูปภาพออกจากระบบ
  */
 export async function deleteJournalImages(imageIds: number[]) {
-  const supabase = await createClient();
+  const supabase = supabaseAdmin;
 
   const { error } = await supabase
     .from("journal_images")
@@ -418,7 +493,7 @@ export async function createJournalCategory(data: {
   descriptionTh?: string;
   coverImageUrl?: string;
 }) {
-  const supabase = await createClient();
+  const supabase = supabaseAdmin;
 
   // หา sort_order ล่าสุด
   const { data: latest } = await supabase
@@ -459,7 +534,7 @@ export async function updateJournalCategory(id: string, data: {
   descriptionTh?: string;
   coverImageUrl?: string;
 }) {
-  const supabase = await createClient();
+  const supabase = supabaseAdmin;
 
   const { error } = await supabase
     .from("journal_categories")
@@ -484,7 +559,7 @@ export async function updateJournalCategory(id: string, data: {
  * 11. เปิด/ปิดการแสดงผลของหมวดหมู่
  */
 export async function toggleJournalCategoryActive(id: string, isActive: boolean) {
-  const supabase = await createClient();
+  const supabase = supabaseAdmin;
 
   const { error } = await supabase
     .from("journal_categories")
@@ -501,7 +576,7 @@ export async function toggleJournalCategoryActive(id: string, isActive: boolean)
  * 12. ลบหมวดหมู่ Collection
  */
 export async function deleteJournalCategory(id: string) {
-  const supabase = await createClient();
+  const supabase = supabaseAdmin;
 
   const { error } = await supabase
     .from("journal_categories")

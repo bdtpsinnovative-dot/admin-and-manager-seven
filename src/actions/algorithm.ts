@@ -82,6 +82,9 @@ export type IdentitySummary = {
 
 export type AlgorithmOverview = {
   rangeDays: AlgorithmRange
+  offset: number
+  startTime: string
+  endTime: string
   generatedAt: string
   topItems: HotItem[]
   totalUniqueViews: number
@@ -243,8 +246,10 @@ function chunkValues<T>(values: T[], size = lookupBatchSize) {
   return chunks
 }
 
-function getCutoff(rangeDays: AlgorithmRange) {
-  return new Date(Date.now() - rangeDays * dayInMs).toISOString()
+function getCutoff(rangeDays: AlgorithmRange, untilDate?: string) {
+  const base = untilDate ? new Date(untilDate).getTime() : Date.now()
+  const windowMs = rangeDays === 1 ? 24 * 60 * 60 * 1000 : rangeDays * dayInMs
+  return new Date(base - windowMs).toISOString()
 }
 
 function getRecencyWeight(createdAt: string) {
@@ -285,8 +290,9 @@ function scoreIdentityKey(event: ScoreEvent, links: ReadonlyMap<string, string>)
   return event.identity_key
 }
 
-function rollingUniqueScoreEvents(events: ScoreEvent[], cutoff: string) {
+function rollingUniqueScoreEvents(events: ScoreEvent[], cutoff: string, until?: string) {
   const cutoffMs = new Date(cutoff).getTime()
+  const untilMs = until ? new Date(until).getTime() : Infinity
   const links = buildIdentityLinks(events)
   const sorted = [...events]
     .filter((event) => event.is_countable
@@ -301,7 +307,7 @@ function rollingUniqueScoreEvents(events: ScoreEvent[], cutoff: string) {
     const key = `${event.product_id}:${scoreIdentityKey(event, links)}`
     const createdAt = new Date(event.created_at).getTime()
     const previousAt = lastSeen.get(key)
-    if (createdAt >= cutoffMs && (previousAt === undefined || createdAt - previousAt >= dayInMs)) unique.push(event)
+    if (createdAt >= cutoffMs && createdAt <= untilMs && (previousAt === undefined || createdAt - previousAt >= dayInMs)) unique.push(event)
     lastSeen.set(key, createdAt)
   }
   return unique
@@ -341,18 +347,24 @@ async function requireAdmin() {
   if (profile?.role !== "admin") redirect("/login")
 }
 
-async function fetchScoreEvents(cutoff: string) {
+async function fetchScoreEvents(cutoff: string, until?: string) {
   const rows: ScoreEvent[] = []
   const pageSize = 1000
   const queryCutoff = new Date(new Date(cutoff).getTime() - dayInMs).toISOString()
 
   for (let offset = 0; ; offset += pageSize) {
-    const { data, error } = await supabaseAdmin
+    let req = supabaseAdmin
       .from("algorithm_events")
       .select("product_id, identity_key, identity_type, user_id, visitor_id, metadata, view_bucket, created_at, traffic_type, is_countable, country_code, country, region, city")
       .eq("source_tag", "prop")
       .eq("event_type", "product_view")
       .gte("created_at", queryCutoff)
+
+    if (until) {
+      req = req.lte("created_at", until)
+    }
+
+    const { data, error } = await req
       .order("created_at", { ascending: false })
       .range(offset, offset + pageSize - 1)
 
@@ -502,9 +514,16 @@ async function fetchAllPropProductIds() {
   return Array.from(new Set([...productIds, ...eventIds]))
 }
 
-function emptyOverview(rangeDays: AlgorithmRange, error: string | null): AlgorithmOverview {
+function emptyOverview(rangeDays: AlgorithmRange, error: string | null, offset: number = 0, startTime?: string, endTime?: string): AlgorithmOverview {
+  const windowMs = rangeDays * (rangeDays === 1 ? 60 * 60 * 1000 : dayInMs)
+  const now = Date.now()
+  const end = endTime || new Date(now - offset * windowMs).toISOString()
+  const start = startTime || new Date(new Date(end).getTime() - windowMs).toISOString()
   return {
     rangeDays,
+    offset,
+    startTime: start,
+    endTime: end,
     generatedAt: new Date().toISOString(),
     topItems: [],
     totalUniqueViews: 0,
@@ -530,15 +549,15 @@ function getTrendBucket(dateValue: string, rangeDays: AlgorithmRange) {
   return date.toISOString()
 }
 
-function getTrendSlots(rangeDays: AlgorithmRange) {
+function getTrendSlots(rangeDays: AlgorithmRange, untilDate?: string) {
   const slotCount = rangeDays === 1 ? 24 : rangeDays
   const step = rangeDays === 1 ? 60 * 60 * 1000 : dayInMs
-  const now = new Date()
-  if (rangeDays === 1) now.setMinutes(0, 0, 0)
-  else now.setHours(0, 0, 0, 0)
+  const end = untilDate ? new Date(untilDate) : new Date()
+  if (rangeDays === 1) end.setMinutes(0, 0, 0)
+  else end.setHours(0, 0, 0, 0)
 
   return Array.from({ length: slotCount }, (_, index) => {
-    const slot = new Date(now.getTime() - (slotCount - 1 - index) * step)
+    const slot = new Date(end.getTime() - (slotCount - 1 - index) * step)
     return slot.toISOString()
   })
 }
@@ -640,23 +659,32 @@ function rankProductCatalog(events: ScoreEvent[], productMap: Map<number, Algori
   })
 }
 
-const overviewCache = new Map<number, { data: AlgorithmOverview; expiresAt: number }>()
+const overviewCache = new Map<string, { data: AlgorithmOverview; expiresAt: number }>()
 const OVERVIEW_CACHE_TTL_MS = 3 * 60 * 1000 // 3 minutes
 
-export async function getAlgorithmOverview(rangeValue: number): Promise<AlgorithmOverview> {
+export async function getAlgorithmOverview(rangeValue: number, offset: number = 0): Promise<AlgorithmOverview> {
   await requireAdmin()
   const rangeDays = normalizeRange(rangeValue)
+  const safeOffset = Math.max(0, Number(offset) || 0)
 
-  const cached = overviewCache.get(rangeDays)
+  const cacheKey = `${rangeDays}:${safeOffset}`
+  const cached = overviewCache.get(cacheKey)
   if (cached && Date.now() < cached.expiresAt) {
     return cached.data
   }
 
+  const windowMs = rangeDays === 1 ? 24 * 60 * 60 * 1000 : rangeDays * dayInMs
+  const endTime = safeOffset > 0 ? new Date(Date.now() - safeOffset * windowMs).toISOString() : new Date().toISOString()
+  const cutoff = getCutoff(rangeDays, endTime)
+
   try {
-    const cutoff = getCutoff(rangeDays)
-    const events = await fetchScoreEvents(cutoff)
+    const events = await fetchScoreEvents(cutoff, endTime)
     const cutoffMs = new Date(cutoff).getTime()
-    const inRangeEvents = events.filter((event) => new Date(event.created_at).getTime() >= cutoffMs)
+    const untilMs = new Date(endTime).getTime()
+    const inRangeEvents = events.filter((event) => {
+      const t = new Date(event.created_at).getTime()
+      return t >= cutoffMs && t <= untilMs
+    })
     let uniqueEvents: ScoreEvent[] = []
     const identityCounts = new Map<"user" | "visitor", number>()
     const trafficCounts = new Map<string, number>()
@@ -664,7 +692,7 @@ export async function getAlgorithmOverview(rangeValue: number): Promise<Algorith
     const locationAggregates = new Map<string, LocationAggregate>()
     let unspecifiedLocationViews = 0
 
-    for (const event of rollingUniqueScoreEvents(events, cutoff)) {
+    for (const event of rollingUniqueScoreEvents(events, cutoff, endTime)) {
       const identityType = event.identity_type === "user" ? "user" : "visitor"
       identityCounts.set(identityType, (identityCounts.get(identityType) ?? 0) + 1)
     }
@@ -673,7 +701,7 @@ export async function getAlgorithmOverview(rangeValue: number): Promise<Algorith
       trafficCounts.set(trafficType, (trafficCounts.get(trafficType) ?? 0) + 1)
     }
 
-    uniqueEvents = rollingUniqueScoreEvents(events, cutoff)
+    uniqueEvents = rollingUniqueScoreEvents(events, cutoff, endTime)
 
     const eventProductIds = Array.from(new Set(uniqueEvents.map((event) => Number(event.product_id)).filter(Number.isSafeInteger)))
     const neededExtra = Math.max(0, 20 - eventProductIds.length)
@@ -778,6 +806,9 @@ export async function getAlgorithmOverview(rangeValue: number): Promise<Algorith
 
     const result: AlgorithmOverview = {
       rangeDays,
+      offset: safeOffset,
+      startTime: cutoff,
+      endTime,
       generatedAt: new Date().toISOString(),
       topItems: ranked,
       totalUniqueViews: Array.from(aggregate.values()).reduce((total, item) => total + item.uniqueViews, 0),
@@ -802,18 +833,18 @@ export async function getAlgorithmOverview(rangeValue: number): Promise<Algorith
       trafficSummary: Array.from(trafficCounts.entries())
         .map(([label, count]) => ({ label, count }))
         .sort((a, b) => b.count - a.count),
-      trend: getTrendSlots(rangeDays).map((bucket) => ({
+      trend: getTrendSlots(rangeDays, endTime).map((bucket) => ({
         bucket,
         views: trendTotals.get(bucket) ?? 0,
       })),
       error: null,
     }
 
-    overviewCache.set(rangeDays, { data: result, expiresAt: Date.now() + OVERVIEW_CACHE_TTL_MS })
+    overviewCache.set(cacheKey, { data: result, expiresAt: Date.now() + OVERVIEW_CACHE_TTL_MS })
     return result
   } catch (error) {
     console.error("[algorithm-admin] overview query failed", error)
-    return emptyOverview(rangeDays, error instanceof Error ? error.message : "ไม่สามารถอ่านข้อมูล Algorithm ได้")
+    return emptyOverview(rangeDays, error instanceof Error ? error.message : "ไม่สามารถอ่านข้อมูล Algorithm ได้", safeOffset, cutoff, endTime)
   }
 }
 
