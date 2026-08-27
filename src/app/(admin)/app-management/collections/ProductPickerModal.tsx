@@ -19,7 +19,8 @@ import {
   searchPropsProducts, 
   syncJournalImageProducts 
 } from "@/actions/journal-collections";
-import { searchProductsByVisualCrop, VisualSearchResult, CropBoxNormalized } from "@/actions/visual-search";
+import { searchProductsByVisualEmbedding, VisualSearchResult } from "@/actions/visual-search";
+import { extractImageEmbeddingFromUrl, CropBoxNormalized } from "@/lib/clipClient";
 import ImageCropperOverlay from "./ImageCropperOverlay";
 
 interface ProductPickerModalProps {
@@ -120,7 +121,8 @@ export default function ProductPickerModal({
     setIsVisualSearching(true);
     setErrorMessage(null);
     try {
-      const result = await searchProductsByVisualCrop(targetImageUrl, cropBox);
+      const embedding = await extractImageEmbeddingFromUrl(targetImageUrl, cropBox);
+      const result = await searchProductsByVisualEmbedding(embedding);
       setAiSuggestions(result.results);
       setShowVisualModal(false);
     } catch (err: any) {

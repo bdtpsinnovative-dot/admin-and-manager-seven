@@ -1,8 +1,6 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
-import sharp from "sharp";
-import { AutoProcessor, CLIPVisionModelWithProjection, RawImage } from "@xenova/transformers";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export interface VisualSearchResult {
   id: number;
@@ -24,90 +22,25 @@ export type CropBoxNormalized = {
   heightPercent: number;
 };
 
-// Singleton CLIP model instance in memory
-let clipModel: any = null;
-let clipProcessor: any = null;
-
-async function getClipPipeline() {
-  if (!clipModel || !clipProcessor) {
-    clipModel = await CLIPVisionModelWithProjection.from_pretrained("Xenova/clip-vit-base-patch32");
-    clipProcessor = await AutoProcessor.from_pretrained("Xenova/clip-vit-base-patch32");
-  }
-  return { model: clipModel, processor: clipProcessor };
-}
-
 /**
- * ค้นหาสินค้า Prop ด้วยภาพถ่ายจริง (CLIP Vision Model + pgvector Cosine Distance)
- *
- * Flow:
- *   - ถ้าผู้ใช้ลากกรอบ Crop: ตัดเฉพาะบริเวณที่เลือก + Letterbox Pad ให้รักษาสัดส่วนแจกัน/ชาม
- *   - ถ้าผู้ใช้กดค้นหาทั้งรูป: ใช้ภาพเต็ม + Letterbox Pad
- *   - แปลงเป็น Vector 512 มิติ -> ค้นหาใน Supabase pgvector ได้ผลลัพธ์ 16 อันดับแรก
+ * ค้นหาสินค้า Prop ด้วย CLIP Vector Embedding (pgvector Cosine Distance ใน Supabase)
+ * ไม่รันโมเดล AI บนเซิร์ฟเวอร์ เพื่อความเร็วระดับ 30ms และไม่มีปัญหา Serverless Crash/Timeout 100%
  */
-export async function searchProductsByVisualCrop(
-  imageUrl: string,
-  cropBox?: CropBoxNormalized,
-  categoryContext?: string
+export async function searchProductsByVisualEmbedding(
+  queryEmbedding: number[]
 ): Promise<{
   results: VisualSearchResult[];
   vectorReady: boolean;
   embeddedCount?: number;
   totalCount?: number;
-  aiAnalysis?: {
-    type: string;
-    color: string;
-    material: string;
-    shape: string;
-    keywords: string[];
-  };
 }> {
-  const supabase = await createClient();
-
-  // === STEP 1: Download & Process Image with Aspect-Ratio Padding ===
-  let queryBuffer: Buffer;
-  try {
-    const imgRes = await fetch(imageUrl, { signal: AbortSignal.timeout(12000) });
-    if (!imgRes.ok) throw new Error(`HTTP ${imgRes.status}`);
-    const arrayBuffer = await imgRes.arrayBuffer();
-    const sourceBuffer = Buffer.from(arrayBuffer);
-
-    const meta = await sharp(sourceBuffer).metadata();
-    const imgW = meta.width || 800;
-    const imgH = meta.height || 800;
-
-    if (cropBox && cropBox.widthPercent > 0.03 && cropBox.heightPercent > 0.03) {
-      // ผู้ใช้ลากกรอบ Crop เจาะจงชิ้น
-      const left = Math.max(0, Math.round(cropBox.xPercent * imgW));
-      const top = Math.max(0, Math.round(cropBox.yPercent * imgH));
-      const width = Math.max(10, Math.min(imgW - left, Math.round(cropBox.widthPercent * imgW)));
-      const height = Math.max(10, Math.min(imgH - top, Math.round(cropBox.heightPercent * imgH)));
-
-      const extracted = await sharp(sourceBuffer).extract({ left, top, width, height }).toBuffer();
-      const maxDim = Math.max(width, height);
-      queryBuffer = await sharp(extracted)
-        .resize(maxDim, maxDim, { fit: "contain", background: { r: 245, g: 243, b: 238, alpha: 1 } })
-        .jpeg({ quality: 92 })
-        .toBuffer();
-    } else {
-      // ผู้ใช้กดค้นหาทั้งรูปภาพ
-      const maxDim = Math.max(imgW, imgH);
-      queryBuffer = await sharp(sourceBuffer)
-        .resize(maxDim, maxDim, { fit: "contain", background: { r: 245, g: 243, b: 238, alpha: 1 } })
-        .jpeg({ quality: 92 })
-        .toBuffer();
-    }
-  } catch (err: any) {
-    throw new Error(`ไม่สามารถประมวลผลรูปภาพได้: ${err.message}`);
+  if (!queryEmbedding || queryEmbedding.length === 0) {
+    return { results: [], vectorReady: false, embeddedCount: 0, totalCount: 0 };
   }
 
-  // === STEP 2: CLIP Vector Embedding (512-dim) ===
-  const { model, processor } = await getClipPipeline();
-  const rawImage = await RawImage.fromBlob(new Blob([new Uint8Array(queryBuffer)], { type: "image/jpeg" }));
-  const inputs = await processor(rawImage);
-  const { image_embeds } = await model(inputs);
-  const queryEmbedding = Array.from(image_embeds.data);
+  const supabase = supabaseAdmin;
 
-  // === STEP 3: pgvector Cosine Search in Supabase (Top 16) ===
+  // 1. pgvector Cosine Search in Supabase (Top 16)
   const { data: vectorResults, error: vectorError } = await supabase.rpc(
     "match_products_by_image_embedding",
     {
@@ -140,9 +73,9 @@ export async function searchProductsByVisualCrop(
     });
   }
 
-  // === STEP 4: Sibling Group Expansion (ดึงสินค้าในเซ็ตเดียวกันมาเติมเต็มถ้ามีที่ว่าง) ===
+  // 2. Sibling Group Expansion (ดึงสินค้าในเซ็ตเดียวกันมาเติมเต็มถ้ามีที่ว่าง)
   if (results.length > 0 && topGroupIds.size > 0 && results.length < 16) {
-    const existingIds = new Set(results.map(r => r.id));
+    const existingIds = new Set(results.map((r) => r.id));
     const targetGroups = Array.from(topGroupIds).slice(0, 2);
 
     const { data: siblings } = await supabase
