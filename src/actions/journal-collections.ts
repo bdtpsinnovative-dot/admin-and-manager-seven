@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
 
 export type LinkedProduct = {
@@ -43,7 +44,8 @@ export type JournalCategoryWithImages = {
  * 1. ดึงหมวดหมู่ Journal / Collection ทั้งหมด พร้อมรูปภาพ และสินค้าที่ผูกไว้
  */
 export async function getJournalCategoriesWithImages(): Promise<JournalCategoryWithImages[]> {
-  const supabase = await createClient();
+  // ใช้ supabaseAdmin (service role) เพื่อ bypass RLS — หน้านี้อยู่หลัง middleware auth แล้ว
+  const supabase = supabaseAdmin;
 
   // ดึง Categories
   const { data: categories, error: catError } = await supabase
