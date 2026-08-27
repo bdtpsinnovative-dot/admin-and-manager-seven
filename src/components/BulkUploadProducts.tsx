@@ -376,8 +376,12 @@ const downloadTemplate = () => {
 
         // เช็ค Database ว่ามี SKU ไหนอยู่แล้วบ้าง
         const skusToCheck = uniqueData.map(item => item.sku);
-        const { existing } = await checkExistingSkus(skusToCheck);
-        setExistingSkus(new Set(existing));
+        try {
+          const { existing } = await checkExistingSkus(skusToCheck);
+          if (existing) setExistingSkus(new Set(existing));
+        } catch (skuErr) {
+          console.warn("checkExistingSkus failed:", skuErr);
+        }
 
         // ---------------------------------------------------------
         // ✅ เช็คคอลัมน์กลุ่มสินค้า (Product Sup) 
@@ -399,14 +403,19 @@ const downloadTemplate = () => {
 
         if (allExtractedGroups.length > 0) {
           const groupIdsOnly = allExtractedGroups.map(g => g.id);
-          const { existing: existingGroups } = await checkExistingGroups(groupIdsOnly);
-          
-          // คัดกรองเอาเฉพาะ "กลุ่มใหม่" ที่ยังไม่มีในระบบ
-          const newGroups = allExtractedGroups.filter(g => !existingGroups.includes(g.id));
+          try {
+            const { existing: existingGroups } = await checkExistingGroups(groupIdsOnly);
+            if (existingGroups) {
+              // คัดกรองเอาเฉพาะ "กลุ่มใหม่" ที่ยังไม่มีในระบบ
+              const newGroups = allExtractedGroups.filter(g => !existingGroups.includes(g.id));
 
-          setNewGroupCount(newGroups.length);
-          setExistingGroupIds(existingGroups);
-          setNewGroupsPreview(newGroups); // เก็บเข้า State เพื่อไปโชว์
+              setNewGroupCount(newGroups.length);
+              setExistingGroupIds(existingGroups);
+              setNewGroupsPreview(newGroups); // เก็บเข้า State เพื่อไปโชว์
+            }
+          } catch (groupErr) {
+            console.warn("checkExistingGroups failed:", groupErr);
+          }
         } else {
           setNewGroupCount(0);
           setExistingGroupIds([]);
@@ -415,8 +424,9 @@ const downloadTemplate = () => {
         // ---------------------------------------------------------
 
         setData(uniqueData)
-      } catch (err) {
-        setStatus({ type: 'error', msg: 'อ่านไฟล์ผิดพลาด โปรดตรวจสอบรูปแบบไฟล์' })
+      } catch (err: any) {
+        console.error("handleFileUpload error:", err);
+        setStatus({ type: 'error', msg: err?.message ? `อ่านไฟล์ผิดพลาด: ${err.message}` : 'อ่านไฟล์ผิดพลาด โปรดตรวจสอบรูปแบบไฟล์' })
       } finally {
         setLoading(false)
       }
