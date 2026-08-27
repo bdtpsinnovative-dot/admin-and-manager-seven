@@ -62,8 +62,13 @@ export async function cropImageToBlob(
       );
     };
 
+    // Use proxy API to bypass Cloudflare R2 / S3 CORS restrictions when drawing on canvas
+    const safeUrl = imageUrl.startsWith("http")
+      ? `/api/proxy-image?url=${encodeURIComponent(imageUrl)}`
+      : imageUrl;
+
     img.onerror = (err) => reject(new Error("Failed to load image for cropping"));
-    img.src = imageUrl;
+    img.src = safeUrl;
   });
 }
 
