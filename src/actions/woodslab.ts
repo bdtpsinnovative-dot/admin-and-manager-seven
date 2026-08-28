@@ -289,7 +289,7 @@ export async function bulkCreateProducts(productsArray: any[]) {
   return { success: true, count: data?.length }
 }
 // ✅ ฟังก์ชันใหม่ เอาไว้เช็คว่า SKU ไหนมีในระบบแล้วบ้าง (เพื่อทำ Preview)
-export async function checkExistingSkus(skus: string[]) {
+export async function checkExistingSkus(skus: string[]): Promise<{ existing: string[]; error?: string }> {
   const supabase = await createClient()
   
   const { data, error } = await supabase
@@ -299,7 +299,7 @@ export async function checkExistingSkus(skus: string[]) {
 
   if (error) {
     console.error("Error checking SKUs:", error)
-    return { existing: [] }
+    return { existing: [], error: error.message }
   }
   
   // ส่งกลับไปเฉพาะรายชื่อ SKU ที่เจอในระบบ
@@ -307,7 +307,7 @@ export async function checkExistingSkus(skus: string[]) {
 }
 
 // ✅ ฟังก์ชันใหม่ เอาไว้เช็คว่า Collection Group ไหนมีในระบบแล้วบ้าง
-export async function checkExistingGroups(groupIds: string[]) {
+export async function checkExistingGroups(groupIds: string[]): Promise<{ existing: string[]; error?: string }> {
   if (!groupIds || groupIds.length === 0) return { existing: [] }
   
   const supabase = await createClient()
@@ -318,7 +318,7 @@ export async function checkExistingGroups(groupIds: string[]) {
 
   if (error) {
     console.error("Error checking Groups:", error)
-    return { existing: [] }
+    return { existing: [], error: error.message }
   }
   
   return { existing: data.map((d: any) => d.id) }

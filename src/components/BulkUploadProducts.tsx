@@ -377,10 +377,12 @@ const downloadTemplate = () => {
         // เช็ค Database ว่ามี SKU ไหนอยู่แล้วบ้าง
         const skusToCheck = uniqueData.map(item => item.sku);
         try {
-          const { existing } = await checkExistingSkus(skusToCheck);
-          if (existing) setExistingSkus(new Set(existing));
+          const { existing, error } = await checkExistingSkus(skusToCheck);
+          if (error) throw new Error(`ตรวจสอบ SKU ในฐานข้อมูลไม่สำเร็จ: ${error}`);
+          setExistingSkus(new Set(existing));
         } catch (skuErr) {
           console.warn("checkExistingSkus failed:", skuErr);
+          throw skuErr;
         }
 
         // ---------------------------------------------------------
@@ -404,17 +406,18 @@ const downloadTemplate = () => {
         if (allExtractedGroups.length > 0) {
           const groupIdsOnly = allExtractedGroups.map(g => g.id);
           try {
-            const { existing: existingGroups } = await checkExistingGroups(groupIdsOnly);
-            if (existingGroups) {
-              // คัดกรองเอาเฉพาะ "กลุ่มใหม่" ที่ยังไม่มีในระบบ
-              const newGroups = allExtractedGroups.filter(g => !existingGroups.includes(g.id));
+            const { existing: existingGroups, error } = await checkExistingGroups(groupIdsOnly);
+            if (error) throw new Error(`ตรวจสอบ Collection Group ในฐานข้อมูลไม่สำเร็จ: ${error}`);
 
-              setNewGroupCount(newGroups.length);
-              setExistingGroupIds(existingGroups);
-              setNewGroupsPreview(newGroups); // เก็บเข้า State เพื่อไปโชว์
-            }
+            // คัดกรองเอาเฉพาะ "กลุ่มใหม่" ที่ยังไม่มีในระบบ
+            const newGroups = allExtractedGroups.filter(g => !existingGroups.includes(g.id));
+
+            setNewGroupCount(newGroups.length);
+            setExistingGroupIds(existingGroups);
+            setNewGroupsPreview(newGroups); // เก็บเข้า State เพื่อไปโชว์
           } catch (groupErr) {
             console.warn("checkExistingGroups failed:", groupErr);
+            throw groupErr;
           }
         } else {
           setNewGroupCount(0);
@@ -426,7 +429,7 @@ const downloadTemplate = () => {
         setData(uniqueData)
       } catch (err: any) {
         console.error("handleFileUpload error:", err);
-        setStatus({ type: 'error', msg: err?.message ? `อ่านไฟล์ผิดพลาด: ${err.message}` : 'อ่านไฟล์ผิดพลาด โปรดตรวจสอบรูปแบบไฟล์' })
+        setStatus({ type: 'error', msg: err?.message || 'อ่านไฟล์หรือเชื่อมต่อฐานข้อมูลไม่สำเร็จ โปรดตรวจสอบรูปแบบไฟล์และสิทธิ์เข้าถึง' })
       } finally {
         setLoading(false)
       }
