@@ -290,20 +290,23 @@ export async function bulkCreateProducts(productsArray: any[]) {
 }
 // ✅ ฟังก์ชันใหม่ เอาไว้เช็คว่า SKU ไหนมีในระบบแล้วบ้าง (เพื่อทำ Preview)
 export async function checkExistingSkus(skus: string[]): Promise<{ existing: string[]; error?: string }> {
-  const supabase = await createClient()
-  
-  const { data, error } = await supabase
-    .from(TABLE_NAME)
-    .select('sku')
-    .in('sku', skus) // ค้นหาเฉพาะ SKU ที่เราส่งไป
+  try {
+    const supabase = await createClient()
+    const { data, error } = await supabase
+      .from(TABLE_NAME)
+      .select('sku')
+      .in('sku', skus) // ค้นหาเฉพาะ SKU ที่เราส่งไป
 
-  if (error) {
-    console.error("Error checking SKUs:", error)
-    return { existing: [], error: error.message }
+    if (error) {
+      console.error("Error checking SKUs:", error)
+      return { existing: [], error: error.message }
+    }
+
+    return { existing: (data || []).map((d: any) => d.sku) }
+  } catch (error) {
+    console.error("Unexpected error checking SKUs:", error)
+    return { existing: [], error: error instanceof Error ? error.message : 'ไม่สามารถเชื่อมต่อฐานข้อมูลได้' }
   }
-  
-  // ส่งกลับไปเฉพาะรายชื่อ SKU ที่เจอในระบบ
-  return { existing: data.map((d: any) => d.sku) }
 }
 
 // ✅ ฟังก์ชันใหม่ เอาไว้เช็คว่า Collection Group ไหนมีในระบบแล้วบ้าง

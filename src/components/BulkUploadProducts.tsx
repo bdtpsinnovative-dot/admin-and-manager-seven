@@ -1,7 +1,6 @@
 "use client"
 
 import { bulkCreateProducts, checkExistingSkus, checkExistingGroups, getProducts, getAllProductsForExport } from '../actions/woodslab'
-import { embedProductsBySkus } from '../actions/clip-embed'
 import { useState } from 'react'
 import * as XLSX from 'xlsx'
 
@@ -461,6 +460,9 @@ const downloadTemplate = () => {
       })
       
       try {
+        // Load the optional AI feature only after the database import succeeds.
+        // This keeps the normal import flow working in runtimes without ONNX.
+        const { embedProductsBySkus } = await import('../actions/clip-embed')
         const embedRes = await embedProductsBySkus(importedSkusWithImages)
         
         if (embedRes.failed > 0) {

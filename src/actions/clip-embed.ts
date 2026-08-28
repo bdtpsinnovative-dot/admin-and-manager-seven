@@ -1,7 +1,6 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import { AutoProcessor, CLIPVisionModelWithProjection, RawImage } from "@xenova/transformers";
 
 // Global singleton cache for CLIP model across Next.js HMR reloads
 const globalForClip = globalThis as unknown as {
@@ -20,6 +19,8 @@ async function getClipModel() {
   }
 
   globalForClip.clipModelPromise = (async () => {
+    // Keep the native ONNX dependency out of routes that do not use AI search.
+    const { AutoProcessor, CLIPVisionModelWithProjection } = await import("@xenova/transformers");
     const model = await CLIPVisionModelWithProjection.from_pretrained("Xenova/clip-vit-base-patch32");
     const processor = await AutoProcessor.from_pretrained("Xenova/clip-vit-base-patch32");
     globalForClip.cachedClipModel = model;
@@ -70,6 +71,7 @@ export async function embedProductsBySkus(skus: string[]): Promise<ClipEmbedResu
   }
 
   const [model, processor] = await getClipModel();
+  const { RawImage } = await import("@xenova/transformers");
   const failedItems: Array<{ sku: string; error: string }> = [];
   let succeeded = 0;
 
