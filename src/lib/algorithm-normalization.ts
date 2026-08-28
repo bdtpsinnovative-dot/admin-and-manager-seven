@@ -84,3 +84,10 @@ export function displayTrafficType(value: string | null | undefined) {
   return value || "ไม่ระบุ"
 }
 
+export function sanitizeCategoryName(name?: string | null): string {
+  if (!name) return "ไม่ระบุหมวดหมู่"
+  const clean = name.split("(")[0]?.trim()
+  return clean || name.trim() || "ไม่ระบุหมวดหมู่"
+}
+
+

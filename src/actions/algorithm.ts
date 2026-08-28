@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
 import { supabaseAdmin } from "@/lib/supabase/admin"
-import { countryLabel, normalizeCountryCode, normalizeLocation } from "@/lib/algorithm-normalization"
+import { countryLabel, normalizeCountryCode, normalizeLocation, sanitizeCategoryName } from "@/lib/algorithm-normalization"
 
 export type AlgorithmRange = 1 | 7 | 30
 
@@ -436,7 +436,7 @@ async function fetchPropProducts(productIds: number[], includeInactive = false) 
       imageUrl: product.image_url,
       status: product.status,
       collectionGroupId: String(product.collection_group_id),
-      collectionName: group.product_sup || "ไม่ระบุหมวดหมู่",
+      collectionName: sanitizeCategoryName(group.product_sup),
       stockTotal,
       availability: stockTotal > 0 ? "available" : "preorder",
     })
@@ -467,7 +467,7 @@ async function fetchPropProducts(productIds: number[], includeInactive = false) 
           imageUrl: null,
           status: "deleted",
           collectionGroupId: snapshot.collection_group_id === null ? "ไม่ระบุ" : String(snapshot.collection_group_id),
-          collectionName: snapshot.product_category_snapshot || "ไม่ระบุหมวดหมู่",
+          collectionName: sanitizeCategoryName(snapshot.product_category_snapshot),
           stockTotal: 0,
           availability: "preorder",
         })
