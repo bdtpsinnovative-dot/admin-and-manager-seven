@@ -28,6 +28,7 @@ import { toast } from 'sonner'
 import PrintDispatchModal from '@/components/PrintDispatchModal'
 import PaymentSlipUploader from '@/components/PaymentSlipUploader'
 import PaymentSlipViewer from '@/components/PaymentSlipViewer'
+import { downloadQuoteExcel } from '@/utils/exportQuote'
 
 export default function SaleDispatchMonitorPage() {
   const [activeTab, setActiveTab] = useState<'overview' | 'my_tasks' | 'follow_ups' | 'completed' | 'cancelled'>('overview')
@@ -159,57 +160,7 @@ export default function SaleDispatchMonitorPage() {
   }
 
   const handleDownloadCSV = (order: any) => {
-    try {
-      const headers = [
-        "Product Name",
-        "Picture",
-        "Product Sup",
-        "Material",
-        "W",
-        "D",
-        "H",
-        "Price"
-      ]
-
-      const rows = (order.order_items || []).map((item: any) => {
-        const p = item.products || {}
-        const name = p.name || item.name || '-'
-        const sku = p.sku || item.sku || '-'
-        const productName = `${name}\n${sku}`
-        const picture = p.image_url || ''
-        const productSup = p.collection_groups?.product_sup || p.specs?.product_sup || '-'
-        const material = p.specs?.material || '-'
-        const w = p.width_cm ?? p.specs?.width_cm ?? '-'
-        const d = p.length_cm ?? p.specs?.length_cm ?? '-'
-        const h = p.thickness_cm ?? p.specs?.thickness_cm ?? '-'
-        const price = Number(item.price_at_sale ?? p.price ?? 0)
-
-        return [
-          `"${productName.replace(/"/g, '""')}"`,
-          `"${picture.replace(/"/g, '""')}"`,
-          `"${String(productSup).replace(/"/g, '""')}"`,
-          `"${String(material).replace(/"/g, '""')}"`,
-          `"${w}"`,
-          `"${d}"`,
-          `"${h}"`,
-          price
-        ].join(',')
-      })
-
-      const csvContent = "\uFEFF" + [headers.join(','), ...rows].join('\r\n')
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.setAttribute('href', url)
-      link.setAttribute('download', `Quote_${order.order_code || 'export'}.csv`)
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      URL.revokeObjectURL(url)
-      toast.success(`ดาวน์โหลด CSV บิล ${order.order_code} เรียบร้อยแล้ว`)
-    } catch (err: any) {
-      toast.error('ไม่สามารถดาวน์โหลด CSV ได้: ' + (err?.message || err))
-    }
+    downloadQuoteExcel(order)
   }
 
   const currentData = useMemo(() => {
@@ -544,9 +495,9 @@ export default function SaleDispatchMonitorPage() {
                               <button
                                 onClick={() => handleDownloadCSV(order)}
                                 className="py-2.5 px-2 bg-emerald-50 border border-emerald-300 text-emerald-700 rounded-lg text-xs md:text-sm font-bold hover:bg-emerald-100 transition-colors flex items-center justify-center gap-1.5 shadow-sm"
-                                title="ดาวน์โหลดรายการสินค้าเป็นไฟล์ CSV"
+                                title="ดาวน์โหลดไฟล์ Quote (พร้อมรูปภาพและภาษาไทยเปิดใน Excel)"
                               >
-                                <Download className="w-4 h-4 shrink-0 text-emerald-600" /> ดาวน์โหลด CSV
+                                <Download className="w-4 h-4 shrink-0 text-emerald-600" /> ดาวน์โหลด Quote
                               </button>
                             </div>
 

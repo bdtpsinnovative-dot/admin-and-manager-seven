@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from 'react'
+import { formatProductSup } from '@/utils/exportQuote'
 
 interface PrintDispatchDocumentProps {
   data: any
@@ -167,7 +168,8 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
 
               const price = item.price_at_sale ?? p.price ?? 0;
               const imageUrl = p.image_url || 'https://placehold.co/150x150?text=No+Image';
-              const productSup = p.collection_groups?.product_sup || p.specs?.product_sup || '-';
+              const rawSub = p.collection_groups?.product_sup || p.specs?.product_sup || '-';
+              const productSup = formatProductSup(rawSub);
               const material = p.specs?.material || '-';
               const w = p.width_cm ?? p.specs?.width_cm ?? '-';
               const d = p.length_cm ?? p.specs?.length_cm ?? '-';
