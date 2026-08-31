@@ -103,7 +103,7 @@ export async function getAllProductsForExport() {
 
     const { data, error } = await supabase
       .from(TABLE_NAME)
-      .select('*')
+      .select('*, collection_groups(id, name, cover_image_url, product_sup)')
       .order('created_at', { ascending: false })
       .range(from, to)
 

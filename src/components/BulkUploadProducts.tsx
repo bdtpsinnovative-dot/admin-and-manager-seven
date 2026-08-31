@@ -178,28 +178,31 @@ const downloadTemplate = () => {
         panel_craft: p.specs?.panel_craft || "",
       }));
 
-      const getPropsData = (source: any[]) => source.map(p => ({
-        "Item NO.": p.factory_name || "",
-        "Factory": p.specs?.brand || "",
-        "Name Product": p.name || "",
-        "Group Sisz": p.specs?.group_size || "",
-        "Picture": "",
-        "Link Picture": p.image_url || "",
-        "Description": p.description || "",
-        "Name Group": "", 
-        "Image Group": "",
-        "Collection Group": p.collection_group_id || "",
-        "Product Sup": "",
-        "Material": p.specs?.material || "",
-        "Color": p.color || "",
-        "SKU": p.sku || "",
-        "BARCODE": p.barcode || "",
-        "W": p.specs?.width_cm || "",
-        "D": p.specs?.length_cm || "",
-        "H": p.specs?.thickness_cm || "",
-        "Cost TH": p.cost || 0,
-        "Price": p.price || 0
-      }));
+      const getPropsData = (source: any[]) => source.map(p => {
+        const colGroup = Array.isArray(p.collection_groups) ? p.collection_groups[0] : p.collection_groups;
+        return {
+          "Item NO.": p.factory_name || "",
+          "Factory": p.specs?.brand || "",
+          "Name Product": p.name || "",
+          "Group Sisz": p.specs?.group_size || "",
+          "Picture": "",
+          "Link Picture": p.image_url || "",
+          "Description": p.description || "",
+          "Name Group": colGroup?.name || "", 
+          "Image Group": colGroup?.cover_image_url || "",
+          "Collection Group": p.collection_group_id || colGroup?.id || "",
+          "Product Sup": colGroup?.product_sup || "",
+          "Material": p.specs?.material || "",
+          "Color": p.color || "",
+          "SKU": p.sku || "",
+          "BARCODE": p.barcode || "",
+          "W": p.specs?.width_cm || "",
+          "D": p.specs?.length_cm || "",
+          "H": p.specs?.thickness_cm || "",
+          "Cost TH": p.cost || 0,
+          "Price": p.price || 0
+        };
+      });
 
       if ((type === 'slabs' || type === 'all') && downloadOptions.slabs.length > 0) {
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(getSlabsData(downloadOptions.slabs)), "Wood Slabs");
