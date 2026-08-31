@@ -53,7 +53,7 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
   return (
     <div 
       id="print-section" 
-      className={`bg-white text-neutral-900 flex flex-col ${className}`}
+      className={`bg-white text-neutral-900 flex flex-col print:min-h-0 print:h-auto ${className}`}
     >
       {/* ================= HEADER SECTION ================= */}
       <div className="flex justify-between items-start pb-3 border-b border-neutral-200">
