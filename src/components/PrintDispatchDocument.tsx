@@ -1,7 +1,6 @@
 "use client"
 
 import { useState } from 'react'
-import { formatProductSup } from '@/utils/exportQuote'
 
 interface PrintDispatchDocumentProps {
   data: any
@@ -145,77 +144,78 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
       </div>
 
       {/* ================= ITEMS TABLE ================= */}
-      <div className="mb-4 flex-grow">
-        <table className="w-full text-left border-collapse border border-neutral-300">
+      <div className="mb-2 flex-grow">
+        <table className="w-full text-left">
           <thead>
-            <tr className="border-b border-neutral-300 text-[9px] uppercase tracking-wider text-neutral-800 bg-neutral-50/50">
-              <th className="py-2 px-2 border-r border-neutral-300 font-bold text-center w-[22%]">Product Name</th>
-              <th className="py-2 px-2 border-r border-neutral-300 font-bold text-center w-[12%]">Picture</th>
-              <th className="py-2 px-2 border-r border-neutral-300 font-bold text-center w-[16%]">Product Sup</th>
-              <th className="py-2 px-2 border-r border-neutral-300 font-bold text-center w-[16%]">Material</th>
-              <th className="py-2 px-1 border-r border-neutral-300 font-bold text-center w-[7%]">W</th>
-              <th className="py-2 px-1 border-r border-neutral-300 font-bold text-center w-[7%]">D</th>
-              <th className="py-2 px-1 border-r border-neutral-300 font-bold text-center w-[7%]">H</th>
-              <th className="py-2 px-2 font-bold text-center w-[13%] bg-[#FFEAD8] text-neutral-900">Price</th>
+            <tr className="border-b border-neutral-200 text-[8px] uppercase tracking-[0.1em] text-neutral-400">
+              <th className="pb-1.5 font-semibold w-8 text-center">#</th>
+              <th className="pb-1.5 font-semibold w-16 text-center">Image</th>
+              <th className="pb-1.5 font-semibold">Description</th>
+              <th className="pb-1.5 font-semibold text-center w-10">Qty</th>
+              <th className="pb-1.5 font-semibold text-right w-16">Price</th>
+              <th className="pb-1.5 font-semibold text-right w-16">VAT (7%)</th>
+              <th className="pb-1.5 font-semibold text-right w-20">Amount</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="divide-y divide-neutral-100">
             {data.order_items.map((item: any, index: number) => {
-              const p = item.products || {};
-              const branchStock = p.stock?.find((s: any) => Number(s.branch_id) === Number(item.fulfill_branch_id));
+              const branchStock = item.products?.stock?.find((s: any) => Number(s.branch_id) === Number(item.fulfill_branch_id));
               const currentLiveQty = branchStock ? Number(branchStock.qty) : 0;
               const isOutOfStock = currentLiveQty < item.qty && data.status === 'PENDING';
 
-              const price = item.price_at_sale ?? p.price ?? 0;
-              const imageUrl = p.image_url || 'https://placehold.co/150x150?text=No+Image';
-              const rawSub = p.collection_groups?.product_sup || p.specs?.product_sup || '-';
-              const productSup = formatProductSup(rawSub);
-              const material = p.specs?.material || '-';
-              const w = p.width_cm ?? p.specs?.width_cm ?? '-';
-              const d = p.length_cm ?? p.specs?.length_cm ?? '-';
-              const h = p.thickness_cm ?? p.specs?.thickness_cm ?? '-';
+              const price = item.price_at_sale ?? item.products?.price ?? 0;
+              const total = price * item.qty;
+              const rowVat = isOutOfStock ? 0 : (total - (total / 1.07));
+              const totalWithVat = total;
+              const imageUrl = item.products?.image_url || 'https://placehold.co/150x150?text=No+Image';
 
               return (
-                <tr key={item.id} className={`border-b border-neutral-300 ${isOutOfStock ? 'opacity-50 grayscale' : ''}`}>
-                  <td className="py-2 px-2 border-r border-neutral-300 align-middle">
-                    <p className={`text-[10px] font-semibold leading-tight ${isOutOfStock ? 'text-neutral-400 line-through' : 'text-neutral-900'}`}>
-                      {p.name || item.name || '-'}
-                    </p>
-                    <p className="text-[9px] text-neutral-500 font-mono mt-0.5 uppercase">
-                      {p.sku || item.sku || '-'}
-                    </p>
-                    {item.qty > 1 && (
-                      <span className="inline-block mt-0.5 text-[8px] bg-neutral-100 text-neutral-600 px-1 py-0.5 rounded font-bold">
-                        x{item.qty}
-                      </span>
-                    )}
-                  </td>
-                  <td className="py-1 px-1 border-r border-neutral-300 text-center align-middle">
-                    <div className="w-12 h-12 bg-white rounded overflow-hidden mx-auto border border-neutral-100 flex items-center justify-center p-0.5">
+                <tr key={item.id} className={`group ${isOutOfStock ? 'opacity-50 grayscale' : ''}`}>
+                  <td className="py-2 text-center text-neutral-300 text-[9px] align-top mt-1">{index + 1}</td>
+                  <td className="py-2 text-center align-top">
+                    <div className="w-10 h-10 bg-[#F8F8F8] rounded-md overflow-hidden mx-auto relative">
                       <img 
                         src={imageUrl} 
-                        alt={p.name} 
-                        className="max-w-full max-h-full object-contain mix-blend-multiply"
+                        alt={item.products?.name} 
+                        className="w-full h-full object-cover mix-blend-multiply"
                       />
                     </div>
                   </td>
-                  <td className="py-2 px-2 border-r border-neutral-300 text-center align-middle text-[9px] text-neutral-700">
-                    {productSup}
+                  <td className="py-2 px-2 align-top">
+                    <p className={`text-[11px] font-semibold leading-tight ${isOutOfStock ? 'text-neutral-400 line-through' : 'text-neutral-800'}`}>
+                      {item.products?.name}
+                    </p>
+                    <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                      <p className="text-[8px] text-neutral-400 uppercase tracking-wide">SKU: {item.products?.sku || '-'}</p>
+                      
+                      {isOutOfStock && (
+                        <span className="text-[7px] font-bold text-red-500 border border-red-200 px-1 rounded-sm uppercase tracking-wide">
+                          Out of Stock
+                        </span>
+                      )}
+
+                      {!isOutOfStock && item.branches?.branch_name && (
+                        <span className="px-1 py-[1px] bg-neutral-100 text-neutral-500 rounded-sm text-[7px] font-semibold tracking-wide">
+                          Fulfill by: {item.branches.branch_name}
+                        </span>
+                      )}
+                    </div>
                   </td>
-                  <td className="py-2 px-2 border-r border-neutral-300 text-center align-middle text-[9px] text-neutral-700">
-                    {material}
+                  <td className="py-2 text-center align-top text-[10px] text-neutral-600">
+                    {isOutOfStock ? <span className="line-through">{item.qty}</span> : item.qty}
                   </td>
-                  <td className="py-2 px-1 border-r border-neutral-300 text-center align-middle text-[9px] text-neutral-800 font-medium">
-                    {w}
+                  <td className="py-2 text-right align-top text-[10px] text-neutral-600">
+                    {isOutOfStock ? '-' : (price / 1.07).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </td>
-                  <td className="py-2 px-1 border-r border-neutral-300 text-center align-middle text-[9px] text-neutral-800 font-medium">
-                    {d}
+                  <td className="py-2 text-right align-top text-[10px] text-neutral-600">
+                    {isOutOfStock ? '-' : rowVat.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </td>
-                  <td className="py-2 px-1 border-r border-neutral-300 text-center align-middle text-[9px] text-neutral-800 font-medium">
-                    {h}
-                  </td>
-                  <td className="py-2 px-2 text-center align-middle text-[11px] font-bold text-neutral-900 bg-[#FFEAD8]/50">
-                    {Number(price).toLocaleString('th-TH')}
+                  <td className="py-2 text-right align-top text-[11px] font-semibold text-neutral-800">
+                    {isOutOfStock ? (
+                      <span className="text-red-500 font-bold">0.00</span>
+                    ) : (
+                      totalWithVat.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                    )}
                   </td>
                 </tr>
               )
