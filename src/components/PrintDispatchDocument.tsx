@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from 'react'
+import { formatProductSup } from '@/utils/exportQuote'
 
 interface PrintDispatchDocumentProps {
   data: any
@@ -148,54 +149,84 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
         <table className="w-full text-left">
           <thead>
             <tr className="border-b border-neutral-200 text-[8px] uppercase tracking-[0.1em] text-neutral-400">
-              <th className="pb-1.5 font-semibold w-8 text-center">#</th>
-              <th className="pb-1.5 font-semibold w-16 text-center">Image</th>
-              <th className="pb-1.5 font-semibold">Description</th>
-              <th className="pb-1.5 font-semibold text-center w-10">Qty</th>
-              <th className="pb-1.5 font-semibold text-right w-16">Price</th>
-              <th className="pb-1.5 font-semibold text-right w-16">VAT (7%)</th>
-              <th className="pb-1.5 font-semibold text-right w-20">Amount</th>
+              <th className="pb-2 font-semibold w-8 text-center">#</th>
+              <th className="pb-2 font-semibold w-20 text-center">Image</th>
+              <th className="pb-2 font-semibold">Description</th>
+              <th className="pb-2 font-semibold text-center w-10">Qty</th>
+              <th className="pb-2 font-semibold text-right w-16">Price</th>
+              <th className="pb-2 font-semibold text-right w-16">VAT (7%)</th>
+              <th className="pb-2 font-semibold text-right w-20">Amount</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-neutral-100">
             {data.order_items.map((item: any, index: number) => {
-              const branchStock = item.products?.stock?.find((s: any) => Number(s.branch_id) === Number(item.fulfill_branch_id));
+              const p = item.products || {};
+              const branchStock = p.stock?.find((s: any) => Number(s.branch_id) === Number(item.fulfill_branch_id));
               const currentLiveQty = branchStock ? Number(branchStock.qty) : 0;
               const isOutOfStock = currentLiveQty < item.qty && data.status === 'PENDING';
 
-              const price = item.price_at_sale ?? item.products?.price ?? 0;
+              const price = item.price_at_sale ?? p.price ?? 0;
               const total = price * item.qty;
               const rowVat = isOutOfStock ? 0 : (total - (total / 1.07));
               const totalWithVat = total;
-              const imageUrl = item.products?.image_url || 'https://placehold.co/150x150?text=No+Image';
+              const imageUrl = p.image_url || 'https://placehold.co/150x150?text=No+Image';
+
+              // Specs, dimensions & product type
+              const rawSub = p.collection_groups?.product_sup || p.specs?.product_sup;
+              const productSup = formatProductSup(rawSub);
+              const material = p.specs?.material;
+              const w = p.width_cm ?? p.specs?.width_cm;
+              const d = p.length_cm ?? p.specs?.length_cm;
+              const h = p.thickness_cm ?? p.specs?.thickness_cm;
+              const sizeStr = (w || d || h) ? `W${w || '-'} x D${d || '-'} x H${h || '-'} cm` : null;
 
               return (
                 <tr key={item.id} className={`group ${isOutOfStock ? 'opacity-50 grayscale' : ''}`}>
-                  <td className="py-2 text-center text-neutral-300 text-[9px] align-top mt-1">{index + 1}</td>
-                  <td className="py-2 text-center align-top">
-                    <div className="w-10 h-10 bg-[#F8F8F8] rounded-md overflow-hidden mx-auto relative">
+                  <td className="py-2.5 text-center text-neutral-300 text-[9px] align-middle mt-1">{index + 1}</td>
+                  <td className="py-2.5 text-center align-middle w-20">
+                    <div className="w-16 h-16 bg-[#F8F8F8] border border-neutral-200 rounded-lg overflow-hidden mx-auto relative flex items-center justify-center p-1">
                       <img 
                         src={imageUrl} 
-                        alt={item.products?.name} 
-                        className="w-full h-full object-cover mix-blend-multiply"
+                        alt={p.name || item.name} 
+                        className="max-w-full max-h-full object-contain mix-blend-multiply"
                       />
                     </div>
                   </td>
-                  <td className="py-2 px-2 align-top">
-                    <p className={`text-[11px] font-semibold leading-tight ${isOutOfStock ? 'text-neutral-400 line-through' : 'text-neutral-800'}`}>
-                      {item.products?.name}
+                  <td className="py-2.5 px-2 align-middle">
+                    <p className={`text-[11.5px] font-bold leading-tight ${isOutOfStock ? 'text-neutral-400 line-through' : 'text-neutral-900'}`}>
+                      {p.name || item.name}
                     </p>
-                    <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                      <p className="text-[8px] text-neutral-400 uppercase tracking-wide">SKU: {item.products?.sku || '-'}</p>
+                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                      <span className="text-[8px] font-mono text-neutral-500 bg-neutral-100 px-1 py-0.5 rounded-sm uppercase">
+                        SKU: {p.sku || item.sku || '-'}
+                      </span>
                       
+                      {productSup && productSup !== '-' && (
+                        <span className="text-[8px] font-medium text-neutral-700 bg-neutral-100 px-1 py-0.5 rounded-sm">
+                          ชนิด: {productSup}
+                        </span>
+                      )}
+
+                      {sizeStr && (
+                        <span className="text-[8px] font-medium text-blue-700 bg-blue-50 border border-blue-100 px-1 py-0.5 rounded-sm">
+                          ขนาด: {sizeStr}
+                        </span>
+                      )}
+
+                      {material && (
+                        <span className="text-[8px] text-neutral-600 bg-neutral-50 border border-neutral-200 px-1 py-0.5 rounded-sm">
+                          วัสดุ: {material}
+                        </span>
+                      )}
+
                       {isOutOfStock && (
-                        <span className="text-[7px] font-bold text-red-500 border border-red-200 px-1 rounded-sm uppercase tracking-wide">
+                        <span className="text-[7.5px] font-bold text-red-500 border border-red-200 px-1 rounded-sm uppercase tracking-wide">
                           Out of Stock
                         </span>
                       )}
 
                       {!isOutOfStock && item.branches?.branch_name && (
-                        <span className="px-1 py-[1px] bg-neutral-100 text-neutral-500 rounded-sm text-[7px] font-semibold tracking-wide">
+                        <span className="px-1 py-[1px] bg-neutral-100 text-neutral-500 rounded-sm text-[7.5px] font-semibold tracking-wide">
                           Fulfill by: {item.branches.branch_name}
                         </span>
                       )}

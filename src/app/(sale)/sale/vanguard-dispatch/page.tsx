@@ -45,6 +45,7 @@ export default function SaleDispatchMonitorPage() {
   const [expandedOrders, setExpandedOrders] = useState<number[]>([])
   const [customOrderCodes, setCustomOrderCodes] = useState<Record<number, string>>({})
   const [printOrderCode, setPrintOrderCode] = useState<string | null>(null)
+  const [printAutoPrint, setPrintAutoPrint] = useState(false)
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
     title: string;
@@ -156,6 +157,12 @@ export default function SaleDispatchMonitorPage() {
   }
 
   const handlePrintSlip = (orderCode: string) => {
+    setPrintAutoPrint(false)
+    setPrintOrderCode(orderCode)
+  }
+
+  const handlePrintPdf = (orderCode: string) => {
+    setPrintAutoPrint(true)
     setPrintOrderCode(orderCode)
   }
 
@@ -490,7 +497,19 @@ export default function SaleDispatchMonitorPage() {
                                 className="flex-1 py-2.5 px-3 bg-white border border-slate-300 text-slate-700 rounded-lg text-xs md:text-sm font-bold hover:bg-slate-50 transition-colors flex items-center justify-center gap-1.5 shadow-sm"
                                 title="พิมพ์ใบเสร็จ / ใบเสนอราคา"
                               >
-                                <Printer className="w-4 h-4 shrink-0" /> พิมพ์เอกสาร (ใบเสร็จ/ใบเสนอราคา)
+                                <Printer className="w-4 h-4 shrink-0" /> พิมพ์เอกสาร
+                              </button>
+                              <button
+                                onClick={() => handlePrintPdf(order.order_code)}
+                                className="w-[42px] h-[42px] shrink-0 bg-white hover:bg-red-50 active:scale-95 border border-slate-300 hover:border-red-400 rounded-lg shadow-sm flex items-center justify-center transition-all group"
+                                title="พิมพ์ / บันทึกเป็น PDF"
+                              >
+                                <svg className="w-6 h-6 transition-transform group-hover:scale-110 drop-shadow-xs" viewBox="0 0 48 48" fill="none">
+                                  <path d="M28 6H12C9.79086 6 8 7.79086 8 10V38C8 40.2091 9.79086 42 12 42H36C38.2091 42 40 40.2091 40 38V18L28 6Z" fill="#E11D48"/>
+                                  <path d="M40 18H28V6L40 18Z" fill="#FDA4AF"/>
+                                  <rect x="6" y="15" width="22" height="18" rx="2.5" fill="#BE123C"/>
+                                  <text x="8" y="27.5" fill="white" fontSize="9" fontWeight="bold" fontFamily="sans-serif">PDF</text>
+                                </svg>
                               </button>
                               <button
                                 onClick={() => handleDownloadCSV(order)}
@@ -593,7 +612,14 @@ export default function SaleDispatchMonitorPage() {
       )}
 
       {/* 🧩 Print Dispatch Modal */}
-      <PrintDispatchModal orderCode={printOrderCode} onClose={() => setPrintOrderCode(null)} />
+      <PrintDispatchModal 
+        orderCode={printOrderCode} 
+        autoPrint={printAutoPrint}
+        onClose={() => {
+          setPrintOrderCode(null)
+          setPrintAutoPrint(false)
+        }} 
+      />
     </div>
   )
 }

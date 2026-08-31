@@ -8,9 +8,10 @@ import PrintDispatchDocument from '@/components/PrintDispatchDocument'
 interface PrintDispatchModalProps {
   orderCode: string | null
   onClose: () => void
+  autoPrint?: boolean
 }
 
-export default function PrintDispatchModal({ orderCode, onClose }: PrintDispatchModalProps) {
+export default function PrintDispatchModal({ orderCode, onClose, autoPrint = false }: PrintDispatchModalProps) {
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(false)
 
@@ -21,6 +22,25 @@ export default function PrintDispatchModal({ orderCode, onClose }: PrintDispatch
       setData(null)
     }
   }, [orderCode])
+
+  const handlePrint = () => {
+    const originalTitle = document.title
+    const prefix = data?.status === 'PENDING' ? 'Quote' : 'Receipt'
+    document.title = `${prefix}_${orderCode || 'document'}`
+    window.print()
+    setTimeout(() => {
+      document.title = originalTitle
+    }, 1000)
+  }
+
+  useEffect(() => {
+    if (data && autoPrint) {
+      const timer = setTimeout(() => {
+        handlePrint()
+      }, 500)
+      return () => clearTimeout(timer)
+    }
+  }, [data, autoPrint])
 
   async function loadData(code: string) {
     setLoading(true)
@@ -111,12 +131,24 @@ export default function PrintDispatchModal({ orderCode, onClose }: PrintDispatch
           >
             <X className="w-4 h-4" /> ปิดหน้าต่าง
           </button>
-          <button 
-            onClick={() => window.print()} 
-            className="flex items-center gap-2 px-5 py-2 bg-neutral-900 text-white rounded-full font-bold text-xs hover:bg-black transition-all shadow-md hover:shadow-lg cursor-pointer"
-          >
-            <Printer className="w-4 h-4" /> พิมพ์เอกสาร
-          </button>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={handlePrint} 
+              className="flex items-center gap-1.5 px-4 py-2 bg-red-600 hover:bg-red-700 active:scale-95 text-white rounded-full font-bold text-xs transition-all shadow-md cursor-pointer"
+              title="พิมพ์หรือบันทึกเป็นไฟล์ PDF"
+            >
+              <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
+                <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-9.5 8.5h-2V13h2c.55 0 1-.45 1-1s-.45-.5-1-.5zm5.5 0h-2v4h2c.55 0 1-.45 1-1v-2c0-.55-.45-1-1-1zm-6-3.5h-3v7h1.5v-2.5h1.5c.83 0 1.5-.67 1.5-1.5v-1.5c0-.83-.67-1.5-1.5-1.5zm6 0h-3v7h1.5v-2h1.5c.83 0 1.5-.67 1.5-1.5v-2c0-.83-.67-1.5-1.5-1.5zm4 0h-3.5v7H18v-2.5h1.5V11H18V9.5h2.5V8z"/>
+              </svg>
+              บันทึกเป็น PDF
+            </button>
+            <button 
+              onClick={handlePrint} 
+              className="flex items-center gap-2 px-5 py-2 bg-neutral-900 text-white rounded-full font-bold text-xs hover:bg-black transition-all shadow-md hover:shadow-lg cursor-pointer"
+            >
+              <Printer className="w-4 h-4" /> พิมพ์เอกสาร
+            </button>
+          </div>
         </div>
 
         {/* 📄 พื้นที่กระดาษ A4 (เรียกใช้ Component ร่วม) */}
