@@ -46,7 +46,8 @@ export async function getGroupedDispatches() {
         price_at_sale, 
         fulfill_branch_id,
         products!order_items_product_fk ( 
-          id, name, sku, image_url, price,
+          id, name, sku, image_url, price, specs, width_cm, length_cm, thickness_cm,
+          collection_groups ( product_sup ),
           stock ( branch_id, qty ) 
         ),
         branches!order_items_fulfill_branch_fk ( branch_name )
@@ -77,7 +78,8 @@ export async function getGroupedDispatches() {
         price_at_sale, 
         fulfill_branch_id,
         products!order_items_product_fk ( 
-          id, name, sku, image_url, price,
+          id, name, sku, image_url, price, specs, width_cm, length_cm, thickness_cm,
+          collection_groups ( product_sup ),
           stock ( branch_id, qty ) 
         ),
         branches!order_items_fulfill_branch_fk ( branch_name )
@@ -109,7 +111,8 @@ export async function getGroupedDispatches() {
         price_at_sale, 
         fulfill_branch_id,
         products!order_items_product_fk ( 
-          id, name, sku, image_url, price,
+          id, name, sku, image_url, price, specs, width_cm, length_cm, thickness_cm,
+          collection_groups ( product_sup ),
           stock ( branch_id, qty ) 
         ),
         branches!order_items_fulfill_branch_fk ( branch_name )
@@ -140,7 +143,8 @@ export async function getGroupedDispatches() {
         price_at_sale, 
         fulfill_branch_id,
         products!order_items_product_fk ( 
-          id, name, sku, image_url, price,
+          id, name, sku, image_url, price, specs, width_cm, length_cm, thickness_cm,
+          collection_groups ( product_sup ),
           stock ( branch_id, qty ) 
         ),
         branches!order_items_fulfill_branch_fk ( branch_name )
@@ -245,7 +249,8 @@ export async function getPrintDispatchData(orderCode: string) {
         price_at_sale,
         fulfill_branch_id,
         products!order_items_product_fk ( 
-          name, sku, image_url, price,
+          name, sku, image_url, price, specs, width_cm, length_cm, thickness_cm,
+          collection_groups ( product_sup ),
           stock ( branch_id, qty ) 
         ),
         branches!order_items_fulfill_branch_fk ( branch_name )

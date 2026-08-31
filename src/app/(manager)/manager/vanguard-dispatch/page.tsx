@@ -135,37 +135,38 @@ export default function DispatchMonitorPage() {
   const handleDownloadCSV = (order: any) => {
     try {
       const headers = [
-        "เลขที่บิล",
-        "วันที่",
-        "ชื่อผู้รับ",
-        "เบอร์โทร",
-        "ที่อยู่จัดส่ง",
-        "รหัสสินค้า (SKU)",
-        "ชื่อสินค้า",
-        "จำนวน",
-        "ราคาต่อหน่วย",
-        "ราคารวม"
+        "Product Name",
+        "Picture",
+        "Product Sup",
+        "Material",
+        "W",
+        "D",
+        "H",
+        "Price"
       ]
 
       const rows = (order.order_items || []).map((item: any) => {
-        const dateStr = new Date(order.created_at).toLocaleDateString('th-TH')
-        const sku = item.products?.sku || item.sku || '-'
-        const name = item.products?.name || item.name || '-'
-        const qty = item.qty || 1
-        const price = Number(item.price_at_sale || 0)
-        const total = qty * price
+        const p = item.products || {}
+        const name = p.name || item.name || '-'
+        const sku = p.sku || item.sku || '-'
+        const productName = `${name}\n${sku}`
+        const picture = p.image_url || ''
+        const productSup = p.collection_groups?.product_sup || p.specs?.product_sup || '-'
+        const material = p.specs?.material || '-'
+        const w = p.width_cm ?? p.specs?.width_cm ?? '-'
+        const d = p.length_cm ?? p.specs?.length_cm ?? '-'
+        const h = p.thickness_cm ?? p.specs?.thickness_cm ?? '-'
+        const price = Number(item.price_at_sale ?? p.price ?? 0)
 
         return [
-          `"${order.order_code || ''}"`,
-          `"${dateStr}"`,
-          `"${(order.shipping_name || '').replace(/"/g, '""')}"`,
-          `"\t${(order.shipping_phone || '')}"`,
-          `"${(order.shipping_address || '').replace(/"/g, '""')}"`,
-          `"${sku.replace(/"/g, '""')}"`,
-          `"${name.replace(/"/g, '""')}"`,
-          qty,
-          price,
-          total
+          `"${productName.replace(/"/g, '""')}"`,
+          `"${picture.replace(/"/g, '""')}"`,
+          `"${String(productSup).replace(/"/g, '""')}"`,
+          `"${String(material).replace(/"/g, '""')}"`,
+          `"${w}"`,
+          `"${d}"`,
+          `"${h}"`,
+          price
         ].join(',')
       })
 
@@ -174,7 +175,7 @@ export default function DispatchMonitorPage() {
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.setAttribute('href', url)
-      link.setAttribute('download', `Order_${order.order_code || 'export'}.csv`)
+      link.setAttribute('download', `Quote_${order.order_code || 'export'}.csv`)
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
