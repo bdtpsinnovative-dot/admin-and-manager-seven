@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server"
 import { supabaseAdmin } from "@/lib/supabase/admin"
-import { isMainAnalyticsEvent, normalizeLocation } from "@/lib/algorithm-normalization"
+import { isMainAnalyticsEvent, normalizeLocation, sanitizeCategoryName } from "@/lib/algorithm-normalization"
 
 type Range = 1 | 7 | 30
 
@@ -609,9 +609,9 @@ export async function getAudienceAnalytics(rangeValue: number, offset: number = 
       const views = bucket.filter((event) => event.event_type === "product_view")
       const countableViews = views.filter(isIncluded)
       const uniqueCountableViews = rollingUniqueViews(views, visitorToUser, cutoff)
-      const category = uniqueCountableViews.find((event) => event.product_category_snapshot)?.product_category_snapshot
+      const rawCategory = uniqueCountableViews.find((event) => event.product_category_snapshot)?.product_category_snapshot
         || (Array.isArray(product.collection_groups) ? product.collection_groups[0]?.product_sup : product.collection_groups?.product_sup)
-        || "ไม่ระบุหมวด"
+      const category = sanitizeCategoryName(rawCategory)
       const exitEvents = bucket.filter((event) => event.event_type === "session_end" && event.page_type === "product" && isIncluded(event))
       const quickBounce = exitEvents.filter((event) => event.is_quick_bounce || number(event.duration_seconds) < 15)
       const journeys = bucket.filter((event) => event.event_type === "journey" && isIncluded(event))
@@ -670,7 +670,9 @@ export async function getAudienceAnalytics(rangeValue: number, offset: number = 
       const uniquePages = new Set(pageEvents.map((event) => event.page_path).filter(Boolean))
       const uniqueProductViews = rollingUniqueViews(productViews, visitorToUser, cutoff)
       const prices = uniqueProductViews.map((event) => number(event.product_price_snapshot)).filter((price) => price > 0)
-      const categories = uniqueProductViews.map((event) => event.product_category_snapshot).filter(Boolean) as string[]
+      const categories = uniqueProductViews
+        .map((event) => sanitizeCategoryName(event.product_category_snapshot))
+        .filter((c) => c !== "ไม่ระบุหมวดหมู่")
       const productSessions = new Map<string, Set<string>>()
       for (const event of productViews) {
         if (!event.product_id || !event.session_id) continue
@@ -748,7 +750,7 @@ export async function getAudienceAnalytics(rangeValue: number, offset: number = 
       browser: topWithShare(uniqueProductViews.map((event) => event.browser_name)),
       source: topWithShare(uniqueProductViews.map((event) => sourceWithDetail(event.source_platform || event.session_source || event.first_touch_source, event))),
       location: topWithShare(uniqueProductViews.map(location)),
-      category: topWithShare(uniqueProductViews.map((event) => event.product_category_snapshot)),
+      category: topWithShare(uniqueProductViews.map((event) => sanitizeCategoryName(event.product_category_snapshot))),
       color: topWithShare(uniqueProductViews.map((event) => {
         if (event.product_color_snapshot) return event.product_color_snapshot
         const product = event.product_id ? productMap.get(Number(event.product_id)) : null
