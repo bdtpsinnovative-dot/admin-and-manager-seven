@@ -54,7 +54,7 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
   return (
     <div 
       id="print-section" 
-      className={`bg-white text-neutral-900 flex flex-col min-h-[1050px] print:min-h-[275mm] ${className}`}
+      className={`bg-white text-neutral-900 flex flex-col ${className}`}
     >
       {/* ================= HEADER SECTION ================= */}
       <div className="flex justify-between items-start pb-3 border-b border-neutral-200">
@@ -239,7 +239,7 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
                   <td className="py-1.5 text-right align-middle text-[10px] text-neutral-600">
                     {isOutOfStock ? '-' : rowVat.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </td>
-                  <td className="py-1.5 text-right align-middle text-[11px] font-semibold text-neutral-800">
+                  <td className="py-2 text-right align-middle text-[11px] font-semibold text-neutral-800">
                     {isOutOfStock ? (
                       <span className="text-red-500 font-bold">0.00</span>
                     ) : (
@@ -254,8 +254,8 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
       </div>
 
       {/* ================= FOOTER SECTION ================= */}
-      <div className="mt-auto break-inside-avoid print:break-inside-avoid">
-        <div className="flex justify-between items-start pt-2 border-t border-neutral-200">
+      <div className="mt-8 break-inside-avoid print:break-inside-avoid">
+        <div className="flex justify-between items-start pt-3 border-t border-neutral-200">
           <div className="w-1/2 pr-6 mt-0.5">
             <h3 className="text-[8px] font-bold uppercase tracking-[0.15em] text-neutral-400 mb-1">Terms & Conditions</h3>
             <p className="text-[7.5px] text-neutral-500 leading-tight">

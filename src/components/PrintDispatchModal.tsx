@@ -122,15 +122,15 @@ export default function PrintDispatchModal({ orderCode, onClose, autoPrint = fal
             position: static !important;
             width: 100% !important; 
             max-width: 100% !important;
-            min-height: 255mm !important;
+            min-height: 0 !important;
             height: auto !important;
-            padding: 4mm 10mm !important; 
+            padding: 8mm 10mm !important; 
             box-shadow: none !important;
             margin: 0 auto !important;
             page-break-after: avoid !important;
             break-after: avoid !important;
           }
-          .break-inside-avoid, #print-section .mt-auto {
+          .break-inside-avoid {
             break-inside: avoid !important;
             page-break-inside: avoid !important;
           }
@@ -178,7 +178,7 @@ export default function PrintDispatchModal({ orderCode, onClose, autoPrint = fal
         {/* 📄 พื้นที่กระดาษ A4 (เรียกใช้ Component ร่วม) */}
         <PrintDispatchDocument 
           data={data} 
-          className="w-full px-8 py-6 shadow-[0_0_40px_rgba(0,0,0,0.1)] min-h-[1122px] print:min-h-0 print:h-auto rounded-2xl print:rounded-none"
+          className="w-full px-8 py-8 shadow-[0_0_40px_rgba(0,0,0,0.08)] min-h-[1050px] print:min-h-0 print:h-auto print:p-0 print:shadow-none rounded-2xl print:rounded-none"
         />
       </div>
     </div>,
