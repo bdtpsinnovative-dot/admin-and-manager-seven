@@ -54,7 +54,7 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
   return (
     <div 
       id="print-section" 
-      className={`bg-white text-neutral-900 flex flex-col print:min-h-0 print:h-auto ${className}`}
+      className={`bg-white text-neutral-900 flex flex-col min-h-[1050px] print:min-h-[275mm] ${className}`}
     >
       {/* ================= HEADER SECTION ================= */}
       <div className="flex justify-between items-start pb-3 border-b border-neutral-200">
@@ -85,17 +85,17 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
             {data.status === 'PENDING' ? 'Quote' : 'Receipt'}
           </h2>
           
-          <div className={`mt-1 px-2.5 py-0.5 text-[8px] font-bold uppercase tracking-widest rounded-sm border inline-block
-            ${data.status === 'COMPLETED' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 
-              data.status === 'PROCESSING' ? 'bg-blue-50 text-blue-600 border-blue-200' :
-              data.status === 'CANCELLED' ? 'bg-red-50 text-red-600 border-red-200' :
-              'bg-neutral-50 text-neutral-600 border-neutral-200'}`}
+          <p className={`mt-1 text-[8.5px] font-bold uppercase tracking-widest
+            ${data.status === 'COMPLETED' ? 'text-emerald-600' : 
+              data.status === 'PROCESSING' ? 'text-blue-600' :
+              data.status === 'CANCELLED' ? 'text-red-600' :
+              'text-neutral-500'}`}
           >
             {data.status === 'COMPLETED' ? 'COMPLETED / DELIVERED' :
              data.status === 'PROCESSING' ? 'PAID / PROCESSING' :
              data.status === 'CANCELLED' ? 'CANCELLED' :
              'PENDING PAYMENT'}
-          </div>
+          </p>
         </div>
       </div>
 
@@ -193,42 +193,40 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
                     </div>
                   </td>
                   <td className="py-2.5 px-2 align-middle">
-                    <p className={`text-[11.5px] font-bold leading-tight ${isOutOfStock ? 'text-neutral-400 line-through' : 'text-neutral-900'}`}>
+                    <p className={`text-[12px] font-semibold leading-tight ${isOutOfStock ? 'text-neutral-400 line-through' : 'text-neutral-900'}`}>
                       {p.name || item.name}
                     </p>
-                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                      <span className="text-[8px] font-mono text-neutral-500 bg-neutral-100 px-1 py-0.5 rounded-sm uppercase">
-                        SKU: {p.sku || item.sku || '-'}
-                      </span>
-                      
-                      {productSup && productSup !== '-' && (
-                        <span className="text-[8px] font-medium text-neutral-700 bg-neutral-100 px-1 py-0.5 rounded-sm">
-                          ชนิด: {productSup}
-                        </span>
-                      )}
-
-                      {sizeStr && (
-                        <span className="text-[8px] font-medium text-blue-700 bg-blue-50 border border-blue-100 px-1 py-0.5 rounded-sm">
-                          ขนาด: {sizeStr}
-                        </span>
-                      )}
-
-                      {material && (
-                        <span className="text-[8px] text-neutral-600 bg-neutral-50 border border-neutral-200 px-1 py-0.5 rounded-sm">
-                          วัสดุ: {material}
-                        </span>
-                      )}
-
-                      {isOutOfStock && (
-                        <span className="text-[7.5px] font-bold text-red-500 border border-red-200 px-1 rounded-sm uppercase tracking-wide">
-                          Out of Stock
-                        </span>
-                      )}
-
-                      {!isOutOfStock && item.branches?.branch_name && (
-                        <span className="px-1 py-[1px] bg-neutral-100 text-neutral-500 rounded-sm text-[7.5px] font-semibold tracking-wide">
+                    <div className="text-[8.5px] text-neutral-500 mt-1 leading-normal font-normal">
+                      <p>
+                        <span className="text-neutral-400">SKU:</span> {p.sku || item.sku || '-'}
+                        {productSup && productSup !== '-' && (
+                          <>
+                            <span className="text-neutral-300 mx-1.5">•</span>
+                            <span className="text-neutral-400">ชนิด:</span> {productSup}
+                          </>
+                        )}
+                        {sizeStr && (
+                          <>
+                            <span className="text-neutral-300 mx-1.5">•</span>
+                            <span className="text-neutral-400">ขนาด:</span> {sizeStr}
+                          </>
+                        )}
+                        {material && (
+                          <>
+                            <span className="text-neutral-300 mx-1.5">•</span>
+                            <span className="text-neutral-400">วัสดุ:</span> {material}
+                          </>
+                        )}
+                      </p>
+                      {item.branches?.branch_name && !isOutOfStock && (
+                        <p className="text-[8px] text-neutral-400 mt-0.5">
                           Fulfill by: {item.branches.branch_name}
-                        </span>
+                        </p>
+                      )}
+                      {isOutOfStock && (
+                        <p className="text-[8px] font-bold text-red-500 uppercase tracking-wide mt-0.5">
+                          Out of Stock
+                        </p>
                       )}
                     </div>
                   </td>
