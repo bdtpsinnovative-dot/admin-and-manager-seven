@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { getPrintDispatchData } from '@/actions/dispatch'
 import { Printer, X } from 'lucide-react'
 import PrintDispatchDocument from '@/components/PrintDispatchDocument'
@@ -12,8 +13,13 @@ interface PrintDispatchModalProps {
 }
 
 export default function PrintDispatchModal({ orderCode, onClose, autoPrint = false }: PrintDispatchModalProps) {
+  const [mounted, setMounted] = useState(false)
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   useEffect(() => {
     if (orderCode) {
@@ -53,21 +59,22 @@ export default function PrintDispatchModal({ orderCode, onClose, autoPrint = fal
     setLoading(false)
   }
 
-  if (!orderCode) return null
+  if (!mounted || !orderCode) return null
 
   if (loading) {
-    return (
+    return createPortal(
       <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center print:hidden">
         <div className="bg-white p-8 rounded-3xl shadow-2xl flex flex-col items-center gap-4">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-neutral-900"></div>
           <p className="text-xs font-bold text-neutral-600">กำลังโหลดเอกสาร...</p>
         </div>
-      </div>
+      </div>,
+      document.body
     )
   }
 
   if (!data) {
-    return (
+    return createPortal(
       <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center print:hidden">
         <div className="bg-white p-8 rounded-3xl shadow-2xl flex flex-col items-center gap-4 max-w-sm">
           <p className="text-xs font-bold text-red-500 text-center">ไม่พบเอกสารในระบบ หรือดึงข้อมูลล้มเหลว</p>
@@ -78,12 +85,13 @@ export default function PrintDispatchModal({ orderCode, onClose, autoPrint = fal
             ปิดหน้าต่าง
           </button>
         </div>
-      </div>
+      </div>,
+      document.body
     )
   }
 
-  return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/50 backdrop-blur-xs flex justify-center items-start p-4 sm:p-8 print:p-0 print:bg-white">
+  return createPortal(
+    <div id="print-modal-root" className="fixed inset-0 z-50 overflow-y-auto bg-black/50 backdrop-blur-xs flex justify-center items-start p-4 sm:p-8 print:p-0 print:bg-white print:static print:overflow-visible">
       
       {/* 🛑 CSS ดักการ Print */}
       <style dangerouslySetInnerHTML={{__html: `
@@ -93,20 +101,32 @@ export default function PrintDispatchModal({ orderCode, onClose, autoPrint = fal
             min-height: 0 !important;
             overflow: visible !important;
             background-color: white !important;
+            margin: 0 !important;
+            padding: 0 !important;
           }
-          body * { visibility: hidden; }
-          #print-section, #print-section * { visibility: visible; }
+          /* ซ่อน layout และ elements อื่นๆ ใน body ทั้งหมด เพื่อไม่ให้กินพื้นที่ layout */
+          body > *:not(#print-modal-root) {
+            display: none !important;
+          }
+          #print-modal-root {
+            display: block !important;
+            position: static !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: white !important;
+            box-shadow: none !important;
+          }
           #print-section { 
-            position: absolute; 
-            left: 0; 
-            top: 0; 
+            position: static !important;
             width: 100% !important; 
             max-width: 100% !important;
             min-height: 0 !important;
             height: auto !important;
             padding: 6mm 10mm !important; 
             box-shadow: none !important;
-            margin: 0 !important;
+            margin: 0 auto !important;
             page-break-after: avoid !important;
             break-after: avoid !important;
           }
@@ -157,6 +177,7 @@ export default function PrintDispatchModal({ orderCode, onClose, autoPrint = fal
           className="w-full px-8 py-6 shadow-[0_0_40px_rgba(0,0,0,0.1)] min-h-[1122px] print:min-h-0 print:h-auto rounded-2xl print:rounded-none"
         />
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
