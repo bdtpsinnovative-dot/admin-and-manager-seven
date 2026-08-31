@@ -458,14 +458,14 @@ export default function DispatchMonitorPage() {
                                 </button>
                                 <button
                                   onClick={() => handleDownloadCSV(order)}
-                                  className="w-[42px] h-[42px] shrink-0 bg-[#107c41] hover:bg-[#0c5e31] active:scale-95 border border-[#0d6535] text-white rounded-lg shadow-sm flex items-center justify-center transition-all group"
+                                  className="w-[42px] h-[42px] shrink-0 bg-white hover:bg-emerald-50 active:scale-95 border border-slate-300 hover:border-emerald-500 rounded-lg shadow-sm flex items-center justify-center transition-all group"
                                   title="ดาวน์โหลด Quote เป็นไฟล์ Excel (พร้อมรูปภาพ)"
                                 >
-                                  <svg className="w-5 h-5 transition-transform group-hover:scale-110" viewBox="0 0 24 24" fill="none">
-                                    <path d="M14 2H6C4.89543 2 4 2.89543 4 4V20C4 21.1046 4.89543 22 6 22H18C19.1046 22 20 21.1046 20 20V8L14 2Z" fill="#185C37"/>
-                                    <path d="M14 2V8H20L14 2Z" fill="#33C481"/>
-                                    <rect x="2" y="7" width="13" height="11" rx="1.5" fill="#107C41"/>
-                                    <path d="M5.5 9.5L7.5 12.5L5.5 15.5H7.2L8.3 13.8L9.4 15.5H11.1L9.1 12.5L11.1 9.5H9.4L8.3 11.2L7.2 9.5H5.5Z" fill="white"/>
+                                  <svg className="w-6 h-6 transition-transform group-hover:scale-110 drop-shadow-xs" viewBox="0 0 48 48" fill="none">
+                                    <path d="M28 6H12C9.79086 6 8 7.79086 8 10V38C8 40.2091 9.79086 42 12 42H36C38.2091 42 40 40.2091 40 38V18L28 6Z" fill="#107C41"/>
+                                    <path d="M40 18H28V6L40 18Z" fill="#33C481"/>
+                                    <rect x="6" y="14" width="22" height="20" rx="3" fill="#185C37"/>
+                                    <path d="M12 19L16.5 24L12 29H14.8L17.5 25.8L20.2 29H23L18.5 24L23 19H20.2L17.5 22.2L14.8 19H12Z" fill="white"/>
                                   </svg>
                                 </button>
                               </div>
