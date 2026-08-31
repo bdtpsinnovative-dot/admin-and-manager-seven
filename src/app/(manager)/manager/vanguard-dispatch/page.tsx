@@ -448,20 +448,25 @@ export default function DispatchMonitorPage() {
                             )}
 
                             {isMyTask && (
-                              <div className="grid grid-cols-2 gap-2 mt-2">
+                              <div className="flex items-center gap-2 mt-2">
                                 <button
                                   onClick={() => handlePrintSlip(order.order_code)}
-                                  className="py-2.5 px-2 bg-white border border-slate-300 text-slate-700 rounded-lg text-xs md:text-sm font-bold hover:bg-slate-50 transition-colors flex items-center justify-center gap-1.5 shadow-sm"
+                                  className="flex-1 py-2.5 px-3 bg-white border border-slate-300 text-slate-700 rounded-lg text-xs md:text-sm font-bold hover:bg-slate-50 transition-colors flex items-center justify-center gap-1.5 shadow-sm"
                                   title="พิมพ์ใบเสร็จ / ใบเสนอราคา"
                                 >
-                                  <Printer className="w-4 h-4 shrink-0" /> พิมพ์เอกสาร
+                                  <Printer className="w-4 h-4 shrink-0" /> พิมพ์เอกสาร (ใบเสร็จ/ใบเสนอราคา)
                                 </button>
                                 <button
                                   onClick={() => handleDownloadCSV(order)}
-                                  className="py-2.5 px-2 bg-emerald-50 border border-emerald-300 text-emerald-700 rounded-lg text-xs md:text-sm font-bold hover:bg-emerald-100 transition-colors flex items-center justify-center gap-1.5 shadow-sm"
-                                  title="ดาวน์โหลดไฟล์ Quote (พร้อมรูปภาพและภาษาไทยเปิดใน Excel)"
+                                  className="w-[42px] h-[42px] shrink-0 bg-[#107c41] hover:bg-[#0c5e31] active:scale-95 border border-[#0d6535] text-white rounded-lg shadow-sm flex items-center justify-center transition-all group"
+                                  title="ดาวน์โหลด Quote เป็นไฟล์ Excel (พร้อมรูปภาพ)"
                                 >
-                                  <Download className="w-4 h-4 shrink-0 text-emerald-600" /> ดาวน์โหลด Quote
+                                  <svg className="w-5 h-5 transition-transform group-hover:scale-110" viewBox="0 0 24 24" fill="none">
+                                    <path d="M14 2H6C4.89543 2 4 2.89543 4 4V20C4 21.1046 4.89543 22 6 22H18C19.1046 22 20 21.1046 20 20V8L14 2Z" fill="#185C37"/>
+                                    <path d="M14 2V8H20L14 2Z" fill="#33C481"/>
+                                    <rect x="2" y="7" width="13" height="11" rx="1.5" fill="#107C41"/>
+                                    <path d="M5.5 9.5L7.5 12.5L5.5 15.5H7.2L8.3 13.8L9.4 15.5H11.1L9.1 12.5L11.1 9.5H9.4L8.3 11.2L7.2 9.5H5.5Z" fill="white"/>
+                                  </svg>
                                 </button>
                               </div>
                             )}
