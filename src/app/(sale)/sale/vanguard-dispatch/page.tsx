@@ -21,7 +21,8 @@ import {
   Edit,
   FileText,
   Save,
-  XCircle
+  XCircle,
+  Download
 } from 'lucide-react'
 import { toast } from 'sonner'
 import PrintDispatchModal from '@/components/PrintDispatchModal'
@@ -155,6 +156,59 @@ export default function SaleDispatchMonitorPage() {
 
   const handlePrintSlip = (orderCode: string) => {
     setPrintOrderCode(orderCode)
+  }
+
+  const handleDownloadCSV = (order: any) => {
+    try {
+      const headers = [
+        "เลขที่บิล",
+        "วันที่",
+        "ชื่อผู้รับ",
+        "เบอร์โทร",
+        "ที่อยู่จัดส่ง",
+        "รหัสสินค้า (SKU)",
+        "ชื่อสินค้า",
+        "จำนวน",
+        "ราคาต่อหน่วย",
+        "ราคารวม"
+      ]
+
+      const rows = (order.order_items || []).map((item: any) => {
+        const dateStr = new Date(order.created_at).toLocaleDateString('th-TH')
+        const sku = item.products?.sku || item.sku || '-'
+        const name = item.products?.name || item.name || '-'
+        const qty = item.qty || 1
+        const price = Number(item.price_at_sale || 0)
+        const total = qty * price
+
+        return [
+          `"${order.order_code || ''}"`,
+          `"${dateStr}"`,
+          `"${(order.shipping_name || '').replace(/"/g, '""')}"`,
+          `"\t${(order.shipping_phone || '')}"`,
+          `"${(order.shipping_address || '').replace(/"/g, '""')}"`,
+          `"${sku.replace(/"/g, '""')}"`,
+          `"${name.replace(/"/g, '""')}"`,
+          qty,
+          price,
+          total
+        ].join(',')
+      })
+
+      const csvContent = "\uFEFF" + [headers.join(','), ...rows].join('\r\n')
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.setAttribute('href', url)
+      link.setAttribute('download', `Order_${order.order_code || 'export'}.csv`)
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+      toast.success(`ดาวน์โหลด CSV บิล ${order.order_code} เรียบร้อยแล้ว`)
+    } catch (err: any) {
+      toast.error('ไม่สามารถดาวน์โหลด CSV ได้: ' + (err?.message || err))
+    }
   }
 
   const currentData = useMemo(() => {
@@ -478,12 +532,22 @@ export default function SaleDispatchMonitorPage() {
                               </>
                             )}
 
-                            <button
-                              onClick={() => handlePrintSlip(order.order_code)}
-                              className="w-full py-2.5 bg-white border border-slate-300 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-50 transition-colors flex items-center justify-center gap-2 shadow-sm mt-2"
-                            >
-                              <Printer className="w-4 h-4" /> พิมพ์เอกสาร (ใบเสร็จ/ใบเสนอราคา)
-                            </button>
+                            <div className="grid grid-cols-2 gap-2 mt-2">
+                              <button
+                                onClick={() => handlePrintSlip(order.order_code)}
+                                className="py-2.5 px-2 bg-white border border-slate-300 text-slate-700 rounded-lg text-xs md:text-sm font-bold hover:bg-slate-50 transition-colors flex items-center justify-center gap-1.5 shadow-sm"
+                                title="พิมพ์ใบเสร็จ / ใบเสนอราคา"
+                              >
+                                <Printer className="w-4 h-4 shrink-0" /> พิมพ์เอกสาร
+                              </button>
+                              <button
+                                onClick={() => handleDownloadCSV(order)}
+                                className="py-2.5 px-2 bg-emerald-50 border border-emerald-300 text-emerald-700 rounded-lg text-xs md:text-sm font-bold hover:bg-emerald-100 transition-colors flex items-center justify-center gap-1.5 shadow-sm"
+                                title="ดาวน์โหลดรายการสินค้าเป็นไฟล์ CSV"
+                              >
+                                <Download className="w-4 h-4 shrink-0 text-emerald-600" /> ดาวน์โหลด CSV
+                              </button>
+                            </div>
 
                             {order.status === 'PENDING' && (
                               <button
