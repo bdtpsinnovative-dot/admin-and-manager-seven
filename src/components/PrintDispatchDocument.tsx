@@ -182,9 +182,9 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
 
               return (
                 <tr key={item.id} className={`group ${isOutOfStock ? 'opacity-50 grayscale' : ''}`}>
-                  <td className="py-2.5 text-center text-neutral-300 text-[9px] align-middle mt-1">{index + 1}</td>
-                  <td className="py-2.5 text-center align-middle w-20">
-                    <div className="w-16 h-16 bg-[#F8F8F8] border border-neutral-200 rounded-lg overflow-hidden mx-auto relative flex items-center justify-center p-1">
+                  <td className="py-1.5 text-center text-neutral-300 text-[9px] align-middle">{index + 1}</td>
+                  <td className="py-1.5 text-center align-middle w-20">
+                    <div className="w-13 h-13 bg-[#F8F8F8] border border-neutral-200 rounded-lg overflow-hidden mx-auto relative flex items-center justify-center p-0.5">
                       <img 
                         src={imageUrl} 
                         alt={p.name || item.name} 
@@ -192,11 +192,11 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
                       />
                     </div>
                   </td>
-                  <td className="py-2.5 px-2 align-middle">
-                    <p className={`text-[12px] font-semibold leading-tight ${isOutOfStock ? 'text-neutral-400 line-through' : 'text-neutral-900'}`}>
+                  <td className="py-1.5 px-2 align-middle">
+                    <p className={`text-[11.5px] font-semibold leading-tight ${isOutOfStock ? 'text-neutral-400 line-through' : 'text-neutral-900'}`}>
                       {p.name || item.name}
                     </p>
-                    <div className="text-[8.5px] text-neutral-500 mt-1 leading-normal font-normal">
+                    <div className="text-[8px] text-neutral-500 mt-0.5 leading-normal font-normal">
                       <p>
                         <span className="text-neutral-400">SKU:</span> {p.sku || item.sku || '-'}
                         {productSup && productSup !== '-' && (
@@ -219,27 +219,27 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
                         )}
                       </p>
                       {item.branches?.branch_name && !isOutOfStock && (
-                        <p className="text-[8px] text-neutral-400 mt-0.5">
+                        <p className="text-[7.5px] text-neutral-400 mt-0.5">
                           Fulfill by: {item.branches.branch_name}
                         </p>
                       )}
                       {isOutOfStock && (
-                        <p className="text-[8px] font-bold text-red-500 uppercase tracking-wide mt-0.5">
+                        <p className="text-[7.5px] font-bold text-red-500 uppercase tracking-wide mt-0.5">
                           Out of Stock
                         </p>
                       )}
                     </div>
                   </td>
-                  <td className="py-2 text-center align-top text-[10px] text-neutral-600">
+                  <td className="py-1.5 text-center align-middle text-[10px] text-neutral-600">
                     {isOutOfStock ? <span className="line-through">{item.qty}</span> : item.qty}
                   </td>
-                  <td className="py-2 text-right align-top text-[10px] text-neutral-600">
+                  <td className="py-1.5 text-right align-middle text-[10px] text-neutral-600">
                     {isOutOfStock ? '-' : (price / 1.07).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </td>
-                  <td className="py-2 text-right align-top text-[10px] text-neutral-600">
+                  <td className="py-1.5 text-right align-middle text-[10px] text-neutral-600">
                     {isOutOfStock ? '-' : rowVat.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </td>
-                  <td className="py-2 text-right align-top text-[11px] font-semibold text-neutral-800">
+                  <td className="py-1.5 text-right align-middle text-[11px] font-semibold text-neutral-800">
                     {isOutOfStock ? (
                       <span className="text-red-500 font-bold">0.00</span>
                     ) : (
@@ -254,11 +254,11 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
       </div>
 
       {/* ================= FOOTER SECTION ================= */}
-      <div className="mt-auto">
-        <div className="flex justify-between items-start pt-3 border-t border-neutral-200">
-          <div className="w-1/2 pr-6 mt-1">
+      <div className="mt-auto break-inside-avoid print:break-inside-avoid">
+        <div className="flex justify-between items-start pt-2 border-t border-neutral-200">
+          <div className="w-1/2 pr-6 mt-0.5">
             <h3 className="text-[8px] font-bold uppercase tracking-[0.15em] text-neutral-400 mb-1">Terms & Conditions</h3>
-            <p className="text-[8px] text-neutral-500 leading-tight">
+            <p className="text-[7.5px] text-neutral-500 leading-tight">
               1. ใบเสนอราคานี้มีผล 30 วันนับจากวันที่ออกเอกสาร<br/>
               2. กรุณาตรวจสอบรายการสินค้าให้ถูกต้องก่อนยืนยันการสั่งซื้อ<br/>
               3. สินค้าซื้อแล้วไม่รับเปลี่ยนหรือคืน ยกเว้นกรณีชำรุดจากการผลิต
@@ -267,50 +267,50 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
           <div className="w-56">
             {totalSpecialDiscount !== 0 ? (
               <>
-                <div className="flex justify-between py-1 text-[9px] text-neutral-500">
+                <div className="flex justify-between py-0.5 text-[9px] text-neutral-500">
                   <span>Subtotal</span>
                   <span>{subtotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
-                <div className={`flex justify-between py-1 text-[9px] ${totalSpecialDiscount > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                <div className={`flex justify-between py-0.5 text-[9px] ${totalSpecialDiscount > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
                   <span>{totalSpecialDiscount > 0 ? 'Special Discount' : 'Rounding Surcharge'}</span>
                   <span>{totalSpecialDiscount > 0 ? '-' : '+'} {Math.abs(totalSpecialDiscount).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
-                <div className="flex justify-between py-1 text-[9px] text-neutral-500 border-t border-neutral-100">
+                <div className="flex justify-between py-0.5 text-[9px] text-neutral-500 border-t border-neutral-100">
                   <span>Subtotal (Before VAT)</span>
                   <span>{subTotalWithoutVat.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
               </>
             ) : (
-              <div className="flex justify-between py-1 text-[9px] text-neutral-500">
+              <div className="flex justify-between py-0.5 text-[9px] text-neutral-500">
                 <span>Subtotal (Before VAT)</span>
                 <span>{subTotalWithoutVat.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
               </div>
             )}
-            <div className="flex justify-between py-1 text-[9px] text-neutral-500">
+            <div className="flex justify-between py-0.5 text-[9px] text-neutral-500">
               <span>VAT (7%)</span>
               <span>{vatAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </div>
-            <div className="flex justify-between py-2 mt-1 border-t border-neutral-900">
+            <div className="flex justify-between py-1.5 mt-0.5 border-t border-neutral-900">
               <span className="text-[10px] font-bold text-neutral-900 uppercase tracking-widest mt-0.5">Total (THB)</span>
               <span className="text-base font-bold text-neutral-900">{grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span>
             </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-12 text-center mt-6">
+        <div className="grid grid-cols-2 gap-12 text-center mt-3.5">
           <div>
-            <div className="h-6 border-b border-neutral-300 w-full mb-1.5"></div>
+            <div className="h-5 border-b border-neutral-300 w-full mb-1"></div>
             <p className="font-medium text-neutral-900 text-[8px] uppercase tracking-wider">Authorized Signature</p>
             <p className="text-neutral-400 text-[7px] mt-0.5">Terra Home Studio</p>
           </div>
           <div>
-            <div className="h-6 border-b border-neutral-300 w-full mb-1.5"></div>
+            <div className="h-5 border-b border-neutral-300 w-full mb-1"></div>
             <p className="font-medium text-neutral-900 text-[8px] uppercase tracking-wider">Accepted By</p>
             <p className="text-neutral-600 font-bold text-[7px] mt-0.5">{data?.profiles?.full_name || 'Customer / Client'}</p>
           </div>
         </div>
 
-        <div className="text-center mt-4 text-[7px] text-neutral-300 uppercase tracking-widest">
+        <div className="text-center mt-2.5 text-[7px] text-neutral-300 uppercase tracking-widest">
           Thank you for your business
         </div>
       </div>

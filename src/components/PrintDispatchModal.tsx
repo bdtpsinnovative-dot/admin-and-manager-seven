@@ -122,13 +122,17 @@ export default function PrintDispatchModal({ orderCode, onClose, autoPrint = fal
             position: static !important;
             width: 100% !important; 
             max-width: 100% !important;
-            min-height: 275mm !important;
-            height: 275mm !important;
-            padding: 6mm 10mm !important; 
+            min-height: 255mm !important;
+            height: auto !important;
+            padding: 4mm 10mm !important; 
             box-shadow: none !important;
             margin: 0 auto !important;
             page-break-after: avoid !important;
             break-after: avoid !important;
+          }
+          .break-inside-avoid, #print-section .mt-auto {
+            break-inside: avoid !important;
+            page-break-inside: avoid !important;
           }
           @page { 
             size: A4 portrait; 
