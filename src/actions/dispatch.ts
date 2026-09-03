@@ -549,7 +549,6 @@ export async function updateOrderCustomerInfo(orderId: number, data: {
         shipping_name: data.shipping_name?.trim() || null,
         shipping_phone: data.shipping_phone?.trim() || null,
         shipping_address: data.shipping_address?.trim() || null,
-        updated_at: new Date().toISOString(),
       })
       .eq('id', orderId)
 
