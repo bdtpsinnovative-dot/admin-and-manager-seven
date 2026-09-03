@@ -26,7 +26,7 @@ export async function getGroupedDispatches() {
   const hiddenOrderIds = new Set((hiddenRows || []).map(row => Number(row.order_id)))
 
   // 1. งานที่คลังเราต้องจัดส่ง 
-  // ✨ เพิ่ม latitude, longitude 
+  // ✨ เพิ่ม latitude, longitude, discount_snapshot, total_amount
   const { data: myDispatchOrders, error: err1 } = await supabase
     .from('orders')
     .select(`
@@ -39,6 +39,9 @@ export async function getGroupedDispatches() {
       latitude, 
       longitude,
       status,
+      total_amount,
+      discount_amount,
+      discount_snapshot,
       order_items!inner (
         id, 
         qty, 
@@ -58,7 +61,7 @@ export async function getGroupedDispatches() {
     .order('created_at', { ascending: false })
 
   // 2. บิลที่เราขาย แต่ฝากสาขาอื่นส่ง
-  // ✨ เพิ่ม latitude, longitude 
+  // ✨ เพิ่ม latitude, longitude, discount_snapshot, total_amount
   const { data: followUpOrders, error: err2 } = await supabase
     .from('orders')
     .select(`
@@ -71,6 +74,9 @@ export async function getGroupedDispatches() {
       latitude, 
       longitude,
       status,
+      total_amount,
+      discount_amount,
+      discount_snapshot,
       order_items!inner (
         id, 
         qty, 
@@ -91,7 +97,7 @@ export async function getGroupedDispatches() {
     .order('created_at', { ascending: false })
 
   // 3. ประวัติบิลที่จัดส่งหรือขายเสร็จสมบูรณ์แล้ว (ดึง 50 รายการล่าสุด)
-  // ✨ เพิ่ม latitude, longitude 
+  // ✨ เพิ่ม latitude, longitude, discount_snapshot, total_amount
   const { data: completedOrders, error: err3 } = await supabase
     .from('orders')
     .select(`
@@ -104,6 +110,9 @@ export async function getGroupedDispatches() {
       latitude, 
       longitude,
       status,
+      total_amount,
+      discount_amount,
+      discount_snapshot,
       order_items!inner (
         id, 
         qty, 
@@ -136,6 +145,9 @@ export async function getGroupedDispatches() {
       latitude, 
       longitude,
       status,
+      total_amount,
+      discount_amount,
+      discount_snapshot,
       order_items!inner (
         id, 
         qty, 
@@ -281,7 +293,7 @@ export async function approveAndCutStock(orderId: number, orderCode: string, ite
   try {
     const { data: order } = await supabase
       .from('orders')
-      .select('status, latitude, longitude, shipping_address')
+      .select('status, latitude, longitude, shipping_address, discount_snapshot')
       .eq('id', orderId)
       .single()
       
@@ -349,6 +361,47 @@ export async function approveAndCutStock(orderId: number, orderCode: string, ite
       await supabase.from('orders').update({ status: 'PROCESSING' }).eq('id', orderId)
     }
 
+    // 🎟️ นับยอดการใช้งานโค้ดคูปอง (used_count) หลังจากชำระเงินและอนุมัติสำเร็จแล้วเท่านั้น
+    const couponData = order.discount_snapshot?.coupon
+    if (couponData) {
+      const promoId = couponData.id
+      const couponCode = couponData.code?.trim().toUpperCase()
+
+      if (promoId) {
+        const { data: promo } = await supabase
+          .from('terra_collection_promotions')
+          .select('id, used_count')
+          .eq('id', promoId)
+          .maybeSingle()
+
+        if (promo) {
+          await supabase
+            .from('terra_collection_promotions')
+            .update({ 
+              used_count: (promo.used_count || 0) + 1,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', promo.id)
+        }
+      } else if (couponCode) {
+        const { data: promo } = await supabase
+          .from('terra_collection_promotions')
+          .select('id, used_count')
+          .ilike('coupon_code', couponCode)
+          .maybeSingle()
+
+        if (promo) {
+          await supabase
+            .from('terra_collection_promotions')
+            .update({ 
+              used_count: (promo.used_count || 0) + 1,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', promo.id)
+        }
+      }
+    }
+
     revalidatePath('/sale/sales-history')
     revalidatePath('/sale/vanguard-dispatch')
     revalidatePath('/manager/sales-history')
@@ -372,6 +425,52 @@ export async function cancelOrder(orderId: number, orderCode: string, items: any
   try {
     // 1. ถ้าบิลไม่อยู่สถานะ PENDING แปลว่าเคยหักสต็อกไปแล้ว ต้องบวกกลับคืน
     if (currentStatus !== 'PENDING') {
+      // 🎟️ คืนสิทธิ์คูปอง หากบิลที่ตัดเงินไปแล้วถูกยกเลิก (ลด used_count คืน 1)
+      const { data: orderToCancel } = await supabase
+        .from('orders')
+        .select('discount_snapshot')
+        .eq('id', orderId)
+        .single()
+
+      const couponData = orderToCancel?.discount_snapshot?.coupon
+      if (couponData) {
+        const promoId = couponData.id
+        const couponCode = couponData.code?.trim().toUpperCase()
+
+        if (promoId) {
+          const { data: promo } = await supabase
+            .from('terra_collection_promotions')
+            .select('id, used_count')
+            .eq('id', promoId)
+            .maybeSingle()
+
+          if (promo && promo.used_count > 0) {
+            await supabase
+              .from('terra_collection_promotions')
+              .update({ 
+                used_count: Math.max(0, promo.used_count - 1),
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', promo.id)
+          }
+        } else if (couponCode) {
+          const { data: promo } = await supabase
+            .from('terra_collection_promotions')
+            .select('id, used_count')
+            .ilike('coupon_code', couponCode)
+            .maybeSingle()
+
+          if (promo && promo.used_count > 0) {
+            await supabase
+              .from('terra_collection_promotions')
+              .update({ 
+                used_count: Math.max(0, promo.used_count - 1),
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', promo.id)
+          }
+        }
+      }
       for (const item of items) {
         const productId = item.products?.id;
         const branchId = item.fulfill_branch_id;

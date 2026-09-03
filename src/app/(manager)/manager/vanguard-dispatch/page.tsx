@@ -272,8 +272,17 @@ export default function DispatchMonitorPage() {
                             </span>
                           )}
                         </span>
-                        <span className="text-xs text-slate-500 font-medium mt-0.5 block">
-                          วันที่: {new Date(order.created_at).toLocaleDateString('th-TH')} | ลูกค้า: {order.shipping_name || 'ไม่ได้ระบุ'}
+                        <span className="text-xs text-slate-500 font-medium mt-0.5 flex flex-wrap items-center gap-1.5">
+                          <span>วันที่: {new Date(order.created_at).toLocaleDateString('th-TH')}</span>
+                          <span>| ลูกค้า: {order.shipping_name || 'ไม่ได้ระบุ'}</span>
+                          {order.total_amount !== undefined && (
+                            <span className="font-bold text-slate-800">| ยอดรวม: ฿{Number(order.total_amount).toLocaleString()}</span>
+                          )}
+                          {order.discount_snapshot?.coupon && (
+                            <span className="px-1.5 py-0.5 bg-purple-50 text-purple-700 border border-purple-200 rounded text-[10px] font-bold inline-flex items-center gap-1">
+                              🎟️ โค้ด: {order.discount_snapshot.coupon.code} (-฿{Number(order.discount_snapshot.coupon.amount || order.discount_snapshot.coupon.discountAmount || 0).toLocaleString()})
+                            </span>
+                          )}
                         </span>
                       </div>
                     </div>
@@ -404,6 +413,25 @@ export default function DispatchMonitorPage() {
                               </>
                             )}
                           </div>
+
+                          {/* 🎟️ ข้อมูลคูปองส่วนลด (ถ้ามี) */}
+                          {order.discount_snapshot?.coupon && (
+                            <div className="p-3 bg-purple-50/80 border border-purple-200/80 rounded-xl text-xs space-y-1 mt-2">
+                              <div className="flex items-center justify-between">
+                                <span className="font-bold text-purple-900 flex items-center gap-1.5">
+                                  🎟️ ใช้โค้ดส่วนลด: <span className="font-mono font-black">{order.discount_snapshot.coupon.code}</span>
+                                </span>
+                                <span className="font-black text-purple-700 bg-white px-2 py-0.5 rounded-md border border-purple-200">
+                                  -฿{Number(order.discount_snapshot.coupon.amount || order.discount_snapshot.coupon.discountAmount || 0).toLocaleString()}
+                                </span>
+                              </div>
+                              <p className="text-[10px] text-purple-600 font-medium">
+                                {order.status === 'PENDING' 
+                                  ? '⏳ สิทธิ์คูปองจะถูกนับใช้งาน (used_count +1) เมื่อกด "ยืนยันรับชำระเงิน & ตัดสต็อก" สำเร็จ' 
+                                  : '✓ บิลนี้ชำระเงินสำเร็จแล้ว และได้นับการใช้สิทธิ์คูปองเรียบร้อย'}
+                              </p>
+                            </div>
+                          )}
 
                           {/* Action Buttons (ปุ่มการทำงานต่างๆ เรียงสวยงาม) */}
                           <div className="space-y-2 pt-2">

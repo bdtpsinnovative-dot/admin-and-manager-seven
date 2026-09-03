@@ -33,7 +33,6 @@ export async function uploadFile(formData: FormData) {
   return { success: true }
 }
 
-// เปลี่ยนบรรทัดนี้ในไฟล์ actions/woodslab.ts
 export async function getProducts(category?: string, specType?: string, searchQuery?: string, statusFilter?: string) {
   const supabase = await createClient()
 
@@ -64,17 +63,13 @@ export async function getProducts(category?: string, specType?: string, searchQu
   }
 
   const { data, error } = await query
-  
-  // ... โค้ดเดิมดึงรูปภาพด้านล่างปล่อยไว้เหมือนเดิมครับ ...
 
   if (error) {
     console.error("Error fetching products:", error)
     return { data: [], error: error.message }
   }
 
-  // ... (โค้ดแปลง URL รูปภาพ เหมือนเดิม) ...
-  const processedData = data.map((item) => {
-    // ... (logic เดิม)
+  const processedData = (data || []).map((item) => {
     let publicUrl = null
     if (item.image_url) {
        if(item.image_url.startsWith('http')) {
@@ -192,10 +187,6 @@ export async function updateProduct(id: string | number, updateData: any) {
   return { success: true }
 }
 
-// src/actions/woodslab.ts
-
-// ... (ส่วนอื่นๆ เหมือนเดิม)
-
 // ✅ 6. ลบสินค้า (แก้ไขให้ลบ Stock ก่อน)
 export async function deleteProduct(id: string | number) {
     const supabase = await createClient()
@@ -207,10 +198,8 @@ export async function deleteProduct(id: string | number) {
         .delete()
         .eq('product_id', id)
 
-    // (ถ้า stockError เป็นเพราะไม่มีข้อมูล ก็ไม่เป็นไร แต่ถ้า error อื่นอาจต้องเช็ค)
     if (stockError) {
         console.warn("ลบ Stock ไม่สำเร็จ หรือไม่มีข้อมูล:", stockError.message)
-        // ไม่ต้อง return error เพราะเราจะพยายามลบสินค้าต่อ
     }
 
     // 2. ลบสินค้า (ตารางแม่)
@@ -224,7 +213,6 @@ export async function deleteProduct(id: string | number) {
     revalidatePath('/inventory')
     return { success: true }
 }
-// src/actions/woodslab.ts
 
 export async function bulkCreateProducts(productsArray: any[]) {
   const supabase = await createClient()
@@ -237,14 +225,14 @@ export async function bulkCreateProducts(productsArray: any[]) {
     // 🎯 ห้ามยุ่งหรือบันทึกลง collection_groups เด็ดขาดสำหรับสินค้าประเภทอื่นที่ไม่ใช่ prop หรือ furniture
     if (p.collection_group_id && (p.category_id === 'prop' || p.category_id === 'furniture')) {
       const groupData: any = {
-        id: p.collection_group_id, // รหัสกลุ่ม เช่น FA-D2089
-        product_sup: p._temp_product_sup // ✅ คำหมวดหมู่ เช่น Doll Animal
+        id: p.collection_group_id,
+        product_sup: p._temp_product_sup
       }
       if (p._temp_name_image_group) {
-        groupData.name = p._temp_name_image_group // ✅ ชื่อภาพรวมกลุ่มสินค้า (Name Image Group)
+        groupData.name = p._temp_name_image_group
       }
       if (p._temp_image_group) {
-        groupData.cover_image_url = p._temp_image_group // ✅ รูปภาพภาพรวมคอลเลกชัน (Image Group)
+        groupData.cover_image_url = p._temp_image_group
       }
       if (p.category_id === 'prop') {
         groupData.tag = 'Props'
@@ -275,56 +263,108 @@ export async function bulkCreateProducts(productsArray: any[]) {
     return actualProductData;
   });
 
-  // 4. บันทึกข้อมูลสินค้าลงตาราง products
-  const { data, error } = await supabase
-    .from('products')
-    .upsert(cleanProductsArray, { onConflict: 'sku' }) 
-    .select()
+  // 4. บันทึกข้อมูลสินค้าลงตาราง products (แบ่ง Chunk ทีละ 100 เพื่อความเสถียร)
+  let totalSaved = 0
+  const CHUNK_SIZE = 100
 
-  if (error) {
-    return { error: error.message }
+  for (let i = 0; i < cleanProductsArray.length; i += CHUNK_SIZE) {
+    const chunk = cleanProductsArray.slice(i, i + CHUNK_SIZE)
+    const { data, error } = await supabase
+      .from('products')
+      .upsert(chunk, { onConflict: 'sku' }) 
+      .select('id')
+
+    if (error) {
+      console.error("Error upserting products chunk:", error.message)
+      return { error: error.message }
+    }
+    totalSaved += (data?.length || 0)
   }
 
   revalidatePath('/inventory')
-  return { success: true, count: data?.length }
+  return { success: true, count: totalSaved }
 }
-// ✅ ฟังก์ชันใหม่ เอาไว้เช็คว่า SKU ไหนมีในระบบแล้วบ้าง (เพื่อทำ Preview)
+
+// ✅ ฟังก์ชันตรวจว่า SKU ไหนมีในระบบแล้วบ้าง (แบ่ง Chunk ทีละ 100 เพื่อป้องกัน URL ยาวเกินจนเกิด Bad Request)
 export async function checkExistingSkus(skus: string[]): Promise<{ existing: string[]; error?: string }> {
   try {
-    const supabase = await createClient()
-    const { data, error } = await supabase
-      .from(TABLE_NAME)
-      .select('sku')
-      .in('sku', skus) // ค้นหาเฉพาะ SKU ที่เราส่งไป
+    if (!skus || skus.length === 0) return { existing: [] }
 
-    if (error) {
-      console.error("Error checking SKUs:", error)
-      return { existing: [], error: error.message }
+    const cleanSkus = Array.from(new Set(
+      skus
+        .map(s => String(s || '').trim())
+        .filter(s => s.length > 0)
+    ))
+
+    if (cleanSkus.length === 0) return { existing: [] }
+
+    const supabase = await createClient()
+    const CHUNK_SIZE = 100
+    let allExisting: string[] = []
+
+    for (let i = 0; i < cleanSkus.length; i += CHUNK_SIZE) {
+      const chunk = cleanSkus.slice(i, i + CHUNK_SIZE)
+      const { data, error } = await supabase
+        .from(TABLE_NAME)
+        .select('sku')
+        .in('sku', chunk)
+
+      if (error) {
+        console.error("Error checking SKUs chunk:", error)
+        return { existing: allExisting, error: error.message }
+      }
+
+      if (data && data.length > 0) {
+        allExisting = allExisting.concat(data.map((d: any) => d.sku))
+      }
     }
 
-    return { existing: (data || []).map((d: any) => d.sku) }
+    return { existing: allExisting }
   } catch (error) {
     console.error("Unexpected error checking SKUs:", error)
     return { existing: [], error: error instanceof Error ? error.message : 'ไม่สามารถเชื่อมต่อฐานข้อมูลได้' }
   }
 }
 
-// ✅ ฟังก์ชันใหม่ เอาไว้เช็คว่า Collection Group ไหนมีในระบบแล้วบ้าง
+// ✅ ฟังก์ชันตรวจว่า Collection Group ไหนมีในระบบแล้วบ้าง (แบ่ง Chunk ทีละ 100)
 export async function checkExistingGroups(groupIds: string[]): Promise<{ existing: string[]; error?: string }> {
-  if (!groupIds || groupIds.length === 0) return { existing: [] }
-  
-  const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('collection_groups')
-    .select('id')
-    .in('id', groupIds) // ค้นหาเฉพาะรหัสกลุ่มที่ส่งไป
+  try {
+    if (!groupIds || groupIds.length === 0) return { existing: [] }
+    
+    const cleanGroupIds = Array.from(new Set(
+      groupIds
+        .map(g => String(g || '').trim())
+        .filter(g => g.length > 0)
+    ))
 
-  if (error) {
-    console.error("Error checking Groups:", error)
-    return { existing: [], error: error.message }
+    if (cleanGroupIds.length === 0) return { existing: [] }
+
+    const supabase = await createClient()
+    const CHUNK_SIZE = 100
+    let allExisting: string[] = []
+
+    for (let i = 0; i < cleanGroupIds.length; i += CHUNK_SIZE) {
+      const chunk = cleanGroupIds.slice(i, i + CHUNK_SIZE)
+      const { data, error } = await supabase
+        .from('collection_groups')
+        .select('id')
+        .in('id', chunk)
+
+      if (error) {
+        console.error("Error checking Groups chunk:", error)
+        return { existing: allExisting, error: error.message }
+      }
+
+      if (data && data.length > 0) {
+        allExisting = allExisting.concat(data.map((d: any) => d.id))
+      }
+    }
+
+    return { existing: allExisting }
+  } catch (error) {
+    console.error("Unexpected error checking Groups:", error)
+    return { existing: [], error: error instanceof Error ? error.message : 'ไม่สามารถเชื่อมต่อฐานข้อมูลได้' }
   }
-  
-  return { existing: data.map((d: any) => d.id) }
 }
 
 // ✅ ฟังก์ชันลบสินค้าหลายรายการพร้อมกัน (Bulk Delete)
@@ -398,7 +438,6 @@ export async function deleteCollectionGroup(groupId: string) {
       .in('id', productIds)
 
     if (productsDeleteError) {
-      // ส่งคืนข้อผิดพลาดแจ้งเตือนผู้ใช้ เช่น ติดประวัติสต็อก/การอ้างอิง
       return { error: `ไม่สามารถลบกลุ่มสินค้าได้ เนื่องจากติดการอ้างอิงของสินค้าภายในกลุ่ม: ${productsDeleteError.message}` }
     }
   }

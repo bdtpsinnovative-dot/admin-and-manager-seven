@@ -1,9 +1,9 @@
 "use client"
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import dynamic from 'next/dynamic'
-import { getPosData, processCheckout, CheckoutPayload, getNearbyStock, getOrderForEdit } from '@/actions/pos'
-import { FolderOpen, Store, Truck, Receipt, MapPin, Save, AlertTriangle, X, Plus, Minus, FileText, Trash2, Printer, RefreshCw, Clock, Menu } from 'lucide-react'
+import { getPosData, processCheckout, CheckoutPayload, getNearbyStock, getOrderForEdit, PosSetBundle, validatePosCoupon } from '@/actions/pos'
+import { FolderOpen, Store, Truck, Receipt, MapPin, Save, AlertTriangle, X, Plus, Minus, FileText, Trash2, Printer, RefreshCw, Clock, Menu, Sparkles, Ticket } from 'lucide-react'
 import { toast } from 'sonner'
 
 // โหลด Component แผนที่แบบไม่ทำ SSR
@@ -36,6 +36,7 @@ interface NestedCategory {
 export default function ManagerPOSPage() {
   const [branches, setBranches] = useState<Branch[]>([])
   const [products, setProducts] = useState<Product[]>([])
+  const [sets, setSets] = useState<PosSetBundle[]>([])
   const [loadingDb, setLoadingDb] = useState(true)
 
   const [nestedCategories, setNestedCategories] = useState<NestedCategory[]>([])
@@ -50,9 +51,26 @@ export default function ManagerPOSPage() {
   const [myBranchId, setMyBranchId] = useState<number>(1)
   const [selectedLocation, setSelectedLocation] = useState<number | 'ALL'>('ALL')
   const [selectedCategory, setSelectedCategory] = useState<string | 'ALL'>('ALL')
+  const [displayLimit, setDisplayLimit] = useState<number>(48)
 
   const [searchQuery, setSearchQuery] = useState('')
   const [cart, setCart] = useState<CartItem[]>([])
+
+  // 🎟️ State สำหรับโค้ดคูปอง
+  const [couponInput, setCouponInput] = useState('')
+  const [appliedCoupon, setAppliedCoupon] = useState<{
+    id: any;
+    code: string;
+    title: string;
+    discountType: 'percentage' | 'fixed_amount';
+    discountValue: number;
+    discountAmount: number;
+  } | null>(null)
+  const [isValidatingCoupon, setIsValidatingCoupon] = useState(false)
+
+  useEffect(() => {
+    setDisplayLimit(48)
+  }, [searchQuery, selectedCategory])
   const [submitting, setSubmitting] = useState(false)
   const [isConfirmingClear, setIsConfirmingClear] = useState(false)
   const [isMobileCartOpen, setIsMobileCartOpen] = useState(false)
@@ -213,12 +231,13 @@ export default function ManagerPOSPage() {
     }
   }, [cart, myBranchId, saleMode])
 
-  async function loadData(isInitial = false) {
+  async function loadData(isInitial = false, forceRefresh = false) {
     if (isInitial) setLoadingDb(true)
-    const res = await getPosData()
+    const res = await getPosData(forceRefresh)
     if (res.success && res.products && res.branches) {
       setProducts(res.products)
       setBranches(res.branches)
+      if (res.sets) setSets(res.sets)
       if (res.categories) buildNestedMenu(res.categories)
       if (res.branchId) {
         setMyBranchId(res.branchId)
@@ -309,25 +328,27 @@ export default function ManagerPOSPage() {
 
     const branchStock = product.stocks.find(s => s.branch_id === targetBranchId)
     const availableQty = branchStock ? Number(branchStock.qty) : 0
+    const totalStock = product.stocks.reduce((sum, s) => sum + Number(s.qty), 0)
 
     const cartItemId = `${product.id}-${targetBranchId}`
-
     const existing = cart.find((item) => item.cartItemId === cartItemId)
     const currentInCart = existing ? existing.quantity : 0
 
-    if (currentInCart >= availableQty) {
-      setNearbyModal({ isOpen: true, product, nearbyStocks: [], isLoading: true })
-      const res = await getNearbyStock(product.id, targetBranchId)
-      if (res.success && res.data) {
-        setNearbyModal({ isOpen: true, product, nearbyStocks: res.data, isLoading: false })
-      } else {
-        setNearbyModal({ isOpen: false, product: null, nearbyStocks: [], isLoading: false })
-        toast.warning('สินค้านี้สต็อกหมดทุกสาขาครับ!')
+    // ถ้าสต็อกในสาขาหมด หรือหยิบจนเกินสต็อกที่มี
+    if (availableQty <= 0 || currentInCart >= availableQty) {
+      if (totalStock > 0 && totalStock > currentInCart) {
+        setNearbyModal({ isOpen: true, product, nearbyStocks: [], isLoading: true })
+        const res = await getNearbyStock(product.id, targetBranchId)
+        if (res.success && res.data && res.data.length > 0) {
+          setNearbyModal({ isOpen: true, product, nearbyStocks: res.data, isLoading: false })
+          return
+        }
       }
+      toast.error('สินค้าในสาขานี้หมดแล้วครับ!')
       return
     }
 
-    // 🚀 สต็อกพอ ดึงลงตะกร้าเลย พร้อมเล่นแอนิเมชัน
+    // 🚀 สต็อกพอ ดึงลงตะกร้าปกติ พร้อมเล่นแอนิเมชัน
     triggerCartAnimation(product.id)
 
     const branchName = branches.find(b => b.id === targetBranchId)?.branch_name || 'สาขาหลัก'
@@ -395,11 +416,13 @@ export default function ManagerPOSPage() {
     setCart((prevCart) =>
       prevCart.map((item) => {
         if (item.cartItemId === cartItemId) {
+          const newQty = item.quantity + delta
           const branchStock = item.stocks.find(s => s.branch_id === item.fulfill_branch_id)
           const displayQty = branchStock ? Number(branchStock.qty) : 999
-
-          const newQty = item.quantity + delta
-          if (newQty > displayQty) return item
+          if (newQty > displayQty) {
+            toast.warning(`มีสินค้าในสต็อกเพียง ${displayQty} ชิ้นครับ`)
+            return item
+          }
           return newQty > 0 ? { ...item, quantity: newQty } : null
         }
         return item
@@ -409,18 +432,242 @@ export default function ManagerPOSPage() {
 
   const removeFromCart = (cartItemId: string) => setCart((prev) => prev.filter((item) => item.cartItemId !== cartItemId))
 
+  // 📦 ฟังก์ชันหยิบทั้งเซ็ตลงตะกร้าในคลิกเดียว (จัดการ Cross-Branch อัตโนมัติ ไม่เด้ง Modal ขัดจังหวะ)
+  const addSetToCart = (bundle: PosSetBundle) => {
+    if (!bundle.items || bundle.items.length === 0) {
+      toast.warning("เซ็ตนี้ไม่มีรายการสินค้า")
+      return
+    }
+
+    let addedCount = 0
+    let hasCrossBranch = false
+    const outOfStockNames: string[] = []
+
+    setCart((prevCart) => {
+      let nextCart = [...prevCart]
+
+      for (const product of bundle.items) {
+        // ข้ามสินค้าที่ราคา <= 0 (ยังไม่ระบุราคา หรือไม่ใช่สินค้าพร้อมขาย)
+        if (Number(product.price) <= 0 && Number(product.original_price) <= 0) {
+          outOfStockNames.push(product.name || product.sku)
+          continue
+        }
+
+        const myStock = product.stocks?.find((s: any) => s.branch_id === myBranchId)
+        const myQty = myStock ? Number(myStock.qty) : 0
+
+        let targetBranchId = myBranchId
+        let targetBranchName = branches.find(b => b.id === myBranchId)?.branch_name || 'สาขาเรา'
+
+        const myCartItemId = `${product.id}-${myBranchId}`
+        const inMyCart = nextCart.find(it => it.cartItemId === myCartItemId)?.quantity || 0
+
+        // ถ้าสาขาเราไม่มีของ (0) หรือของในตะกร้าถึงยอดสต็อกสาขาเราแล้ว -> หาสาขาอื่นที่มีสต็อก
+        if (myQty <= 0 || inMyCart >= myQty) {
+          const otherStocks = (product.stocks || [])
+            .filter((s: any) => s.branch_id !== myBranchId && Number(s.qty) > 0)
+            .sort((a: any, b: any) => Number(b.qty) - Number(a.qty))
+
+          let foundBranch = false
+          for (const os of otherStocks) {
+            const osCartItemId = `${product.id}-${os.branch_id}`
+            const inOsCart = nextCart.find(it => it.cartItemId === osCartItemId)?.quantity || 0
+            if (inOsCart < Number(os.qty)) {
+              targetBranchId = os.branch_id
+              targetBranchName = branches.find(b => b.id === os.branch_id)?.branch_name || `สาขา #${os.branch_id}`
+              hasCrossBranch = true
+              foundBranch = true
+              break
+            }
+          }
+
+          if (!foundBranch) {
+            // หมดสต็อกทุกสาขาทั่วประเทศ
+            outOfStockNames.push(product.name || product.sku)
+            continue
+          }
+        }
+
+        const cartItemId = `${product.id}-${targetBranchId}`
+        const existingIdx = nextCart.findIndex(it => it.cartItemId === cartItemId)
+
+        if (existingIdx >= 0) {
+          nextCart[existingIdx] = {
+            ...nextCart[existingIdx],
+            quantity: nextCart[existingIdx].quantity + 1
+          }
+        } else {
+          nextCart.push({
+            ...product,
+            cartItemId,
+            quantity: 1,
+            fulfill_branch_id: targetBranchId,
+            fulfill_branch_name: targetBranchName
+          })
+        }
+        addedCount++
+      }
+
+      return nextCart
+    })
+
+    if (hasCrossBranch) {
+      setSaleMode('DELIVERY')
+    }
+
+    if (addedCount > 0) {
+      if (outOfStockNames.length > 0) {
+        toast.warning(`หยิบเซ็ต "${bundle.name}" สำเร็จ ${addedCount} ชิ้น (ข้าม ${outOfStockNames.length} ชิ้นที่หมดสต็อกหรือยังไม่ระบุราคา)`)
+      } else {
+        toast.success(`🎉 เพิ่มเซ็ต "${bundle.name}" (${addedCount} ชิ้น) ลงในบิลแล้ว!`)
+      }
+      if (hasCrossBranch) {
+        toast.info('📍 มีการดึงสต็อกข้ามสาขา จึงเปลี่ยนเป็นโหมด "ให้ร้านส่งให้" อัตโนมัติ')
+      }
+    } else {
+      toast.error('สินค้าในเซ็ตนี้หมดสต็อกทุกสาขา ไม่สามารถเพิ่มได้ครับ!')
+    }
+  }
+
+  // ✨ คำนวณเซ็ตโปรโมชั่นที่ครบในตะกร้าอัตโนมัติ (เฉพาะสินค้าพร้อมขายในเซ็ต)
+  const completedSetPromotions = useMemo(() => {
+    if (cart.length === 0 || sets.length === 0) return []
+
+    const cartQtyMap = new Map<number, number>()
+    cart.forEach(item => {
+      cartQtyMap.set(item.id, (cartQtyMap.get(item.id) || 0) + item.quantity)
+    })
+
+    const results: {
+      set: PosSetBundle;
+      completedSetsCount: number;
+      eligibleTotal: number;
+      discountAmount: number;
+    }[] = []
+
+    for (const s of sets) {
+      if (!s.items || s.items.length === 0) continue
+
+      // ตรวจสอบเฉพาะสินค้าที่มีราคา > 0 (สินค้าพร้อมขายจริง)
+      const sellableItems = s.items.filter((it: any) => Number(it.price) > 0)
+      if (sellableItems.length === 0) continue
+
+      let possibleSets = Infinity
+      let eligibleItemPriceSum = 0
+
+      for (const reqItem of sellableItems) {
+        const inCartQty = cartQtyMap.get(reqItem.id) || 0
+        possibleSets = Math.min(possibleSets, inCartQty)
+        eligibleItemPriceSum += Number(reqItem.price || reqItem.original_price || 0)
+      }
+
+      if (possibleSets > 0 && possibleSets !== Infinity) {
+        const percent = s.discountPercent || 0
+        let discount = 0
+
+        if (percent > 0) {
+          discount = Math.round((eligibleItemPriceSum * possibleSets * percent) / 100)
+        } else if (s.discountAmount > 0) {
+          discount = s.discountAmount * possibleSets
+        }
+
+        results.push({
+          set: s,
+          completedSetsCount: possibleSets,
+          eligibleTotal: eligibleItemPriceSum * possibleSets,
+          discountAmount: discount
+        })
+      }
+    }
+
+    return results
+  }, [cart, sets])
+
+  const totalSetDiscountAmount = useMemo(() => {
+    return completedSetPromotions.reduce((sum, sp) => sum + sp.discountAmount, 0)
+  }, [completedSetPromotions])
+
   const totalOriginalPrice = cart.reduce((sum, item) => sum + item.original_price * item.quantity, 0)
   const totalFinalPriceBeforeSpecial = cart.reduce((sum, item) => sum + item.price * item.quantity, 0)
   const promotionDiscountAmount = totalOriginalPrice - totalFinalPriceBeforeSpecial
 
+  // 🏷️ ยอดสินค้าที่ไม่มีส่วนลดรายชิ้น (มีสิทธิ์เข้าร่วมโค้ดลด ตามกฎ: สินค้าที่ลดรายชิ้นแล้วจะไม่ร่วมโค้ดลด)
+  const eligibleForCouponSubtotal = useMemo(() => {
+    return cart
+      .filter(item => {
+        const hasItemDiscount = Boolean(item.discount_id) || Boolean(item.discount_label) || (item.original_price > item.price)
+        return !hasItemDiscount
+      })
+      .reduce((sum, item) => sum + (item.price * item.quantity), 0)
+  }, [cart])
+
+  // 🎟️ ฟังก์ชันตรวจสอบและใช้โค้ดคูปอง
+  const handleApplyCoupon = async () => {
+    if (!couponInput.trim()) {
+      toast.warning("กรุณากรอกรหัสคูปอง")
+      return
+    }
+
+    if (cart.length === 0) {
+      toast.warning("ยังไม่มีสินค้าในบิล")
+      return
+    }
+
+    if (eligibleForCouponSubtotal <= 0) {
+      toast.error("สินค้าทุกชิ้นในบิลมีส่วนลดรายชิ้นอยู่แล้ว จึงไม่สามารถใช้โค้ดลดร่วมได้ครับ")
+      return
+    }
+
+    setIsValidatingCoupon(true)
+    const currentSubtotal = Math.max(0, totalFinalPriceBeforeSpecial - totalSetDiscountAmount)
+    const res = await validatePosCoupon(couponInput.trim(), currentSubtotal, eligibleForCouponSubtotal)
+    setIsValidatingCoupon(false)
+
+    if (res.success && res.coupon) {
+      setAppliedCoupon(res.coupon)
+      setCouponInput('')
+      toast.success(`🎟️ ใช้คูปอง [${res.coupon.code}] สำเร็จ! ลดทันที ฿${res.coupon.discountAmount.toLocaleString()}`)
+    } else {
+      toast.error(res.error || "รหัสคูปองไม่ถูกต้อง")
+    }
+  }
+
+  const handleRemoveCoupon = () => {
+    setAppliedCoupon(null)
+    toast.info("ยกเลิกการใช้คูปองแล้ว")
+  }
+
+  // อัปเดตมูลค่าคูปองอัตโนมัติหากสินค้าในตะกร้าเปลี่ยน (คิดเฉพาะสินค้าที่ไม่ลดรายชิ้น)
+  useEffect(() => {
+    if (appliedCoupon) {
+      if (eligibleForCouponSubtotal <= 0) {
+        setAppliedCoupon(null)
+        toast.warning("ยกเลิกคูปองอัตโนมัติ เนื่องจากสินค้าในบิลมีส่วนลดรายชิ้นทั้งหมดแล้ว")
+        return
+      }
+      if (appliedCoupon.discountType === 'percentage') {
+        const newDiscount = Math.round((eligibleForCouponSubtotal * appliedCoupon.discountValue) / 100)
+        setAppliedCoupon(prev => prev ? { ...prev, discountAmount: newDiscount } : null)
+      } else {
+        const newDiscount = Math.min(eligibleForCouponSubtotal, appliedCoupon.discountValue)
+        setAppliedCoupon(prev => prev ? { ...prev, discountAmount: newDiscount } : null)
+      }
+    }
+  }, [eligibleForCouponSubtotal])
+
+  const couponDiscountAmount = appliedCoupon ? appliedCoupon.discountAmount : 0
+
+  // หักโปรโมชั่นเซ็ต และคูปอง ก่อนคำนวณส่วนลดพิเศษท้ายบิล
+  const priceAfterPromos = Math.max(0, totalFinalPriceBeforeSpecial - totalSetDiscountAmount - couponDiscountAmount)
+
   const discountBaht = Number(specialDiscountBaht || 0)
   const discountPercent = Number(specialDiscountPercent || 0)
-  const afterBaht = Math.max(0, totalFinalPriceBeforeSpecial - discountBaht)
+  const afterBaht = Math.max(0, priceAfterPromos - discountBaht)
   const discountPercentAmount = afterBaht * (discountPercent / 100)
   const totalSpecialDiscountAmount = discountBaht + discountPercentAmount
 
-  const totalFinalPrice = Math.max(0, totalFinalPriceBeforeSpecial - totalSpecialDiscountAmount)
-  const totalDiscountAmount = promotionDiscountAmount + totalSpecialDiscountAmount
+  const totalFinalPrice = Math.max(0, Math.round(afterBaht - discountPercentAmount))
+  const totalDiscountAmount = promotionDiscountAmount + totalSetDiscountAmount + couponDiscountAmount + totalSpecialDiscountAmount
 
   const handlePreCheckout = () => {
     if (cart.length === 0) return
@@ -485,6 +732,16 @@ export default function ManagerPOSPage() {
         totalAmount: grandTotal,
         specialDiscountPercent: Number(specialDiscountPercent || 0),
         specialDiscountBaht: Number(specialDiscountBaht || 0),
+        couponCode: appliedCoupon?.code || null,
+        couponDiscountAmount: couponDiscountAmount,
+        setDiscountAmount: totalSetDiscountAmount,
+        appliedSetPromos: completedSetPromotions.map(sp => ({
+          setId: sp.set.id,
+          setName: sp.set.name,
+          completedCount: sp.completedSetsCount,
+          discountAmount: sp.discountAmount,
+          promoTitle: sp.set.promoTitle
+        })),
         saleMode,
         shippingName: finalName,
         shippingPhone: finalPhone,
@@ -519,6 +776,8 @@ export default function ManagerPOSPage() {
         // เด้ง Modal พิมพ์บิลแทนการเปิดแท็บใหม่
         setSuccessPrintUrl(printUrl)
         setCart([])
+        setAppliedCoupon(null)
+        setCouponInput('')
         setIsConfirmingClear(false)
         setShippingName('')
         setShippingPhone('')
@@ -560,12 +819,68 @@ export default function ManagerPOSPage() {
     }
   }
 
-  const filteredProducts = products.filter(p => {
-    const matchSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) || p.sku.toLowerCase().includes(searchQuery.toLowerCase())
-    if (!matchSearch) return false
-    if (selectedCategory !== 'ALL' && p.product_sup !== selectedCategory) return false
-    return getDisplayQty(p) > 0
-  })
+// ✨ อัลกอริทึมจัดลำดับหมวดหมู่แบบเดียวกับหน้าเว็บหน้าร้าน (terrahome.studio)
+function getStorefrontCategoryOrder(productSup: string | null | undefined): number {
+  const value = (productSup || '').trim().toLowerCase()
+  // 1. VASE & VESSELS
+  if (value.startsWith('vase') || value.includes('vessel') || value.includes('ceramic vase') || value.includes('glass vase')) return 1
+  // 2. FIGURE
+  if (value.startsWith('doll') || value.startsWith('figure') || value.includes('animal') || value.includes('human') || value.includes('plant')) return 2
+  // 3. SCULPTURE
+  if (value.includes('sculpture')) return 3
+  // 4. BOOKED & CANDLE HOLDERS
+  if (value.includes('booked') || value.includes('book end') || value.includes('candle')) return 4
+  // 5. ACCESSORIES
+  if (value.startsWith('decorative') || value.includes('tray') || value.includes('box') || value.includes('toy')) return 5
+  // 6. DINING & TABLEWARE
+  if (value.includes('dining') || value.includes('kitchen') || value.includes('plate') || value.includes('bowl') || value.includes('cup') || value.includes('glassware')) return 6
+  // 7. DRESSING & BATH
+  if (value.includes('bath') || value.includes('dressing')) return 7
+  // 8. ART & WALL DECOR
+  if (value.includes('art') || value.includes('wall') || value.includes('frame') || value.includes('print')) return 8
+  // 9. อื่นๆ / เฟอร์นิเจอร์
+  return 9
+}
+
+  const filteredProducts = products
+    .filter(p => {
+      const matchSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) || p.sku.toLowerCase().includes(searchQuery.toLowerCase())
+      if (!matchSearch) return false
+      if (selectedCategory !== 'ALL' && p.product_sup !== selectedCategory) return false
+      
+      // 🚫 ซ่อนเฉพาะสินค้าที่สต็อกหมดเกลี้ยงทุกสาขา (0 ทั่วประเทศ ไม่รับพรีออเดอร์)
+      // 🚚 สินค้าที่มีสต็อกในสาขาเรา หรือมีในสาขาอื่น (ขายข้ามสาขาได้) จะยังแสดงอยู่เสมอ!
+      const totalStock = p.stocks.reduce((sum, s) => sum + Number(s.qty), 0)
+      return totalStock > 0
+    })
+    .sort((a, b) => {
+      // 🏆 อันดับ 1: สินค้าที่มีสต็อกในสาขาเราพร้อมหยิบขึ้นก่อน
+      const aMyStock = a.stocks.find(s => s.branch_id === myBranchId)?.qty || 0
+      const bMyStock = b.stocks.find(s => s.branch_id === myBranchId)?.qty || 0
+      const aHasLocal = Number(aMyStock) > 0 ? 0 : 1
+      const bHasLocal = Number(bMyStock) > 0 ? 0 : 1
+      if (aHasLocal !== bHasLocal) return aHasLocal - bHasLocal
+
+      // 🎨 อันดับ 2: เรียงตามอัลกอริทึมหมวดหมู่หน้าบ้าน (Storefront Category Hierarchy)
+      const aCatOrder = getStorefrontCategoryOrder(a.product_sup)
+      const bCatOrder = getStorefrontCategoryOrder(b.product_sup)
+      if (aCatOrder !== bCatOrder) return aCatOrder - bCatOrder
+
+      // 🏷️ อันดับ 3: สินค้าที่มีโปรโมชั่น/ส่วนลด ดันขึ้นมาก่อนในหมวด
+      const aHasDiscount = a.discount_label ? 0 : 1
+      const bHasDiscount = b.discount_label ? 0 : 1
+      if (aHasDiscount !== bHasDiscount) return aHasDiscount - bHasDiscount
+
+      // 📦 อันดับ 4: ชิ้นที่มีสต็อกเยอะกว่าขึ้นก่อน
+      const aTotal = a.stocks.reduce((sum, s) => sum + Number(s.qty), 0)
+      const bTotal = b.stocks.reduce((sum, s) => sum + Number(s.qty), 0)
+      if (aTotal !== bTotal) {
+        return bTotal - aTotal
+      }
+
+      // 🆕 อันดับ 5: สินค้าใหม่กว่า (ID มากกว่า) ขึ้นก่อน
+      return b.id - a.id
+    })
 
   if (loadingDb) return <div className="min-h-screen flex items-center justify-center font-bold text-slate-500 bg-[#F4F7F9]">กำลังโหลดข้อมูลคลังสินค้า...</div>
 
@@ -587,6 +902,24 @@ export default function ManagerPOSPage() {
           >
             ALL
           </button>
+          {sets.length > 0 && (
+            <button
+              onClick={() => { setSelectedCategory('SETS'); setIsSidebarOpen(false); }}
+              className={`w-full text-left px-4 py-3 rounded-2xl font-bold text-sm transition-all mb-2 flex items-center justify-between ${
+                selectedCategory === 'SETS'
+                  ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md'
+                  : 'bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200'
+              }`}
+            >
+              <span className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-purple-500" />
+                📦 สินค้าจัดเซ็ต (Sets)
+              </span>
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-black ${selectedCategory === 'SETS' ? 'bg-white/20 text-white' : 'bg-purple-200 text-purple-900'}`}>
+                {sets.length}
+              </span>
+            </button>
+          )}
           {nestedCategories.map((menu) => {
             if (!menu.hasChildren) {
               return (
@@ -683,10 +1016,10 @@ export default function ManagerPOSPage() {
                   </span>
                 </div>
                 <button
-                  onClick={() => loadData(false)}
+                  onClick={() => loadData(false, true)}
                   disabled={loadingDb}
                   className="ml-1 p-1.5 bg-white border border-slate-200 text-blue-600 rounded-full hover:bg-blue-50 hover:border-blue-300 disabled:opacity-50 transition-all cursor-pointer shadow-xs"
-                  title="รีโหลดข้อมูลสินค้าและสต็อก"
+                  title="รีโหลดข้อมูลสินค้าและสต็อกสดจากคลัง"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${loadingDb ? 'animate-spin text-slate-400' : ''}`} />
                 </button>
@@ -694,69 +1027,284 @@ export default function ManagerPOSPage() {
 
               {/* ✨ Mobile-only compact reload button */}
               <button
-                onClick={() => loadData(false)}
+                onClick={() => loadData(false, true)}
                 disabled={loadingDb}
                 className="flex sm:hidden p-2.5 bg-slate-100 hover:bg-slate-200 text-blue-600 rounded-full disabled:opacity-50 transition-all cursor-pointer shadow-xs shrink-0"
-                title="รีโหลดข้อมูลสินค้าและสต็อก"
+                title="รีโหลดข้อมูลสินค้าและสต็อกสดจากคลัง"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${loadingDb ? 'animate-spin text-slate-400' : ''}`} />
               </button>
             </div>
-            <div className="w-full xl:w-72 shrink-0">
-              <input
-                type="text"
-                placeholder="ค้นหาชื่อสินค้าที่นี่..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full px-5 py-2.5 bg-slate-50 rounded-full text-sm outline-none focus:bg-white focus:ring-2 focus:ring-blue-100 transition-all"
-              />
+            
+            <div className="flex items-center gap-2 w-full xl:w-auto">
+              {sets.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedCategory(prev => prev === 'SETS' ? 'ALL' : 'SETS')}
+                  className={`px-3.5 py-2 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 shadow-2xs ${
+                    selectedCategory === 'SETS'
+                      ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md'
+                      : 'bg-white border border-purple-200 text-purple-700 hover:bg-purple-50'
+                  }`}
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>สินค้าจัดเซ็ต ({sets.length})</span>
+                </button>
+              )}
+
+              <div className="w-full xl:w-72 shrink-0">
+                <input
+                  type="text"
+                  placeholder={selectedCategory === 'SETS' ? "ค้นหาชื่อเซ็ต หรือหมวด..." : "ค้นหาชื่อสินค้าที่นี่..."}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full px-5 py-2.5 bg-slate-50 rounded-full text-sm outline-none focus:bg-white focus:ring-2 focus:ring-blue-100 transition-all"
+                />
+              </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-4 md:grid-cols-5 xl:grid-cols-6 gap-2 sm:gap-4 w-full pb-24 lg:pb-0">
-            {filteredProducts.map((product) => {
-              const currentQty = getDisplayQty(product)
-              return (
-                <div
-                  key={product.id}
-                  onClick={() => handleProductClick(product)}
-                  className="bg-white rounded-[20px] p-2 flex flex-col shadow-xs cursor-pointer border border-slate-100 hover:border-blue-300 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 group relative"
+          {selectedCategory === 'SETS' ? (
+            /* 📦 ตารางแสดงสินค้าจัดเซ็ต (Sets Grid) */
+            <div className="w-full">
+              <div className="flex items-center justify-between mb-3 px-1">
+                <div>
+                  <h2 className="text-sm font-black text-slate-800 flex items-center gap-1.5">
+                    <Sparkles className="w-4 h-4 text-purple-600" />
+                    รายการสินค้าจัดเซ็ต (Sets Promotion)
+                  </h2>
+                  <p className="text-[11px] text-slate-400">คลิก "หยิบทั้งเซ็ตลงบิล" เพื่อเพิ่มสินค้าครบชุดลงตะกร้าพร้อมรับส่วนลดทันที</p>
+                </div>
+                <button
+                  onClick={() => setSelectedCategory('ALL')}
+                  className="text-xs text-slate-500 hover:text-slate-800 font-bold px-3 py-1 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
                 >
-                  <div className="relative w-full aspect-square bg-slate-50 rounded-2xl overflow-hidden mb-2 flex items-center justify-center">
-                    {product.image_url ? (
-                      <img id={`product-img-${product.id}`} src={product.image_url} alt={product.name} className="object-cover w-full h-full transition-transform duration-500 group-hover:scale-110" />
-                    ) : (
-                      <span className="text-xs text-slate-300 font-medium">ไม่มีรูป</span>
-                    )}
-                    <div className="absolute top-2 right-2 bg-slate-900/80 text-white text-[9px] px-1.5 py-0.5 rounded-md backdrop-blur-xs font-bold">
-                      เหลือ {currentQty}
-                    </div>
-                  </div>
-                  <div className="flex flex-col shrink-0 px-1 pb-1">
-                    <h3 className="font-bold text-slate-800 text-[10px] sm:text-xs truncate w-full" title={product.name}>
-                      {product.name}
-                    </h3>
-                    {product.specs && product.specs.material && (
-                      <span className="text-[8px] text-slate-400 font-medium uppercase tracking-wider block mt-0.5 leading-none">
-                        {product.specs.material}
-                      </span>
-                    )}
-                    <div className="flex items-end justify-between mt-1">
-                      <div className="flex flex-col">
-                        {product.discount_label && (
-                          <div className="flex items-center gap-1 mb-0.5">
-                            <span className="text-[9px] text-slate-400 line-through">฿{product.original_price.toLocaleString()}</span>
-                            <span className="text-[8px] bg-orange-50 text-orange-600 px-1 rounded font-black">{product.discount_label}</span>
+                  กลับไปสินค้าเดี่ยว
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4 w-full">
+                {sets
+                  .filter(s => {
+                    if (!searchQuery.trim()) return true
+                    const q = searchQuery.toLowerCase()
+                    return s.name.toLowerCase().includes(q) || s.categoryName.toLowerCase().includes(q)
+                  })
+                  .map((bundle) => {
+                    const isCompletedInCart = completedSetPromotions.some(sp => sp.set.id === bundle.id)
+                    return (
+                      <div
+                        key={bundle.id}
+                        className={`bg-white rounded-3xl p-3.5 border transition-all duration-300 flex flex-col justify-between shadow-xs hover:shadow-xl hover:-translate-y-0.5 ${
+                          isCompletedInCart ? 'border-emerald-400 ring-2 ring-emerald-200 bg-emerald-50/20' : 'border-slate-200 hover:border-purple-300'
+                        }`}
+                      >
+                        <div>
+                          {/* รูปปกเซ็ต */}
+                          <div className="relative w-full aspect-video sm:aspect-square bg-slate-50 rounded-2xl overflow-hidden mb-2.5 flex items-center justify-center">
+                            {bundle.imageUrl ? (
+                              <img src={bundle.imageUrl} alt={bundle.name} className="object-cover w-full h-full" />
+                            ) : (
+                              <span className="text-xs text-slate-300 font-medium">ไม่มีรูปเซ็ต</span>
+                            )}
+                            <div className="absolute top-2.5 left-2.5 bg-purple-900/85 text-white text-[10px] font-bold px-2 py-0.5 rounded-lg backdrop-blur-xs flex items-center gap-1 shadow-sm">
+                              <Sparkles className="w-3 h-3 text-amber-300" />
+                              เซ็ต {bundle.items.length} ชิ้น
+                            </div>
+                            {bundle.discountPercent > 0 && (
+                              <div className="absolute top-2.5 right-2.5 bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-[10px] font-black px-2 py-0.5 rounded-lg shadow-sm animate-pulse">
+                                ลดทันที {bundle.discountPercent}%
+                              </div>
+                            )}
+                            {isCompletedInCart && (
+                              <div className="absolute bottom-2.5 right-2.5 bg-emerald-600 text-white text-[9px] font-bold px-2 py-0.5 rounded-md shadow-xs">
+                                ✓ ในบิลครบเซ็ตแล้ว
+                              </div>
+                            )}
+                          </div>
+
+                          {/* ชื่อเซ็ตและหมวด */}
+                          <div className="px-0.5">
+                            <span className="text-[10px] text-purple-700 font-bold uppercase tracking-wider bg-purple-50 px-2 py-0.5 rounded-md border border-purple-100 inline-block mb-1">
+                              {bundle.categoryName}
+                            </span>
+                            <h3 className="font-extrabold text-slate-800 text-xs sm:text-sm leading-snug line-clamp-2">
+                              {bundle.name}
+                            </h3>
+                            {bundle.promoTitle && (
+                              <p className="text-[11px] text-emerald-700 font-bold mt-0.5">
+                                🎉 {bundle.promoTitle}
+                              </p>
+                            )}
+                          </div>
+
+                          {/* สินค้าในเซ็ต */}
+                          <div className="mt-2.5 p-2 bg-slate-50/80 rounded-xl border border-slate-100 space-y-1.5 max-h-36 overflow-y-auto">
+                            {bundle.items.map((it: any) => {
+                              const itTotalStock = (it.stocks || []).reduce((sum: number, s: any) => sum + Number(s.qty || 0), 0)
+                              const itMyBranchQty = (it.stocks || []).find((s: any) => s.branch_id === myBranchId)?.qty || 0
+                              const isUnpricedOrOutOfStock = Number(it.price) <= 0 || itTotalStock <= 0
+
+                              return (
+                                <div key={it.id} className="flex items-center justify-between gap-2 text-xs">
+                                  <div className="flex items-center gap-1.5 min-w-0">
+                                    <div className="w-5 h-5 bg-white rounded-md overflow-hidden border border-slate-200 shrink-0 flex items-center justify-center">
+                                      {it.image_url ? (
+                                        <img src={it.image_url} alt={it.name} className="w-full h-full object-cover" />
+                                      ) : (
+                                        <span className="text-[6px] text-slate-300">-</span>
+                                      )}
+                                    </div>
+                                    <span className={`text-[10px] font-medium truncate ${isUnpricedOrOutOfStock ? 'text-slate-400 line-through' : 'text-slate-700'}`} title={it.name}>
+                                      {it.name}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    {isUnpricedOrOutOfStock ? (
+                                      <span className="text-[8px] px-1.5 py-0.5 rounded bg-red-50 text-red-600 font-bold border border-red-100">
+                                        หมดสต็อก
+                                      </span>
+                                    ) : itMyBranchQty > 0 ? (
+                                      <span className="text-[10px] text-slate-600 font-mono font-bold">
+                                        ฿{Number(it.price).toLocaleString()}
+                                      </span>
+                                    ) : (
+                                      <span className="text-[8px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 font-bold border border-blue-100 flex items-center gap-0.5">
+                                        <MapPin className="w-2 h-2" /> ดึงสาขา
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+
+                        {/* ราคาและปุ่มสั่งทั้งเซ็ต */}
+                        <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between gap-2">
+                          <div className="flex flex-col">
+                            {bundle.discountPercent > 0 && (
+                              <span className="text-[10px] text-slate-400 line-through">
+                                ฿{bundle.totalOriginalPrice.toLocaleString()}
+                              </span>
+                            )}
+                            <div className="text-sm sm:text-base font-black text-purple-700 font-mono">
+                              ฿{bundle.totalPrice.toLocaleString()}
+                            </div>
+                          </div>
+
+                          {(() => {
+                            const readyItemsCount = bundle.items.filter((it: any) => {
+                              const itTotalStock = (it.stocks || []).reduce((sum: number, s: any) => sum + Number(s.qty || 0), 0)
+                              return Number(it.price) > 0 && itTotalStock > 0
+                            }).length
+
+                            if (readyItemsCount === 0) {
+                              return (
+                                <button
+                                  type="button"
+                                  disabled
+                                  className="px-3.5 py-2 bg-slate-100 text-slate-400 font-bold text-xs rounded-xl cursor-not-allowed shrink-0"
+                                >
+                                  สินค้าหมดสต็อก
+                                </button>
+                              )
+                            }
+
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => addSetToCart(bundle)}
+                                className="px-3.5 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold text-xs rounded-xl shadow-xs cursor-pointer transition-all active:scale-95 flex items-center gap-1 shrink-0"
+                              >
+                                <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                                {readyItemsCount < bundle.items.length 
+                                  ? `หยิบ ${readyItemsCount} ชิ้นพร้อมส่ง`
+                                  : 'หยิบทั้งเซ็ตลงบิล'}
+                              </button>
+                            )
+                          })()}
+                        </div>
+                      </div>
+                    )
+                  })}
+              </div>
+            </div>
+          ) : (
+            /* 📦 ตารางแสดงสินค้าเดี่ยวปกติ */
+            <>
+              <div className="grid grid-cols-4 md:grid-cols-5 xl:grid-cols-6 gap-2 sm:gap-4 w-full">
+                {filteredProducts.slice(0, displayLimit).map((product) => {
+                  const branchStock = product.stocks.find(s => s.branch_id === myBranchId)
+                  const myBranchQty = branchStock ? Number(branchStock.qty) : 0
+                  const totalStock = product.stocks.reduce((sum, s) => sum + Number(s.qty), 0)
+                  return (
+                    <div
+                      key={product.id}
+                      onClick={() => handleProductClick(product)}
+                      className="bg-white rounded-[20px] p-2 flex flex-col shadow-xs cursor-pointer border border-slate-100 hover:border-blue-300 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 group relative"
+                    >
+                      <div className="relative w-full aspect-square bg-slate-50 rounded-2xl overflow-hidden mb-2 flex items-center justify-center">
+                        {product.image_url ? (
+                          <img id={`product-img-${product.id}`} src={product.image_url} alt={product.name} className="object-cover w-full h-full transition-transform duration-500 group-hover:scale-110" />
+                        ) : (
+                          <span className="text-xs text-slate-300 font-medium">ไม่มีรูป</span>
+                        )}
+                        {myBranchQty > 0 ? (
+                          <div className="absolute top-2 right-2 bg-slate-900/80 text-white text-[9px] px-1.5 py-0.5 rounded-md backdrop-blur-xs font-bold">
+                            เหลือ {myBranchQty}
+                          </div>
+                        ) : (
+                          <div className="absolute top-2 right-2 bg-blue-600 text-white text-[9px] px-1.5 py-0.5 rounded-md backdrop-blur-xs font-bold shadow-xs flex items-center gap-0.5">
+                            <MapPin className="w-2.5 h-2.5" /> ดึงสาขา ({totalStock})
                           </div>
                         )}
-                        <div className="text-blue-600 font-black text-xs sm:text-sm">฿{product.price.toLocaleString()}</div>
+                      </div>
+                      <div className="flex flex-col shrink-0 px-1 pb-1">
+                        <h3 className="font-bold text-slate-800 text-[10px] sm:text-xs truncate w-full" title={product.name}>
+                          {product.name}
+                        </h3>
+                        {product.specs && product.specs.material && (
+                          <span className="text-[8px] text-slate-400 font-medium uppercase tracking-wider block mt-0.5 leading-none">
+                            {product.specs.material}
+                          </span>
+                        )}
+                        <div className="flex items-end justify-between mt-1">
+                          <div className="flex flex-col">
+                            {product.discount_label && (
+                              <div className="flex items-center gap-1 mb-0.5">
+                                <span className="text-[9px] text-slate-400 line-through">฿{product.original_price.toLocaleString()}</span>
+                                <span className="text-[8px] bg-orange-50 text-orange-600 px-1 rounded font-black">{product.discount_label}</span>
+                              </div>
+                            )}
+                            <div className="text-blue-600 font-black text-xs sm:text-sm">฿{product.price.toLocaleString()}</div>
+                          </div>
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  )
+                })}
+              </div>
+
+              {/* ✨ แถบสถานะการโหลดและปุ่มโหลดเพิ่มเติมแบบประหยัด */}
+              <div className="w-full flex flex-col sm:flex-row items-center justify-between gap-3 p-4 bg-white rounded-2xl border border-slate-100 shadow-2xs mt-2 mb-24 lg:mb-4">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-600 font-bold">
+                    แสดง {Math.min(displayLimit, filteredProducts.length)} จาก {filteredProducts.length} รายการ (พร้อมส่งทั้งหมด)
+                  </span>
                 </div>
-              )
-            })}
-          </div>
+                {displayLimit < filteredProducts.length && (
+                  <button
+                    type="button"
+                    onClick={() => setDisplayLimit(prev => prev + 48)}
+                    className="px-6 py-2.5 bg-[#1E293B] hover:bg-slate-800 text-white rounded-xl font-bold text-xs shadow-xs cursor-pointer transition-all flex items-center gap-1.5 active:scale-95"
+                  >
+                    📦 โหลดแสดงเพิ่มอีก 48 รายการ (เหลือ {filteredProducts.length - displayLimit} รายการ)
+                  </button>
+                )}
+              </div>
+            </>
+          )}
         </div>
 
         {/* 🛒 ฝั่งขวา: ตะกร้าสรุปบิล (Desktop แสดงตลอดเวลา, Mobile แสดงในโมดอล/ดรอว์เวอร์เมื่อเปิด) */}
@@ -809,6 +1357,8 @@ export default function ManagerPOSPage() {
                       <button
                         onClick={() => {
                           setCart([])
+                          setAppliedCoupon(null)
+                          setCouponInput('')
                           setIsConfirmingClear(false)
                           setSpecialDiscountPercent('0')
                           setSpecialDiscountBaht('0')
@@ -857,6 +1407,23 @@ export default function ManagerPOSPage() {
               </div>
             ) : (
               <div className="flex flex-col gap-2 py-1">
+                {/* 🎉 แถบแจ้งเตือนเมื่อซื้อครบเซ็ตโปรโมชั่น */}
+                {completedSetPromotions.length > 0 && (
+                  <div className="space-y-1.5 mb-1">
+                    {completedSetPromotions.map((sp, idx) => (
+                      <div key={idx} className="p-2 bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-xl text-xs flex items-center justify-between text-emerald-900 font-bold shadow-2xs">
+                        <span className="flex items-center gap-1.5 min-w-0 truncate">
+                          <Sparkles className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          <span className="truncate">ครบเซ็ต: {sp.set.name}</span>
+                        </span>
+                        <span className="text-emerald-700 font-black shrink-0 ml-1.5 bg-white px-2 py-0.5 rounded-md border border-emerald-200">
+                          {sp.discountAmount > 0 ? `-฿${sp.discountAmount.toLocaleString()}` : '✓ ครบชุด'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 {cart.map((item, index) => (
                   <div
                     key={`${item.cartItemId}-${index}`}
@@ -870,9 +1437,9 @@ export default function ManagerPOSPage() {
                        </span>
                     )}
                     {item.fulfill_branch_id !== myBranchId && (
-                      <span className="absolute -top-2 -left-1 bg-orange-100 text-orange-700 border border-orange-200 text-[8px] px-1.5 py-0.5 rounded-md font-bold shadow-2xs z-10">
-                        ดึง: {item.fulfill_branch_name}
-                      </span>
+                       <span className="absolute -top-2 -left-1 bg-orange-100 text-orange-700 border border-orange-200 text-[8px] px-1.5 py-0.5 rounded-md font-bold shadow-2xs z-10">
+                         ดึง: {item.fulfill_branch_name}
+                       </span>
                     )}
                     <div className="w-12 h-12 bg-white rounded-xl overflow-hidden border border-slate-100 shrink-0 flex items-center justify-center">
                       {item.image_url ? (
@@ -889,7 +1456,14 @@ export default function ManagerPOSPage() {
                           <Trash2 className="w-3 h-3" />
                         </button>
                       </div>
-                      <div className="flex items-center justify-between mt-1.5">
+                      {(Boolean(item.discount_id) || Boolean(item.discount_label) || item.price < item.original_price) && (
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <span className="text-[8px] bg-orange-50 text-orange-600 px-1.5 py-0.5 rounded-md font-bold border border-orange-100">
+                            {item.discount_label || 'ลดรายชิ้น'} (ไม่ร่วมโค้ดลด)
+                          </span>
+                        </div>
+                      )}
+                      <div className="flex items-center justify-between mt-1">
                         <p className="text-[11px] text-blue-600 font-extrabold">{(item.price * item.quantity).toLocaleString()} ฿</p>
                         <div className="flex items-center bg-white border border-slate-200 rounded-lg shadow-2xs overflow-hidden h-6">
                           <button onClick={() => updateQuantity(item.cartItemId, -1)} className="w-6 h-full flex items-center justify-center text-slate-500 font-bold hover:bg-slate-50 text-xs">-</button>
@@ -931,6 +1505,52 @@ export default function ManagerPOSPage() {
               >
                 {shippingName ? 'แก้ไข' : 'ระบุลูกค้า'}
               </button>
+            </div>
+
+            {/* 🎟️ ส่วนคูปองส่วนลด */}
+            <div className="py-2 border-b border-slate-200/60 space-y-1.5 mb-2">
+              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">
+                รหัสคูปองส่วนลด (Coupon Code)
+              </span>
+              {appliedCoupon ? (
+                <div className="flex items-center justify-between p-2 bg-emerald-50 border border-emerald-200 rounded-xl text-xs">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <Ticket className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    <span className="font-bold text-emerald-900 font-mono">{appliedCoupon.code}</span>
+                    <span className="text-[10px] text-emerald-700 font-medium truncate">({appliedCoupon.title})</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className="font-black text-emerald-700">-฿{appliedCoupon.discountAmount.toLocaleString()}</span>
+                    <button onClick={handleRemoveCoupon} className="text-slate-400 hover:text-red-500 transition-colors p-0.5 cursor-pointer" title="ยกเลิกคูปอง">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex gap-1.5">
+                  <input
+                    type="text"
+                    placeholder="กรอกโค้ดส่วนลด..."
+                    value={couponInput}
+                    onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleApplyCoupon(); } }}
+                    className="flex-1 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono font-bold uppercase outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600 transition-all placeholder:font-normal placeholder:normal-case"
+                  />
+                  <button
+                    type="button"
+                    disabled={isValidatingCoupon || !couponInput.trim()}
+                    onClick={handleApplyCoupon}
+                    className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-40 text-white rounded-lg text-xs font-bold transition-all cursor-pointer shrink-0 flex items-center gap-1"
+                  >
+                    {isValidatingCoupon ? <RefreshCw className="w-3 h-3 animate-spin" /> : 'ใช้โค้ด'}
+                  </button>
+                </div>
+              )}
+              {cart.length > 0 && eligibleForCouponSubtotal < totalFinalPriceBeforeSpecial && (
+                <p className="text-[9px] text-amber-700 bg-amber-50/80 px-2 py-1 rounded-md border border-amber-200/60 font-medium leading-tight">
+                  ⚠️ มีสินค้าที่ลดรายชิ้นแล้ว โค้ดลดจะคิดเฉพาะยอดที่ไม่ลดรายชิ้น (฿{eligibleForCouponSubtotal.toLocaleString()})
+                </p>
+              )}
             </div>
 
             {/* ส่วนลดพิเศษแบบมินิมอล */}
@@ -998,7 +1618,9 @@ export default function ManagerPOSPage() {
 
             <div className="space-y-1.5 text-xs font-semibold text-slate-500 mb-4">
               <div className="flex justify-between"><span>ยอดรวมสินค้า</span><span>{totalOriginalPrice.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span></div>
-              {promotionDiscountAmount > 0 && <div className="flex justify-between text-orange-600"><span>ส่วนลดโปรโมชัน</span><span>- {promotionDiscountAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span></div>}
+              {promotionDiscountAmount > 0 && <div className="flex justify-between text-orange-600"><span>ส่วนลดสินค้า</span><span>- {promotionDiscountAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span></div>}
+              {totalSetDiscountAmount > 0 && <div className="flex justify-between text-emerald-600 font-bold"><span>ส่วนลดเซ็ตโปรโมชั่น</span><span>- {totalSetDiscountAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span></div>}
+              {couponDiscountAmount > 0 && <div className="flex justify-between text-purple-600 font-bold"><span>ส่วนลดคูปอง ({appliedCoupon?.code})</span><span>- {couponDiscountAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span></div>}
               {totalSpecialDiscountAmount !== 0 && (
                 <div className={`flex justify-between ${totalSpecialDiscountAmount > 0 ? 'text-red-500' : 'text-emerald-600'}`}>
                   <span>{totalSpecialDiscountAmount > 0 ? 'ส่วนลดพิเศษ' : 'ปัดเศษเพิ่ม'}</span>
@@ -1014,8 +1636,6 @@ export default function ManagerPOSPage() {
 
             {/* ✨ เพิ่มปุ่มเสนอราคามาไว้ตรงนี้ */}
             <div className="flex flex-col gap-2">
-
-
               <button
                 onClick={handlePreCheckout}
                 disabled={submitting || cart.length === 0}
