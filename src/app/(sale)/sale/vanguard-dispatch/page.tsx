@@ -28,6 +28,7 @@ import { toast } from 'sonner'
 import PrintDispatchModal from '@/components/PrintDispatchModal'
 import PaymentSlipUploader from '@/components/PaymentSlipUploader'
 import PaymentSlipViewer from '@/components/PaymentSlipViewer'
+import EditCustomerInfoModal from '@/components/EditCustomerInfoModal'
 import { downloadQuoteExcel } from '@/utils/exportQuote'
 
 export default function SaleDispatchMonitorPage() {
@@ -57,6 +58,24 @@ export default function SaleDispatchMonitorPage() {
     onConfirm: (customCode?: string) => void;
   }>({ isOpen: false, title: '', description: '', onConfirm: () => { } })
   const [modalCustomOrderCode, setModalCustomOrderCode] = useState('')
+  const [editingCustomerOrder, setEditingCustomerOrder] = useState<any | null>(null)
+
+  const handleCustomerUpdated = (updated: { shipping_name: string; shipping_phone: string; shipping_address: string }) => {
+    if (!editingCustomerOrder) return
+    const orderId = editingCustomerOrder.id
+
+    setTasks(prev => {
+      const updateList = (list: any[]) => list.map(item => item.id === orderId ? { ...item, ...updated } : item)
+      return {
+        myTasks: updateList(prev.myTasks),
+        followUpTasks: updateList(prev.followUpTasks),
+        completedTasks: updateList(prev.completedTasks),
+        cancelledTasks: updateList(prev.cancelledTasks)
+      }
+    })
+    setEditingCustomerOrder(null)
+    toast.success('อัปเดตข้อมูลลูกค้าและที่อยู่จัดส่งเรียบร้อยแล้ว')
+  }
 
   useEffect(() => {
     loadData()
@@ -393,12 +412,35 @@ export default function SaleDispatchMonitorPage() {
                                 </div>
                                 <p className="text-sm font-bold text-indigo-700">ลูกค้ารับสินค้าหน้าร้าน</p>
                                 <p className="text-xs text-slate-500">กรุณาพิมพ์เอกสารให้ลูกค้าก่อนส่งมอบ</p>
+                                <div className="pt-2">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      setEditingCustomerOrder(order)
+                                    }}
+                                    className="mx-auto px-2.5 py-1 text-[11px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-md flex items-center gap-1 transition-colors cursor-pointer"
+                                  >
+                                    <Edit className="w-3 h-3" /> แก้ไขชื่อลูกค้า / ข้อมูลติดต่อ
+                                  </button>
+                                </div>
                               </div>
                             ) : (
                               <>
-                                <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3 pb-2 border-b border-slate-100 flex items-center gap-1.5">
-                                  <Truck className="w-4 h-4 text-emerald-500" /> ข้อมูลจัดส่งลูกค้า
-                                </h3>
+                                <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
+                                  <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                                    <Truck className="w-4 h-4 text-emerald-500" /> ข้อมูลจัดส่งลูกค้า
+                                  </h3>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      setEditingCustomerOrder(order)
+                                    }}
+                                    className="px-2.5 py-1 text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
+                                    title="แก้ไขชื่อผู้รับ, เบอร์โทร, และที่อยู่จัดส่ง"
+                                  >
+                                    <Edit className="w-3.5 h-3.5" /> แก้ไขข้อมูลผู้รับ
+                                  </button>
+                                </div>
                                 <div className="space-y-3 text-sm text-slate-600">
                                   <p><span className="font-semibold text-slate-700">ชื่อผู้รับ:</span> {order.shipping_name || '-'}</p>
                                   <p><span className="font-semibold text-slate-700">เบอร์โทร:</span> {order.shipping_phone || '-'}</p>
@@ -647,6 +689,20 @@ export default function SaleDispatchMonitorPage() {
           setPrintOrderCode(null)
           setPrintAutoPrint(false)
         }} 
+      />
+
+      {/* ✏️ Edit Customer & Shipping Info Modal */}
+      <EditCustomerInfoModal
+        isOpen={!!editingCustomerOrder}
+        orderId={editingCustomerOrder?.id || null}
+        orderCode={editingCustomerOrder?.order_code || ''}
+        initialData={{
+          shipping_name: editingCustomerOrder?.shipping_name || null,
+          shipping_phone: editingCustomerOrder?.shipping_phone || null,
+          shipping_address: editingCustomerOrder?.shipping_address || null
+        }}
+        onClose={() => setEditingCustomerOrder(null)}
+        onSuccess={handleCustomerUpdated}
       />
     </div>
   )

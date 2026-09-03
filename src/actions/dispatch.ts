@@ -528,3 +528,41 @@ export async function cancelOrder(orderId: number, orderCode: string, items: any
     return { success: false, error: error.message }
   }
 }
+
+export async function updateOrderCustomerInfo(orderId: number, data: {
+  shipping_name?: string | null;
+  shipping_phone?: string | null;
+  shipping_address?: string | null;
+}) {
+  const cookieStore = await cookies()
+  const supabase = createServerClient(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!, { 
+    cookies: { getAll() { return cookieStore.getAll() } } 
+  })
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { success: false, error: "Unauthorized" }
+
+  try {
+    const { error } = await supabase
+      .from('orders')
+      .update({
+        shipping_name: data.shipping_name?.trim() || null,
+        shipping_phone: data.shipping_phone?.trim() || null,
+        shipping_address: data.shipping_address?.trim() || null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', orderId)
+
+    if (error) throw error
+
+    revalidatePath('/sale/sales-history')
+    revalidatePath('/sale/vanguard-dispatch')
+    revalidatePath('/manager/sales-history')
+    revalidatePath('/manager/vanguard-dispatch')
+
+    return { success: true }
+  } catch (error: any) {
+    return { success: false, error: error.message }
+  }
+}
+
