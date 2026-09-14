@@ -295,15 +295,27 @@ export default function PropsClient({ products }: Props) {
         display: flex;
         justify-content: flex-end;
         align-items: flex-start;
-        border-top: 1px dashed #ccc;
+        border-top: 1px dashed #aaa;
         padding-top: 0.6mm;
         margin-top: auto;
       }
       
       .price-section-wrap {
+        position: relative;
         display: flex;
         align-items: flex-start;
         gap: 1.2mm;
+        padding-left: 1.8mm;
+      }
+      
+      .price-section-wrap::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: -1.5mm;
+        bottom: -0.5mm;
+        width: 0;
+        border-left: 1px dashed #777;
       }
       
       .qr-box {
