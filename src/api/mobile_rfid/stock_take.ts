@@ -124,4 +124,44 @@ export const StockTakeController = {
       return handleError(err);
     }
   },
+
+  // --- Dual-Method Stock Audit Endpoints ---
+  async fetchActiveAudit(req: NextRequest, user: any) {
+    try {
+      const qBranch = req.nextUrl.searchParams.get("branch_id");
+      const branchId = qBranch ? Number(qBranch) : (user.branchId || 1);
+      const { getActiveAuditSession } = await import("@/actions/stock-audit");
+      const res = await getActiveAuditSession(branchId);
+      return NextResponse.json(res);
+    } catch (err) {
+      return handleError(err);
+    }
+  },
+
+  async submitAuditScans(req: NextRequest, user: any) {
+    try {
+      const body = await req.json();
+      const { auditId, items, countMethod, deviceName } = body;
+      const { recordAuditScan } = await import("@/actions/stock-audit");
+      
+      const results = [];
+      for (const item of items || []) {
+        const res = await recordAuditScan({
+          auditId: Number(auditId),
+          productId: Number(item.productId),
+          countMethod: countMethod || "RFID",
+          scannedQty: Number(item.qty) || 1,
+          rfidEpcs: item.epcs || [],
+          userId: user.userId,
+          userName: user.email || "พนักงาน PDA",
+          deviceName: deviceName || "PDA",
+        });
+        results.push(res);
+      }
+      return NextResponse.json({ success: true, count: results.length });
+    } catch (err) {
+      return handleError(err);
+    }
+  },
 };
+

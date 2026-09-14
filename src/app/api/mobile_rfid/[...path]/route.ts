@@ -175,6 +175,12 @@ async function dispatch(request: NextRequest, params: { path: string[] }) {
     if (subpath === "stock-take/product-tags") {
       if (method === "GET") return await RfidTagsController.fetchTagsForProducts(request, verifiedUser);
     }
+    if (subpath === "stock-take/active-audit") {
+      if (method === "GET") return await StockTakeController.fetchActiveAudit(request, verifiedUser);
+    }
+    if (subpath === "stock-take/submit-audit-scans") {
+      if (method === "POST") return await StockTakeController.submitAuditScans(request, verifiedUser);
+    }
 
     // --- RFID Tags Paths ---
     if (subpath === "rest/v1/product_rfid_tags" || subpath === "rfid-tags/verify") {

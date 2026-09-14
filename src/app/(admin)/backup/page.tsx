@@ -48,7 +48,15 @@ const TABLE_RELATIONS: Record<string, string[]> = {
   search_targets: ["products", "branches"],
   damaged_goods_records: ["products", "branches", "profiles"],
   deleted_rfid_tags: [],
-  system_settings: []
+  system_settings: [],
+  order_hidden_by_users: ["orders", "profiles"],
+  journal_categories: [],
+  journal_images: ["journal_categories", "products"],
+  journal_image_products: ["journal_images", "products"],
+  terra_collection_promotions: ["collection_groups"],
+  stock_audits: ["branches", "profiles"],
+  stock_audit_scans: ["stock_audits", "products", "profiles"],
+  stock_audit_items: ["stock_audits", "products"],
 }
 
 function downloadJSON(data: any, filename: string) {

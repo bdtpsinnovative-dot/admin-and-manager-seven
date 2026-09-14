@@ -21,6 +21,7 @@ const primaryItems = [
   // { name: "เพิ่มสินค้า",     href: "/addproduct",   icon: PlusCircle },
   { name: "Props / Decor",   href: "/props",        icon: Frame },
   { name: "Props / Decor (ใหม่)", href: "/props-new",   icon: Frame },
+  { name: "Props Final (คิวอาหน้าชื่อ)", href: "/propsfina", icon: Frame },
   { name: "Algorithm",      href: "/algorithm",    icon: Activity },
   { name: "จัดการลอต",       href: "/lots",         icon: Package },
 ];
@@ -35,6 +36,7 @@ const secondaryItems = [
   // { name: "รายงานยอดขาย",    href: "/sales-report", icon: BarChart3 },
   { name: "ตรวจสอบยอดรวมระบบ", href: "/balance-check", icon: Scale },
   { name: "ตรวจสอบ RFID ยอดเกิน", href: "/rfid-mismatch", icon: AlertTriangle },
+  { name: "อนุมัติตรวจนับสต็อก", href: "/stock-audit", icon: ShieldCheck },
   { name: "จัดการ Filters",  href: "/filters",      icon: SlidersHorizontal },
   { name: "จัดการแอป & เว็บ",  href: "/app-management", icon: Settings },
   { name: "Backup & Restore", href: "/backup",       icon: ShieldCheck },

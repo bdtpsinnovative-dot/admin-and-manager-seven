@@ -29,9 +29,13 @@ const RESTORABLE_TABLES = [
   { key: "stock_transfer_items",      label: "Stock Transfer Items",      pk: "id",         orderCol: "id" },
   { key: "orders",                    label: "Orders",                    pk: "id",         orderCol: "id" },
   { key: "order_items",               label: "Order Items",               pk: "id",         orderCol: "id" },
+  { key: "order_hidden_by_users",     label: "Order Hidden By Users",     pk: ["order_id", "user_id"], orderCol: "order_id" },
   { key: "cart_items",                label: "Cart Items",                pk: "id",         orderCol: "id" },
   { key: "favorites",                 label: "Favorites",                 pk: "id",         orderCol: "id" },
   { key: "site_gallery",              label: "Site Gallery",              pk: "id",         orderCol: "id" },
+  { key: "journal_categories",        label: "Journal Categories",        pk: "id",         orderCol: "id" },
+  { key: "journal_images",            label: "Journal Images",            pk: "id",         orderCol: "id" },
+  { key: "journal_image_products",    label: "Journal Image Products",    pk: "id",         orderCol: "id" },
   { key: "sale_dasbrode",             label: "Sale Dashboard",            pk: ["day", "branch_id"],        orderCol: "day" },
   { key: "summary_daily",             label: "Summary Daily",             pk: "period_key", orderCol: "period_key" },
   { key: "summary_weekly",            label: "Summary Weekly",            pk: "period_key", orderCol: "period_key" },
@@ -41,6 +45,10 @@ const RESTORABLE_TABLES = [
   { key: "damaged_goods_records",     label: "Damaged Goods Records",     pk: "id",         orderCol: "id" },
   { key: "deleted_rfid_tags",         label: "Deleted RFID Tags",         pk: "id",         orderCol: "id" },
   { key: "system_settings",           label: "System Settings",           pk: "key",        orderCol: "key" },
+  { key: "terra_collection_promotions", label: "Terra Promotions",        pk: "id",         orderCol: "id" },
+  { key: "stock_audits",              label: "Stock Audits",              pk: "id",         orderCol: "id" },
+  { key: "stock_audit_scans",         label: "Stock Audit Scans",         pk: "id",         orderCol: "id" },
+  { key: "stock_audit_items",         label: "Stock Audit Items",         pk: "id",         orderCol: "id" },
 ]
 
 // Tables ที่ export ได้ แต่ไม่ restore (ย้ายไป Restore หมดแล้วในช่วงทดสอบ)
@@ -122,6 +130,14 @@ const TABLE_DESC: Record<string, string> = {
   damaged_goods_records:      "บันทึกสินค้าชำรุด",
   deleted_rfid_tags:          "ประวัติการลบ RFID Tag",
   system_settings:            "ตั้งค่าระบบ",
+  journal_categories:         "หมวดหมู่บทความ/Lookbook",
+  journal_images:             "รูปภาพบล็อก/Lookbook",
+  journal_image_products:     "แท็กสินค้าในรูป Lookbook",
+  order_hidden_by_users:      "ประวัติการซ่อนออเดอร์",
+  terra_collection_promotions: "โปรโมชั่นคอลเลกชัน Terra",
+  stock_audits:               "หัวใบรอบตรวจนับสต็อก",
+  stock_audit_scans:          "บันทึกการสแกนดิบตรวจนับ",
+  stock_audit_items:          "สรุปเปรียบเทียบตรวจนับ 3 เสา",
 }
 
 export async function getBackupTableStats(): Promise<TableInfo[]> {

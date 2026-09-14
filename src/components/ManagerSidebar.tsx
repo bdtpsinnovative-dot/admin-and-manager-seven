@@ -104,7 +104,7 @@ export default function ManagerSidebar({ userName, branchName, userAvatar }: Man
         // { name: "รายงานยอดขาย (sales-report)", href: "/manager/sales-report", icon: BarChart4 },
         
         { name: "ประวัติสต็อก", href: "/manager/stocklog", icon: History },
-        
+        { name: "ตรวจนับสต็อก 2 ทาง", href: "/manager/stock-audit", icon: ClipboardCheck },
         { name: "ตรวจสอบยอด RFID", href: "/manager/stock-compare", icon: SearchCode },
         { name: "ค้นหาสต็อก", href: "/manager/stock-search", icon: Search },
         { name: "เช็คแท็กสินค้า", href: "/manager/tagcheck", icon: SlidersHorizontal },
