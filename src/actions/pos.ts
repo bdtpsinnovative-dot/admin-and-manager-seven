@@ -378,6 +378,7 @@ export interface CheckoutPayload {
   specialDiscountBaht?: number;     // ✨ ส่วนลดพิเศษ บาท
   couponCode?: string | null;       // 🎟️ โค้ดคูปอง
   couponDiscountAmount?: number;    // 🎟️ มูลค่าส่วนลดคูปอง
+  vatAmount?: number;               // ✨ ยอดภาษี VAT (7%)
   setDiscountAmount?: number;       // 📦 มูลค่าส่วนลดเซ็ต
   appliedSetPromos?: any[];         // 📦 ข้อมูลเซ็ตโปรโมชั่นที่ได้รับ
   items: {
@@ -463,6 +464,14 @@ export async function processCheckout(payload: CheckoutPayload) {
     // ✨ 2. บังคับสถานะบิลหลัก: ถ้าเซลล์กดจัดส่ง "หรือ" มีการดึงของข้ามสาขา บังคับบิลนี้เป็น PENDING ทันที
     const orderStatus = 'PENDING'
 
+    // 💰 ปัดเศษทศนิยมให้แม่นยำ 2 ตำแหน่ง ป้องกันปัญหา Floating Point บั๊ก
+    const finalSubtotal = Math.round(Number(payload.subtotal) * 100) / 100
+    const finalDiscountAmount = Math.round(Number(payload.discountAmount) * 100) / 100
+    const finalTotalAmount = Math.round(Number(payload.totalAmount) * 100) / 100
+    const finalVatAmount = payload.vatAmount !== undefined && payload.vatAmount !== null
+      ? Math.round(Number(payload.vatAmount) * 100) / 100
+      : Math.round((finalTotalAmount - (finalTotalAmount / 1.07)) * 100) / 100
+
     let order;
     if (payload.orderId) {
       // 🛠️ อัปเดตบิลเก่าที่ยัง PENDING
@@ -474,9 +483,10 @@ export async function processCheckout(payload: CheckoutPayload) {
         .from('orders')
         .update({
           order_code: orderCode,
-          subtotal: payload.subtotal, 
-          discount_amount: payload.discountAmount, 
-          total_amount: payload.totalAmount, 
+          subtotal: finalSubtotal, 
+          discount_amount: finalDiscountAmount, 
+          total_amount: finalTotalAmount, 
+          vat_amount: finalVatAmount,
           discount_snapshot: discountSnapshot, 
           shipping_name: payload.shippingName || null,                      
           shipping_phone: payload.shippingPhone || null,
@@ -523,9 +533,10 @@ export async function processCheckout(payload: CheckoutPayload) {
           order_code: orderCode, 
           user_id: user.id, 
           branch_id: payload.branchId,
-          subtotal: payload.subtotal, 
-          discount_amount: payload.discountAmount, 
-          total_amount: payload.totalAmount, 
+          subtotal: finalSubtotal, 
+          discount_amount: finalDiscountAmount, 
+          total_amount: finalTotalAmount, 
+          vat_amount: finalVatAmount,
           status: orderStatus, 
           device_type: 'WEB_ADMIN',
           discount_snapshot: discountSnapshot, 

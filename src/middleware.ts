@@ -8,7 +8,7 @@ export async function middleware(request: NextRequest) {
 
   // หน้า Public ที่ไม่ต้องดักจับ
   const isLoginPage = path === '/login'
-  const isPublicApi = path.startsWith('/api/mobile_rfid') || path.startsWith('/_next')
+  const isPublicApi = path.startsWith('/api/mobile_rfid') || path.startsWith('/api/mobile_pos') || path.startsWith('/_next')
   const isPublicPath = isLoginPage || isPublicApi
 
   let response = NextResponse.next({

@@ -271,8 +271,15 @@ const downloadTemplate = () => {
             const priceRounded = Number(rawPrice.toString().replace(/,/g, ''));
 
             // ดึงข้อมูลผ่าน getVal ไม่ว่า Excel จะเขียน CollectionGroup หรือ Collection Group ก็หาเจอชัวร์!
-            const collectionGroupId = getVal("Collection Group")?.toString() || null;
-            const productSupValue = getVal("Product Sup")?.toString() || null;
+            const collectionGroupId = (getVal("Collection Group") || getVal("CollectionGroup") || getVal("Collection"))?.toString().trim() || null;
+            const productSupValue = (
+              getVal("Product Sup") || 
+              getVal("Product Sub") || 
+              getVal("ProductSub") || 
+              getVal("ProductSup") || 
+              getVal("Sub Category") || 
+              getVal("SubCategory")
+            )?.toString().trim() || null;
             const nameImageGroupValue = getVal("Name Group")?.toString() || getVal("NameGroup")?.toString() || getVal("Name Image Group")?.toString() || getVal("NameImageGroup")?.toString() || null;
             const imageGroupValue = getVal("Image Group")?.toString() || getVal("ImageGroup")?.toString() || null;
             const factoryName = getVal("Factory")?.toString() || null;

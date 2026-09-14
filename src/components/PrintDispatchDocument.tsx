@@ -48,7 +48,11 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
   const totalSpecialDiscount = totalSpecialDiscountFromDb !== null ? totalSpecialDiscountFromDb : (specialDiscountBaht + specialDiscountPercentAmount);
   const grandTotal = grandTotalFromDb ?? Math.max(0, subtotal - totalSpecialDiscount);
 
-  const vatAmount = grandTotal - (grandTotal / 1.07);
+  const vatAmountFromDb = data?.vat_amount !== undefined && data?.vat_amount !== null && Number(data.vat_amount) > 0
+    ? Number(data.vat_amount)
+    : null;
+
+  const vatAmount = vatAmountFromDb ?? (grandTotal - (grandTotal / 1.07));
   const subTotalWithoutVat = grandTotal - vatAmount;
 
   return (

@@ -4,16 +4,21 @@ import {
   Calendar,
   CheckCircle2,
   Clock,
+  CreditCard,
   DollarSign,
   FileText,
   MoreHorizontal,
   Package,
+  Receipt,
+  Scale,
   ShoppingBag,
+  Tag,
   TrendingUp,
   XCircle,
 } from "lucide-react"
 import { getDashboardData } from "../../../../actions/dashboard"
 import { createClient } from "../../../../lib/supabase/server"
+import DashboardVatCard from "@/components/DashboardVatCard"
 
 const money = (value: number) =>
   value.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -92,44 +97,119 @@ export default async function ManagerDashboardPage() {
           </div>
         )}
 
-        {/* --- 1. KPI Stats Cards (4 การ์ดหลัก) --- */}
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-          
-          {/* การ์ด 1: ยอดขายสุทธิ */}
-          <div className="rounded-2xl bg-slate-900 p-5 text-white shadow-sm hover:shadow-md transition-shadow">
-            <p className="text-xs font-bold uppercase tracking-wider text-slate-400">ยอดขายสุทธิสาขา</p>
-            <p className="mt-2 text-3xl font-black">฿{money(data.summary.netSales)}</p>
-            <p className="mt-3 text-xs text-slate-400">เฉพาะบิลขายสำเร็จในสาขา {branchName}</p>
+        {/* --- ส่วนที่ 1: การ์ดสรุปการเงินหลัก (Financial Overview) 3 ใบใหญ่ ชัดเจน อ่านง่าย ไม่แสดงสมการ --- */}
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            
+            {/* 1. ยอดเรียกเก็บลูกค้าทั้งหมด */}
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm hover:shadow-md transition-all flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500">ยอดรับชำระจากลูกค้าสาขา {branchName}</span>
+                  <div className="p-2.5 rounded-xl bg-blue-50 text-blue-600">
+                    <CreditCard className="w-5 h-5" />
+                  </div>
+                </div>
+                <div className="text-2xl lg:text-3xl font-black text-slate-800 tracking-tight">
+                  ฿{money(data.summary.netSales)}
+                </div>
+                <p className="mt-1 text-xs text-slate-400">
+                  ยอดเงินสดและเงินโอนที่เก็บได้จริงเฉพาะสาขานี้
+                </p>
+              </div>
+              <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+                <span className="text-slate-500">จำนวนบิลที่รับเงิน</span>
+                <span className="font-bold text-slate-700">{data.summary.billCount.toLocaleString()} บิล</span>
+              </div>
+            </div>
+
+            {/* 2. ภาษีมูลค่าเพิ่ม VAT 7% (คลิกเพื่อเปิด Modal แจกแจงแบบไดนามิก) */}
+            <DashboardVatCard
+              totalVat={data.summary.totalVat}
+              vatBreakdown={data.vatBreakdown}
+            />
+
+            {/* 3. เงินที่ได้จริงเข้าร้าน (หัก VAT แล้ว) - สว่าง คลีน สะอาดตา */}
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50/40 p-6 shadow-sm hover:shadow-md transition-all flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-bold uppercase tracking-wider text-emerald-800">เงินแท้จริงเข้าร้าน (หัก VAT แล้ว)</span>
+                  <div className="p-2.5 rounded-xl bg-emerald-100 text-emerald-600">
+                    <CheckCircle2 className="w-5 h-5" />
+                  </div>
+                </div>
+                <div className="text-2xl lg:text-3xl font-black text-emerald-700 tracking-tight">
+                  ฿{money(data.summary.netSalesBeforeVat)}
+                </div>
+                <p className="mt-1 text-xs text-emerald-600/90">
+                  รายรับสุทธิของสาขา {branchName} หลังหักภาษี
+                </p>
+              </div>
+              <div className="mt-4 pt-3 border-t border-emerald-200/60 flex items-center justify-between text-xs">
+                <span className="text-emerald-700">สถานะเงิน</span>
+                <span className="font-bold text-emerald-700">รายรับสุทธิร้านค้า</span>
+              </div>
+            </div>
+
           </div>
 
-          {/* การ์ด 2: ใบขายสำเร็จ */}
-          <div className="rounded-2xl border border-blue-100 bg-white p-5 shadow-sm hover:shadow-md transition-shadow">
-            <div className="flex items-center justify-between">
-              <p className="text-xs font-bold uppercase tracking-wider text-slate-400">ใบขายที่สำเร็จ</p>
-              <FileText className="h-5 w-5 text-blue-500" />
+          {/* --- ส่วนที่ 2: สถิติการขายและสถานะบิล (Sales & Operations) 5 ใบ สะอาดตา --- */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+            
+            {/* 1. ยอดรวมก่อนลด */}
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm hover:shadow-md transition-all">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-500">ยอดรวมก่อนลด</span>
+                <ShoppingBag className="h-4 w-4 text-slate-400" />
+              </div>
+              <p className="mt-2 text-xl font-black text-slate-800">฿{money(data.summary.grossSales)}</p>
+              <p className="mt-1 text-[11px] text-slate-400">มูลค่าสินค้าราคาป้ายเต็ม</p>
             </div>
-            <p className="mt-2 text-3xl font-black text-slate-800">{data.summary.billCount.toLocaleString()} บิล</p>
-            <p className="mt-3 text-xs text-slate-400">บิลที่ถูกนำมาคำนวณยอดสุทธิ</p>
-          </div>
 
-          {/* การ์ด 3: บิลยกเลิก */}
-          <div className="rounded-2xl border border-red-100 bg-white p-5 shadow-sm hover:shadow-md transition-shadow">
-            <div className="flex items-center justify-between">
-              <p className="text-xs font-bold uppercase tracking-wider text-red-500">บิลยกเลิก</p>
-              <XCircle className="h-5 w-5 text-red-500" />
+            {/* 2. ส่วนลดรวม */}
+            <div className="rounded-2xl border border-orange-100 bg-white p-5 shadow-sm hover:shadow-md transition-all">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-orange-600">ส่วนลดรวม</span>
+                <Tag className="h-4 w-4 text-orange-500" />
+              </div>
+              <p className="mt-2 text-xl font-black text-orange-600">-฿{money(data.summary.totalDiscount)}</p>
+              <p className="mt-1 text-[11px] text-slate-400">ส่วนลดพิเศษ & โปรโมชั่น</p>
             </div>
-            <p className="mt-2 text-3xl font-black text-red-600">{data.summary.cancelledCount.toLocaleString()} บิล</p>
-            <p className="mt-3 text-xs text-slate-400">มูลค่ายกเลิกรวม ฿{money(data.summary.cancelledSales)}</p>
-          </div>
 
-          {/* การ์ด 4: ยอดขายเฉลี่ยต่อบิล */}
-          <div className="rounded-2xl border border-emerald-100 bg-white p-5 shadow-sm hover:shadow-md transition-shadow">
-            <div className="flex items-center justify-between">
-              <p className="text-xs font-bold uppercase tracking-wider text-slate-400">ยอดเฉลี่ยต่อบิล (Avg Ticket)</p>
-              <TrendingUp className="h-5 w-5 text-emerald-500" />
+            {/* 3. ใบขายสำเร็จ */}
+            <div className="rounded-2xl border border-blue-100 bg-white p-5 shadow-sm hover:shadow-md transition-all">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-600">ใบขายสำเร็จ</span>
+                <FileText className="h-4 w-4 text-blue-500" />
+              </div>
+              <p className="mt-2 text-xl font-black text-slate-800">
+                {data.summary.billCount.toLocaleString()} <span className="text-xs font-normal text-slate-500">บิล</span>
+              </p>
+              <p className="mt-1 text-[11px] text-emerald-600 font-medium">รับชำระเงินเรียบร้อย</p>
             </div>
-            <p className="mt-2 text-3xl font-black text-emerald-600">฿{money(avgPerBill)}</p>
-            <p className="mt-3 text-xs text-slate-400">ยอดขายเฉลี่ยต่อ 1 ใบเสร็จ</p>
+
+            {/* 4. ยอดขายเฉลี่ยต่อบิล */}
+            <div className="rounded-2xl border border-emerald-100 bg-white p-5 shadow-sm hover:shadow-md transition-all">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-500">เฉลี่ยต่อบิล</span>
+                <TrendingUp className="h-4 w-4 text-emerald-500" />
+              </div>
+              <p className="mt-2 text-xl font-black text-emerald-600">฿{money(avgPerBill)}</p>
+              <p className="mt-1 text-[11px] text-slate-400">Average Ticket Size</p>
+            </div>
+
+            {/* 5. บิลยกเลิก */}
+            <div className="rounded-2xl border border-red-100 bg-white p-5 shadow-sm hover:shadow-md transition-all">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-red-500">บิลยกเลิก</span>
+                <XCircle className="h-4 w-4 text-red-500" />
+              </div>
+              <p className="mt-2 text-xl font-black text-red-600">
+                {data.summary.cancelledCount.toLocaleString()} <span className="text-xs font-normal text-slate-500">บิล</span>
+              </p>
+              <p className="mt-1 text-[11px] text-red-400">มูลค่ายกเลิก: ฿{money(data.summary.cancelledSales)}</p>
+            </div>
+
           </div>
         </div>
 
@@ -174,6 +254,13 @@ export default async function ManagerDashboardPage() {
                   <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-xs font-black text-slate-500">
                     {index + 1}
                   </span>
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+                    {product.imageUrl ? (
+                      <img src={product.imageUrl} alt={product.name} className="h-full w-full object-contain p-1" />
+                    ) : (
+                      <Package className="h-5 w-5 text-slate-300" />
+                    )}
+                  </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-bold text-slate-700">{product.name}</p>
                     <p className="text-[11px] text-slate-400">ขายได้ {product.quantity.toLocaleString()} ชิ้น ({product.billCount} บิล)</p>
@@ -279,7 +366,10 @@ export default async function ManagerDashboardPage() {
                   <th className="px-5 py-4">เลขที่ใบขาย</th>
                   <th className="px-5 py-4">สาขา</th>
                   <th className="px-5 py-4">วันที่ออกบิล</th>
-                  <th className="px-5 py-4 text-right">ยอดรวม</th>
+                  <th className="px-5 py-4 text-right">ยอดก่อนลด</th>
+                  <th className="px-5 py-4 text-right">ส่วนลด</th>
+                  <th className="px-5 py-4 text-right">VAT (7%)</th>
+                  <th className="px-5 py-4 text-right">ยอดสุทธิ (รับจริง)</th>
                   <th className="px-5 py-4 text-center">สถานะ</th>
                 </tr>
               </thead>
@@ -289,7 +379,21 @@ export default async function ManagerDashboardPage() {
                     <td className="px-5 py-4 font-black text-slate-800">{order.orderCode}</td>
                     <td className="px-5 py-4 font-bold text-blue-600">{order.branchName}</td>
                     <td className="px-5 py-4 text-xs text-slate-500">{dateTime(order.createdAt)}</td>
-                    <td className="px-5 py-4 text-right font-black text-slate-800">฿{money(order.totalAmount)}</td>
+                    <td className="px-5 py-4 text-right text-slate-600 font-medium">฿{money(order.subtotal)}</td>
+                    <td className="px-5 py-4 text-right">
+                      {order.discountAmount > 0 ? (
+                        <span className="inline-flex items-center gap-1 font-bold text-orange-600 bg-orange-50 border border-orange-200 px-2 py-0.5 rounded-md text-xs">
+                          <Tag className="w-3 h-3" />
+                          -฿{money(order.discountAmount)}
+                        </span>
+                      ) : (
+                        <span className="text-slate-300 font-mono text-xs">-</span>
+                      )}
+                    </td>
+                    <td className="px-5 py-4 text-right text-purple-700 font-medium text-xs">
+                      ฿{money(order.vatAmount)}
+                    </td>
+                    <td className="px-5 py-4 text-right font-black text-emerald-700">฿{money(order.totalAmount)}</td>
                     <td className="px-5 py-4 text-center">
                       <span className={`inline-flex rounded-full border px-3 py-1 text-[10px] font-black ${statusClass(order.status)}`}>
                         {statusLabel(order.status)}
@@ -299,7 +403,7 @@ export default async function ManagerDashboardPage() {
                 ))}
                 {data.recentOrders.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="px-5 py-16 text-center text-slate-400">
+                    <td colSpan={8} className="px-5 py-16 text-center text-slate-400">
                       ยังไม่มีใบขายในสาขานี้
                     </td>
                   </tr>
