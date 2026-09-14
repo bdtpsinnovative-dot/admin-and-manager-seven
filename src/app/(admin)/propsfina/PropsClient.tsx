@@ -230,7 +230,7 @@ export default function PropsClient({ products }: Props) {
         border-right: 1px solid #bbb; 
         border-bottom: 1px solid #bbb; 
         background: #fff; 
-        padding: 0.8mm 1.8mm 1mm 1.8mm;
+        padding: 0.8mm 1.8mm 0 1.8mm;
         height: 46mm;
         overflow: hidden;
         position: relative;
@@ -241,25 +241,25 @@ export default function PropsClient({ products }: Props) {
         height: 1.6mm;
         border: none;
         background: transparent;
-        margin: 0.5mm auto 0.4mm auto;
+        margin: 0.4mm auto 0.3mm auto;
         flex-shrink: 0;
       }
       
       .photo-sec {
-        height: 20mm;
+        height: 17.5mm;
         min-height: 0;
         display: flex;
         align-items: center;
         justify-content: center;
         overflow: hidden;
-        margin-bottom: 0.6mm;
+        margin-bottom: 0.5mm;
         border-bottom: 1px solid #f0f0f0;
         padding-bottom: 0.3mm;
       }
       
       .photo-sec img {
         max-width: 34mm;
-        max-height: 20mm;
+        max-height: 17.5mm;
         object-fit: contain;
         display: block;
       }
@@ -296,7 +296,10 @@ export default function PropsClient({ products }: Props) {
         justify-content: flex-end;
         align-items: flex-start;
         border-top: 1px dashed #aaa;
-        padding-top: 0.6mm;
+        height: 18mm;
+        box-sizing: border-box;
+        padding-top: 1.2mm;
+        padding-bottom: 0.8mm;
         margin-top: auto;
       }
       
@@ -304,18 +307,19 @@ export default function PropsClient({ products }: Props) {
         position: relative;
         display: flex;
         align-items: flex-start;
-        gap: 1.2mm;
-        padding-left: 1.8mm;
+        gap: 2mm;
+        padding-left: 2.2mm;
+        height: 100%;
       }
       
       .price-section-wrap::before {
         content: "";
         position: absolute;
         left: 0;
-        top: -1.5mm;
-        bottom: -0.5mm;
+        top: -3.5mm;
+        bottom: 0;
         width: 0;
-        border-left: 1px dashed #777;
+        border-left: 1px dashed #555;
       }
       
       .qr-box {
@@ -325,8 +329,8 @@ export default function PropsClient({ products }: Props) {
       }
       
       .qr-img {
-        width: 8.5mm;
-        height: 8.5mm;
+        width: 12mm;
+        height: 12mm;
         object-fit: contain;
         display: block;
       }
@@ -337,7 +341,7 @@ export default function PropsClient({ products }: Props) {
         flex-direction: column;
         align-items: flex-end;
         justify-content: space-between;
-        height: 8.5mm;
+        height: 13.5mm;
       }
       
       .price-logo {
@@ -348,13 +352,13 @@ export default function PropsClient({ products }: Props) {
       }
       
       .price-logo .logo-img {
-        height: 2.8mm;
+        height: 3.5mm;
         object-fit: contain;
         display: block;
       }
       
       .price-val {
-        font-size: 10pt;
+        font-size: 12.5pt;
         font-weight: 900;
         color: #000;
         line-height: 1;
