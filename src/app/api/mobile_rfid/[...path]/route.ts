@@ -148,6 +148,10 @@ async function dispatch(request: NextRequest, params: { path: string[] }) {
     // --- Stock Take (Reader / Initial Count) Paths ---
     if (subpath === "rest/v1/reader_stock" || subpath === "stock-take/save-reader-stock") {
       if (method === "POST") return await StockTakeController.saveReaderStock(request, verifiedUser);
+      if (method === "DELETE") return await StockTakeController.clearReaderStock(request, verifiedUser);
+    }
+    if (subpath === "stock-take/clear-reader-stock") {
+      if (method === "DELETE" || method === "POST") return await StockTakeController.clearReaderStock(request, verifiedUser);
     }
     if (subpath === "rest/v1/search_targets" || subpath === "stock-take/search-targets") {
       if (method === "GET") return await StockTakeController.fetchSearchTargets(request, verifiedUser);

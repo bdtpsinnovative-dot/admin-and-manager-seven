@@ -411,11 +411,48 @@ export const MobileRfidService = {
 
   // --- Stock Take (Reader Stock / Initial Count) ---
   async saveReaderStock(items: any[]) {
+    if (!items || items.length === 0) return [];
+
+    // ดึงยอดเดิมที่มีอยู่ใน reader_stock เพื่อนำมา "บวกเพิ่ม" (Accumulate) ตามที่ต้องการ
+    const branchId = items[0]?.branch_id;
+    const productIds = items.map((i: any) => i.product_id).filter(Boolean);
+
+    const existingMap = new Map<number, number>();
+    if (branchId && productIds.length > 0) {
+      const { data: existingRows } = await supabaseAdmin
+        .from("reader_stock")
+        .select("product_id, qty")
+        .eq("branch_id", branchId)
+        .in("product_id", productIds);
+
+      existingRows?.forEach((row: any) => {
+        existingMap.set(Number(row.product_id), Number(row.qty) || 0);
+      });
+    }
+
+    const mergedItems = items.map((item: any) => {
+      const pId = Number(item.product_id);
+      const currentQty = existingMap.get(pId) || 0;
+      return {
+        ...item,
+        qty: currentQty + (Number(item.qty) || 0),
+        updated_at: new Date().toISOString()
+      };
+    });
+
     const { data, error } = await supabaseAdmin
       .from("reader_stock")
-      .upsert(items, { onConflict: "product_id,branch_id" });
+      .upsert(mergedItems, { onConflict: "product_id,branch_id" });
     if (error) throw error;
     return data;
+  },
+
+  async clearReaderStock(branchId: number) {
+    const { error } = await supabaseAdmin
+      .from("reader_stock")
+      .delete()
+      .eq("branch_id", branchId);
+    if (error) throw error;
   },
 
   async saveReaderCountScans(scans: any[]) {

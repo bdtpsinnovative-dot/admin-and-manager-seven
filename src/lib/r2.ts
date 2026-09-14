@@ -2,7 +2,7 @@ import { createHash, createHmac } from 'node:crypto'
 
 type R2Method = 'GET' | 'HEAD' | 'PUT' | 'DELETE'
 
-function requiredEnv(name: 'R2_ACCOUNT_ID' | 'R2_ACCESS_KEY_ID' | 'R2_SECRET_ACCESS_KEY' | 'R2_BUCKET_NAME') {
+function requiredEnv(name: 'R2_ACCOUNT_ID' | 'R2_ACCESS_KEY_ID' | 'R2_SECRET_ACCESS_KEY') {
   const value = process.env[name]?.trim()
   if (!value) throw new Error(`ยังไม่ได้ตั้งค่า ${name}`)
   return value
@@ -23,12 +23,12 @@ function encodePath(value: string) {
 export async function requestR2Object(
   method: R2Method,
   key: string,
-  options: { body?: Buffer; contentType?: string } = {},
-) {
+  options: { body?: Buffer; contentType?: string; bucket?: string } = {},
+): Promise<Response> {
   const accountId = requiredEnv('R2_ACCOUNT_ID')
   const accessKeyId = requiredEnv('R2_ACCESS_KEY_ID')
   const secretAccessKey = requiredEnv('R2_SECRET_ACCESS_KEY')
-  const bucket = requiredEnv('R2_BUCKET_NAME')
+  const bucket = options.bucket || process.env.R2_BUCKET_NAME?.trim() || 'hr-immage'
 
   const host = `${accountId}.r2.cloudflarestorage.com`
   const canonicalUri = `/${encodeURIComponent(bucket)}/${encodePath(key)}`
@@ -61,7 +61,7 @@ export async function requestR2Object(
   const signature = createHmac('sha256', signingKey).update(stringToSign).digest('hex')
   const authorization = `AWS4-HMAC-SHA256 Credential=${accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`
 
-  return fetch(`https://${host}${canonicalUri}`, {
+  const response = await fetch(`https://${host}${canonicalUri}`, {
     method,
     headers: {
       Authorization: authorization,
@@ -72,6 +72,19 @@ export async function requestR2Object(
     body: options.body ? new Uint8Array(options.body).buffer : undefined,
     cache: 'no-store',
   })
+
+  // หากค้นหาไฟล์ไม่เจอ (404) ในกรณี GET/HEAD ให้ลอง bucket สำรอง (hr-immage <-> wallcraft)
+  if (response.status === 404 && (method === 'GET' || method === 'HEAD') && !options.bucket) {
+    const fallbackBucket = bucket === 'wallcraft' ? 'hr-immage' : (bucket === 'hr-immage' ? 'wallcraft' : null)
+    if (fallbackBucket) {
+      const fallbackResponse = await requestR2Object(method, key, { ...options, bucket: fallbackBucket })
+      if (fallbackResponse.ok) {
+        return fallbackResponse
+      }
+    }
+  }
+
+  return response
 }
 
 export function paymentSlipKey(orderId: number) {

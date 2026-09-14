@@ -21,21 +21,34 @@ interface SalesOrderRow {
   total_amount: number
   status: string
   shipping_name: string | null
+  branch_id?: number
+  branches: { id: number; branch_name: string } | null
   profiles: { full_name: string | null } | null
   order_items: SalesOrderItemRow[] | null
 }
 
-export async function getSalesHistory(showHidden = false) {
+export async function getAllBranches() {
+  const cookieStore = await cookies()
+  const supabase = createServerClient(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!, {
+    cookies: { getAll() { return cookieStore.getAll() } }
+  })
+  const { data, error } = await supabase.from('branches').select('id, branch_name').order('id', { ascending: true })
+  if (error) return { success: false, error: error.message, data: [] }
+  return { success: true, data: data || [] }
+}
+
+export async function getSalesHistory(showHidden = false, targetBranchId?: number | 'ALL') {
   const cookieStore = await cookies()
   const supabase = createServerClient(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!, {
     cookies: { getAll() { return cookieStore.getAll() } }
   })
 
-  // 1. ดึงข้อมูลสาขาของพนักงานคนนี้ก่อน
+  // 1. ดึงข้อมูล User และ Profile
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { success: false, error: "Unauthorized" }
 
-  const { data: profile } = await supabase.from('profiles').select('branch_id').eq('user_id', user.id).single()
+  const { data: profile } = await supabase.from('profiles').select('role, branch_id').eq('user_id', user.id).single()
+  const userRole = profile?.role || 'sale'
   const myBranchId = profile?.branch_id || 1
 
   const { data: hiddenRows, error: hiddenError } = await supabase
@@ -46,8 +59,8 @@ export async function getSalesHistory(showHidden = false) {
   if (hiddenError) return { success: false, error: hiddenError.message }
   const hiddenOrderIds = new Set((hiddenRows || []).map(row => Number(row.order_id)))
 
-  // 2. คิวรีใบขายทั้งหมดที่ "สาขาเราเป็นคนออกบิล" พร้อมดึงรายการสินค้าข้างในออกมาด้วย
-  const { data: orders, error } = await supabase
+  // 2. คิวรีใบขาย
+  let query = supabase
     .from('orders')
     .select(`
       id,
@@ -58,6 +71,8 @@ export async function getSalesHistory(showHidden = false) {
       total_amount,
       status,
       shipping_name,
+      branch_id,
+      branches:branch_id ( id, branch_name ),
       profiles:user_id ( full_name ),
       order_items (
         id,
@@ -69,22 +84,34 @@ export async function getSalesHistory(showHidden = false) {
         branches:fulfill_branch_id ( branch_name )
       )
     `)
-    .eq('branch_id', myBranchId)
     .neq('status', 'PENDING')
     .order('created_at', { ascending: false })
+
+  if (userRole === 'admin') {
+    if (targetBranchId && targetBranchId !== 'ALL') {
+      query = query.eq('branch_id', targetBranchId)
+    }
+  } else {
+    // พนักงานสาขาหรือ Manager ดูกรอบสาขาตัวเอง
+    query = query.eq('branch_id', myBranchId)
+  }
+
+  const { data: orders, error } = await query
   if (error) return { success: false, error: error.message }
 
-  // 2. ปรับตัวแปรตอนวนลูป map ส่งค่าออกไปหน้าบ้าน
+  // 3. ปรับตัวแปรตอนวนลูป map ส่งค่าออกไปหน้าบ้าน
   const orderRows = (orders || []) as unknown as SalesOrderRow[]
   const formattedSales = orderRows
   .filter(order => showHidden ? hiddenOrderIds.has(order.id) : !hiddenOrderIds.has(order.id))
   .map(order => {
+    const orderBranchId = order.branch_id ?? myBranchId
+    const branchName = order.branches?.branch_name || 'ไม่ระบุสาขา'
     let myBranchRevenue = 0
     let otherBranchRevenue = 0
     const remoteDetails: { branch_name: string; amount: number; qty: number }[] = []
 
     order.order_items?.forEach(item => {
-      if (item.fulfill_branch_id === myBranchId) {
+      if (Number(item.fulfill_branch_id) === Number(orderBranchId)) {
         myBranchRevenue += Number(item.total_item_amount) || 0
       } else {
         otherBranchRevenue += Number(item.total_item_amount) || 0
@@ -112,6 +139,8 @@ export async function getSalesHistory(showHidden = false) {
       orderCode: order.order_code,
       createdAt: order.created_at,
       saleName: order.profiles?.full_name || 'ไม่ระบุชื่อ',
+      branchId: order.branch_id,
+      branchName,
       totalAmount: order.total_amount,
       status: order.status,
       shippingName: order.shipping_name,
@@ -134,13 +163,13 @@ export async function hideCancelledOrder(orderId: number) {
   if (!user) return { success: false, error: 'Unauthorized' }
 
   const [{ data: profile }, { data: order, error: orderError }] = await Promise.all([
-    supabase.from('profiles').select('branch_id').eq('user_id', user.id).single(),
+    supabase.from('profiles').select('role, branch_id').eq('user_id', user.id).single(),
     supabase.from('orders').select('id, branch_id, status').eq('id', orderId).single()
   ])
 
   if (orderError || !order) return { success: false, error: 'ไม่พบออเดอร์นี้' }
   if (order.status !== 'CANCELLED') return { success: false, error: 'ซ่อนได้เฉพาะบิลที่ยกเลิกแล้ว' }
-  if (!profile?.branch_id || order.branch_id !== profile.branch_id) {
+  if (profile?.role !== 'admin' && (!profile?.branch_id || order.branch_id !== profile.branch_id)) {
     return { success: false, error: 'ไม่มีสิทธิ์ซ่อนออเดอร์ของสาขาอื่น' }
   }
 
@@ -151,6 +180,7 @@ export async function hideCancelledOrder(orderId: number) {
 
   if (error && error.code !== '23505') return { success: false, error: error.message }
   revalidatePath('/sale/sales-history')
+  revalidatePath('/sales-history')
   revalidatePath('/sale/vanguard-dispatch')
   revalidatePath('/manager/vanguard-dispatch')
   return { success: true }
@@ -173,6 +203,7 @@ export async function restoreHiddenOrder(orderId: number) {
 
   if (error) return { success: false, error: error.message }
   revalidatePath('/sale/sales-history')
+  revalidatePath('/sales-history')
   revalidatePath('/sale/vanguard-dispatch')
   revalidatePath('/manager/vanguard-dispatch')
   return { success: true }

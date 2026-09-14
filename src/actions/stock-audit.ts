@@ -89,21 +89,21 @@ export async function getAuditBranchesAndUser() {
   try {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
-    let userBranchId = 1
-    let userBranchName = ""
+    let userBranchId = 14
+    let userBranchName = "Showroom Terra Sukhumvit 26"
     let userRole = ""
 
     if (user) {
       const { data: profile } = await supabaseAdmin
         .from("profiles")
-        .select("branch_id, role, branches(branch_name)")
+        .select("branch_id, role, branches(id, branch_name, branch_code)")
         .eq("user_id", user.id)
         .maybeSingle()
 
       if (profile) {
-        userBranchId = profile.branch_id || 1
+        userBranchId = profile.branch_id || 14
         userBranchName = (profile.branches as any)?.branch_name || ""
-        userRole = profile.role || ""
+        userRole = (profile.role || "").toLowerCase()
       }
     }
 
@@ -112,15 +112,18 @@ export async function getAuditBranchesAndUser() {
       .select("id, branch_name, branch_code")
       .order("id", { ascending: true })
 
+    const isLocked = userRole !== "admin"
+
     return {
       userBranchId,
       userBranchName,
       userRole,
+      isLocked,
       branches: branches || []
     }
   } catch (err: any) {
     console.error("Error getAuditBranchesAndUser:", err.message)
-    return { userBranchId: 1, userBranchName: "", userRole: "", branches: [] }
+    return { userBranchId: 14, userBranchName: "", userRole: "", isLocked: true, branches: [] }
   }
 }
 
@@ -687,6 +690,365 @@ export async function rejectStockAudit(auditId: number, rejectReason: string) {
     return { success: true }
   } catch (err: any) {
     console.error("Error rejectStockAudit:", err.message)
+    return { error: err.message }
+  }
+}
+
+// ==========================================
+// 🚀 Simple 2-Way Comparison (RFID vs Manual)
+// ==========================================
+export interface TagItemDetail {
+  epc: string
+  isScanned: boolean // true = สแกนเจอแล้ว (FOUND), false = ยังหาไม่เจอ (MISSING)
+}
+
+export interface SimpleStockCompareItem {
+  productId: number
+  name: string
+  sku: string
+  barcode: string
+  imageUrl: string | null
+  price: number
+  systemQty: number // ยอดสต็อกเดิมในระบบปัจจุบัน
+  rfidQty: number
+  manualQty: number
+  diff: number // rfidQty - manualQty (ผลต่าง 2 ทาง)
+  systemDiff: number // rfidQty - systemQty (ผลต่างเทียบกับระบบเดิม)
+  isMatch: boolean
+  rfidTags: string[] // รหัสแท็ก RFID ที่สแกนได้
+  tagDetails?: TagItemDetail[] // รายละเอียดแท็กแต่ละตัว พร้อมสถานะ เจอแล้ว / ยังไม่เจอ
+}
+
+export interface SimpleStockCompareResult {
+  items: SimpleStockCompareItem[]
+  summary: {
+    totalItems: number
+    totalSystem: number // ยอดเดิมในระบบรวม
+    totalRfid: number
+    totalManual: number
+    matchCount: number
+    mismatchCount: number
+    allMatch: boolean
+  }
+}
+
+export async function getSimpleStockComparison(branchId?: number): Promise<{ data: SimpleStockCompareResult | null; error?: string }> {
+  try {
+    let targetBranch = branchId && branchId > 0 ? branchId : 0
+
+    // ถ้าไม่ได้ระบุ branchId ให้ดึงจาก profile ของผู้ใช้ปัจจุบัน
+    if (!targetBranch) {
+      const supabase = await createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const { data: profile } = await supabaseAdmin
+          .from("profiles")
+          .select("branch_id")
+          .eq("user_id", user.id)
+          .maybeSingle()
+        if (profile?.branch_id) targetBranch = profile.branch_id
+      }
+    }
+
+    if (!targetBranch) targetBranch = 14 // default to Showroom Terra Sukhumvit 26
+
+    // ดึงข้อมูลพร้อมกันแบบขนาน (Parallel) เพื่อประสิทธิภาพสูงสุด:
+    // 1. สต็อกทั้งหมดของสาขานี้ เพื่อทำ systemMap
+    // 2. สต็อกที่มีจำนวน > 0 ของสาขานี้ เพื่อนำเข้าตารางเปรียบเทียบ
+    // 3. รหัสแท็ก RFID ที่ลงทะเบียนไว้ประจำสาขานี้ (product_rfid_tags)
+    // 4. ยอดที่กวาดสแกนด้วย RFID (reader_stock)
+    // 5. ยอดที่นับแบบแมนนวล/บาร์โค้ด (stock_initial_count_items)
+    const [
+      { data: allStockRows },
+      { data: stockRows },
+      { data: branchTags },
+      { data: readerRows },
+      { data: manualRows }
+    ] = await Promise.all([
+      supabaseAdmin.from("stock").select("product_id, qty").eq("branch_id", targetBranch),
+      supabaseAdmin.from("stock").select("product_id, qty, products(id, name, sku, barcode, image_url, price)").eq("branch_id", targetBranch).gt("qty", 0),
+      supabaseAdmin.from("product_rfid_tags").select("rfid, product_id, status, products(id, name, sku, barcode, image_url, price)").eq("branch_id", targetBranch).eq("status", "IN_STOCK"),
+      supabaseAdmin.from("reader_stock").select("product_id, qty, products(id, name, sku, barcode, image_url, price)").eq("branch_id", targetBranch),
+      supabaseAdmin.from("stock_initial_count_items").select("product_id, qty, products(id, name, sku, barcode, image_url, price), stock_initial_counts!inner(branch_id)").eq("stock_initial_counts.branch_id", targetBranch)
+    ])
+
+    // สร้าง Map ยอดในระบบ (system stock)
+    const systemMap = new Map<number, number>()
+    allStockRows?.forEach((s: any) => {
+      systemMap.set(Number(s.product_id), Number(s.qty) || 0)
+    })
+
+    // รวบรวมแท็ก RFID ประจำสาขา
+    const tagsByProduct = new Map<number, Set<string>>()
+    branchTags?.forEach((t: any) => {
+      const pId = Number(t.product_id)
+      if (!tagsByProduct.has(pId)) tagsByProduct.set(pId, new Set())
+      tagsByProduct.get(pId)!.add(t.rfid)
+    })
+
+    const itemMap = new Map<number, SimpleStockCompareItem>()
+
+    const ensureItem = (pId: number, prodData: any, initialSysQty?: number) => {
+      if (!itemMap.has(pId)) {
+        const prod = Array.isArray(prodData) ? prodData[0] : prodData
+        itemMap.set(pId, {
+          productId: pId,
+          name: prod?.name || "ไม่ทราบชื่อสินค้า",
+          sku: prod?.sku || "-",
+          barcode: prod?.barcode || "-",
+          imageUrl: prod?.image_url || null,
+          price: Number(prod?.price) || 0,
+          systemQty: initialSysQty !== undefined ? initialSysQty : (systemMap.get(pId) || 0),
+          rfidQty: 0,
+          manualQty: 0,
+          diff: 0,
+          systemDiff: 0,
+          isMatch: false,
+          rfidTags: []
+        })
+      }
+    }
+
+    // 1. ใส่สินค้าที่มีสต็อกจริงในระบบของสาขานี้ (ยอดในระบบ)
+    stockRows?.forEach((s: any) => {
+      ensureItem(Number(s.product_id), s.products, Number(s.qty) || 0)
+    })
+
+    // 2. ใส่สินค้าที่มีแท็ก RFID ประจำสาขานี้
+    branchTags?.forEach((t: any) => {
+      ensureItem(Number(t.product_id), t.products)
+    })
+
+    // 3. ใส่/อัปเดตยอดที่นับได้จาก RFID
+    readerRows?.forEach((r: any) => {
+      const pId = Number(r.product_id)
+      ensureItem(pId, r.products)
+      itemMap.get(pId)!.rfidQty = Number(r.qty) || 0
+    })
+
+    // 4. ใส่/อัปเดตยอดที่นับได้จาก แมนนวล
+    manualRows?.forEach((m: any) => {
+      const pId = Number(m.product_id)
+      ensureItem(pId, m.products)
+      itemMap.get(pId)!.manualQty += Number(m.qty) || 0
+    })
+
+    // 5. ดึงรหัสแท็กที่กวาดสแกนล่าสุดจาก reader_count_scans มาเสริม พร้อมเก็บ Set ของแท็กที่สแกนแล้ว
+    const pIds = Array.from(itemMap.keys())
+    const scannedSet = new Set<string>()
+
+    if (pIds.length > 0) {
+      const { data: scanRows } = await supabaseAdmin
+        .from("reader_count_scans")
+        .select("rfid, product_id")
+        .in("product_id", pIds.slice(0, 1000))
+        .order("scanned_at", { ascending: false })
+
+      scanRows?.forEach((t: any) => {
+        const pId = Number(t.product_id)
+        if (!tagsByProduct.has(pId)) tagsByProduct.set(pId, new Set())
+        tagsByProduct.get(pId)!.add(t.rfid)
+        scannedSet.add(t.rfid)
+      })
+    }
+
+    // คำนวณผลต่าง สถิติ และสถานะ
+    let totalSystem = 0
+    let totalRfid = 0
+    let totalManual = 0
+    let matchCount = 0
+    let mismatchCount = 0
+
+    const items: SimpleStockCompareItem[] = []
+
+    for (const item of itemMap.values()) {
+      item.systemQty = systemMap.get(item.productId) || 0
+      item.systemDiff = item.rfidQty - item.systemQty
+      const tagSet = tagsByProduct.get(item.productId)
+      const allTags = tagSet ? Array.from(tagSet) : []
+
+      // แปลงเป็น tagDetails พร้อมระบุสถานะ isScanned (เจอแล้ว vs ยังหาไม่เจอ)
+      const details: TagItemDetail[] = allTags.map((epc) => ({
+        epc,
+        isScanned: scannedSet.has(epc)
+      }))
+
+      // เรียงให้ตัวที่ "ยังหาไม่เจอ" (isScanned === false) ขึ้นมาก่อน
+      details.sort((a, b) => (a.isScanned === b.isScanned ? 0 : a.isScanned ? 1 : -1))
+
+      item.tagDetails = details
+      item.rfidTags = details.map((d) => d.epc)
+      item.diff = item.rfidQty - item.manualQty
+      item.isMatch = item.rfidQty === item.manualQty
+
+      totalSystem += item.systemQty
+      totalRfid += item.rfidQty
+      totalManual += item.manualQty
+
+      if (item.isMatch) {
+        matchCount++
+      } else {
+        mismatchCount++
+      }
+      items.push(item)
+    }
+
+    // จัดเรียง: ตัวที่ยังไม่ตรงกันขึ้นก่อน, รายการที่มีการนับขึ้นก่อน, ยอดผลต่างมาก่อน
+    items.sort((a, b) => {
+      if (a.isMatch !== b.isMatch) return a.isMatch ? 1 : -1
+      const aCounted = (a.rfidQty > 0 || a.manualQty > 0) ? 1 : 0
+      const bCounted = (b.rfidQty > 0 || b.manualQty > 0) ? 1 : 0
+      if (aCounted !== bCounted) return bCounted - aCounted
+      const diffA = Math.abs(a.diff)
+      const diffB = Math.abs(b.diff)
+      if (diffA !== diffB) return diffB - diffA
+      return b.systemQty - a.systemQty
+    })
+
+    const allMatch = (totalRfid > 0 || totalManual > 0) && mismatchCount === 0
+
+    return {
+      data: {
+        items,
+        summary: {
+          totalItems: items.length,
+          totalSystem,
+          totalRfid,
+          totalManual,
+          matchCount,
+          mismatchCount,
+          allMatch
+        }
+      }
+    }
+  } catch (err: any) {
+    console.error("Error getSimpleStockComparison:", err.message)
+    return { data: null, error: err.message }
+  }
+}
+
+// ล้างยอดนับ (สำหรับเริ่มนับใหม่)
+export async function clearSimpleCounts(branchId: number, type: "all" | "rfid" | "manual" = "all") {
+  try {
+    if (type === "all" || type === "rfid") {
+      const { data: rStocks } = await supabaseAdmin
+        .from("reader_stock")
+        .select("product_id")
+        .eq("branch_id", branchId)
+      const pIds = rStocks?.map((r: any) => r.product_id) || []
+      if (pIds.length > 0) {
+        await supabaseAdmin.from("reader_count_scans").delete().in("product_id", pIds)
+      }
+      await supabaseAdmin.from("reader_stock").delete().eq("branch_id", branchId)
+    }
+
+    if (type === "all" || type === "manual") {
+      const { data: headers } = await supabaseAdmin
+        .from("stock_initial_counts")
+        .select("id")
+        .eq("branch_id", branchId)
+      if (headers && headers.length > 0) {
+        const ids = headers.map((h: any) => h.id)
+        await supabaseAdmin.from("stock_initial_count_items").delete().in("initial_count_id", ids)
+      }
+      await supabaseAdmin.from("stock_initial_counts").delete().eq("branch_id", branchId)
+    }
+
+    revalidatePath("/manager/stock-audit")
+    revalidatePath("/manager/stock-compare")
+    revalidatePath("/manager/initial-count")
+    return { success: true }
+  } catch (err: any) {
+    console.error("Error clearSimpleCounts:", err.message)
+    return { error: err.message }
+  }
+}
+
+// ส่งปรับยอดให้แอดมิน (ล็อคว่าทั้ง 2 ต้องตรงกัน 100%)
+export async function submitSimpleAuditToAdmin({
+  branchId,
+  notes
+}: {
+  branchId: number
+  notes?: string
+}) {
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    // 1. ตรวจสอบความถูกต้องอีกครั้งฝั่ง Server (ห้ามส่งเด็ดขาดถ้ายอดไม่ตรงกัน)
+    const compareRes = await getSimpleStockComparison(branchId)
+    if (!compareRes.data || !compareRes.data.summary.allMatch) {
+      return {
+        error: `ไม่สามารถส่งได้: ยอด RFID และ ยอดแมนนวล ยังไม่ตรงกัน (มียอดต่างกัน ${compareRes.data?.summary.mismatchCount || 0} รายการ)`
+      }
+    }
+
+    const { items, summary } = compareRes.data
+
+    // 2. สร้างเอกสารขออนุมัติปรับสต็อกใน stock_audits
+    const dateStr = new Date().toISOString().slice(2, 10).replace(/-/g, "")
+    const randomSuffix = Math.floor(100 + Math.random() * 900)
+    const auditCode = `AUD-${dateStr}-${randomSuffix}`
+
+    const { data: newAudit, error: auditErr } = await supabaseAdmin
+      .from("stock_audits")
+      .insert({
+        audit_code: auditCode,
+        branch_id: branchId,
+        title: notes?.trim() || `ตรวจนับ 2 ทางตรงกัน 100% (${auditCode})`,
+        status: "PENDING_APPROVAL",
+        created_by: user?.id || null,
+        submitted_by: user?.id || null,
+        submitted_at: new Date().toISOString(),
+        submit_notes: notes?.trim() || "ยอดนับ RFID และ แมนนวล ตรงกัน 100% พร้อมปรับสต็อก",
+        total_rfid_qty: summary.totalRfid,
+        total_manual_qty: summary.totalManual,
+        total_final_qty: summary.totalRfid,
+        started_at: new Date().toISOString()
+      })
+      .select()
+      .single()
+
+    if (auditErr) throw auditErr
+
+    // 3. ดึงยอดเดิมในระบบ (system_qty) เพื่อคำนวณ diff_qty ส่งแอดมิน
+    const { data: sysStocks } = await supabaseAdmin
+      .from("stock")
+      .select("product_id, qty")
+      .eq("branch_id", branchId)
+
+    const sysMap = new Map<number, number>()
+    sysStocks?.forEach((s: any) => sysMap.set(Number(s.product_id), Number(s.qty) || 0))
+
+    const auditItems = items.map((item) => {
+      const sysQty = sysMap.get(item.productId) || 0
+      const diff = item.rfidQty - sysQty
+      return {
+        audit_id: newAudit.id,
+        product_id: item.productId,
+        system_qty_before: sysQty,
+        rfid_qty: item.rfidQty,
+        manual_qty: item.manualQty,
+        final_qty: item.rfidQty,
+        diff_qty: diff,
+        unit_price: item.price,
+        diff_value: diff * item.price,
+        diagnosis: "MATCHED" as const
+      }
+    })
+
+    if (auditItems.length > 0) {
+      await supabaseAdmin.from("stock_audit_items").insert(auditItems)
+    }
+
+    revalidatePath("/manager/stock-audit")
+    revalidatePath("/stock-audit")
+    revalidatePath("/admin/stock-audit")
+
+    return { success: true, auditCode }
+  } catch (err: any) {
+    console.error("Error submitSimpleAuditToAdmin:", err.message)
     return { error: err.message }
   }
 }

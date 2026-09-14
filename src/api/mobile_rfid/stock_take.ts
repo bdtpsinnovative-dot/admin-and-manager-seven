@@ -25,6 +25,17 @@ export const StockTakeController = {
     }
   },
 
+  async clearReaderStock(req: NextRequest, user: any) {
+    try {
+      const qBranch = req.nextUrl.searchParams.get("branch_id");
+      const branchId = qBranch ? Number(qBranch) : (user.branchId || 1);
+      await MobileRfidService.clearReaderStock(branchId);
+      return NextResponse.json({ success: true, message: "ล้างยอดนับ RFID สำเร็จ" });
+    } catch (err) {
+      return handleError(err);
+    }
+  },
+
   async fetchSearchTargets(req: NextRequest, user: any) {
     try {
       const branchId = user.branchId;
