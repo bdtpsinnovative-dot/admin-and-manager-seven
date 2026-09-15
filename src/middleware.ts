@@ -1,4 +1,4 @@
-﻿import { createServerClient } from '@supabase/ssr'
+import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 400 // 400 วัน (ต่ออายุให้อัตโนมัติทุกครั้งที่เข้าเว็บ)
@@ -8,7 +8,7 @@ export async function middleware(request: NextRequest) {
 
   // หน้า Public ที่ไม่ต้องดักจับ
   const isLoginPage = path === '/login'
-  const isPublicApi = path.startsWith('/api/mobile_rfid') || path.startsWith('/api/mobile_pos') || path.startsWith('/_next')
+  const isPublicApi = path.startsWith('/api/auth') || path.startsWith('/api/mobile_rfid') || path.startsWith('/api/mobile_pos') || path.startsWith('/_next')
   const isPublicPath = isLoginPage || isPublicApi
 
   let response = NextResponse.next({
