@@ -148,8 +148,14 @@ export async function getPosData(forceRefresh: boolean = false) {
       barcode: p.barcode,
       product_sup: p.collection_groups ? p.collection_groups.product_sup : null,
       stocks: p.stock || [],
-      // ✨ ประหยัด RAM และ Network Payload: ส่งเฉพาะฟิลด์ material ที่หน้า POS ใช้จริง
-      specs: p.specs?.material ? { material: p.specs.material } : {}
+      // ✨ ส่งข้อมูล material, color, และขนาด เพื่อให้ฟิลเตอร์หน้าบ้านทำงานได้ครบถ้วน
+      specs: p.specs ? {
+        material: p.specs.material || null,
+        color: p.specs.color || p.specs.colour || p.color || null,
+        width_cm: p.specs.width_cm || p.specs.W || null,
+        length_cm: p.specs.length_cm || p.specs.D || null,
+        thickness_cm: p.specs.thickness_cm || p.specs.H || null,
+      } : {}
     }
   })
 

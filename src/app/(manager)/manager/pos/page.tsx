@@ -3,8 +3,22 @@
 import { useState, useEffect, useMemo } from 'react'
 import dynamic from 'next/dynamic'
 import { getPosData, processCheckout, CheckoutPayload, getNearbyStock, getOrderForEdit, PosSetBundle, validatePosCoupon } from '@/actions/pos'
-import { FolderOpen, Store, Truck, Receipt, MapPin, Save, AlertTriangle, X, Plus, Minus, FileText, Trash2, Printer, RefreshCw, Clock, Menu, Sparkles, Ticket } from 'lucide-react'
+import { FolderOpen, Store, Truck, Receipt, MapPin, Save, AlertTriangle, X, Plus, Minus, FileText, Trash2, Printer, RefreshCw, Clock, Menu, Sparkles, Ticket, SlidersHorizontal } from 'lucide-react'
 import { toast } from 'sonner'
+import StorefrontFilterDrawer from '@/components/pos/StorefrontFilterDrawer'
+import StorefrontFilterBar from '@/components/pos/StorefrontFilterBar'
+import {
+  matchesStorefrontCategory,
+  productColorValues,
+  productMaterialValues,
+  productMatchesDimensions,
+  getPosColorOptions,
+  getPosMaterialOptions,
+  getStorefrontCategoryOrder,
+  DimensionFilter,
+  EMPTY_DIMENSION_FILTER,
+  hasActiveDimensions
+} from '@/lib/propFilterModel'
 
 // โหลด Component แผนที่แบบไม่ทำ SSR
 const MapPicker = dynamic(() => import('@/components/MapPicker'), { ssr: false })
@@ -46,7 +60,25 @@ export default function ManagerPOSPage() {
     'WALL ART': true,
   })
 
+  // 🧭 State สำหรับลิ้นชักเมนูเดิม (ห้ามแตะต้อง)
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+
+  // 🛍️ State สำหรับฟิลเตอร์หน้าบ้าน (Storefront Filter)
+  const [isStorefrontDrawerOpen, setIsStorefrontDrawerOpen] = useState(false)
+  const [storefrontDrawerPanel, setStorefrontDrawerPanel] = useState<'category' | 'color' | 'material' | 'size'>('category')
+  const [storefrontCategory, setStorefrontCategory] = useState<string>('All')
+  const [selectedColors, setSelectedColors] = useState<string[]>([])
+  const [selectedMaterials, setSelectedMaterials] = useState<string[]>([])
+  const [dimensionFilter, setDimensionFilter] = useState<DimensionFilter>(EMPTY_DIMENSION_FILTER)
+
+  const hasActiveStorefrontFilters = useMemo(() => {
+    return (
+      (storefrontCategory !== 'All' && storefrontCategory !== 'ALL') ||
+      selectedColors.length > 0 ||
+      selectedMaterials.length > 0 ||
+      hasActiveDimensions(dimensionFilter)
+    )
+  }, [storefrontCategory, selectedColors, selectedMaterials, dimensionFilter])
 
   const [myBranchId, setMyBranchId] = useState<number>(1)
   const [selectedLocation, setSelectedLocation] = useState<number | 'ALL'>('ALL')
@@ -68,9 +100,18 @@ export default function ManagerPOSPage() {
   } | null>(null)
   const [isValidatingCoupon, setIsValidatingCoupon] = useState(false)
 
+  // ตัวเลือกสีและวัสดุที่คำนวณจากสินค้าจริงในหน้านี้
+  const storefrontColorOptions = useMemo(() => {
+    return getPosColorOptions(products, storefrontCategory)
+  }, [products, storefrontCategory])
+
+  const storefrontMaterialOptions = useMemo(() => {
+    return getPosMaterialOptions(products, storefrontCategory)
+  }, [products, storefrontCategory])
+
   useEffect(() => {
     setDisplayLimit(48)
-  }, [searchQuery, selectedCategory])
+  }, [searchQuery, selectedCategory, storefrontCategory, selectedColors, selectedMaterials, dimensionFilter])
   const [submitting, setSubmitting] = useState(false)
   const [isConfirmingClear, setIsConfirmingClear] = useState(false)
   const [isMobileCartOpen, setIsMobileCartOpen] = useState(false)
@@ -819,52 +860,58 @@ export default function ManagerPOSPage() {
     }
   }
 
-// ✨ อัลกอริทึมจัดลำดับหมวดหมู่แบบเดียวกับหน้าเว็บหน้าร้าน (terrahome.studio)
-function getStorefrontCategoryOrder(productSup: string | null | undefined): number {
-  const value = (productSup || '').trim().toLowerCase()
-  // 1. VASE & VESSELS
-  if (value.startsWith('vase') || value.includes('vessel') || value.includes('ceramic vase') || value.includes('glass vase')) return 1
-  // 2. FIGURE
-  if (value.startsWith('doll') || value.startsWith('figure') || value.includes('animal') || value.includes('human') || value.includes('plant')) return 2
-  // 3. SCULPTURE
-  if (value.includes('sculpture')) return 3
-  // 4. BOOKED & CANDLE HOLDERS
-  if (value.includes('booked') || value.includes('book end') || value.includes('candle')) return 4
-  // 5. ACCESSORIES
-  if (value.startsWith('decorative') || value.includes('tray') || value.includes('box') || value.includes('toy')) return 5
-  // 6. DINING & TABLEWARE
-  if (value.includes('dining') || value.includes('kitchen') || value.includes('plate') || value.includes('bowl') || value.includes('cup') || value.includes('glassware')) return 6
-  // 7. DRESSING & BATH
-  if (value.includes('bath') || value.includes('dressing')) return 7
-  // 8. ART & WALL DECOR
-  if (value.includes('art') || value.includes('wall') || value.includes('frame') || value.includes('print')) return 8
-  // 9. อื่นๆ / เฟอร์นิเจอร์
-  return 9
-}
-
   const filteredProducts = products
     .filter(p => {
       const matchSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) || p.sku.toLowerCase().includes(searchQuery.toLowerCase())
       if (!matchSearch) return false
+
+      // 🧭 ฟิลเตอร์หมวดหมู่เดิม (ห้ามแตะต้อง คงไว้ 100%)
       if (selectedCategory !== 'ALL' && p.product_sup !== selectedCategory) return false
+
+      // 🛍️ ฟิลเตอร์หน้าบ้าน (Storefront Category Filter)
+      if (storefrontCategory !== 'All' && storefrontCategory !== 'ALL') {
+        if (!matchesStorefrontCategory(p, storefrontCategory)) return false
+      }
+
+      // กรองตามสี
+      if (selectedColors.length > 0) {
+        const pColors = productColorValues(p)
+        const hasColor = selectedColors.some(c => pColors.includes(c))
+        if (!hasColor) return false
+      }
+
+      // กรองตามวัสดุ
+      if (selectedMaterials.length > 0) {
+        const pMats = productMaterialValues(p)
+        const hasMat = selectedMaterials.some(m => pMats.includes(m))
+        if (!hasMat) return false
+      }
+
+      // กรองตามขนาด
+      if (hasActiveDimensions(dimensionFilter)) {
+        if (!productMatchesDimensions(p, dimensionFilter)) return false
+      }
       
-      // 🚫 ซ่อนเฉพาะสินค้าที่สต็อกหมดเกลี้ยงทุกสาขา (0 ทั่วประเทศ ไม่รับพรีออเดอร์)
-      // 🚚 สินค้าที่มีสต็อกในสาขาเรา หรือมีในสาขาอื่น (ขายข้ามสาขาได้) จะยังแสดงอยู่เสมอ!
+      // 🚫 กรองสต็อก: หากเลือกดูพรีออเดอร์ให้แสดงของหมดได้ ถ้าทั่วไปให้แสดงเฉพาะของที่มีสต็อก
       const totalStock = p.stocks.reduce((sum, s) => sum + Number(s.qty), 0)
+      if (storefrontCategory === 'PRE_ORDER') {
+        return totalStock <= 0
+      }
       return totalStock > 0
     })
     .sort((a, b) => {
-      // 🏆 อันดับ 1: สินค้าที่มีสต็อกในสาขาเราพร้อมหยิบขึ้นก่อน
+      // 🎨 อัลกอริทึมจัดลำดับแบบหน้าเว็บหน้าร้าน (Storefront Algorithm):
+      // 🏆 อันดับ 1: เรียงตามลำดับหมวดหมู่หน้าบ้าน (Storefront Category Hierarchy 1..9)
+      const aCatOrder = getStorefrontCategoryOrder(a.product_sup)
+      const bCatOrder = getStorefrontCategoryOrder(b.product_sup)
+      if (aCatOrder !== bCatOrder) return aCatOrder - bCatOrder
+
+      // 🏬 อันดับ 2: สินค้าที่มีสต็อกในสาขาเราพร้อมหยิบขึ้นก่อน
       const aMyStock = a.stocks.find(s => s.branch_id === myBranchId)?.qty || 0
       const bMyStock = b.stocks.find(s => s.branch_id === myBranchId)?.qty || 0
       const aHasLocal = Number(aMyStock) > 0 ? 0 : 1
       const bHasLocal = Number(bMyStock) > 0 ? 0 : 1
       if (aHasLocal !== bHasLocal) return aHasLocal - bHasLocal
-
-      // 🎨 อันดับ 2: เรียงตามอัลกอริทึมหมวดหมู่หน้าบ้าน (Storefront Category Hierarchy)
-      const aCatOrder = getStorefrontCategoryOrder(a.product_sup)
-      const bCatOrder = getStorefrontCategoryOrder(b.product_sup)
-      if (aCatOrder !== bCatOrder) return aCatOrder - bCatOrder
 
       // 🏷️ อันดับ 3: สินค้าที่มีโปรโมชั่น/ส่วนลด ดันขึ้นมาก่อนในหมวด
       const aHasDiscount = a.discount_label ? 0 : 1
@@ -948,7 +995,7 @@ function getStorefrontCategoryOrder(productSup: string | null | undefined): numb
                       <button
                         key={child.fullText}
                         onClick={() => { setSelectedCategory(child.fullText); setIsSidebarOpen(false); }}
-                        className={`w-full text-left px-4 py-2 text-xs font-bold uppercase transition-all relative ${selectedCategory === child.fullText ? 'text-blue-600' : 'text-slate-500 hover:text-slate-800'}`}
+                        className={`w-full text-left px-4 py-2 text-xs font-bold uppercase transition-all relative ${selectedCategory === child.fullText ? 'text-amber-600' : 'text-slate-500 hover:text-slate-800'}`}
                       >
                         {selectedCategory === child.fullText && (
                           <span className="absolute left-[-5px] top-1/2 -translate-y-1/2 w-1.5 h-1.5 bg-amber-500 rounded-full"></span>
@@ -966,101 +1013,178 @@ function getStorefrontCategoryOrder(productSup: string | null | undefined): numb
 
       {isSidebarOpen && <div onClick={() => setIsSidebarOpen(false)} className="fixed inset-0 z-40 bg-black/10 backdrop-blur-xs transition-opacity" />}
 
+      {/* 🛍️ ลิ้นชักฟิลเตอร์หน้าบ้าน (Storefront Filter Drawer) สไตล์หน้าร้าน */}
+      <StorefrontFilterDrawer
+        open={isStorefrontDrawerOpen}
+        initialPanel={storefrontDrawerPanel}
+        activeCategory={storefrontCategory}
+        selectedColors={selectedColors}
+        selectedMaterials={selectedMaterials}
+        dimensionFilter={dimensionFilter}
+        colorOptions={storefrontColorOptions}
+        materialOptions={storefrontMaterialOptions}
+        onClose={() => setIsStorefrontDrawerOpen(false)}
+        onCategoryChange={(cat) => setStorefrontCategory(cat)}
+        onColorsChange={(colors) => setSelectedColors(colors)}
+        onMaterialsChange={(mats) => setSelectedMaterials(mats)}
+        onDimensionFilterChange={(dims) => setDimensionFilter(dims)}
+        onResetAll={() => {
+          setStorefrontCategory('All')
+          setSelectedColors([])
+          setSelectedMaterials([])
+          setDimensionFilter(EMPTY_DIMENSION_FILTER)
+        }}
+      />
+
       {/* 🧩 โครงสร้างเนื้อหาหลัก */}
       <div className="max-w-[1600px] mx-auto flex flex-col lg:flex-row gap-6 items-start">
 
         <div className="flex-1 w-full flex flex-col gap-4">
-          <div className="bg-white p-4 rounded-3xl shadow-xs flex flex-col xl:flex-row gap-4 items-center justify-between w-full sticky top-0 md:top-4 z-20">
-            <div className="flex items-center gap-1.5 w-full xl:w-auto overflow-hidden">
-              {/* ปุ่ม Hamburger สำหรับมือถือ */}
-              <button
-                type="button"
-                onClick={() => {
-                  window.dispatchEvent(new Event("open-mobile-menu"));
-                }}
-                className="flex md:hidden p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-full transition-all cursor-pointer shadow-xs shrink-0"
-                title="เปิดเมนูหลัก"
-              >
-                <Menu className="w-4 h-4" />
-              </button>
+          <div className="bg-white p-4 rounded-3xl shadow-xs flex flex-col gap-3 w-full sticky top-0 md:top-4 z-20">
+            {/* 🌟 Row 1: เครื่องมือหลัก, ปุ่มหมวดหมู่เดิม, เซ็ตสินค้า, ค้นหา */}
+            <div className="flex flex-col xl:flex-row gap-3 items-center justify-between w-full">
+              <div className="flex items-center gap-2 w-full xl:w-auto overflow-hidden">
+                {/* ปุ่ม Hamburger สำหรับมือถือ */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.dispatchEvent(new Event("open-mobile-menu"));
+                  }}
+                  className="flex md:hidden p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-full transition-all cursor-pointer shadow-xs shrink-0"
+                  title="เปิดเมนูหลัก"
+                >
+                  <Menu className="w-4 h-4" />
+                </button>
 
-              <button
-                onClick={() => setIsSidebarOpen(true)}
-                className="bg-slate-100 text-slate-700 font-bold text-xs px-3 py-2.5 rounded-full hover:bg-slate-200 transition-all flex items-center justify-center gap-1.5 shadow-xs flex-1 min-w-0 xl:flex-none xl:w-auto text-center truncate"
-              >
-                <FolderOpen className="w-3.5 h-3.5 shrink-0" />
-                <span className="truncate">หมวดหมู่ {selectedCategory !== 'ALL' && `(${selectedCategory.split(' ').pop()})`}</span>
-              </button>
-              <select
-                value={selectedLocation}
-                onChange={(e) => {
-                  const val = e.target.value
-                  setSelectedLocation(val === 'ALL' ? 'ALL' : Number(val))
-                }}
-                className={`border font-bold text-xs rounded-full px-3 py-2 outline-none cursor-pointer appearance-none shadow-xs flex-1 min-w-0 xl:flex-none xl:w-auto text-center truncate ${selectedLocation === myBranchId ? 'bg-blue-50 border-blue-200 text-blue-600' : 'bg-white border-slate-200 text-slate-700'}`}
-              >
-                <option value="ALL">ALL STOCKS</option>
-                {branches.map(b => (
-                  <option key={b.id} value={b.id}>{b.branch_name.replace('สาขา', '')} {b.id === myBranchId ? '(เรา)' : ''}</option>
-                ))}
-              </select>
+                {/* 🧭 ปุ่มเดิม: หมวดหมู่ (ห้ามแตะต้อง คงไว้ 100%) */}
+                <button
+                  onClick={() => setIsSidebarOpen(true)}
+                  className="bg-slate-100 text-slate-700 font-bold text-xs px-3.5 py-2.5 rounded-full hover:bg-slate-200 transition-all flex items-center justify-center gap-1.5 shadow-xs flex-1 min-w-0 xl:flex-none xl:w-auto text-center truncate cursor-pointer"
+                >
+                  <FolderOpen className="w-3.5 h-3.5 shrink-0 text-slate-500" />
+                  <span className="truncate">หมวดหมู่ {selectedCategory !== 'ALL' && `(${selectedCategory.split(' ').pop()})`}</span>
+                </button>
 
-              {/* ✨ Reload & Time (Desktop only) */}
-              <div className="hidden sm:flex items-center gap-2 bg-slate-50 border border-slate-100 rounded-full px-3 py-1.5 shrink-0 ml-auto xl:ml-0">
-                <div className="flex flex-col">
-                  <span className="text-[9px] text-slate-400 font-bold flex items-center gap-1">
-                    <Clock className="w-2.5 h-2.5" /> อัปเดตล่าสุด
-                  </span>
-                  <span className="text-[10px] text-slate-700 font-bold">
-                    {lastUpdated ? lastUpdated.toLocaleString('th-TH', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : 'กำลังโหลด...'}
-                  </span>
+                {/* ✨ Reload & Time (Desktop only) */}
+                <div className="hidden sm:flex items-center gap-2 bg-slate-50 border border-slate-100 rounded-full px-3 py-1.5 shrink-0 ml-auto xl:ml-0">
+                  <div className="flex flex-col">
+                    <span className="text-[9px] text-slate-400 font-bold flex items-center gap-1">
+                      <Clock className="w-2.5 h-2.5" /> อัปเดตล่าสุด
+                    </span>
+                    <span className="text-[10px] text-slate-700 font-bold">
+                      {lastUpdated ? lastUpdated.toLocaleString('th-TH', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : 'กำลังโหลด...'}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => loadData(false, true)}
+                    disabled={loadingDb}
+                    className="ml-1 p-1.5 bg-white border border-slate-200 text-amber-600 rounded-full hover:bg-amber-50 hover:border-amber-300 disabled:opacity-50 transition-all cursor-pointer shadow-xs"
+                    title="รีโหลดข้อมูลสินค้าและสต็อกสดจากคลัง"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${loadingDb ? 'animate-spin text-slate-400' : ''}`} />
+                  </button>
                 </div>
+
+                {/* ✨ Mobile-only compact reload button */}
                 <button
                   onClick={() => loadData(false, true)}
                   disabled={loadingDb}
-                  className="ml-1 p-1.5 bg-white border border-slate-200 text-blue-600 rounded-full hover:bg-blue-50 hover:border-blue-300 disabled:opacity-50 transition-all cursor-pointer shadow-xs"
+                  className="flex sm:hidden p-2.5 bg-slate-100 hover:bg-slate-200 text-amber-600 rounded-full disabled:opacity-50 transition-all cursor-pointer shadow-xs shrink-0"
                   title="รีโหลดข้อมูลสินค้าและสต็อกสดจากคลัง"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${loadingDb ? 'animate-spin text-slate-400' : ''}`} />
                 </button>
               </div>
+              
+              <div className="flex items-center gap-2 w-full xl:w-auto">
+                {sets.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCategory(prev => prev === 'SETS' ? 'ALL' : 'SETS')}
+                    className={`px-3.5 py-2 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 shadow-2xs ${
+                      selectedCategory === 'SETS'
+                        ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md'
+                        : 'bg-white border border-purple-200 text-purple-700 hover:bg-purple-50'
+                    }`}
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>สินค้าจัดเซ็ต ({sets.length})</span>
+                  </button>
+                )}
 
-              {/* ✨ Mobile-only compact reload button */}
-              <button
-                onClick={() => loadData(false, true)}
-                disabled={loadingDb}
-                className="flex sm:hidden p-2.5 bg-slate-100 hover:bg-slate-200 text-blue-600 rounded-full disabled:opacity-50 transition-all cursor-pointer shadow-xs shrink-0"
-                title="รีโหลดข้อมูลสินค้าและสต็อกสดจากคลัง"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${loadingDb ? 'animate-spin text-slate-400' : ''}`} />
-              </button>
-            </div>
-            
-            <div className="flex items-center gap-2 w-full xl:w-auto">
-              {sets.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setSelectedCategory(prev => prev === 'SETS' ? 'ALL' : 'SETS')}
-                  className={`px-3.5 py-2 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 shadow-2xs ${
-                    selectedCategory === 'SETS'
-                      ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md'
-                      : 'bg-white border border-purple-200 text-purple-700 hover:bg-purple-50'
-                  }`}
-                >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>สินค้าจัดเซ็ต ({sets.length})</span>
-                </button>
-              )}
-
-              <div className="w-full xl:w-72 shrink-0">
-                <input
-                  type="text"
-                  placeholder={selectedCategory === 'SETS' ? "ค้นหาชื่อเซ็ต หรือหมวด..." : "ค้นหาชื่อสินค้าที่นี่..."}
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full px-5 py-2.5 bg-slate-50 rounded-full text-sm outline-none focus:bg-white focus:ring-2 focus:ring-blue-100 transition-all"
-                />
+                <div className="w-full xl:w-72 shrink-0">
+                  <input
+                    type="text"
+                    placeholder={selectedCategory === 'SETS' ? "ค้นหาชื่อเซ็ต หรือหมวด..." : "ค้นหาชื่อสินค้าที่นี่..."}
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full px-5 py-2.5 bg-slate-50 rounded-full text-sm outline-none focus:bg-white focus:ring-2 focus:ring-amber-200 transition-all"
+                  />
+                </div>
               </div>
+            </div>
+
+            {/* 🌟 Row 2: แถบปุ่มฟิลเตอร์สไตล์หน้าบ้าน (Storefront Filter Bar) ตรงตามเรฟภาพเป๊ะๆ */}
+            <div className="w-full pt-2 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <StorefrontFilterBar
+                onOpenFilter={() => {
+                  setStorefrontDrawerPanel('category')
+                  setIsStorefrontDrawerOpen(true)
+                }}
+                onOpenColor={() => {
+                  setStorefrontDrawerPanel('color')
+                  setIsStorefrontDrawerOpen(true)
+                }}
+                onOpenMaterial={() => {
+                  setStorefrontDrawerPanel('material')
+                  setIsStorefrontDrawerOpen(true)
+                }}
+                onOpenSize={() => {
+                  setStorefrontDrawerPanel('size')
+                  setIsStorefrontDrawerOpen(true)
+                }}
+                onClearFilters={() => {
+                  setStorefrontCategory('All')
+                  setSelectedColors([])
+                  setSelectedMaterials([])
+                  setDimensionFilter(EMPTY_DIMENSION_FILTER)
+                }}
+                hasActiveFilters={hasActiveStorefrontFilters}
+                isFilterOpen={isStorefrontDrawerOpen}
+                selectedCategory={storefrontCategory}
+                selectedColorsCount={selectedColors.length}
+                selectedMaterialsCount={selectedMaterials.length}
+                hasActiveDimensions={hasActiveDimensions(dimensionFilter)}
+                branches={branches}
+                selectedLocation={selectedLocation}
+                onSelectLocation={(loc) => setSelectedLocation(loc)}
+              />
+
+              {/* Active Filter Badges */}
+              {hasActiveStorefrontFilters && (
+                <div className="flex items-center gap-1.5 shrink-0 overflow-x-auto [scrollbar-width:none] py-0.5">
+                  {storefrontCategory !== 'All' && storefrontCategory !== 'ALL' && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-bold rounded-full whitespace-nowrap">
+                      หมวด: {storefrontCategory}
+                    </span>
+                  )}
+                  {selectedColors.length > 0 && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-bold rounded-full whitespace-nowrap">
+                      สี ({selectedColors.length})
+                    </span>
+                  )}
+                  {selectedMaterials.length > 0 && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-bold rounded-full whitespace-nowrap">
+                      วัสดุ ({selectedMaterials.length})
+                    </span>
+                  )}
+                  {hasActiveDimensions(dimensionFilter) && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-bold rounded-full whitespace-nowrap">
+                      ขนาด
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -1169,7 +1293,7 @@ function getStorefrontCategoryOrder(productSup: string | null | undefined): numb
                                         ฿{Number(it.price).toLocaleString()}
                                       </span>
                                     ) : (
-                                      <span className="text-[8px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 font-bold border border-blue-100 flex items-center gap-0.5">
+                                      <span className="text-[8px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 font-bold border border-amber-200 flex items-center gap-0.5">
                                         <MapPin className="w-2 h-2" /> ดึงสาขา
                                       </span>
                                     )}
@@ -1242,7 +1366,7 @@ function getStorefrontCategoryOrder(productSup: string | null | undefined): numb
                     <div
                       key={product.id}
                       onClick={() => handleProductClick(product)}
-                      className="bg-white rounded-[20px] p-2 flex flex-col shadow-xs cursor-pointer border border-slate-100 hover:border-blue-300 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 group relative"
+                      className="bg-white rounded-[20px] p-2 flex flex-col shadow-xs cursor-pointer border border-slate-100 hover:border-amber-400 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 group relative"
                     >
                       <div className="relative w-full aspect-square bg-slate-50 rounded-2xl overflow-hidden mb-2 flex items-center justify-center">
                         {product.image_url ? (
@@ -1255,7 +1379,7 @@ function getStorefrontCategoryOrder(productSup: string | null | undefined): numb
                             เหลือ {myBranchQty}
                           </div>
                         ) : (
-                          <div className="absolute top-2 right-2 bg-blue-600 text-white text-[9px] px-1.5 py-0.5 rounded-md backdrop-blur-xs font-bold shadow-xs flex items-center gap-0.5">
+                          <div className="absolute top-2 right-2 bg-amber-600 text-white text-[9px] px-1.5 py-0.5 rounded-md backdrop-blur-xs font-bold shadow-xs flex items-center gap-0.5">
                             <MapPin className="w-2.5 h-2.5" /> ดึงสาขา ({totalStock})
                           </div>
                         )}
@@ -1277,7 +1401,7 @@ function getStorefrontCategoryOrder(productSup: string | null | undefined): numb
                                 <span className="text-[8px] bg-orange-50 text-orange-600 px-1 rounded font-black">{product.discount_label}</span>
                               </div>
                             )}
-                            <div className="text-blue-600 font-black text-xs sm:text-sm">฿{product.price.toLocaleString()}</div>
+                            <div className="text-amber-700 font-black text-xs sm:text-sm">฿{product.price.toLocaleString()}</div>
                           </div>
                         </div>
                       </div>
@@ -1330,7 +1454,7 @@ function getStorefrontCategoryOrder(productSup: string | null | undefined): numb
             </button>
             <button
               onClick={() => handleSaleModeChange('DELIVERY')}
-              className={`py-2 text-xs font-black rounded-xl transition-all flex items-center justify-center gap-1.5 ${saleMode === 'DELIVERY' ? 'bg-blue-600 text-white shadow-xs' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'}`}
+              className={`py-2 text-xs font-black rounded-xl transition-all flex items-center justify-center gap-1.5 ${saleMode === 'DELIVERY' ? 'bg-amber-600 text-white shadow-xs' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'}`}
             >
               <Truck className="w-4 h-4" /> ให้ร้านส่งให้
             </button>
@@ -1339,7 +1463,7 @@ function getStorefrontCategoryOrder(productSup: string | null | undefined): numb
           <div className="p-4 pb-3 border-b border-slate-50 flex justify-between items-center">
             <h2 id="cart-icon-target" className="text-sm font-bold text-slate-800 flex items-center gap-1.5 transition-transform">
               <Receipt className="w-4 h-4" /> รายการใบสรุปขาย
-              <span className="bg-blue-50 text-blue-600 font-bold text-[10px] px-2 py-0.5 rounded-full">{cart.length} รายการ</span>
+              <span className="bg-amber-50 text-amber-700 font-bold text-[10px] px-2 py-0.5 rounded-full">{cart.length} รายการ</span>
             </h2>
             <div className="flex items-center gap-2">
               {cart.length > 0 && (
@@ -1464,7 +1588,7 @@ function getStorefrontCategoryOrder(productSup: string | null | undefined): numb
                         </div>
                       )}
                       <div className="flex items-center justify-between mt-1">
-                        <p className="text-[11px] text-blue-600 font-extrabold">{(item.price * item.quantity).toLocaleString()} ฿</p>
+                        <p className="text-[11px] text-amber-700 font-extrabold">{(item.price * item.quantity).toLocaleString()} ฿</p>
                         <div className="flex items-center bg-white border border-slate-200 rounded-lg shadow-2xs overflow-hidden h-6">
                           <button onClick={() => updateQuantity(item.cartItemId, -1)} className="w-6 h-full flex items-center justify-center text-slate-500 font-bold hover:bg-slate-50 text-xs">-</button>
                           <span className="px-1 text-[11px] font-bold text-slate-800 min-w-[16px] text-center">{item.quantity}</span>
@@ -1484,7 +1608,7 @@ function getStorefrontCategoryOrder(productSup: string | null | undefined): numb
             <div className="flex items-center justify-between py-2 border-b border-slate-200/60 text-xs">
               <div className="flex flex-col min-w-0">
                 <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1">
-                  {saleMode === 'DELIVERY' ? <Truck className="w-3 h-3 text-blue-500" /> : <Store className="w-3 h-3 text-slate-500" />}
+                  {saleMode === 'DELIVERY' ? <Truck className="w-3 h-3 text-amber-600" /> : <Store className="w-3 h-3 text-slate-500" />}
                   {saleMode === 'DELIVERY' ? 'ข้อมูลสำหรับจัดส่ง' : 'ลูกค้ารับหน้าร้าน'}
                 </span>
                 <span className="text-slate-700 font-semibold truncate text-[11px] mt-0.5">
@@ -1501,7 +1625,7 @@ function getStorefrontCategoryOrder(productSup: string | null | undefined): numb
               </div>
               <button 
                 onClick={() => setIsCustomerFormOpen(true)}
-                className="text-[10px] text-blue-600 hover:text-blue-700 font-bold px-2 py-1 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer shrink-0 ml-2"
+                className="text-[10px] text-amber-700 hover:text-amber-800 font-bold px-2 py-1 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer shrink-0 ml-2"
               >
                 {shippingName ? 'แก้ไข' : 'ระบุลูกค้า'}
               </button>
@@ -1630,7 +1754,7 @@ function getStorefrontCategoryOrder(productSup: string | null | undefined): numb
               <div className="flex justify-between pt-1 border-t border-dashed border-slate-200"><span>ยอดก่อนภาษี (Subtotal)</span><span>{(totalFinalPrice / 1.07).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span></div>
               <div className="flex justify-between"><span>ภาษีมูลค่าเพิ่ม (VAT 7%)</span><span>{(totalFinalPrice - (totalFinalPrice / 1.07)).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span></div>
               <div className="flex justify-between text-xs font-bold text-slate-800 pt-3 mt-1 border-t border-dashed border-slate-200">
-                <span>ยอดสุทธิใบขาย (Grand Total)</span><span className="text-base text-blue-600 font-black">{totalFinalPrice.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span>
+                <span>ยอดสุทธิใบขาย (Grand Total)</span><span className="text-base text-amber-700 font-black">{totalFinalPrice.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span>
               </div>
             </div>
 
@@ -1656,9 +1780,9 @@ function getStorefrontCategoryOrder(productSup: string | null | undefined): numb
       {isCustomerFormOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
           <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl flex flex-col max-h-[90vh]">
-            <div className={`p-5 border-b flex justify-between items-center rounded-t-3xl ${saleMode === 'DELIVERY' ? 'bg-blue-50/50 border-blue-100' : 'bg-slate-50 border-slate-100'}`}>
-              <h3 className={`font-bold text-sm flex items-center gap-1.5 ${saleMode === 'DELIVERY' ? 'text-blue-800' : 'text-slate-800'}`}>
-                {saleMode === 'DELIVERY' ? <Truck className="w-5 h-5 text-blue-600" /> : <Store className="w-5 h-5 text-slate-600" />} 
+            <div className={`p-5 border-b flex justify-between items-center rounded-t-3xl ${saleMode === 'DELIVERY' ? 'bg-amber-50/50 border-amber-200' : 'bg-slate-50 border-slate-100'}`}>
+              <h3 className={`font-bold text-sm flex items-center gap-1.5 ${saleMode === 'DELIVERY' ? 'text-amber-900' : 'text-slate-800'}`}>
+                {saleMode === 'DELIVERY' ? <Truck className="w-5 h-5 text-amber-600" /> : <Store className="w-5 h-5 text-slate-600" />} 
                 {saleMode === 'DELIVERY' ? 'ระบุข้อมูลสำหรับจัดส่ง' : 'ระบุข้อมูลลูกค้ารับหน้าร้าน'}
               </h3>
               <button onClick={() => setIsCustomerFormOpen(false)} className="text-slate-400 hover:text-slate-700 font-bold p-1 bg-white rounded-lg shadow-2xs">
@@ -1681,7 +1805,7 @@ function getStorefrontCategoryOrder(productSup: string | null | undefined): numb
                 ⚡ ไม่ระบุเบอร์โทร/ที่อยู่ (ใส่ "-")
               </button>
               <div className="space-y-3">
-                <div className={`rounded-xl border p-3 ${editOrderId ? 'border-orange-200 bg-orange-50/60' : 'border-blue-200 bg-blue-50/50'}`}>
+                <div className={`rounded-xl border p-3 ${editOrderId ? 'border-orange-200 bg-orange-50/60' : 'border-amber-200 bg-amber-50/50'}`}>
                   <label className="mb-1 flex items-center justify-between text-[10px] font-bold text-slate-600">
                     <span>เลข Invoice / รหัสออเดอร์</span>
                     <span className="font-normal text-slate-400">ระบุเองได้</span>
@@ -1691,7 +1815,7 @@ function getStorefrontCategoryOrder(productSup: string | null | undefined): numb
                     placeholder="เว้นว่างเพื่อให้ระบบสร้างเลข INV อัตโนมัติ"
                     value={customOrderCode}
                     onChange={e => setCustomOrderCode(e.target.value.toUpperCase().replace(/\s/g, ''))}
-                    className="w-full rounded-lg border border-slate-200 bg-white p-3 font-mono text-xs uppercase outline-none transition-colors focus:border-blue-400"
+                    className="w-full rounded-lg border border-slate-200 bg-white p-3 font-mono text-xs uppercase outline-none transition-colors focus:border-amber-400"
                   />
                   <p className="mt-1.5 text-[9px] leading-relaxed text-slate-400">
                     {editOrderId ? 'แก้เลขได้ขณะที่บิลยังรอชำระเงิน โดยไม่ต้องรับชำระทันที' : 'เลขต้องไม่ซ้ำกับบิลอื่น หากเว้นว่างระบบจะสร้างให้ก่อนยืนยัน'}
@@ -1699,40 +1823,40 @@ function getStorefrontCategoryOrder(productSup: string | null | undefined): numb
                 </div>
                 <div>
                   <label className="text-[10px] font-bold text-slate-500 mb-1 block">ชื่อลูกค้า/ผู้รับ <span className="text-red-500">*</span></label>
-                  <input type="text" placeholder="ระบุชื่อลูกค้า..." value={shippingName} onChange={e => setShippingName(e.target.value)} className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-blue-400 focus:bg-white transition-colors" />
+                  <input type="text" placeholder="ระบุชื่อลูกค้า..." value={shippingName} onChange={e => setShippingName(e.target.value)} className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-amber-400 focus:bg-white transition-colors" />
                 </div>
                 <div>
                   <label className="text-[10px] font-bold text-slate-500 mb-1 block">เบอร์โทรศัพท์ติดต่อ <span className="text-red-500">*</span></label>
-                  <input type="text" placeholder="ระบุเบอร์โทร..." value={shippingPhone} onChange={e => setShippingPhone(e.target.value)} className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-blue-400 focus:bg-white transition-colors" />
+                  <input type="text" placeholder="ระบุเบอร์โทร..." value={shippingPhone} onChange={e => setShippingPhone(e.target.value)} className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-amber-400 focus:bg-white transition-colors" />
                 </div>
                 <div>
                   <label className="text-[10px] font-bold text-slate-500 mb-1 block">ที่อยู่จัดส่ง/ที่อยู่ลูกค้า <span className="text-red-500">*</span></label>
-                  <textarea placeholder="บ้านเลขที่, ซอย, ถนน, ตำบล, อำเภอ, จังหวัด, รหัสไปรษณีย์..." value={shippingAddress} onChange={e => setShippingAddress(e.target.value)} rows={3} className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-blue-400 focus:bg-white transition-colors resize-none" />
+                  <textarea placeholder="บ้านเลขที่, ซอย, ถนน, ตำบล, อำเภอ, จังหวัด, รหัสไปรษณีย์..." value={shippingAddress} onChange={e => setShippingAddress(e.target.value)} rows={3} className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-amber-400 focus:bg-white transition-colors resize-none" />
                 </div>
               </div>
 
               <div className="pt-4 mt-4 border-t border-slate-100 space-y-3">
-                <h4 className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5"><FileText className="w-4 h-4 text-blue-500"/> ข้อมูลสำหรับออกใบกำกับภาษี (ถ้ามี)</h4>
+                <h4 className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5"><FileText className="w-4 h-4 text-amber-600"/> ข้อมูลสำหรับออกใบกำกับภาษี (ถ้ามี)</h4>
                 <div>
                   <label className="text-[10px] font-bold text-slate-500 mb-1 block">ชื่อบริษัท (ภาษาไทย) <span className="text-xs font-normal text-slate-400">(ไม่บังคับ)</span></label>
-                  <input type="text" placeholder="ระบุชื่อบริษัทภาษาไทย..." value={companyNameTh} onChange={e => setCompanyNameTh(e.target.value)} className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-blue-400 focus:bg-white transition-colors" />
+                  <input type="text" placeholder="ระบุชื่อบริษัทภาษาไทย..." value={companyNameTh} onChange={e => setCompanyNameTh(e.target.value)} className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-amber-400 focus:bg-white transition-colors" />
                 </div>
                 <div>
                   <label className="text-[10px] font-bold text-slate-500 mb-1 block">ชื่อบริษัท (ภาษาอังกฤษ) <span className="text-xs font-normal text-slate-400">(ไม่บังคับ)</span></label>
-                  <input type="text" placeholder="ระบุชื่อบริษัทภาษาอังกฤษ..." value={companyNameEn} onChange={e => setCompanyNameEn(e.target.value)} className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-blue-400 focus:bg-white transition-colors" />
+                  <input type="text" placeholder="ระบุชื่อบริษัทภาษาอังกฤษ..." value={companyNameEn} onChange={e => setCompanyNameEn(e.target.value)} className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-amber-400 focus:bg-white transition-colors" />
                 </div>
                 {(companyNameTh.trim() !== '' || companyNameEn.trim() !== '') && (
                   <>
                     <div>
                       <label className="text-[10px] font-bold text-slate-500 mb-1 block">ที่อยู่บริษัท <span className="text-red-500">*</span></label>
-                      <textarea placeholder="ระบุที่อยู่บริษัทสำหรับออกใบกำกับภาษี..." value={companyAddress} onChange={e => setCompanyAddress(e.target.value)} rows={2} className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-blue-400 focus:bg-white transition-colors resize-none" />
+                      <textarea placeholder="ระบุที่อยู่บริษัทสำหรับออกใบกำกับภาษี..." value={companyAddress} onChange={e => setCompanyAddress(e.target.value)} rows={2} className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-amber-400 focus:bg-white transition-colors resize-none" />
                     </div>
                     <div>
                       <div className="flex justify-between items-end mb-1">
                         <label className="text-[10px] font-bold text-slate-500 block">เลขประจำตัวผู้เสียภาษี (13 หลัก) <span className="text-xs font-normal text-slate-400">(ไม่บังคับ)</span></label>
                         <span className={`text-[9px] font-bold ${taxId.length === 13 ? 'text-emerald-500' : 'text-slate-400'}`}>{taxId.length}/13</span>
                       </div>
-                      <input type="text" placeholder="ระบุเลขประจำตัวผู้เสียภาษี..." value={taxId} onChange={e => setTaxId(e.target.value.replace(/\D/g, ''))} maxLength={13} className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-blue-400 focus:bg-white transition-colors" />
+                      <input type="text" placeholder="ระบุเลขประจำตัวผู้เสียภาษี..." value={taxId} onChange={e => setTaxId(e.target.value.replace(/\D/g, ''))} maxLength={13} className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-amber-400 focus:bg-white transition-colors" />
                     </div>
                   </>
                 )}
@@ -1752,7 +1876,7 @@ function getStorefrontCategoryOrder(productSup: string | null | undefined): numb
                         src={`https://www.openstreetmap.org/export/embed.html?bbox=${longitude-0.002},${latitude-0.002},${longitude+0.002},${latitude+0.002}&layer=mapnik&marker=${latitude},${longitude}`}
                         className="pointer-events-none" 
                       />
-                      <div className="absolute bottom-2 right-2 bg-white/90 backdrop-blur-sm px-2 py-1 rounded-md text-[9px] font-bold text-blue-600 shadow-sm border border-blue-100">
+                      <div className="absolute bottom-2 right-2 bg-white/90 backdrop-blur-sm px-2 py-1 rounded-md text-[9px] font-bold text-amber-700 shadow-sm border border-amber-200">
                         พิกัดถูกบันทึกแล้ว
                       </div>
                     </div>
@@ -1769,7 +1893,7 @@ function getStorefrontCategoryOrder(productSup: string | null | undefined): numb
                     className={`w-full flex items-center justify-center gap-1.5 p-3 text-xs font-bold rounded-xl border transition-all ${
                       latitude && longitude 
                         ? 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50' 
-                        : 'bg-blue-50 border-blue-200 text-blue-600 hover:bg-blue-100 hover:border-blue-300 shadow-sm'
+                        : 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100 hover:border-amber-300 shadow-sm'
                     }`}
                   >
                     <MapPin className="w-4 h-4" />
@@ -1785,7 +1909,7 @@ function getStorefrontCategoryOrder(productSup: string | null | undefined): numb
                   setIsCustomerFormOpen(false)
                   setTimeout(() => handlePreCheckout(), 100)
                 }} 
-                className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs transition-colors shadow-md shadow-blue-200 cursor-pointer"
+                className="w-full py-3 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold text-xs transition-colors shadow-md shadow-amber-200 cursor-pointer"
               >
                 บันทึกข้อมูลและดำเนินการต่อ
               </button>
@@ -1810,12 +1934,12 @@ function getStorefrontCategoryOrder(productSup: string | null | undefined): numb
               <p className="text-sm font-bold text-slate-700 mb-1">{nearbyModal.product.name}</p>
               <p className="text-xs text-slate-500 mb-4">รหัส: {nearbyModal.product.sku}</p>
               <div className="space-y-2">
-                <p className="text-xs font-bold text-blue-600 flex items-center gap-1">
+                <p className="text-xs font-bold text-amber-700 flex items-center gap-1">
                   <MapPin className="w-3.5 h-3.5" /> พบสินค้าในสาขาอื่น (คลิกเพื่อดึงของมาส่งบ้านลูกค้า):
                 </p>
                 {nearbyModal.isLoading ? (
                   <div className="flex items-center justify-center py-8 gap-2 text-slate-400 font-bold text-xs">
-                    <span className="animate-spin rounded-full h-4 w-4 border-2 border-slate-300 border-t-blue-600" />
+                    <span className="animate-spin rounded-full h-4 w-4 border-2 border-slate-300 border-t-amber-600" />
                     กำลังตรวจสอบสต็อกสาขาอื่น...
                   </div>
                 ) : nearbyModal.nearbyStocks.length === 0 ? (
@@ -1830,12 +1954,12 @@ function getStorefrontCategoryOrder(productSup: string | null | undefined): numb
                       <button
                         key={stock.branch_id || stock.id || Math.random()}
                         onClick={() => handleSelectNearbyBranch(stock)}
-                        className="w-full flex justify-between items-center bg-white border border-blue-100 hover:border-blue-400 hover:bg-blue-50 p-3 rounded-xl transition-all cursor-pointer group shadow-2xs hover:shadow-md"
+                        className="w-full flex justify-between items-center bg-white border border-amber-100 hover:border-amber-400 hover:bg-amber-50 p-3 rounded-xl transition-all cursor-pointer group shadow-2xs hover:shadow-md"
                       >
-                        <span className="text-xs font-bold text-slate-700 group-hover:text-blue-800">
+                        <span className="text-xs font-bold text-slate-700 group-hover:text-amber-800">
                           {stock.branch_name || 'ไม่ทราบชื่อสาขา'}
                         </span>
-                        <span className="text-xs font-black text-blue-600 bg-blue-50 group-hover:bg-white px-2 py-1 rounded border border-transparent group-hover:border-blue-200 transition-colors">
+                        <span className="text-xs font-black text-amber-700 bg-amber-50 group-hover:bg-white px-2 py-1 rounded border border-transparent group-hover:border-amber-200 transition-colors">
                           มี {displayAmount} ชิ้น
                         </span>
                       </button>
@@ -1857,7 +1981,7 @@ function getStorefrontCategoryOrder(productSup: string | null | undefined): numb
       {isConfirmCheckoutOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
           <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden flex flex-col p-6 items-center text-center">
-            <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mb-4">
+            <div className="w-16 h-16 bg-amber-50 text-amber-700 rounded-full flex items-center justify-center mb-4">
               <FileText className="w-8 h-8" />
             </div>
             <h3 className="font-bold text-slate-800 text-lg mb-2">
@@ -1875,7 +1999,7 @@ function getStorefrontCategoryOrder(productSup: string | null | undefined): numb
                   placeholder="เช่น INV-1234 (ลบแล้วตั้งเองได้)" 
                   value={customOrderCode}
                   onChange={e => setCustomOrderCode(e.target.value.toUpperCase().replace(/\s/g, ''))}
-                  className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-blue-400 focus:bg-white transition-colors uppercase font-mono" 
+                  className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-amber-400 focus:bg-white transition-colors uppercase font-mono" 
                 />
               </div>
             )}
@@ -1890,7 +2014,7 @@ function getStorefrontCategoryOrder(productSup: string | null | undefined): numb
               <button
                 onClick={handleCheckout}
                 disabled={submitting}
-                className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs transition-all cursor-pointer shadow-md shadow-blue-200 flex items-center justify-center gap-1.5"
+                className="flex-1 py-3 bg-[#B8834A] hover:bg-[#84492C] text-white rounded-xl font-bold text-xs transition-all cursor-pointer shadow-md shadow-amber-200 flex items-center justify-center gap-1.5"
               >
                 {submitting ? 'กำลังบันทึก...' : <><Save className="w-4 h-4" /> ยืนยันสร้าง</>}
               </button>
@@ -1905,7 +2029,7 @@ function getStorefrontCategoryOrder(productSup: string | null | undefined): numb
           <div className="bg-white w-full max-w-4xl h-full max-h-[90vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col">
             <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
               <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
-                <Printer className="w-4 h-4 text-blue-600" /> เอกสารการขาย
+                <Printer className="w-4 h-4 text-amber-700" /> เอกสารการขาย
               </h3>
               <div className="flex items-center gap-2">
                 <button 
@@ -1915,7 +2039,7 @@ function getStorefrontCategoryOrder(productSup: string | null | undefined): numb
                       iframe.contentWindow.print();
                     }
                   }}
-                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-1.5 px-4 rounded-lg text-xs transition-colors flex items-center gap-1.5 shadow-sm"
+                  className="bg-[#B8834A] hover:bg-[#84492C] text-white font-bold py-1.5 px-4 rounded-lg text-xs transition-colors flex items-center gap-1.5 shadow-sm"
                 >
                   <Printer className="w-3.5 h-3.5" /> สั่งพิมพ์
                 </button>
@@ -2083,7 +2207,7 @@ function getStorefrontCategoryOrder(productSup: string | null | undefined): numb
       <div className="lg:hidden fixed bottom-6 right-6 z-40">
         <button 
           onClick={() => setIsMobileCartOpen(true)} 
-          className="bg-blue-600 hover:bg-blue-700 text-white rounded-full p-4 shadow-2xl flex items-center justify-center relative transition-transform active:scale-95"
+          className="bg-[#B8834A] hover:bg-[#84492C] text-white rounded-full p-4 shadow-2xl shadow-amber-900/30 flex items-center justify-center relative transition-transform active:scale-95"
         >
           <Receipt className="w-6 h-6" />
           {cart.length > 0 && (
