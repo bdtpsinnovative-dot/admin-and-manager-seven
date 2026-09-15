@@ -128,7 +128,7 @@ export default function ManagerSidebar({ userName, branchName, userAvatar }: Man
       {isNavigating && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/20 backdrop-blur-sm transition-all duration-300">
           <div className="bg-white px-6 py-5 rounded-2xl shadow-xl flex flex-col items-center gap-3">
-            <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
+            <Loader2 className="w-10 h-10 text-[#A89880] animate-spin" />
             <span className="text-sm font-bold text-slate-700 animate-pulse">กำลังโหลดข้อมูล...</span>
           </div>
         </div>
@@ -138,7 +138,7 @@ export default function ManagerSidebar({ userName, branchName, userAvatar }: Man
       <aside className="hidden md:flex fixed left-0 top-0 z-50 h-screen w-[88px] hover:w-72 bg-white border-r border-slate-200 shadow-2xl transition-all duration-300 ease-in-out group flex-col overflow-hidden font-sans">
         
         <div className="h-24 flex items-center shrink-0 pl-6 overflow-hidden relative">
-           <div className="min-w-[40px] h-10 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-xl flex items-center justify-center text-white text-xl font-black shadow-lg shadow-blue-200 z-20">M</div>
+           <div className="min-w-[40px] h-10 bg-gradient-to-br from-[#C8BFB0] to-[#A89880] rounded-xl flex items-center justify-center text-white text-xl font-black shadow-lg shadow-[#A89880]/20 z-20">M</div>
            <div className="ml-4 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-x-[-10px] group-hover:translate-x-0 whitespace-nowrap">
               <h1 className="text-xl font-extrabold text-slate-800 tracking-tight leading-none">MANAGER</h1>
               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Control Panel</p>
@@ -156,7 +156,7 @@ export default function ManagerSidebar({ userName, branchName, userAvatar }: Man
                    onClick={() => toggleMenu(item.name)}
                    className={`w-full relative flex items-center h-14 rounded-2xl transition-all duration-300 overflow-hidden ${
                      groupActive 
-                       ? "bg-slate-100 text-blue-600" 
+                       ? "bg-[#A89880]/10 text-[#A89880]" 
                        : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
                    }`}
                  >
@@ -182,7 +182,7 @@ export default function ManagerSidebar({ userName, branchName, userAvatar }: Man
                            onClick={() => handleLinkClick(sub.href)} // 🔴 เรียกฟังก์ชันเปิด Loading
                            className={`flex items-center h-10 px-3 rounded-xl transition-all duration-200 gap-2.5 ${
                              isActive 
-                               ? "bg-blue-50 text-blue-600 font-bold" 
+                               ? "bg-[#A89880]/10 text-[#A89880] font-bold" 
                                : "text-slate-500 hover:bg-slate-50 hover:text-slate-900 font-medium"
                            }`}
                          >
@@ -220,7 +220,7 @@ export default function ManagerSidebar({ userName, branchName, userAvatar }: Man
                 <Link 
                   href="/manager/profiles" 
                   onClick={() => handleLinkClick("/manager/profiles")} // 🔴 เพิ่มที่ปุ่มตั้งค่าด้วย
-                  className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="โปรไฟล์/ตั้งค่า"
+                  className="p-2 text-slate-400 hover:text-[#A89880] hover:bg-[#A89880]/10 rounded-lg transition-colors" title="โปรไฟล์/ตั้งค่า"
                 >
                    <Settings className="w-4 h-4" />
                 </Link>
@@ -238,7 +238,7 @@ export default function ManagerSidebar({ userName, branchName, userAvatar }: Man
       {!(pathname === "/sale/pos" || pathname === "/manager/pos" || pathname.endsWith("/pos")) && (
         <div className="md:hidden fixed top-0 inset-x-0 z-30 bg-white/90 backdrop-blur-md border-b border-slate-200 h-16 flex items-center justify-between px-4">
             <div className="flex items-center gap-2">
-               <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-sm">M</div>
+               <div className="w-8 h-8 bg-gradient-to-br from-[#C8BFB0] to-[#A89880] rounded-lg flex items-center justify-center text-white font-bold text-sm">M</div>
                <span className="font-bold text-slate-800 text-sm">MANAGER</span>
             </div>
             <button onClick={() => setIsMobileMenuOpen(true)} className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg">
@@ -279,8 +279,8 @@ export default function ManagerSidebar({ userName, branchName, userAvatar }: Man
                            onClick={() => handleLinkClick(sub.href)} // 🔴 ฝั่งมือถือก็ติด Loading
                            className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs ${
                              checkIsActive(sub.href) 
-                               ? "bg-blue-50 text-blue-600 font-bold" 
-                               : "text-slate-500 hover:bg-slate-50 font-medium"
+                                ? "bg-[#A89880]/10 text-[#A89880] font-bold" 
+                                : "text-slate-500 hover:bg-slate-50 font-medium"
                            }`}
                          >
                             <sub.icon className="w-4 h-4 shrink-0" /> 

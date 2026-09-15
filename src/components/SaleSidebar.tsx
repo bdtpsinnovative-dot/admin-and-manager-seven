@@ -98,7 +98,7 @@ export default function SaleSidebar({ userName, branchName, userAvatar }: SaleSi
       {isNavigating && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/20 backdrop-blur-sm transition-all duration-300">
           <div className="bg-white px-6 py-5 rounded-2xl shadow-xl flex flex-col items-center gap-3">
-            <Loader2 className="w-10 h-10 text-emerald-600 animate-spin" />
+            <Loader2 className="w-10 h-10 text-[#B8956A] animate-spin" />
             <span className="text-sm font-bold text-slate-700 animate-pulse">กำลังโหลดข้อมูล...</span>
           </div>
         </div>
@@ -108,7 +108,7 @@ export default function SaleSidebar({ userName, branchName, userAvatar }: SaleSi
       <aside className="hidden md:flex fixed left-0 top-0 z-50 h-screen w-[88px] hover:w-72 bg-white border-r border-slate-200 shadow-2xl transition-all duration-300 ease-in-out group flex-col overflow-hidden font-sans">
         
         <div className="h-24 flex items-center shrink-0 pl-6 overflow-hidden relative">
-           <div className="min-w-[40px] h-10 bg-gradient-to-br from-emerald-600 to-teal-700 rounded-xl flex items-center justify-center text-white text-xl font-black shadow-lg shadow-emerald-200 z-20">S</div>
+           <div className="min-w-[40px] h-10 bg-gradient-to-br from-[#D4C4A8] to-[#B8956A] rounded-xl flex items-center justify-center text-white text-xl font-black shadow-lg shadow-[#B8956A]/20 z-20">S</div>
            <div className="ml-4 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-x-[-10px] group-hover:translate-x-0 whitespace-nowrap">
               <h1 className="text-xl font-extrabold text-slate-800 tracking-tight leading-none">SALE</h1>
               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Sales Panel</p>
@@ -125,9 +125,9 @@ export default function SaleSidebar({ userName, branchName, userAvatar }: SaleSi
                  <button 
                    onClick={() => toggleMenu(item.name)}
                    className={`w-full relative flex items-center h-14 rounded-2xl transition-all duration-300 overflow-hidden ${
-                     groupActive 
-                       ? "bg-slate-100 text-emerald-600" 
-                       : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                      groupActive 
+                        ? "bg-[#B8956A]/10 text-[#B8956A]" 
+                        : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
                    }`}
                  >
                    <div className="min-w-[64px] h-full flex items-center justify-center shrink-0">
@@ -152,8 +152,8 @@ export default function SaleSidebar({ userName, branchName, userAvatar }: SaleSi
                            onClick={() => handleLinkClick(sub.href)}
                            className={`flex items-center h-10 px-3 rounded-xl transition-all duration-200 gap-2.5 ${
                              isActive 
-                               ? "bg-emerald-50 text-emerald-600 font-bold" 
-                               : "text-slate-500 hover:bg-slate-50 hover:text-slate-900 font-medium"
+                                ? "bg-[#B8956A]/10 text-[#B8956A] font-bold" 
+                                : "text-slate-500 hover:bg-slate-50 hover:text-slate-900 font-medium"
                            }`}
                          >
                            <sub.icon className={`w-4 h-4 shrink-0 transition-transform ${isActive ? "scale-105" : ""}`} />
@@ -190,7 +190,7 @@ export default function SaleSidebar({ userName, branchName, userAvatar }: SaleSi
                 <Link 
                   href="/sale/profiles" 
                   onClick={() => handleLinkClick("/sale/profiles")}
-                  className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors" title="โปรไฟล์/ตั้งค่า"
+                   className="p-2 text-slate-400 hover:text-[#B8956A] hover:bg-[#B8956A]/10 rounded-lg transition-colors" title="โปรไฟล์/ตั้งค่า"
                 >
                    <Settings className="w-4 h-4" />
                 </Link>
@@ -208,7 +208,7 @@ export default function SaleSidebar({ userName, branchName, userAvatar }: SaleSi
       {!(pathname === "/sale/pos" || pathname === "/manager/pos" || pathname.endsWith("/pos")) && (
         <div className="md:hidden fixed top-0 inset-x-0 z-30 bg-white/90 backdrop-blur-md border-b border-slate-200 h-16 flex items-center justify-between px-4">
             <div className="flex items-center gap-2">
-               <div className="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center text-white font-bold text-sm">S</div>
+               <div className="w-8 h-8 bg-gradient-to-br from-[#D4C4A8] to-[#B8956A] rounded-lg flex items-center justify-center text-white font-bold text-sm">S</div>
                <span className="font-bold text-slate-800 text-sm">SALE</span>
             </div>
             <button onClick={() => setIsMobileMenuOpen(true)} className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg">
@@ -249,8 +249,8 @@ export default function SaleSidebar({ userName, branchName, userAvatar }: SaleSi
                            onClick={() => handleLinkClick(sub.href)}
                            className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs ${
                              checkIsActive(sub.href) 
-                               ? "bg-emerald-50 text-emerald-600 font-bold" 
-                               : "text-slate-500 hover:bg-slate-50 font-medium"
+                                ? "bg-[#B8956A]/10 text-[#B8956A] font-bold" 
+                                : "text-slate-500 hover:bg-slate-50 font-medium"
                            }`}
                          >
                             <sub.icon className="w-4 h-4 shrink-0" /> 

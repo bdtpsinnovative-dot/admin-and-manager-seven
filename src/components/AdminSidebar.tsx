@@ -66,13 +66,13 @@ export default function AdminSidebar({ user }: { user?: UserData }) {
         <Link 
           key={item.href} 
           href={item.href} 
-          className={`relative flex items-center h-12 mx-3 rounded-xl transition-all duration-200 group/item overflow-hidden ${isActive ? "bg-blue-50 text-blue-600 shadow-sm shadow-blue-50" : "text-slate-400 hover:bg-slate-50 hover:text-slate-600"}`}
+          className={`relative flex items-center h-12 mx-3 rounded-xl transition-all duration-200 group/item overflow-hidden ${isActive ? "bg-[#7B6A55]/10 text-[#7B6A55] shadow-sm" : "text-slate-400 hover:bg-slate-50 hover:text-slate-600"}`}
         >
-          {isActive && <div className="absolute left-0 top-1/2 -translate-y-1/2 h-6 w-1 bg-blue-600 rounded-full" />}
+          {isActive && <div className="absolute left-0 top-1/2 -translate-y-1/2 h-6 w-1 bg-[#7B6A55] rounded-full" />}
           <div className="min-w-[48px] h-full flex items-center justify-center">
-            <item.icon className={`h-5 w-5 ${isActive ? "stroke-blue-600 stroke-[2.5px]" : "stroke-current stroke-2"}`} />
+            <item.icon className={`h-5 w-5 ${isActive ? "stroke-[#7B6A55] stroke-[2.5px]" : "stroke-current stroke-2"}`} />
           </div>
-          <span className={`ml-1 font-medium text-sm whitespace-nowrap opacity-0 group-hover:opacity-100 transition-all duration-300 delay-75 ${isActive ? "text-blue-700 font-bold" : ""}`}>
+          <span className={`ml-1 font-medium text-sm whitespace-nowrap opacity-0 group-hover:opacity-100 transition-all duration-300 delay-75 ${isActive ? "text-[#7B6A55] font-bold" : ""}`}>
             {item.name}
           </span>
         </Link>
@@ -93,7 +93,7 @@ export default function AdminSidebar({ user }: { user?: UserData }) {
         {/* --- 1. Logo Section --- */}
         <div className="h-24 flex items-center shrink-0">
           <div className={`${collapsedWidth} shrink-0 flex items-center justify-center`}>
-            <div className="h-10 w-10 rounded-xl bg-blue-600 text-white flex items-center justify-center text-xl font-black shadow-lg shadow-blue-200">W</div>
+            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-[#A89880] to-[#7B6A55] text-white flex items-center justify-center text-xl font-black shadow-lg shadow-[#7B6A55]/20">W</div>
           </div>
           <div className="opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-x-[-10px] group-hover:translate-x-0 whitespace-nowrap overflow-hidden">
             <h1 className="text-xl font-bold text-slate-800 leading-none">WoodSlab</h1>
@@ -136,7 +136,7 @@ export default function AdminSidebar({ user }: { user?: UserData }) {
               <div className="flex items-center gap-1">
                 <Link 
                   href="/profiles" 
-                  className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                  className="p-2 text-slate-400 hover:text-[#7B6A55] hover:bg-[#7B6A55]/10 rounded-lg transition-colors"
                   title="โปรไฟล์"
                 >
                   <Settings className="h-4 w-4" />
