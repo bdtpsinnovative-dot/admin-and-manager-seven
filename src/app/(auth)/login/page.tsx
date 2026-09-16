@@ -54,7 +54,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [rememberMe, setRememberMe] = useState(true)
-  const [savedAccounts, setSavedAccounts] = useState<SavedAccount[]>([])
+  const [savedAccounts, setSavedAccounts] = useState<SavedAccount[]>([makeDefaultJan()])
   const [showAddModal, setShowAddModal] = useState(false)
   const [activeLoggingEmail, setActiveLoggingEmail] = useState<string | null>(null)
 

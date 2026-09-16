@@ -1,12 +1,10 @@
-// src/app/(admin)/inventory/page.tsx
 import Link from "next/link"
-import { getProducts } from "../../../actions/woodslab"
+import { getProducts, getCategoryFilterOptions, getCategoryTotalCount, type ProductExtraFilters } from "../../../actions/woodslab"
 import InventoryActions from "../../../components/InventoryActions"
 import InventoryTable from "../../../components/InventoryTable"
-import TypeFilterDropdown from "../../../components/TypeFilterDropdown"
-import StatusFilterDropdown from "../../../components/StatusFilterDropdown"
+import CategoryFilterBar from "../../../components/CategoryFilterBar"
 import InventoryLoadingOverlay from "../../../components/InventoryLoadingOverlay"
-import { Package, Layers, Hammer, FileUp, Box, Search, Loader2, Armchair } from "lucide-react"
+import { Package, Layers, Hammer, FileUp, Box, Search, Loader2, Armchair, X } from "lucide-react"
 import { Suspense } from "react"
 import CollectionGroupTable from "../../../components/CollectionGroupTable"
 
@@ -22,11 +20,36 @@ export default async function InventoryPage({ searchParams }: Props) {
   const searchQuery = (resolvedSearchParams.search as string) || '' // 💡 รับคำค้นหาจาก URL
   const viewMode = (resolvedSearchParams.view as string) || 'products' // 💡 รับโหมดการดู
 
+  // 🌟 พารามิเตอร์ฟิลเตอร์เฉพาะแต่ละหมวดหมู่
+  const activeMaterial = (resolvedSearchParams.material as string) || ''
+  const activeGrade = (resolvedSearchParams.grade as string) || ''
+  const activeCraft = (resolvedSearchParams.craft as string) || ''
+  const activeColor = (resolvedSearchParams.color as string) || ''
+  const activeBrand = (resolvedSearchParams.brand as string) || ''
+  const activeSize = (resolvedSearchParams.size as string) || ''
+
+  // 📏 ขนาด Min - Max (ความสูง, ความกว้าง, ความลึก/ความยาว)
+  const minW = resolvedSearchParams.min_w ? parseFloat(resolvedSearchParams.min_w as string) : undefined
+  const maxW = resolvedSearchParams.max_w ? parseFloat(resolvedSearchParams.max_w as string) : undefined
+  const minH = resolvedSearchParams.min_h ? parseFloat(resolvedSearchParams.min_h as string) : undefined
+  const maxH = resolvedSearchParams.max_h ? parseFloat(resolvedSearchParams.max_h as string) : undefined
+  const minL = resolvedSearchParams.min_l ? parseFloat(resolvedSearchParams.min_l as string) : undefined
+  const maxL = resolvedSearchParams.max_l ? parseFloat(resolvedSearchParams.max_l as string) : undefined
+
+  let dbCategory = 'SLABS'
+  if (activeTab === 'ROUGH') dbCategory = 'rough_wood'
+  if (activeTab === 'PROP') dbCategory = 'prop'
+  if (activeTab === 'FURNITURE') dbCategory = 'furniture'
+
+  const [filterOptions, categoryTotalCount] = await Promise.all([
+    getCategoryFilterOptions(dbCategory),
+    getCategoryTotalCount(dbCategory)
+  ])
 
   return (
-    <div className="min-h-screen bg-slate-50 p-6 font-sans text-slate-800">
+    <div className="min-h-screen bg-slate-50 p-4 md:p-6 font-sans text-slate-800">
       <InventoryLoadingOverlay />
-      <div className="max-w-7xl mx-auto">
+      <div className="w-full">
 
         {/* Header */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
@@ -46,14 +69,55 @@ export default async function InventoryPage({ searchParams }: Props) {
             <form method="GET" action="/inventory" className="relative w-full sm:w-64">
               <input type="hidden" name="tab" value={activeTab} />
               {activeType && <input type="hidden" name="type" value={activeType} />}
-              <input
-                type="text"
-                name="search"
-                defaultValue={searchQuery}
-                placeholder="ค้นหา ชื่อ, SKU, บาร์โค้ด..."
-                className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all shadow-sm"
-              />
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              {activeMaterial && <input type="hidden" name="material" value={activeMaterial} />}
+              {activeGrade && <input type="hidden" name="grade" value={activeGrade} />}
+              {activeCraft && <input type="hidden" name="craft" value={activeCraft} />}
+              {activeColor && <input type="hidden" name="color" value={activeColor} />}
+              {activeBrand && <input type="hidden" name="brand" value={activeBrand} />}
+              {activeSize && <input type="hidden" name="size" value={activeSize} />}
+              {minW !== undefined && <input type="hidden" name="min_w" value={minW} />}
+              {maxW !== undefined && <input type="hidden" name="max_w" value={maxW} />}
+              {minH !== undefined && <input type="hidden" name="min_h" value={minH} />}
+              {maxH !== undefined && <input type="hidden" name="max_h" value={maxH} />}
+              {minL !== undefined && <input type="hidden" name="min_l" value={minL} />}
+              {maxL !== undefined && <input type="hidden" name="max_l" value={maxL} />}
+              {activeStatus && <input type="hidden" name="status" value={activeStatus} />}
+              <div className="relative">
+                <input
+                  type="text"
+                  name="search"
+                  defaultValue={searchQuery}
+                  placeholder="ค้นหา ชื่อ, SKU, บาร์โค้ด..."
+                  className="w-full pl-10 pr-8 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all shadow-sm"
+                />
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                {searchQuery && (
+                  <Link
+                    href={`/inventory?${new URLSearchParams({
+                      tab: activeTab,
+                      ...(activeType ? { type: activeType } : {}),
+                      ...(activeStatus ? { status: activeStatus } : {}),
+                      ...(viewMode && viewMode !== 'products' ? { view: viewMode } : {}),
+                      ...(activeMaterial ? { material: activeMaterial } : {}),
+                      ...(activeGrade ? { grade: activeGrade } : {}),
+                      ...(activeCraft ? { craft: activeCraft } : {}),
+                      ...(activeColor ? { color: activeColor } : {}),
+                      ...(activeBrand ? { brand: activeBrand } : {}),
+                      ...(activeSize ? { size: activeSize } : {}),
+                      ...(minW !== undefined ? { min_w: String(minW) } : {}),
+                      ...(maxW !== undefined ? { max_w: String(maxW) } : {}),
+                      ...(minH !== undefined ? { min_h: String(minH) } : {}),
+                      ...(maxH !== undefined ? { max_h: String(maxH) } : {}),
+                      ...(minL !== undefined ? { min_l: String(minL) } : {}),
+                      ...(maxL !== undefined ? { max_l: String(maxL) } : {}),
+                    }).toString()}`}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full hover:bg-slate-100 transition cursor-pointer"
+                    title="ล้างคำค้นหานี้"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </Link>
+                )}
+              </div>
             </form>
 
             <Link
@@ -129,30 +193,60 @@ export default async function InventoryPage({ searchParams }: Props) {
 
         {/* Filters */}
         {viewMode !== 'groups' ? (
-          <div className="flex items-center gap-3 py-3 px-1 bg-white border-b border-slate-200 mb-6 flex-wrap">
-            {activeTab === 'SLABS' && (
-              <div className="flex items-center gap-3 border-r border-slate-200 pr-4">
-                <span className="text-xs text-slate-400 font-medium uppercase tracking-widest hidden sm:inline">กรองตามประเภท</span>
-                <TypeFilterDropdown activeType={activeType} />
-              </div>
-            )}
-            <div className="flex items-center gap-3 pl-1">
-              <span className="text-xs text-slate-400 font-medium uppercase tracking-widest hidden sm:inline">สถานะสินค้า</span>
-              <StatusFilterDropdown activeStatus={activeStatus} />
-            </div>
-          </div>
+          <CategoryFilterBar
+            activeTab={activeTab}
+            activeStatus={activeStatus}
+            activeType={activeType}
+            activeMaterial={activeMaterial}
+            activeGrade={activeGrade}
+            activeCraft={activeCraft}
+            activeColor={activeColor}
+            activeBrand={activeBrand}
+            activeSize={activeSize}
+            minW={minW}
+            maxW={maxW}
+            minH={minH}
+            maxH={maxH}
+            minL={minL}
+            maxL={maxL}
+            options={filterOptions}
+          />
         ) : (
           <div className="mb-6" />
         )}
 
         {/* Content */}
-        <Suspense key={`${activeTab}-${activeType}-${searchQuery}-${activeStatus}-${viewMode}`} fallback={
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 min-h-[400px] flex flex-col items-center justify-center text-slate-400 gap-3">
-             <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
-             <p className="text-sm font-medium animate-pulse">กำลังโหลดข้อมูล...</p>
-          </div>
-        }>
-          <InventoryData activeTab={activeTab} activeType={activeType} searchQuery={searchQuery} activeStatus={activeStatus} viewMode={viewMode} />
+        <Suspense 
+          key={`${activeTab}-${activeType}-${searchQuery}-${activeStatus}-${viewMode}-${activeMaterial}-${activeGrade}-${activeCraft}-${activeColor}-${activeBrand}-${activeSize}-${minW}-${maxW}-${minH}-${maxH}-${minL}-${maxL}`} 
+          fallback={
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 min-h-[400px] flex flex-col items-center justify-center text-slate-400 gap-3">
+               <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+               <p className="text-sm font-medium animate-pulse">กำลังโหลดข้อมูล...</p>
+            </div>
+          }
+        >
+          <InventoryData 
+            activeTab={activeTab} 
+            activeType={activeType} 
+            searchQuery={searchQuery} 
+            activeStatus={activeStatus} 
+            viewMode={viewMode}
+            categoryTotalCount={categoryTotalCount}
+            extraFilters={{
+              material: activeMaterial,
+              grade: activeGrade,
+              craft: activeCraft,
+              color: activeColor,
+              brand: activeBrand,
+              size: activeSize,
+              minW,
+              maxW,
+              minH,
+              maxH,
+              minL,
+              maxL
+            }}
+          />
         </Suspense>
 
       </div>
@@ -160,7 +254,23 @@ export default async function InventoryPage({ searchParams }: Props) {
   )
 }
 
-async function InventoryData({ activeTab, activeType, searchQuery, activeStatus, viewMode }: { activeTab: string, activeType: string, searchQuery: string, activeStatus: string, viewMode: string }) {
+async function InventoryData({ 
+  activeTab, 
+  activeType, 
+  searchQuery, 
+  activeStatus, 
+  viewMode,
+  categoryTotalCount,
+  extraFilters
+}: { 
+  activeTab: string, 
+  activeType: string, 
+  searchQuery: string, 
+  activeStatus: string, 
+  viewMode: string,
+  categoryTotalCount: number,
+  extraFilters?: ProductExtraFilters
+}) {
   if (viewMode === 'groups' && (activeTab === 'FURNITURE' || activeTab === 'PROP')) {
     const tag = activeTab === 'FURNITURE' ? 'furniture' : 'prop'
     return (
@@ -175,7 +285,16 @@ async function InventoryData({ activeTab, activeType, searchQuery, activeStatus,
   if (activeTab === 'PROP') dbCategory = 'prop'
   if (activeTab === 'FURNITURE') dbCategory = 'furniture'
 
-  const { data: products, error } = await getProducts(dbCategory, activeType || undefined, searchQuery, activeStatus || undefined)
+  const { data: products, count, error } = await getProducts(
+    dbCategory, 
+    activeType || undefined, 
+    searchQuery, 
+    activeStatus || undefined,
+    extraFilters,
+    undefined,
+    0,
+    250
+  )
 
   if (error) {
     return (
@@ -190,8 +309,15 @@ async function InventoryData({ activeTab, activeType, searchQuery, activeStatus,
   }
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-      <InventoryTable products={products || []} activeTab={activeTab} />
-    </div>
+    <InventoryTable 
+      products={products || []} 
+      totalCount={count ?? (products?.length || 0)}
+      categoryTotalCount={categoryTotalCount}
+      activeTab={activeTab} 
+      activeType={activeType}
+      searchQuery={searchQuery}
+      activeStatus={activeStatus}
+      extraFilters={extraFilters}
+    />
   )
 }

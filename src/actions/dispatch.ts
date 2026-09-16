@@ -4,6 +4,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { revalidatePath } from 'next/cache'
+import { clearPosCache } from '@/actions/pos'
 
 export async function getGroupedDispatches() {
   const cookieStore = await cookies()
@@ -407,6 +408,8 @@ export async function approveAndCutStock(orderId: number, orderCode: string, ite
     revalidatePath('/manager/sales-history')
     revalidatePath('/manager/vanguard-dispatch')
 
+    await clearPosCache()
+
     return { success: true }
   } catch (error: any) {
     return { success: false, error: error.message }
@@ -472,7 +475,7 @@ export async function cancelOrder(orderId: number, orderCode: string, items: any
         }
       }
       for (const item of items) {
-        const productId = item.products?.id;
+        const productId = item.products?.id || item.product_id;
         const branchId = item.fulfill_branch_id;
         const qty = item.qty;
 
@@ -522,6 +525,8 @@ export async function cancelOrder(orderId: number, orderCode: string, items: any
     revalidatePath('/sale/vanguard-dispatch')
     revalidatePath('/manager/sales-history')
     revalidatePath('/manager/vanguard-dispatch')
+
+    await clearPosCache()
 
     return { success: true }
   } catch (error: any) {
