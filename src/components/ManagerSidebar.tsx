@@ -8,7 +8,7 @@ import {
   Truck, LogOut, User, Menu, X, Settings,
   ClipboardList, Layers, ClipboardCheck, BarChart4, 
   Search, SlidersHorizontal, UserCheck, ChevronDown,
-  Package, ShieldCheck, Loader2 // 🔴 เพิ่ม Loader2 มาทำไอคอนหมุนๆ
+  Package, ShieldCheck, Loader2, Trash2
 } from "lucide-react"
 import { logoutAction } from "../actions/auth" 
 
@@ -104,6 +104,7 @@ export default function ManagerSidebar({ userName, branchName, userAvatar }: Man
         // { name: "รายงานยอดขาย (sales-report)", href: "/manager/sales-report", icon: BarChart4 },
         
         { name: "ประวัติสต็อก", href: "/manager/stocklog", icon: History },
+        { name: "ประวัติสินค้าเสียหาย", href: "/manager/damage-history", icon: Trash2 },
         { name: "ตรวจนับสต็อก 2 ทาง", href: "/manager/stock-audit", icon: ClipboardCheck },
         { name: "ตรวจสอบยอด RFID", href: "/manager/stock-compare", icon: SearchCode },
         { name: "ค้นหาสต็อก", href: "/manager/stock-search", icon: Search },

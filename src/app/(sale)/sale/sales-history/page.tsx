@@ -18,12 +18,18 @@ interface SaleOrder {
   orderCode: string;
   createdAt: string;
   saleName: string;
+  subtotal: number;
+  discountAmount: number;
+  discountPercent: number;
+  netBeforeVat: number;
+  vatAmount: number;
   totalAmount: number;
   status: string;
   shippingName: string | null;
   myBranchRevenue: number;
   otherBranchRevenue: number;
   remoteDetails: RemoteDetail[];
+  discountSnapshot?: any;
   items?: {
     id: number;
     qty: number;
@@ -215,9 +221,22 @@ export default function SaleSalesHistoryPage() {
                   <th className="p-4">วันที่ออกเอกสาร</th>
                   <th className="p-4 text-center w-24">สลิป</th>
                   <th className="p-4">พนักงานขาย (Sale)</th>
+                  <th className="p-4 text-right whitespace-nowrap">ยอดก่อนลด</th>
+                  <th className="p-4 text-right whitespace-nowrap">ส่วนลด (%)</th>
+                  <th className="p-4 text-right whitespace-nowrap">
+                    <div>ยอดก่อน VAT</div>
+                    <div className="text-[9px] font-medium text-slate-400 normal-case">(ไม่รวมภาษี)</div>
+                  </th>
+                  <th className="p-4 text-right whitespace-nowrap">
+                    <div>VAT (7%)</div>
+                    <div className="text-[9px] font-medium text-slate-400 normal-case">(ภาษีมูลค่าเพิ่ม)</div>
+                  </th>
                   <th className="p-4 text-right whitespace-nowrap">ยอดคลังเรา</th>
                   <th className="p-4 text-right whitespace-nowrap">ยอดคลังอื่น (Drop Ship)</th>
-                  <th className="p-4 text-right whitespace-nowrap">ยอดสุทธิรวม</th>
+                  <th className="p-4 text-right whitespace-nowrap">
+                    <div>ยอดสุทธิ (รวม VAT)</div>
+                    <div className="text-[9px] font-medium text-emerald-600 normal-case">(ยอดหลังลด)</div>
+                  </th>
                   <th className="p-4 text-center w-32">สถานะใบขาย</th>
                   <th className="p-2 w-12"><span className="sr-only">ตัวเลือก</span></th>
                 </tr>
@@ -225,7 +244,7 @@ export default function SaleSalesHistoryPage() {
               <tbody className="divide-y divide-slate-100 font-medium">
                 {filteredSales.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="p-12 text-center text-slate-400 font-bold">
+                    <td colSpan={13} className="p-12 text-center text-slate-400 font-bold">
                       {showHidden ? 'ยังไม่มีบิลที่ซ่อนไว้' : 'ไม่พบประวัติใบขายตามเงื่อนไขที่ค้นหา'}
                     </td>
                   </tr>
@@ -272,7 +291,7 @@ export default function SaleSalesHistoryPage() {
                           </td>
 
                           {/* วันที่ */}
-                          <td className="p-4 text-slate-500">
+                          <td className="p-4 text-slate-500 whitespace-nowrap">
                             {new Date(order.createdAt).toLocaleDateString('th-TH', {
                               year: 'numeric', month: 'short', day: 'numeric',
                               hour: '2-digit', minute: '2-digit'
@@ -285,19 +304,48 @@ export default function SaleSalesHistoryPage() {
                           </td>
 
                           {/* ชื่อ Sale */}
-                          <td className="p-4 text-slate-700 font-bold">{order.saleName}</td>
+                          <td className="p-4 text-slate-700 font-bold whitespace-nowrap">{order.saleName}</td>
+
+                          {/* ยอดก่อนลด */}
+                          <td className="p-4 text-right font-medium text-slate-700 text-xs whitespace-nowrap">
+                            ฿{order.subtotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+
+                          {/* ส่วนลด (%) */}
+                          <td className="p-4 text-right whitespace-nowrap">
+                            {order.discountAmount > 0 ? (
+                              <div className="inline-flex flex-col items-end">
+                                <span className="inline-flex items-center gap-1 font-bold text-orange-600 bg-orange-50 border border-orange-200 px-1.5 py-0.5 rounded text-[11px]">
+                                  -฿{order.discountAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
+                                <span className="text-[10px] font-bold text-orange-500 mt-0.5">ลด {order.discountPercent}%</span>
+                              </div>
+                            ) : (
+                              <span className="text-slate-300 font-mono text-xs">-</span>
+                            )}
+                          </td>
+
+                          {/* ยอดก่อน VAT */}
+                          <td className="p-4 text-right font-semibold text-slate-700 text-xs whitespace-nowrap">
+                            ฿{order.netBeforeVat.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+
+                          {/* VAT (7%) */}
+                          <td className="p-4 text-right font-medium text-purple-700 text-xs whitespace-nowrap">
+                            ฿{order.vatAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
 
                           {/* ยอดเงินคลังเรา */}
-                          <td className="p-4 text-right font-black text-slate-800 text-sm whitespace-nowrap">
-                            {order.myBranchRevenue.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿
+                          <td className="p-4 text-right font-bold text-slate-800 text-xs whitespace-nowrap">
+                            ฿{order.myBranchRevenue.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </td>
 
                           {/* ยอดเงินคลังเพื่อน (Drop Ship) */}
                           <td className={`p-4 text-right whitespace-nowrap ${order.status === 'CANCELLED' ? '' : 'bg-orange-50/30'}`}>
                             {order.otherBranchRevenue > 0 ? (
                               <>
-                                <span className="font-black text-orange-600 text-sm block">
-                                  {order.otherBranchRevenue.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿
+                                <span className="font-black text-orange-600 text-xs block">
+                                  ฿{order.otherBranchRevenue.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                 </span>
                                 <div className="space-y-0.5 mt-1">
                                   {order.remoteDetails.map((r, i) => (
@@ -312,9 +360,9 @@ export default function SaleSalesHistoryPage() {
                             )}
                           </td>
 
-                          {/* ยอดสุทธิรวมของบิล */}
+                          {/* ยอดสุทธิรวมของบิล (ยอดหลังลด) */}
                           <td className="p-4 text-right font-black text-emerald-600 text-sm whitespace-nowrap">
-                            {order.totalAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿
+                            ฿{order.totalAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </td>
 
                           {/* สถานะบิล */}
@@ -333,6 +381,11 @@ export default function SaleSalesHistoryPage() {
                                 <span className="flex items-center justify-center gap-1"><Clock className="w-3 h-3" /> รอสาขาแพ็ค</span>
                               )}
                             </span>
+                            {order.status === 'CANCELLED' && order.discountSnapshot?.cancel_reason && (
+                              <div className="mt-1 text-[10px] font-medium text-red-700 bg-red-100/80 px-2 py-0.5 rounded max-w-[150px] mx-auto truncate" title={`เหตุผล: ${order.discountSnapshot.cancel_reason}`}>
+                                โน้ต: {order.discountSnapshot.cancel_reason}
+                              </div>
+                            )}
                           </td>
 
                           {/* เมนูซ่อนแบบไม่รบกวนสายตา */}
@@ -356,8 +409,44 @@ export default function SaleSalesHistoryPage() {
                         </tr>
                         {isExpanded && (
                           <tr className="bg-slate-50/30">
-                            <td colSpan={9} className="p-4 border-t border-slate-100">
+                            <td colSpan={13} className="p-4 border-t border-slate-100">
                               <div className="space-y-2 pl-6 pr-6">
+                                {/* แถบสรุปยอดบิลแบบย่อ ชัดเจน (ยอดก่อน VAT + VAT 7% = ยอดสุทธิ) */}
+                                <div className="flex flex-wrap items-center gap-4 bg-white p-3 rounded-2xl border border-slate-200 shadow-2xs text-xs mb-3">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-slate-400 font-medium">ยอดก่อนลด:</span>
+                                    <span className="font-bold text-slate-700">฿{order.subtotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                  </div>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-slate-400 font-medium">ส่วนลด:</span>
+                                    <span className="font-bold text-orange-600">
+                                      {order.discountAmount > 0 ? `-฿${order.discountAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (ลด ${order.discountPercent}%)` : '฿0.00 (0%)'}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-slate-400 font-medium">ยอดก่อน VAT:</span>
+                                    <span className="font-bold text-slate-700">฿{order.netBeforeVat.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                  </div>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-slate-400 font-medium">VAT (7%):</span>
+                                    <span className="font-bold text-purple-700">฿{order.vatAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                  </div>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-slate-400 font-medium">ยอดสุทธิ (รวม VAT):</span>
+                                    <span className="font-black text-emerald-600">฿{order.totalAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                  </div>
+                                </div>
+                                {order.status === 'CANCELLED' && order.discountSnapshot?.cancel_reason && (
+                                  <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-800 flex items-start gap-2">
+                                    <XCircle className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
+                                    <div>
+                                      <span className="font-bold">เหตุผลการยกเลิก:</span> {order.discountSnapshot.cancel_reason}
+                                      {order.discountSnapshot.cancelled_by_name && (
+                                        <span className="text-red-500 text-[10px] ml-2 font-normal">(ยกเลิกโดย {order.discountSnapshot.cancelled_by_name})</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
                                 <h4 className="font-bold text-xs text-slate-500 uppercase tracking-wider mb-2">รายการสินค้าในบิล:</h4>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                   {order.items?.map((item, itemIndex) => (

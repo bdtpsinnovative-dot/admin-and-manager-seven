@@ -48,7 +48,7 @@ export default function DashboardVatCard({
               <Receipt className="w-5 h-5" />
             </div>
           </div>
-          <div className="text-2xl lg:text-3xl font-black text-purple-700 tracking-tight">
+          <div className="text-3xl sm:text-4xl font-black text-purple-700 tracking-tight">
             ฿{money(totalVat)}
           </div>
           <p className="mt-1 text-xs text-purple-600/80">

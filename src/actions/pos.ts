@@ -370,6 +370,8 @@ export interface CheckoutPayload {
   subtotal: number;       
   discountAmount: number; 
   totalAmount: number;    
+  shippingCost?: number;          // 🚚 ค่าจัดส่ง / ค่าบริการส่ง
+  shippingWaived?: boolean;        // 🚚 สิทธิ์ไม่คิดค่าส่งกับลูกค้า (ยอดถึง 20,000฿) บันทึกเฉพาะต้นทุน
   saleMode: 'TAKE_AWAY' | 'DELIVERY';
   shippingName?: string | null;
   shippingPhone?: string | null;
@@ -438,6 +440,10 @@ export async function processCheckout(payload: CheckoutPayload) {
     if (payload.appliedSetPromos && payload.appliedSetPromos.length > 0) {
       discountSnapshot.set_promotions = payload.appliedSetPromos
       discountSnapshot.set_discount_amount = payload.setDiscountAmount || 0
+    }
+    if (payload.shippingCost !== undefined && payload.shippingCost !== null) {
+      discountSnapshot.shipping_cost = Number(payload.shippingCost) || 0
+      discountSnapshot.shipping_waived = Boolean(payload.shippingWaived)
     }
     // ✨ 0. เช็คสต็อกล่วงหน้ากันเหนียว
     const outOfStockItems: string[] = []
@@ -673,7 +679,7 @@ export async function getOrderForEdit(orderCode: string) {
   const { data: order, error } = await supabase
     .from('orders')
     .select(`
-      id, order_code, status, shipping_name, shipping_phone, shipping_address, latitude, longitude, company_name_th, company_name_en, company_address, tax_id, special_discount_percent, special_discount_baht,
+      id, order_code, status, shipping_name, shipping_phone, shipping_address, latitude, longitude, company_name_th, company_name_en, company_address, tax_id, special_discount_percent, special_discount_baht, discount_snapshot,
       order_items (
         id, product_id, qty, price_at_sale, fulfill_branch_id, discount_id, discount_name, discount_amount_per_piece,
         branches!order_items_fulfill_branch_fk ( branch_name )

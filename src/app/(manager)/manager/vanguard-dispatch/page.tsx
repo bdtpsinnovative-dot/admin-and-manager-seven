@@ -54,9 +54,11 @@ export default function DispatchMonitorPage() {
     confirmVariant?: 'emerald' | 'blue' | 'red';
     showOrderCodeInput?: boolean;
     defaultOrderCode?: string;
-    onConfirm: (customCode?: string) => void;
+    showCancelReasonInput?: boolean;
+    onConfirm: (customCode?: string, cancelReason?: string) => void;
   }>({ isOpen: false, title: '', description: '', onConfirm: () => { } })
   const [modalCustomOrderCode, setModalCustomOrderCode] = useState('')
+  const [modalCancelReason, setModalCancelReason] = useState('')
   const [editingCustomerOrder, setEditingCustomerOrder] = useState<any | null>(null)
 
   const handleCustomerUpdated = (updated: { shipping_name: string; shipping_phone: string; shipping_address: string }) => {
@@ -165,6 +167,7 @@ export default function DispatchMonitorPage() {
   }
 
   const handleCancelOrder = (orderId: number, orderCode: string, items: any[], currentStatus: string) => {
+    setModalCancelReason('')
     setConfirmModal({
       isOpen: true,
       title: 'ยืนยันการยกเลิกบิล?',
@@ -173,9 +176,10 @@ export default function DispatchMonitorPage() {
         : `คุณต้องการยกเลิกบิล ${orderCode} ใช่หรือไม่?\nบิลจะถูกเก็บประวัติไว้ในแท็บยกเลิกแล้ว`,
       confirmText: 'ยืนยันยกเลิกบิล',
       confirmVariant: 'red',
-      onConfirm: async () => {
+      showCancelReasonInput: true,
+      onConfirm: async (_customCode, reason) => {
         setCancellingId(orderId)
-        const res = await cancelOrder(orderId, orderCode, items, currentStatus)
+        const res = await cancelOrder(orderId, orderCode, items, currentStatus, reason)
 
         if (res.success) {
           toast.success("ยกเลิกบิลและจัดการสต็อกเรียบร้อยแล้ว!")
@@ -303,6 +307,12 @@ export default function DispatchMonitorPage() {
                               🎟️ โค้ด: {order.discount_snapshot.coupon.code} (-฿{Number(order.discount_snapshot.coupon.amount || order.discount_snapshot.coupon.discountAmount || 0).toLocaleString()})
                             </span>
                           )}
+                          {order.status === 'CANCELLED' && order.discount_snapshot?.cancel_reason && (
+                            <span className="px-2 py-0.5 bg-rose-50 text-rose-700 border border-rose-200 rounded text-[10px] font-bold inline-flex items-center gap-1" title={order.discount_snapshot.cancel_reason}>
+                              <FileText className="w-3 h-3 text-rose-500" />
+                              โน้ตยกเลิก: {order.discount_snapshot.cancel_reason}
+                            </span>
+                          )}
                         </span>
                       </div>
                     </div>
@@ -313,9 +323,13 @@ export default function DispatchMonitorPage() {
                           <AlertTriangle className="w-3 h-3" /> สต็อกไม่พอ!
                         </span>
                       )}
-                      <span className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1 rounded-full border ${isStorefrontTakeaway ? 'text-indigo-600 bg-indigo-50 border-indigo-200' : 'text-amber-600 bg-amber-50 border-amber-200'} ${order.status === 'COMPLETED' ? '!text-emerald-600 !bg-emerald-50 !border-emerald-200' : ''}`}>
-                        {order.status === 'COMPLETED' ? (
+                      <span className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1 rounded-full border ${order.status === 'PENDING' ? 'text-rose-600 bg-rose-50 border-rose-200' : isStorefrontTakeaway ? 'text-indigo-600 bg-indigo-50 border-indigo-200' : order.status === 'CANCELLED' ? 'text-red-600 bg-red-50 border-red-200' : 'text-amber-600 bg-amber-50 border-amber-200'} ${order.status === 'COMPLETED' ? '!text-emerald-600 !bg-emerald-50 !border-emerald-200' : ''}`}>
+                        {order.status === 'PENDING' ? (
+                          <><Banknote className="w-3.5 h-3.5" /> รอชำระเงิน {order.order_items.length} รายการ</>
+                        ) : order.status === 'COMPLETED' ? (
                           <><CheckCircle className="w-3.5 h-3.5" /> สำเร็จแล้ว</>
+                        ) : order.status === 'CANCELLED' ? (
+                          <><XCircle className="w-3.5 h-3.5" /> ยกเลิกแล้ว</>
                         ) : isStorefrontTakeaway ? (
                           <><Store className="w-3.5 h-3.5" /> รอส่งมอบหน้าร้าน {order.order_items.length} รายการ</>
                         ) : (
@@ -329,6 +343,24 @@ export default function DispatchMonitorPage() {
                   {/* Expanded Content */}
                   {isExpanded && (
                     <div className="border-t border-slate-100 bg-slate-50/50 p-4 md:p-6">
+                      {order.status === 'CANCELLED' && (
+                        <div className="mb-4 p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-2.5 text-xs text-rose-900">
+                          <XCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                          <div className="min-w-0 flex-1">
+                            <span className="font-bold">บิลนี้ถูกยกเลิกแล้ว</span>
+                            {order.discount_snapshot?.cancel_reason && (
+                              <p className="text-rose-700 mt-0.5 font-medium">
+                                <span className="font-semibold">เหตุผล/บันทึก (Note):</span> {order.discount_snapshot.cancel_reason}
+                              </p>
+                            )}
+                            {order.discount_snapshot?.cancelled_at && (
+                              <p className="text-[10px] text-rose-500 mt-1">
+                                วันเวลาที่ยกเลิก: {new Date(order.discount_snapshot.cancelled_at).toLocaleString('th-TH')} {order.discount_snapshot.cancelled_by_name ? `โดย ${order.discount_snapshot.cancelled_by_name}` : ''}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      )}
                       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
                         {/* Column 1: Items List */}
@@ -610,6 +642,22 @@ export default function DispatchMonitorPage() {
               </div>
             )}
 
+            {confirmModal.showCancelReasonInput && (
+              <div className="w-full mb-5 text-left">
+                <label className="text-[11px] font-bold text-slate-700 mb-1.5 flex items-center justify-between">
+                  <span>เหตุผลในการยกเลิกบิล (Note)</span>
+                  <span className="text-[10px] text-slate-400 font-normal">ไม่บังคับ</span>
+                </label>
+                <textarea 
+                  rows={2}
+                  placeholder="เช่น ลูกค้าเปลี่ยนใจ, สั่งสินค้าผิดสเปก, เปลี่ยนแปลงยอดชำระ..."
+                  value={modalCancelReason}
+                  onChange={e => setModalCancelReason(e.target.value)}
+                  className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-rose-400 focus:bg-white transition-colors resize-none text-slate-700" 
+                />
+              </div>
+            )}
+
             <div className="flex gap-3 w-full">
               <button
                 onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
@@ -619,12 +667,13 @@ export default function DispatchMonitorPage() {
               </button>
               <button
                 onClick={() => {
-                  confirmModal.onConfirm(modalCustomOrderCode)
+                  confirmModal.onConfirm(modalCustomOrderCode, modalCancelReason)
                   setConfirmModal(prev => ({ ...prev, isOpen: false }))
                 }}
                 className={`flex-1 py-3 text-white rounded-xl font-bold text-xs transition-all cursor-pointer shadow-md flex items-center justify-center gap-1.5 ${confirmModal.confirmVariant === 'emerald' ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200' :
                     confirmModal.confirmVariant === 'blue' ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-200' :
-                      'bg-slate-800 hover:bg-slate-900 shadow-slate-200'
+                      confirmModal.confirmVariant === 'red' ? 'bg-red-600 hover:bg-red-700 shadow-red-200' :
+                        'bg-slate-800 hover:bg-slate-900 shadow-slate-200'
                   }`}
               >
                 <Save className="w-4 h-4" /> {confirmModal.confirmText || 'ยืนยัน'}

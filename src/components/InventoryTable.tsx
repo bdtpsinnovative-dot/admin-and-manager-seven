@@ -196,7 +196,7 @@ export default function InventoryTable({
 
                 {(isProp || isFurniture) && (
                   <>
-                    <th className="p-4 min-w-[110px]">กลุ่ม (Group)</th>
+                    <th className="p-4 min-w-[130px]">Product กลุ่ม</th>
                     <th className="p-4 min-w-[140px]">ขนาด ก×ย×ส</th>
                     <th className="p-4 min-w-[100px]">สี (Color)</th>
                     <th className="p-4 min-w-[120px]">วัสดุ (Material)</th>
@@ -208,8 +208,15 @@ export default function InventoryTable({
                   <th className="p-4">หมวดหมู่</th>
                 )}
 
-                <th className="p-4 text-right min-w-[110px]">ต้นทุน (Cost)</th>
-                <th className="p-4 text-right min-w-[120px]">ราคาขาย (Price)</th>
+                {isProp ? (
+                  <>
+                    <th className="p-4 text-right min-w-[130px]">ต้นทุน ดอลลาร์ ไม่รวมค่าส่ง</th>
+                    <th className="p-4 text-right min-w-[130px]">ต้นทุนรวมค่าส่ง (บาท)</th>
+                  </>
+                ) : (
+                  <th className="p-4 text-right min-w-[110px]">ต้นทุน (Cost)</th>
+                )}
+                <th className="p-4 text-right min-w-[120px]">ราคาขาย (บาท)</th>
                 <th className="p-4 text-center w-[90px]">สถานะ</th>
                 <th className="p-4 text-right w-[90px]">จัดการ</th>
               </tr>
@@ -217,7 +224,7 @@ export default function InventoryTable({
             <tbody className="divide-y divide-slate-100">
               {items.length === 0 ? (
                 <tr>
-                  <td colSpan={12} className="p-12 text-center text-slate-500">
+                  <td colSpan={isProp ? 14 : 13} className="p-12 text-center text-slate-500">
                       <div className="flex flex-col items-center justify-center gap-3">
                         <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center">
                           <AlertCircle className="w-8 h-8 text-slate-400" />
@@ -259,11 +266,8 @@ export default function InventoryTable({
                     </td>
                     <td className="p-4 align-top">
                       <div className="font-bold text-slate-800 text-sm mb-1">{item.name}</div>
-                      <div className="flex flex-wrap items-center gap-1.5">
+                      <div className="flex items-center">
                         <span className="text-xs text-slate-500 font-mono bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">{item.sku}</span>
-                        {item.barcode && (
-                          <span className="text-[11px] text-slate-400 font-mono">{item.barcode}</span>
-                        )}
                       </div>
                     </td>
 
@@ -333,13 +337,21 @@ export default function InventoryTable({
                     {(isProp || isFurniture) && (
                       <>
                         <td className="p-4 align-top">
-                          {item.collection_group_id ? (
-                            <span className="text-xs font-mono font-medium text-slate-800">
-                              {item.collection_group_id}
-                            </span>
-                          ) : (
-                            <span className="text-slate-400 text-xs">-</span>
-                          )}
+                          {(() => {
+                            const groupName = item.collection_groups?.product_sup || item.specs?.product_sup || item.collection_groups?.name;
+                            return (
+                              <div>
+                                <div className="text-xs font-semibold text-slate-800">
+                                  {groupName || '-'}
+                                </div>
+                                {item.collection_group_id && (
+                                  <div className="text-[11px] font-mono text-slate-400 mt-0.5">
+                                    {item.collection_group_id}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </td>
                         <td className="p-4 align-top">
                           <div className="text-xs font-mono text-slate-800 font-semibold">
@@ -381,22 +393,50 @@ export default function InventoryTable({
                     )}
 
                     {/* 💰 ต้นทุน (Cost) */}
-                    <td className="p-4 align-top text-right">
-                      <div className="font-mono text-xs font-semibold text-slate-500">
-                        {item.cost ? formatCurrency(item.cost) : <span className="text-slate-300">฿0.00</span>}
-                      </div>
-                    </td>
+                    {isProp ? (
+                      <>
+                        {/* 1. ต้นทุน ดอลล่าร์ */}
+                        <td className="p-4 align-top text-right">
+                          {item.specs?.cost_dollar != null && item.specs?.cost_dollar !== '' ? (
+                            <div className="font-mono text-xs font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200/80 inline-block">
+                              ${Number(item.specs.cost_dollar).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </div>
+                          ) : (
+                            <span className="text-slate-300 text-xs font-mono">-</span>
+                          )}
+                        </td>
+                        {/* 2. ต้นทุนร่วมค่าส่งแล้ว */}
+                        <td className="p-4 align-top text-right">
+                          <div className="font-mono text-xs font-semibold text-slate-700">
+                            {(item.specs?.cost_th_shipping != null && item.specs?.cost_th_shipping !== '') || item.cost ? (
+                              formatCurrency(Number(item.specs?.cost_th_shipping ?? item.cost))
+                            ) : (
+                              <span className="text-slate-300">฿0.00</span>
+                            )}
+                          </div>
+                        </td>
+                      </>
+                    ) : (
+                      <td className="p-4 align-top text-right">
+                        <div className="font-mono text-xs font-semibold text-slate-500">
+                          {item.cost ? formatCurrency(item.cost) : <span className="text-slate-300">฿0.00</span>}
+                        </div>
+                      </td>
+                    )}
 
                     {/* 🏷️ ราคาขาย (Price) */}
                     <td className="p-4 align-top text-right">
                       <div className="font-mono text-sm font-bold text-slate-900">
                         {formatCurrency(item.price || 0)}
                       </div>
-                      {item.cost > 0 && item.price > item.cost && (
-                        <div className="text-[10px] font-mono text-emerald-600 font-medium mt-0.5">
-                          +{formatCurrency(item.price - item.cost)}
-                        </div>
-                      )}
+                      {(() => {
+                        const effectiveCost = Number(item.specs?.cost_th_shipping ?? item.cost ?? 0);
+                        return effectiveCost > 0 && item.price > effectiveCost ? (
+                          <div className="text-[10px] font-mono text-emerald-600 font-medium mt-0.5">
+                            +{formatCurrency(item.price - effectiveCost)}
+                          </div>
+                        ) : null;
+                      })()}
                     </td>
 
                     {/* สถานะ */}

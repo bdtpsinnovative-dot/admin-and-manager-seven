@@ -77,7 +77,7 @@ export async function getProducts(
 
   let query = supabase
     .from(TABLE_NAME)
-    .select('*', { count: 'exact' })
+    .select('*, collection_groups(id, name, cover_image_url, product_sup)', { count: 'exact' })
     .order('cost', { ascending: false, nullsFirst: false })
     .order('created_at', { ascending: false })
 

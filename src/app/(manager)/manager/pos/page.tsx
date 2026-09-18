@@ -129,6 +129,8 @@ export default function ManagerPOSPage() {
   const [taxId, setTaxId] = useState('')
   const [specialDiscountPercent, setSpecialDiscountPercent] = useState<string>('')
   const [specialDiscountBaht, setSpecialDiscountBaht] = useState<string>('')
+  const [shippingCost, setShippingCost] = useState<string>('') // 🚚 ค่าจัดส่ง / ค่าบริการส่ง
+  const [waiveShippingFee, setWaiveShippingFee] = useState<boolean>(true) // 🚚 ยกเว้นค่าส่งเมื่อยอดครบ 20,000฿
   const [isCustomerFormOpen, setIsCustomerFormOpen] = useState(false) // ซ่อนฟอร์มไว้ก่อน ประหยัดที่!
   
   // ✨ State สำหรับระบบช่วยปัดเศษ
@@ -226,6 +228,14 @@ export default function ManagerPOSPage() {
           setSpecialDiscountBaht(res.order.special_discount_baht.toString())
         } else {
           setSpecialDiscountBaht('0')
+        }
+        if (res.order.discount_snapshot?.shipping_cost !== undefined && res.order.discount_snapshot?.shipping_cost !== null) {
+          setShippingCost(res.order.discount_snapshot.shipping_cost.toString())
+          if (res.order.discount_snapshot?.shipping_waived !== undefined) {
+            setWaiveShippingFee(Boolean(res.order.discount_snapshot.shipping_waived))
+          }
+        } else {
+          setShippingCost('')
         }
         
         toast.success(`โหลดข้อมูลบิล ${orderCode} เพื่อแก้ไขแล้ว`)
@@ -709,6 +719,11 @@ export default function ManagerPOSPage() {
 
   const totalFinalPrice = Math.max(0, Math.round(afterBaht - discountPercentAmount))
   const totalDiscountAmount = promotionDiscountAmount + totalSetDiscountAmount + couponDiscountAmount + totalSpecialDiscountAmount
+  const isOrderOver20k = totalFinalPrice >= 20000
+  const isShippingWaived = isOrderOver20k && waiveShippingFee
+  const deliveryFee = Number(shippingCost) || 0
+  const deliveryFeeCharged = isShippingWaived ? 0 : deliveryFee
+  const grandTotal = totalFinalPrice + deliveryFeeCharged
 
   const handlePreCheckout = () => {
     if (cart.length === 0) return
@@ -760,7 +775,6 @@ export default function ManagerPOSPage() {
         ? `[รับหน้าร้าน] ${finalAddressText}`
         : finalAddressText;
 
-      const grandTotal = totalFinalPrice;
       const vatAmount = grandTotal - (grandTotal / 1.07);
 
       const payload: any = {
@@ -771,6 +785,8 @@ export default function ManagerPOSPage() {
         subtotal: totalOriginalPrice,
         discountAmount: totalDiscountAmount,
         totalAmount: grandTotal,
+        shippingCost: deliveryFee,
+        shippingWaived: isShippingWaived,
         specialDiscountPercent: Number(specialDiscountPercent || 0),
         specialDiscountBaht: Number(specialDiscountBaht || 0),
         couponCode: appliedCoupon?.code || null,
@@ -823,6 +839,7 @@ export default function ManagerPOSPage() {
         setShippingName('')
         setShippingPhone('')
         setShippingAddress('')
+        setShippingCost('')
         setCompanyNameTh('')
         setCompanyNameEn('')
         setCompanyAddress('')
@@ -1489,6 +1506,7 @@ export default function ManagerPOSPage() {
                           setShippingName('')
                           setShippingPhone('')
                           setShippingAddress('')
+                          setShippingCost('')
                           setCompanyNameTh('')
                           setCompanyNameEn('')
                           setCompanyAddress('')
@@ -1611,8 +1629,13 @@ export default function ManagerPOSPage() {
                   {saleMode === 'DELIVERY' ? <Truck className="w-3 h-3 text-amber-600" /> : <Store className="w-3 h-3 text-slate-500" />}
                   {saleMode === 'DELIVERY' ? 'ข้อมูลสำหรับจัดส่ง' : 'ลูกค้ารับหน้าร้าน'}
                 </span>
-                <span className="text-slate-700 font-semibold truncate text-[11px] mt-0.5">
-                  {shippingName ? `${shippingName} (${shippingPhone})` : 'ยังไม่ได้ระบุลูกค้า'}
+                <span className="text-slate-700 font-semibold truncate text-[11px] mt-0.5 flex items-center gap-1.5 flex-wrap">
+                  <span>{shippingName ? `${shippingName} (${shippingPhone})` : 'ยังไม่ได้ระบุลูกค้า'}</span>
+                  {deliveryFee > 0 && (
+                    <span className="px-1.5 py-0.2 rounded bg-blue-50 text-blue-700 text-[10px] font-bold border border-blue-200">
+                      {isShippingWaived ? `ค่าส่ง 0 ฿ (ต้นทุน ฿${deliveryFee.toLocaleString()})` : `ค่าส่ง ฿${deliveryFee.toLocaleString()}`}
+                    </span>
+                  )}
                 </span>
                 {shippingAddress && saleMode === 'DELIVERY' && (
                   <span className="text-[10px] text-slate-500 truncate">{shippingAddress}</span>
@@ -1751,10 +1774,24 @@ export default function ManagerPOSPage() {
                   <span>{totalSpecialDiscountAmount > 0 ? '-' : '+'} {Math.abs(totalSpecialDiscountAmount).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span>
                 </div>
               )}
-              <div className="flex justify-between pt-1 border-t border-dashed border-slate-200"><span>ยอดก่อนภาษี (Subtotal)</span><span>{(totalFinalPrice / 1.07).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span></div>
-              <div className="flex justify-between"><span>ภาษีมูลค่าเพิ่ม (VAT 7%)</span><span>{(totalFinalPrice - (totalFinalPrice / 1.07)).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span></div>
+              {deliveryFee > 0 && (
+                <>
+                  <div className="flex justify-between text-blue-600 font-bold">
+                    <span className="flex items-center gap-1"><Truck className="w-3.5 h-3.5" /> ค่าจัดส่ง</span>
+                    <span>+ {deliveryFee.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span>
+                  </div>
+                  {isShippingWaived && (
+                    <div className="flex justify-between text-emerald-600 font-bold">
+                      <span className="flex items-center gap-1">ส่วนลดค่าจัดส่ง (ยอดสินค้าหลังลดครบ 20,000฿)</span>
+                      <span>- {deliveryFee.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span>
+                    </div>
+                  )}
+                </>
+              )}
+              <div className="flex justify-between pt-1 border-t border-dashed border-slate-200"><span>ยอดก่อนภาษี (Subtotal)</span><span>{(grandTotal / 1.07).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span></div>
+              <div className="flex justify-between"><span>ภาษีมูลค่าเพิ่ม (VAT 7%)</span><span>{(grandTotal - (grandTotal / 1.07)).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span></div>
               <div className="flex justify-between text-xs font-bold text-slate-800 pt-3 mt-1 border-t border-dashed border-slate-200">
-                <span>ยอดสุทธิใบขาย (Grand Total)</span><span className="text-base text-amber-700 font-black">{totalFinalPrice.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span>
+                <span>ยอดสุทธิใบขาย (Grand Total)</span><span className="text-base text-amber-700 font-black">{grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span>
               </div>
             </div>
 
@@ -1779,18 +1816,32 @@ export default function ManagerPOSPage() {
       {/* 🚀 Modal ข้อมูลลูกค้า */}
       {isCustomerFormOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
-          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl flex flex-col max-h-[90vh]">
-            <div className={`p-5 border-b flex justify-between items-center rounded-t-3xl ${saleMode === 'DELIVERY' ? 'bg-amber-50/50 border-amber-200' : 'bg-slate-50 border-slate-100'}`}>
-              <h3 className={`font-bold text-sm flex items-center gap-1.5 ${saleMode === 'DELIVERY' ? 'text-amber-900' : 'text-slate-800'}`}>
-                {saleMode === 'DELIVERY' ? <Truck className="w-5 h-5 text-amber-600" /> : <Store className="w-5 h-5 text-slate-600" />} 
-                {saleMode === 'DELIVERY' ? 'ระบุข้อมูลสำหรับจัดส่ง' : 'ระบุข้อมูลลูกค้ารับหน้าร้าน'}
-              </h3>
-              <button onClick={() => setIsCustomerFormOpen(false)} className="text-slate-400 hover:text-slate-700 font-bold p-1 bg-white rounded-lg shadow-2xs">
+          <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className={`px-6 py-4 border-b flex justify-between items-center ${saleMode === 'DELIVERY' ? 'bg-amber-50/70 border-amber-200' : 'bg-slate-50 border-slate-100'}`}>
+              <div className="flex items-center gap-2.5">
+                <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${saleMode === 'DELIVERY' ? 'bg-amber-100 text-amber-700' : 'bg-slate-200 text-slate-700'}`}>
+                  {saleMode === 'DELIVERY' ? <Truck className="w-5 h-5" /> : <Store className="w-5 h-5" />}
+                </div>
+                <div>
+                  <h3 className={`font-bold text-sm ${saleMode === 'DELIVERY' ? 'text-amber-950' : 'text-slate-800'}`}>
+                    {saleMode === 'DELIVERY' ? 'ระบุข้อมูลสำหรับจัดส่งสินค้า' : 'ระบุข้อมูลลูกค้ารับหน้าร้าน'}
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    {saleMode === 'DELIVERY' ? 'กรอกที่อยู่ปลายทาง พร้อมค่าจัดส่งและพิกัดแผนที่' : 'บันทึกชื่อลูกค้าและค่าบริการ (ถ้ามี)'}
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setIsCustomerFormOpen(false)} 
+                className="text-slate-400 hover:text-slate-700 p-1.5 bg-white rounded-xl shadow-xs border border-slate-200 hover:bg-slate-50 transition-colors cursor-pointer"
+              >
                 <X className="w-4 h-4" />
               </button>
             </div>
             
-            <div className="p-5 overflow-y-auto">
+            {/* Modal Body */}
+            <div className="p-6 overflow-y-auto space-y-4">
               <button
                 type="button"
                 onClick={() => {
@@ -1800,73 +1851,183 @@ export default function ManagerPOSPage() {
                     setShippingName('ลูกค้าทั่วไป')
                   }
                 }}
-                className="w-full mb-3 text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 py-2.5 px-3 rounded-xl font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                className="w-full text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 py-2.5 px-4 rounded-xl font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
               >
                 ⚡ ไม่ระบุเบอร์โทร/ที่อยู่ (ใส่ "-")
               </button>
-              <div className="space-y-3">
-                <div className={`rounded-xl border p-3 ${editOrderId ? 'border-orange-200 bg-orange-50/60' : 'border-amber-200 bg-amber-50/50'}`}>
-                  <label className="mb-1 flex items-center justify-between text-[10px] font-bold text-slate-600">
-                    <span>เลข Invoice / รหัสออเดอร์</span>
-                    <span className="font-normal text-slate-400">ระบุเองได้</span>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* 1. เลข Invoice / รหัสออเดอร์ */}
+                <div className={`rounded-2xl border p-3.5 flex flex-col justify-between ${editOrderId ? 'border-orange-200 bg-orange-50/60' : 'border-amber-200 bg-amber-50/50'}`}>
+                  <label className="mb-1.5 flex items-center justify-between text-[11px] font-bold text-slate-700">
+                    <span className="flex items-center gap-1"><FileText className="w-3.5 h-3.5 text-amber-600" /> เลข Invoice / รหัสบิล</span>
+                    <span className="text-[9px] font-normal text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">ระบุเองได้</span>
                   </label>
                   <input
                     type="text"
                     placeholder="เว้นว่างเพื่อให้ระบบสร้างเลข INV อัตโนมัติ"
                     value={customOrderCode}
                     onChange={e => setCustomOrderCode(e.target.value.toUpperCase().replace(/\s/g, ''))}
-                    className="w-full rounded-lg border border-slate-200 bg-white p-3 font-mono text-xs uppercase outline-none transition-colors focus:border-amber-400"
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 font-mono text-xs uppercase outline-none transition-colors focus:border-amber-400 font-bold"
                   />
-                  <p className="mt-1.5 text-[9px] leading-relaxed text-slate-400">
-                    {editOrderId ? 'แก้เลขได้ขณะที่บิลยังรอชำระเงิน โดยไม่ต้องรับชำระทันที' : 'เลขต้องไม่ซ้ำกับบิลอื่น หากเว้นว่างระบบจะสร้างให้ก่อนยืนยัน'}
+                  <p className="mt-1.5 text-[9px] leading-tight text-slate-400">
+                    {editOrderId ? 'แก้เลขได้ขณะที่บิลยังรอชำระเงิน' : 'เลขต้องไม่ซ้ำ หากเว้นว่างระบบจะสร้างให้อัตโนมัติ'}
                   </p>
                 </div>
-                <div>
-                  <label className="text-[10px] font-bold text-slate-500 mb-1 block">ชื่อลูกค้า/ผู้รับ <span className="text-red-500">*</span></label>
-                  <input type="text" placeholder="ระบุชื่อลูกค้า..." value={shippingName} onChange={e => setShippingName(e.target.value)} className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-amber-400 focus:bg-white transition-colors" />
+
+                {/* 2. ค่าจัดส่ง / ค่าบริการส่ง (บาท) */}
+                <div className="rounded-2xl border border-blue-200 bg-blue-50/50 p-3.5 flex flex-col justify-between">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-[11px] font-bold text-blue-900 flex items-center gap-1.5">
+                      <Truck className="w-4 h-4 text-blue-600" />
+                      <span>ค่าจัดส่ง / ค่าบริการส่ง (บาท)</span>
+                    </label>
+                    <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                      isShippingWaived && deliveryFee > 0
+                        ? 'bg-amber-100 text-amber-800'
+                        : deliveryFee > 0
+                          ? 'bg-blue-100 text-blue-700'
+                          : 'bg-slate-100 text-slate-600'
+                    }`}>
+                      {isShippingWaived && deliveryFee > 0
+                        ? `฿${deliveryFee.toLocaleString()} (ไม่คิดค่าส่งลูกค้า)`
+                        : deliveryFee > 0
+                          ? `฿${deliveryFee.toLocaleString()}`
+                          : '0 ฿'}
+                    </span>
+                  </div>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">฿</span>
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder="0"
+                      value={shippingCost}
+                      onChange={e => {
+                        const val = e.target.value;
+                        if (val === '') {
+                          setShippingCost('');
+                        } else {
+                          const cleanVal = val.length > 1 && val.startsWith('0') && !val.includes('.') ? val.replace(/^0+/, '') : val;
+                          setShippingCost(cleanVal || '0');
+                        }
+                      }}
+                      className="w-full rounded-xl border border-slate-200 bg-white pl-7 pr-3 py-2 text-xs font-black text-slate-800 outline-none transition-colors focus:border-blue-500"
+                    />
+                  </div>
+                  <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                    {[0, 50, 100, 150, 200, 300, 500].map(amt => (
+                      <button
+                        key={amt}
+                        type="button"
+                        onClick={() => setShippingCost(amt === 0 ? '0' : amt.toString())}
+                        className={`px-2 py-0.5 rounded-lg text-[9px] font-bold transition-all cursor-pointer ${
+                          deliveryFee === amt
+                            ? 'bg-blue-600 text-white shadow-xs'
+                            : 'bg-white border border-slate-200 text-slate-600 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300'
+                        }`}
+                      >
+                        {amt === 0 ? '0฿' : `${amt}฿`}
+                      </button>
+                    ))}
+                  </div>
+
+                  {isOrderOver20k && (
+                    <div className="mt-2.5 p-2 rounded-xl bg-amber-100/70 border border-amber-300/80 flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="text-amber-800 text-xs">💡</span>
+                        <span className="text-[10px] font-bold text-amber-950 leading-tight">
+                          ยอดสินค้าสุทธิหลังหักส่วนลดครบ 20,000 ฿ ขึ้นไป ไม่คิดค่าส่งกับลูกค้า (บันทึกเฉพาะข้อมูลต้นทุน)
+                        </span>
+                      </div>
+                      <label className="flex items-center gap-1.5 cursor-pointer shrink-0">
+                        <input
+                          type="checkbox"
+                          checked={waiveShippingFee}
+                          onChange={e => setWaiveShippingFee(e.target.checked)}
+                          className="rounded text-amber-600 focus:ring-amber-500 w-3.5 h-3.5 cursor-pointer"
+                        />
+                        <span className="text-[10px] font-bold text-amber-900">ยกเว้นเก็บลูกค้า</span>
+                      </label>
+                    </div>
+                  )}
                 </div>
+
+                {/* 3. ชื่อลูกค้า/ผู้รับ */}
                 <div>
-                  <label className="text-[10px] font-bold text-slate-500 mb-1 block">เบอร์โทรศัพท์ติดต่อ <span className="text-red-500">*</span></label>
-                  <input type="text" placeholder="ระบุเบอร์โทร..." value={shippingPhone} onChange={e => setShippingPhone(e.target.value)} className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-amber-400 focus:bg-white transition-colors" />
+                  <label className="text-[11px] font-bold text-slate-600 mb-1 block">ชื่อลูกค้า/ผู้รับ <span className="text-red-500">*</span></label>
+                  <input 
+                    type="text" 
+                    placeholder="ระบุชื่อลูกค้า..." 
+                    value={shippingName} 
+                    onChange={e => setShippingName(e.target.value)} 
+                    className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-amber-400 focus:bg-white transition-colors" 
+                  />
                 </div>
+
+                {/* 4. เบอร์โทรศัพท์ติดต่อ */}
                 <div>
-                  <label className="text-[10px] font-bold text-slate-500 mb-1 block">ที่อยู่จัดส่ง/ที่อยู่ลูกค้า <span className="text-red-500">*</span></label>
-                  <textarea placeholder="บ้านเลขที่, ซอย, ถนน, ตำบล, อำเภอ, จังหวัด, รหัสไปรษณีย์..." value={shippingAddress} onChange={e => setShippingAddress(e.target.value)} rows={3} className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-amber-400 focus:bg-white transition-colors resize-none" />
+                  <label className="text-[11px] font-bold text-slate-600 mb-1 block">เบอร์โทรศัพท์ติดต่อ <span className="text-red-500">*</span></label>
+                  <input 
+                    type="text" 
+                    placeholder="ระบุเบอร์โทร..." 
+                    value={shippingPhone} 
+                    onChange={e => setShippingPhone(e.target.value)} 
+                    className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-amber-400 focus:bg-white transition-colors" 
+                  />
+                </div>
+
+                {/* 5. ที่อยู่จัดส่ง/ที่อยู่ลูกค้า */}
+                <div className="sm:col-span-2">
+                  <label className="text-[11px] font-bold text-slate-600 mb-1 block">ที่อยู่จัดส่ง / ที่อยู่ลูกค้า <span className="text-red-500">*</span></label>
+                  <textarea 
+                    placeholder="บ้านเลขที่, ซอย, ถนน, ตำบล, อำเภอ, จังหวัด, รหัสไปรษณีย์..." 
+                    value={shippingAddress} 
+                    onChange={e => setShippingAddress(e.target.value)} 
+                    rows={3} 
+                    className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-amber-400 focus:bg-white transition-colors resize-none" 
+                  />
                 </div>
               </div>
 
-              <div className="pt-4 mt-4 border-t border-slate-100 space-y-3">
-                <h4 className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5"><FileText className="w-4 h-4 text-amber-600"/> ข้อมูลสำหรับออกใบกำกับภาษี (ถ้ามี)</h4>
-                <div>
-                  <label className="text-[10px] font-bold text-slate-500 mb-1 block">ชื่อบริษัท (ภาษาไทย) <span className="text-xs font-normal text-slate-400">(ไม่บังคับ)</span></label>
-                  <input type="text" placeholder="ระบุชื่อบริษัทภาษาไทย..." value={companyNameTh} onChange={e => setCompanyNameTh(e.target.value)} className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-amber-400 focus:bg-white transition-colors" />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-slate-500 mb-1 block">ชื่อบริษัท (ภาษาอังกฤษ) <span className="text-xs font-normal text-slate-400">(ไม่บังคับ)</span></label>
-                  <input type="text" placeholder="ระบุชื่อบริษัทภาษาอังกฤษ..." value={companyNameEn} onChange={e => setCompanyNameEn(e.target.value)} className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-amber-400 focus:bg-white transition-colors" />
-                </div>
-                {(companyNameTh.trim() !== '' || companyNameEn.trim() !== '') && (
-                  <>
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-500 mb-1 block">ที่อยู่บริษัท <span className="text-red-500">*</span></label>
-                      <textarea placeholder="ระบุที่อยู่บริษัทสำหรับออกใบกำกับภาษี..." value={companyAddress} onChange={e => setCompanyAddress(e.target.value)} rows={2} className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-amber-400 focus:bg-white transition-colors resize-none" />
-                    </div>
-                    <div>
-                      <div className="flex justify-between items-end mb-1">
-                        <label className="text-[10px] font-bold text-slate-500 block">เลขประจำตัวผู้เสียภาษี (13 หลัก) <span className="text-xs font-normal text-slate-400">(ไม่บังคับ)</span></label>
-                        <span className={`text-[9px] font-bold ${taxId.length === 13 ? 'text-emerald-500' : 'text-slate-400'}`}>{taxId.length}/13</span>
+              {/* 6. ส่วนข้อมูลใบกำกับภาษี */}
+              <div className="pt-4 border-t border-slate-100 space-y-3">
+                <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                  <FileText className="w-4 h-4 text-amber-600"/> ข้อมูลสำหรับออกใบกำกับภาษี (ถ้ามี)
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-500 mb-1 block">ชื่อบริษัท (ภาษาไทย) <span className="text-xs font-normal text-slate-400">(ไม่บังคับ)</span></label>
+                    <input type="text" placeholder="ระบุชื่อบริษัทภาษาไทย..." value={companyNameTh} onChange={e => setCompanyNameTh(e.target.value)} className="w-full text-xs p-2.5 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-amber-400 focus:bg-white transition-colors" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-500 mb-1 block">ชื่อบริษัท (ภาษาอังกฤษ) <span className="text-xs font-normal text-slate-400">(ไม่บังคับ)</span></label>
+                    <input type="text" placeholder="ระบุชื่อบริษัทภาษาอังกฤษ..." value={companyNameEn} onChange={e => setCompanyNameEn(e.target.value)} className="w-full text-xs p-2.5 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-amber-400 focus:bg-white transition-colors" />
+                  </div>
+                  {(companyNameTh.trim() !== '' || companyNameEn.trim() !== '') && (
+                    <>
+                      <div className="sm:col-span-2">
+                        <label className="text-[10px] font-bold text-slate-500 mb-1 block">ที่อยู่บริษัท <span className="text-red-500">*</span></label>
+                        <textarea placeholder="ระบุที่อยู่บริษัทสำหรับออกใบกำกับภาษี..." value={companyAddress} onChange={e => setCompanyAddress(e.target.value)} rows={2} className="w-full text-xs p-2.5 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-amber-400 focus:bg-white transition-colors resize-none" />
                       </div>
-                      <input type="text" placeholder="ระบุเลขประจำตัวผู้เสียภาษี..." value={taxId} onChange={e => setTaxId(e.target.value.replace(/\D/g, ''))} maxLength={13} className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-amber-400 focus:bg-white transition-colors" />
-                    </div>
-                  </>
-                )}
+                      <div className="sm:col-span-2">
+                        <div className="flex justify-between items-end mb-1">
+                          <label className="text-[10px] font-bold text-slate-500 block">เลขประจำตัวผู้เสียภาษี (13 หลัก) <span className="text-xs font-normal text-slate-400">(ไม่บังคับ)</span></label>
+                          <span className={`text-[9px] font-bold ${taxId.length === 13 ? 'text-emerald-500' : 'text-slate-400'}`}>{taxId.length}/13</span>
+                        </div>
+                        <input type="text" placeholder="ระบุเลขประจำตัวผู้เสียภาษี..." value={taxId} onChange={e => setTaxId(e.target.value.replace(/\D/g, ''))} maxLength={13} className="w-full text-xs p-2.5 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-amber-400 focus:bg-white transition-colors" />
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
               
+              {/* 7. ส่วนปักหมุดแผนที่ (เฉพาะจัดส่ง) */}
               {saleMode === 'DELIVERY' && (
-                <div className="pt-4 mt-4 border-t border-slate-100 space-y-3">
-                  <label className="text-[10px] font-bold text-slate-500 block">ปักหมุดแผนที่สำหรับไรเดอร์ / ขนส่ง</label>
+                <div className="pt-4 border-t border-slate-100 space-y-3">
+                  <label className="text-xs font-bold text-slate-700 block">ปักหมุดแผนที่สำหรับไรเดอร์ / ขนส่ง</label>
                   {latitude && longitude ? (
-                    <div className="w-full h-32 bg-slate-100 rounded-xl overflow-hidden border border-slate-200 relative shadow-inner">
+                    <div className="w-full h-36 bg-slate-100 rounded-2xl overflow-hidden border border-slate-200 relative shadow-inner">
                       <iframe
                         title="Mini Map Preview"
                         width="100%"
@@ -1881,7 +2042,7 @@ export default function ManagerPOSPage() {
                       </div>
                     </div>
                   ) : (
-                    <div className="w-full h-24 bg-slate-50 rounded-xl border border-dashed border-slate-300 flex flex-col items-center justify-center text-slate-400 gap-2">
+                    <div className="w-full h-24 bg-slate-50 rounded-2xl border border-dashed border-slate-300 flex flex-col items-center justify-center text-slate-400 gap-2">
                       <MapPin className="w-5 h-5 text-slate-300" />
                       <span className="text-[11px] font-medium">ยังไม่ได้ปักหมุดแผนที่บน Google Maps</span>
                     </div>
@@ -1890,7 +2051,7 @@ export default function ManagerPOSPage() {
                   <button
                     type="button"
                     onClick={() => setShowMap(true)}
-                    className={`w-full flex items-center justify-center gap-1.5 p-3 text-xs font-bold rounded-xl border transition-all ${
+                    className={`w-full flex items-center justify-center gap-1.5 p-3 text-xs font-bold rounded-xl border transition-all cursor-pointer ${
                       latitude && longitude 
                         ? 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50' 
                         : 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100 hover:border-amber-300 shadow-sm'
@@ -1903,13 +2064,27 @@ export default function ManagerPOSPage() {
               )}
             </div>
             
-            <div className="p-4 bg-slate-50 border-t border-slate-100 rounded-b-3xl">
+            {/* Modal Footer */}
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-xs text-slate-500 flex-wrap">
+                <span>สินค้า: <strong className="text-slate-700">฿{totalFinalPrice.toLocaleString()}</strong></span>
+                <span>·</span>
+                <span>ค่าส่ง: <strong className={deliveryFeeCharged > 0 ? "text-blue-600" : "text-slate-700"}>
+                  {isShippingWaived && deliveryFee > 0 
+                    ? `0 ฿ (ต้นทุน ฿${deliveryFee.toLocaleString()})` 
+                    : deliveryFee > 0 
+                      ? `฿${deliveryFee.toLocaleString()}` 
+                      : '0 ฿'}
+                </strong></span>
+                <span>·</span>
+                <span>สุทธิ: <strong className="text-amber-700 font-black text-sm">฿{grandTotal.toLocaleString()}</strong></span>
+              </div>
               <button 
                 onClick={() => {
                   setIsCustomerFormOpen(false)
                   setTimeout(() => handlePreCheckout(), 100)
                 }} 
-                className="w-full py-3 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold text-xs transition-colors shadow-md shadow-amber-200 cursor-pointer"
+                className="w-full sm:w-auto px-6 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold text-xs transition-colors shadow-md shadow-amber-200 cursor-pointer"
               >
                 บันทึกข้อมูลและดำเนินการต่อ
               </button>
@@ -1987,9 +2162,35 @@ export default function ManagerPOSPage() {
             <h3 className="font-bold text-slate-800 text-lg mb-2">
               {editOrderId ? 'ยืนยันบันทึกการแก้ไขบิล?' : 'ยืนยันสร้างใบเสนอราคา?'}
             </h3>
-            <p className="text-slate-500 text-xs mb-6 px-4 leading-relaxed">
+            <p className="text-slate-500 text-xs mb-4 px-4 leading-relaxed">
               กรุณาตรวจสอบรายการสินค้าและยอดเงินให้ถูกต้องก่อนกดยืนยัน ระบบจะทำการบันทึกบิลและตัดสต็อกทันที
             </p>
+
+            {/* สรุปยอดเงินในโมดอลยืนยัน */}
+            <div className="w-full mb-4 bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 text-xs space-y-1.5 text-left">
+              <div className="flex justify-between text-slate-500">
+                <span>ยอดรวมสินค้า:</span>
+                <span className="font-semibold text-slate-700">{totalFinalPrice.toLocaleString()} ฿</span>
+              </div>
+              {deliveryFee > 0 && (
+                <>
+                  <div className="flex justify-between text-blue-600 font-bold">
+                    <span className="flex items-center gap-1"><Truck className="w-3.5 h-3.5" /> ค่าจัดส่ง:</span>
+                    <span>+{deliveryFee.toLocaleString()} ฿</span>
+                  </div>
+                  {isShippingWaived && (
+                    <div className="flex justify-between text-emerald-600 font-bold">
+                      <span>ส่วนลดค่าจัดส่ง (ยอดหลังลดครบ 20,000฿):</span>
+                      <span>-{deliveryFee.toLocaleString()} ฿</span>
+                    </div>
+                  )}
+                </>
+              )}
+              <div className="flex justify-between text-slate-800 font-black text-sm pt-2 border-t border-slate-200">
+                <span>ยอดสุทธิทั้งสิ้น:</span>
+                <span className="text-amber-700">{grandTotal.toLocaleString()} ฿</span>
+              </div>
+            </div>
 
             {!editOrderId && (
               <div className="w-full mb-6 text-left">

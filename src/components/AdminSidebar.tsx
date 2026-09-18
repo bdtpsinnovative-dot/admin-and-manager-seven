@@ -8,7 +8,7 @@ import {
   MapPin, Tag, LogOut, Users, Receipt,
   BarChart3, History, Package, Settings, Frame,
   Layers, ShieldCheck, AlertTriangle, Scale, Activity,
-  Images, Ticket, SlidersHorizontal
+  Images, Ticket, SlidersHorizontal, Trash2
 } from "lucide-react";
 
 // 1. เมนูที่ใช้บ่อย (งานประจำวัน)
@@ -38,6 +38,7 @@ const secondaryItems = [
   { name: "ตรวจสอบยอดรวมระบบ", href: "/balance-check", icon: Scale },
   { name: "ตรวจสอบ RFID ยอดเกิน", href: "/rfid-mismatch", icon: AlertTriangle },
   { name: "อนุมัติตรวจนับสต็อก", href: "/stock-audit", icon: ShieldCheck },
+  { name: "ประวัติสินค้าเสียหาย", href: "/manager/damage-history", icon: Trash2 },
   { name: "จัดการ Filters",  href: "/filters",      icon: SlidersHorizontal },
   { name: "จัดการแอป & เว็บ",  href: "/app-management", icon: Settings },
   { name: "Backup & Restore", href: "/backup",       icon: ShieldCheck },

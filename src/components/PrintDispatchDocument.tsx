@@ -46,7 +46,12 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
 
   const subtotal = totalItemsPriceFromDb ?? totalItemsPrice;
   const totalSpecialDiscount = totalSpecialDiscountFromDb !== null ? totalSpecialDiscountFromDb : (specialDiscountBaht + specialDiscountPercentAmount);
-  const grandTotal = grandTotalFromDb ?? Math.max(0, subtotal - totalSpecialDiscount);
+  const netGoodsPrice = Math.max(0, subtotal - totalSpecialDiscount);
+  const isOrderEligibleOver20k = netGoodsPrice >= 20000;
+  const shippingCost = Number(data?.discount_snapshot?.shipping_cost || 0);
+  const shippingWaived = Boolean(data?.discount_snapshot?.shipping_waived && isOrderEligibleOver20k);
+  const shippingCharged = shippingWaived ? 0 : shippingCost;
+  const grandTotal = grandTotalFromDb ?? Math.max(0, netGoodsPrice + shippingCharged);
 
   const vatAmountFromDb = data?.vat_amount !== undefined && data?.vat_amount !== null && Number(data.vat_amount) > 0
     ? Number(data.vat_amount)
@@ -147,6 +152,24 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
           </table>
         </div>
       </div>
+
+      {data.status === 'CANCELLED' && (
+        <div className="mb-3 p-2 bg-rose-50 border border-rose-200 rounded text-rose-700 text-[9px] flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="font-bold bg-rose-600 text-white text-[8px] px-1.5 py-0.5 rounded">ยกเลิกแล้ว</span>
+            {data?.discount_snapshot?.cancel_reason ? (
+              <span><strong className="text-rose-900">เหตุผล:</strong> {data.discount_snapshot.cancel_reason}</span>
+            ) : (
+              <span className="text-rose-500 italic">ไม่ได้ระบุเหตุผลการยกเลิก</span>
+            )}
+          </div>
+          {data?.discount_snapshot?.cancelled_at && (
+            <span className="text-[8px] text-rose-400">
+              {new Date(data.discount_snapshot.cancelled_at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' })}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* ================= ITEMS TABLE ================= */}
       <div className="mb-2 flex-grow">
@@ -294,6 +317,20 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
               <span>VAT (7%)</span>
               <span>{vatAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </div>
+            {shippingCost > 0 && (
+              <>
+                <div className="flex justify-between py-0.5 text-[9px] text-neutral-600 font-medium">
+                  <span>Shipping Fee (ค่าจัดส่ง)</span>
+                  <span>+{shippingCost.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+                {shippingWaived && (
+                  <div className="flex justify-between py-0.5 text-[9px] text-emerald-600 font-medium">
+                    <span>Shipping Discount (ส่วนลดค่าจัดส่ง ยอดครบ 20,000฿)</span>
+                    <span>-{shippingCost.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  </div>
+                )}
+              </>
+            )}
             <div className="flex justify-between py-1.5 mt-0.5 border-t border-neutral-900">
               <span className="text-[10px] font-bold text-neutral-900 uppercase tracking-widest mt-0.5">Total (THB)</span>
               <span className="text-base font-bold text-neutral-900">{grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span>

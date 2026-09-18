@@ -33,8 +33,7 @@ export default function DamageHistoryPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 p-6 font-sans select-none pb-20">
-      <div className="max-w-4xl mx-auto space-y-6">
+    <div className="w-full space-y-6 font-sans select-none pb-20">
         
         {/* Header Section */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-xl shadow-sm border border-slate-200">
@@ -53,6 +52,28 @@ export default function DamageHistoryPage() {
           >
             <RefreshCw className="w-4 h-4" /> รีเฟรชข้อมูล
           </button>
+        </div>
+
+        {/* Summary Stat Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">จำนวนชิ้นที่เสียหายรวม</span>
+            <p className="text-2xl font-black text-slate-800 mt-1">
+              {records.reduce((sum: number, r: any) => sum + (Number(r.qty) || 0), 0).toLocaleString()} <span className="text-sm font-normal text-slate-500">ชิ้น</span>
+            </p>
+          </div>
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">มูลค่าต้นทุนรวม</span>
+            <p className="text-2xl font-black text-slate-700 mt-1">
+              ฿{records.reduce((sum: number, r: any) => sum + ((Number(r.products?.cost) || 0) * (Number(r.qty) || 0)), 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </p>
+          </div>
+          <div className="bg-white p-4 rounded-xl border border-rose-200 bg-rose-50/20 shadow-sm">
+            <span className="text-xs font-bold text-rose-600 uppercase tracking-wider">มูลค่าราคาขายรวม</span>
+            <p className="text-2xl font-black text-rose-600 mt-1">
+              ฿{records.reduce((sum: number, r: any) => sum + ((Number(r.products?.price) || 0) * (Number(r.qty) || 0)), 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </p>
+          </div>
         </div>
 
         {/* History List */}
@@ -95,6 +116,11 @@ export default function DamageHistoryPage() {
                   
                   {/* Reason & User Badge */}
                   <div className="mt-2 flex items-center flex-wrap gap-2">
+                    {record.branches?.branch_name && (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-100">
+                        สาขา: {record.branches.branch_name}
+                      </span>
+                    )}
                     <span className="inline-flex items-center gap-1 text-[11px] font-semibold bg-red-50 text-red-600 px-2 py-0.5 rounded border border-red-100">
                       <AlertTriangle className="w-3 h-3" /> สาเหตุ: {record.reason || 'ไม่ได้ระบุ'}
                     </span>
@@ -104,22 +130,33 @@ export default function DamageHistoryPage() {
                   </div>
                 </div>
 
-                {/* Damaged Quantity */}
-                <div className="mt-3 md:mt-0 w-full md:w-auto bg-red-50 px-4 py-2 rounded-lg border border-red-100 shrink-0 text-center">
-                  <span className="block text-[10px] text-red-500 font-bold uppercase tracking-wide mb-0.5">
-                    จำนวนที่ตัด
-                  </span>
-                  <span className="block text-xl font-black text-red-600">
-                    -{record.qty}
-                  </span>
+                {/* Price, Cost & Damaged Quantity */}
+                <div className="mt-3 md:mt-0 w-full md:w-auto flex items-center justify-between md:justify-end gap-4 shrink-0">
+                  <div className="text-right text-xs space-y-0.5">
+                    <div className="text-slate-500">
+                      ต้นทุน: <span className="font-bold text-slate-700">฿{((Number(record.products?.cost) || 0) * (Number(record.qty) || 1)).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      <span className="text-[10px] text-slate-400 block">(@฿{(Number(record.products?.cost) || 0).toLocaleString()})</span>
+                    </div>
+                    <div className="text-rose-600">
+                      ราคาขาย: <span className="font-bold text-rose-600">฿{((Number(record.products?.price) || 0) * (Number(record.qty) || 1)).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      <span className="text-[10px] text-rose-400 block">(@฿{(Number(record.products?.price) || 0).toLocaleString()})</span>
+                    </div>
+                  </div>
+
+                  <div className="bg-red-50 px-4 py-2 rounded-lg border border-red-100 text-center min-w-[75px]">
+                    <span className="block text-[10px] text-red-500 font-bold uppercase tracking-wide mb-0.5">
+                      จำนวนที่ตัด
+                    </span>
+                    <span className="block text-xl font-black text-red-600">
+                      -{record.qty}
+                    </span>
+                  </div>
                 </div>
 
               </div>
             ))
           )}
         </div>
-
-      </div>
     </div>
   )
 }

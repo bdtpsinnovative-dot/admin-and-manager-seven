@@ -18,12 +18,16 @@ interface SalesOrderRow {
   id: number
   order_code: string
   created_at: string
+  subtotal?: number
+  discount_amount?: number
+  vat_amount?: number
   total_amount: number
   status: string
   shipping_name: string | null
   branch_id?: number
   branches: { id: number; branch_name: string } | null
   profiles: { full_name: string | null } | null
+  discount_snapshot?: any
   order_items: SalesOrderItemRow[] | null
 }
 
@@ -68,7 +72,9 @@ export async function getSalesHistory(showHidden = false, targetBranchId?: numbe
       created_at,
       subtotal,
       discount_amount,
+      vat_amount,
       total_amount,
+      discount_snapshot,
       status,
       shipping_name,
       branch_id,
@@ -134,6 +140,15 @@ export async function getSalesHistory(showHidden = false, targetBranchId?: numbe
       fulfillBranchName: item.branches?.branch_name || 'สาขาหลัก'
     })) || []
 
+    const totalAmount = Number(order.total_amount) || 0
+    const discountAmount = Number(order.discount_amount) || 0
+    const subtotal = Number(order.subtotal) > 0 ? Number(order.subtotal) : (totalAmount + discountAmount)
+    const discountPercent = subtotal > 0 ? Math.round((discountAmount / subtotal) * 1000) / 10 : 0
+    const vatAmount = Number(order.vat_amount) > 0 
+      ? Number(order.vat_amount) 
+      : Math.round((totalAmount - (totalAmount / 1.07)) * 100) / 100
+    const netBeforeVat = Math.max(0, Math.round((totalAmount - vatAmount) * 100) / 100)
+
     return {
       id: order.id,
       orderCode: order.order_code,
@@ -141,8 +156,14 @@ export async function getSalesHistory(showHidden = false, targetBranchId?: numbe
       saleName: order.profiles?.full_name || 'ไม่ระบุชื่อ',
       branchId: order.branch_id,
       branchName,
-      totalAmount: order.total_amount,
+      subtotal,
+      discountAmount,
+      discountPercent,
+      netBeforeVat,
+      vatAmount,
+      totalAmount,
       status: order.status,
+      discountSnapshot: order.discount_snapshot,
       shippingName: order.shipping_name,
       myBranchRevenue,      
       otherBranchRevenue,   

@@ -79,7 +79,8 @@ const downloadTemplate = () => {
         "W": 21.5,
         "D": 21.5,
         "H": 30,
-        "Cost TH": 1160,
+        "ต้นทุน ดอลลาร์ ไม่รวมค่าส่ง (Cost_Dollar)": 12.5,
+        "ต้นทุนรวมค่าส่ง (บาท) (Cost_TH_Shipping)": 1160,
         "Price": 4100
       }];
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(propTemplate), "Props Template");
@@ -199,7 +200,8 @@ const downloadTemplate = () => {
           "W": p.specs?.width_cm || "",
           "D": p.specs?.length_cm || "",
           "H": p.specs?.thickness_cm || "",
-          "Cost TH": p.cost || 0,
+          "ต้นทุน ดอลลาร์ ไม่รวมค่าส่ง (Cost_Dollar)": p.specs?.cost_dollar ?? "",
+          "ต้นทุนรวมค่าส่ง (บาท) (Cost_TH_Shipping)": p.specs?.cost_th_shipping ?? p.cost ?? 0,
           "Price": p.price || 0
         };
       });
@@ -248,10 +250,10 @@ const downloadTemplate = () => {
         // --- Props / Furniture mode ---
           if (selectedType === 'prop' || selectedType === 'furniture') {
             
-            // 🌟 ท่าไม้ตาย: ลบช่องว่างทั้งหมดทิ้งก่อนเทียบหาคอลัมน์ (รองรับทั้งแบบมีและไม่มีเว้นวรรคใน Excel)
+            // 🌟 ท่าไม้ตาย: ลบช่องว่างและขีดล่างทั้งหมดทิ้งก่อนเทียบหาคอลัมน์ (รองรับทั้ง Cost_Dollar, Cost Dollar, Cost_TH_Shipping ฯลฯ)
             const getVal = (searchKey: string) => {
-              const cleanSearch = searchKey.replace(/\s+/g, '').toLowerCase();
-              const actualKey = Object.keys(row).find(k => k.replace(/\s+/g, '').toLowerCase() === cleanSearch);
+              const cleanSearch = searchKey.replace(/[\s_]+/g, '').toLowerCase();
+              const actualKey = Object.keys(row).find(k => k.replace(/[\s_]+/g, '').toLowerCase() === cleanSearch);
               return actualKey ? row[actualKey] : null;
             };
 
@@ -263,12 +265,24 @@ const downloadTemplate = () => {
             const d = getVal("D") != null ? Number(getVal("D")) : null;
             const h = getVal("H") != null ? Number(getVal("H")) : null;
             
-            // จัดการตัวเลขที่อาจมีลูกน้ำ (,) ติดมา
-            const rawCostTh = getVal("Cost TH") || 0;
-            const costTh = Number(rawCostTh.toString().replace(/,/g, ''));
+            // จัดการตัวเลขต้นทุนดอลลาร์ และต้นทุนรวมค่าส่ง (บาท)
+            const rawCostDollar = getVal("ต้นทุน ดอลลาร์ ไม่รวมค่าส่ง (Cost_Dollar)") || getVal("ต้นทุน ดอลลาร์ไม่รวมค่าส่ง") || getVal("ต้นทุนดอลลาร์") || getVal("Cost_Dollar") || getVal("Cost Dollar") || getVal("CostDollar") || getVal("Cost USD") || null;
+            const costDollar = rawCostDollar != null && rawCostDollar !== '' && !isNaN(Number(rawCostDollar.toString().replace(/,/g, '')))
+              ? Number(rawCostDollar.toString().replace(/,/g, ''))
+              : null;
+
+            const rawCostThShipping = getVal("ต้นทุนรวมค่าส่ง (บาท) (Cost_TH_Shipping)") || getVal("ต้นทุนรวมค่าส่งบาท") || getVal("ต้นทุนรวมค่าส่ง") || getVal("Cost_TH_Shipping") || getVal("Cost TH Shipping") || getVal("CostTHShipping") || getVal("Cost Shipping") || null;
+            const costThShipping = rawCostThShipping != null && rawCostThShipping !== '' && !isNaN(Number(rawCostThShipping.toString().replace(/,/g, '')))
+              ? Number(rawCostThShipping.toString().replace(/,/g, ''))
+              : null;
+
+            // จัดการตัวเลขที่อาจมีลูกน้ำ (,) ติดมา (รองรับทั้ง Cost_TH_Shipping และ Cost TH เดิม)
+            const rawCostTh = getVal("Cost TH") || getVal("CostTH") || rawCostThShipping || 0;
+            const costTh = Number(rawCostTh.toString().replace(/,/g, '')) || 0;
+            const finalCostTh = costThShipping != null ? costThShipping : costTh;
             
             const rawPrice = getVal("Price") || 0;
-            const priceRounded = Number(rawPrice.toString().replace(/,/g, ''));
+            const priceRounded = Number(rawPrice.toString().replace(/,/g, '')) || 0;
 
             // ดึงข้อมูลผ่าน getVal ไม่ว่า Excel จะเขียน CollectionGroup หรือ Collection Group ก็หาเจอชัวร์!
             const collectionGroupId = (getVal("Collection Group") || getVal("CollectionGroup") || getVal("Collection"))?.toString().trim() || null;
@@ -293,7 +307,7 @@ const downloadTemplate = () => {
               category_id: selectedType === 'furniture' ? 'furniture' : 'prop',
               image_url: getVal("Link Picture")?.toString() || null,
               status: "active",
-              cost: costTh,
+              cost: finalCostTh,
               price: priceRounded,
               weight: 0,
               unit: "ชิ้น",
@@ -312,6 +326,8 @@ const downloadTemplate = () => {
                 brand: factoryName,
                 group_size: getVal("Group Sisz")?.toString() || getVal("Group Size")?.toString() || null,
                 material: getVal("Material")?.toString() || null,
+                cost_dollar: costDollar,
+                cost_th_shipping: costThShipping ?? (costTh > 0 ? costTh : null),
               }
             }
           }
@@ -769,6 +785,8 @@ const downloadTemplate = () => {
                       <th className="p-3 border-b">Color</th>
                       <th className="p-3 border-b">Material</th>
                       <th className="p-3 border-b text-center">W x D x H</th>
+                      <th className="p-3 border-b text-right">ต้นทุน ดอลลาร์ ไม่รวมค่าส่ง</th>
+                      <th className="p-3 border-b text-right">ต้นทุนรวมค่าส่ง (บาท)</th>
                       <th className="p-3 border-b text-right">Price</th>
                     </>
                   ) : (
@@ -802,6 +820,12 @@ const downloadTemplate = () => {
                           <td className="p-3 text-xs">{item.specs.material || '-'}</td>
                           <td className="p-3 text-center text-xs font-medium text-slate-600">
                             {item.specs.width_cm || '-'} x {item.specs.length_cm || '-'} x {item.specs.thickness_cm || '-'}
+                          </td>
+                          <td className="p-3 text-right text-xs font-mono font-semibold text-amber-700">
+                            {item.specs.cost_dollar != null ? `$${Number(item.specs.cost_dollar).toFixed(2)}` : '-'}
+                          </td>
+                          <td className="p-3 text-right text-xs font-mono font-semibold text-slate-700">
+                            {(item.specs.cost_th_shipping ?? item.cost) ? `฿${Number(item.specs.cost_th_shipping ?? item.cost).toLocaleString()}` : '-'}
                           </td>
                           <td className="p-3 text-right text-blue-600 font-bold">{item.price.toLocaleString()}</td>
                         </>

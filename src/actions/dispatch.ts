@@ -253,6 +253,7 @@ export async function getPrintDispatchData(orderCode: string) {
       discount_amount,
       vat_amount,
       total_amount,
+      discount_snapshot,
       branches!orders_branch_fk ( branch_name ),
       profiles ( full_name ),
       order_items (
@@ -416,7 +417,7 @@ export async function approveAndCutStock(orderId: number, orderCode: string, ite
   }
 }
 
-export async function cancelOrder(orderId: number, orderCode: string, items: any[], currentStatus: string) {
+export async function cancelOrder(orderId: number, orderCode: string, items: any[], currentStatus: string, cancelReason?: string) {
   const cookieStore = await cookies()
   const supabase = createServerClient(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!, { 
     cookies: { getAll() { return cookieStore.getAll() } } 
@@ -424,6 +425,13 @@ export async function cancelOrder(orderId: number, orderCode: string, items: any
 
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { success: false, error: "Unauthorized" }
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('full_name')
+    .eq('user_id', user.id)
+    .maybeSingle()
+  const staffName = profile?.full_name || 'เจ้าหน้าที่'
 
   try {
     // 1. ถ้าบิลไม่อยู่สถานะ PENDING แปลว่าเคยหักสต็อกไปแล้ว ต้องบวกกลับคืน
@@ -502,7 +510,7 @@ export async function cancelOrder(orderId: number, orderCode: string, items: any
             branch_id: branchId, 
             type: 'ADJUSTMENT', 
             qty: Math.abs(qty), 
-            note: `คืนสต็อกเนื่องจากยกเลิกบิล (บิล: ${orderCode})`, 
+            note: `คืนสต็อกเนื่องจากยกเลิกบิล (บิล: ${orderCode})${cancelReason ? ` - สาเหตุ: ${cancelReason.trim()}` : ''}`, 
             ref_type: 'ORDER', 
             ref_id_bigint: orderId, 
             created_by: user.id
@@ -511,8 +519,25 @@ export async function cancelOrder(orderId: number, orderCode: string, items: any
       }
     }
 
-    // 2. อัปเดตสถานะบิลและไอเทมเป็น CANCELLED
-    await supabase.from('orders').update({ status: 'CANCELLED' }).eq('id', orderId)
+    // 2. อัปเดตสถานะบิลและไอเทมเป็น CANCELLED พร้อมบันทึก Note ใน discount_snapshot
+    const { data: orderData } = await supabase
+      .from('orders')
+      .select('discount_snapshot')
+      .eq('id', orderId)
+      .maybeSingle()
+
+    const updatedSnapshot = {
+      ...(orderData?.discount_snapshot || {}),
+      cancel_reason: cancelReason?.trim() || null,
+      cancelled_at: new Date().toISOString(),
+      cancelled_by_name: staffName,
+      cancelled_by_id: user.id
+    }
+
+    await supabase.from('orders').update({ 
+      status: 'CANCELLED',
+      discount_snapshot: updatedSnapshot
+    }).eq('id', orderId)
     await supabase.from('order_items').update({ item_status: 'CANCELLED' }).eq('order_id', orderId)
     
     // ยกเลิกรายการโอน (ถ้ามี)

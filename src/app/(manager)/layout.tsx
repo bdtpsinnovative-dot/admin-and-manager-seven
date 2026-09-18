@@ -69,7 +69,7 @@ export default async function ManagerLayout({ children }: { children: React.Reac
 
         {/* 💡 2. ปลดล็อกระยะเว้นขอบ (md:ml-[88px]) และ Padding ออกให้หมดตอนพริ้นท์ เพื่อให้ข้อมูลกางเต็มกระดาษ A4 สวยๆ */}
         <main className="flex-1 md:ml-[88px] bg-slate-50/50 min-h-screen transition-all duration-300 print:ml-0 print:p-0 print:bg-white">
-          <div className="max-w-7xl mx-auto pt-20 pb-4 px-4 md:p-8 print:p-0 print:max-w-full">
+          <div className="w-full pt-16 md:pt-6 pb-8 px-4 md:px-6 lg:px-8 print:p-0 print:max-w-full">
               {children}
           </div>
         </main>
