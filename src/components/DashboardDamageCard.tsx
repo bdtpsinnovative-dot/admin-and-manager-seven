@@ -238,35 +238,35 @@ export default function DashboardDamageCard({
             {/* Modal Body - Scrollable */}
             <div className="p-5 sm:p-6 overflow-y-auto space-y-6 flex-1 bg-slate-50/50">
               
-              {/* 💡 แจ้งเตือนข้อเท็จจริง (เหตุผลที่ยอดถึง 63 ชิ้น) */}
+              {/* แจ้งเตือนข้อเท็จจริง (เหตุผลที่ยอดถึง 63 ชิ้น) */}
               <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4 text-xs text-amber-900 shadow-sm">
                 <div className="flex items-start gap-3">
                   <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
                   <div className="space-y-1.5 leading-relaxed">
                     <p className="font-bold text-sm text-amber-900">
-                      💡 ข้อมูลวิเคราะห์สาเหตุการตัดสต็อก:
+                      ข้อมูลวิเคราะห์สาเหตุการตัดสต็อก:
                     </p>
                     <p className="text-amber-800">
                       ตัวเลข <strong className="text-amber-950 font-black">{(damageSummary?.totalQty || 0).toLocaleString()} ชิ้น</strong> นี้ มาจากบันทึกในระบบตัดของเสีย แต่เมื่อตรวจสอบสาเหตุจริงพบว่า <strong className="underline">ไม่ได้ชำรุดเสียหายจริงทั้งหมด</strong> มีการตัดด้วยเหตุผลต่างๆ ดังนี้:
                     </p>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
                       <div className="bg-white/80 border border-amber-200 rounded-lg p-2">
-                        <span className="text-[10px] text-slate-500 block">⚠️ แตกหัก/เสียหายจริง</span>
+                        <span className="text-[10px] text-slate-500 block">แตกหัก / เสียหายจริง</span>
                         <strong className="text-sm font-black text-rose-600">{stats.broken.qty} ชิ้น</strong>
                         <span className="text-[10px] text-slate-400 block">({stats.broken.count} ครั้ง)</span>
                       </div>
                       <div className="bg-white/80 border border-amber-200 rounded-lg p-2">
-                        <span className="text-[10px] text-slate-500 block">📦 ของหมด/โรงงานไม่ส่ง</span>
+                        <span className="text-[10px] text-slate-500 block">ของหมด / โรงงานไม่ส่ง</span>
                         <strong className="text-sm font-black text-amber-600">{stats.outOfStock.qty} ชิ้น</strong>
                         <span className="text-[10px] text-slate-400 block">({stats.outOfStock.count} ครั้ง)</span>
                       </div>
                       <div className="bg-white/80 border border-amber-200 rounded-lg p-2">
-                        <span className="text-[10px] text-slate-500 block">🎁 ให้พนักงาน/แถมลูกค้า</span>
+                        <span className="text-[10px] text-slate-500 block">ให้พนักงาน / แถมลูกค้า</span>
                         <strong className="text-sm font-black text-blue-600">{stats.gift.qty} ชิ้น</strong>
                         <span className="text-[10px] text-slate-400 block">({stats.gift.count} ครั้ง)</span>
                       </div>
                       <div className="bg-white/80 border border-amber-200 rounded-lg p-2">
-                        <span className="text-[10px] text-slate-500 block">📝 อื่นๆ/ปรับสต็อก</span>
+                        <span className="text-[10px] text-slate-500 block">อื่นๆ / ปรับสต็อก</span>
                         <strong className="text-sm font-black text-slate-700">{stats.other.qty} ชิ้น</strong>
                         <span className="text-[10px] text-slate-400 block">({stats.other.count} ครั้ง)</span>
                       </div>
@@ -346,7 +346,7 @@ export default function DashboardDamageCard({
                         : "bg-white text-rose-700 border border-rose-200 hover:bg-rose-50"
                     }`}
                   >
-                    ⚠️ ชำรุดจริง ({stats.broken.qty} ชิ้น)
+                    ชำรุดจริง ({stats.broken.qty} ชิ้น)
                   </button>
                   <button
                     onClick={() => setCategoryFilter("out_of_stock")}
@@ -356,7 +356,7 @@ export default function DashboardDamageCard({
                         : "bg-white text-amber-700 border border-amber-200 hover:bg-amber-50"
                     }`}
                   >
-                    📦 ไม่มีใน Stock ({stats.outOfStock.qty} ชิ้น)
+                    ไม่มีใน Stock ({stats.outOfStock.qty} ชิ้น)
                   </button>
                   <button
                     onClick={() => setCategoryFilter("gift")}
@@ -366,7 +366,7 @@ export default function DashboardDamageCard({
                         : "bg-white text-blue-700 border border-blue-200 hover:bg-blue-50"
                     }`}
                   >
-                    🎁 ให้พนักงาน/ลูกค้า ({stats.gift.qty} ชิ้น)
+                    ให้พนักงาน/ลูกค้า ({stats.gift.qty} ชิ้น)
                   </button>
                   <button
                     onClick={() => setCategoryFilter("other")}
@@ -376,7 +376,7 @@ export default function DashboardDamageCard({
                         : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
                     }`}
                   >
-                    📝 อื่นๆ ({stats.other.qty} ชิ้น)
+                    อื่นๆ ({stats.other.qty} ชิ้น)
                   </button>
                 </div>
               </div>
@@ -389,8 +389,8 @@ export default function DashboardDamageCard({
                   <div className="flex items-center gap-2">
                     <span className="font-bold text-slate-700">รายการสินค้า ({filteredItems.length} รายการ)</span>
                     <span className="inline-flex items-center gap-1.5 text-[11px] text-rose-700 bg-rose-50 border border-rose-200 px-2.5 py-0.5 rounded-md font-medium">
-                      <MoveHorizontal className="w-3.5 h-3.5 text-rose-500 animate-pulse" />
-                      คลิกเมาส์ค้างแล้วลากซ้าย-ขวา เพื่อเลื่อนดูตารางได้เลยครับ
+                      <MoveHorizontal className="w-3.5 h-3.5 text-rose-500" />
+                      คลิกเมาส์ค้างแล้วลากซ้าย-ขวา เพื่อเลื่อนดูตาราง
                     </span>
                   </div>
                   <div className="flex items-center gap-1.5 ml-auto">
