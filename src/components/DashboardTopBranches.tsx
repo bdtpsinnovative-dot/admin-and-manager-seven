@@ -23,7 +23,7 @@ export default function DashboardTopBranches({ branches }: { branches: Dashboard
   const sortedBranches = useMemo(() => {
     const list = [...branches]
     if (sortBy === "sales") {
-      return list.sort((a, b) => b.netSales - a.netSales)
+      return list.sort((a, b) => b.netBeforeVat - a.netBeforeVat)
     } else {
       return list.sort((a, b) => {
         const timeA = a.lastSaleAt ? new Date(a.lastSaleAt).getTime() : 0
@@ -33,7 +33,7 @@ export default function DashboardTopBranches({ branches }: { branches: Dashboard
     }
   }, [branches, sortBy])
 
-  const topSales = Math.max(...branches.map((b) => b.netSales), 1)
+  const topSales = Math.max(...branches.map((b) => b.netBeforeVat), 1)
 
   return (
     <div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
@@ -44,7 +44,7 @@ export default function DashboardTopBranches({ branches }: { branches: Dashboard
             <h2 className="text-lg font-black text-slate-800">สรุปสาขาเด่น</h2>
           </div>
           <p className="mt-1 text-xs text-slate-400">
-            {sortBy === "sales" ? "เรียงตามยอดขายสุทธิสูงสุด (รวม VAT)" : "เรียงตามวันที่และเวลาที่ขายล่าสุด"}
+            {sortBy === "sales" ? "เรียงตามเงินแท้จริงเข้าร้านสูงสุด (ก่อน VAT)" : "เรียงตามวันที่และเวลาที่ขายล่าสุด"}
           </p>
         </div>
 
@@ -55,12 +55,12 @@ export default function DashboardTopBranches({ branches }: { branches: Dashboard
             onClick={() => setSortBy("sales")}
             className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
               sortBy === "sales"
-                ? "bg-white text-blue-700 shadow-xs"
+                ? "bg-white text-emerald-700 shadow-xs"
                 : "text-slate-500 hover:text-slate-800"
             }`}
           >
             <TrendingUp className="w-3.5 h-3.5" />
-            ยอดขายสูงสุด
+            เงินเข้าร้านสูงสุด
           </button>
           <button
             type="button"
@@ -79,15 +79,15 @@ export default function DashboardTopBranches({ branches }: { branches: Dashboard
 
       <div className="mt-5 space-y-4">
         {sortedBranches.slice(0, 5).map((branch, index) => {
-          const percent = topSales > 0 ? (branch.netSales / topSales) * 100 : 0
+          const percent = topSales > 0 ? (branch.netBeforeVat / topSales) * 100 : 0
           return (
             <div key={branch.id} className="flex flex-col gap-1.5 p-2 rounded-xl hover:bg-slate-50/80 transition-colors">
               <div className="flex items-center gap-3">
                 <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-black ${
                   index === 0 && sortBy === "sales"
-                    ? "bg-blue-600 text-white shadow-xs"
+                    ? "bg-emerald-600 text-white shadow-xs"
                     : index === 1 && sortBy === "sales"
-                    ? "bg-blue-100 text-blue-700"
+                    ? "bg-emerald-100 text-emerald-700"
                     : "bg-slate-100 text-slate-600"
                 }`}>
                   {index + 1}
@@ -97,15 +97,15 @@ export default function DashboardTopBranches({ branches }: { branches: Dashboard
                   <div className="flex items-baseline justify-between gap-2">
                     <p className="truncate text-sm font-bold text-slate-800">{branch.name}</p>
                     <div className="text-right shrink-0">
-                      <span className="text-sm font-black text-blue-600">฿{money(branch.netSales)}</span>
-                      <span className="ml-1 text-[10px] font-bold text-slate-400">(รวม VAT)</span>
+                      <span className="text-sm font-black text-emerald-600">฿{money(branch.netBeforeVat)}</span>
+                      <span className="ml-1 text-[10px] font-bold text-emerald-700">(ก่อน VAT)</span>
                     </div>
                   </div>
 
                   <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-100">
                     <div
-                      className="h-full rounded-full bg-blue-500 transition-all duration-300"
-                      style={{ width: `${Math.max(percent, branch.netSales > 0 ? 4 : 0)}%` }}
+                      className="h-full rounded-full bg-emerald-500 transition-all duration-300"
+                      style={{ width: `${Math.max(percent, branch.netBeforeVat > 0 ? 4 : 0)}%` }}
                     />
                   </div>
 
@@ -115,7 +115,7 @@ export default function DashboardTopBranches({ branches }: { branches: Dashboard
                       ขายล่าสุด: <strong className="text-slate-600 font-semibold">{dateTime(branch.lastSaleAt)}</strong>
                     </span>
                     <span className="font-mono text-[10px] text-slate-500">
-                      ก่อน VAT: ฿{money(branch.netBeforeVat)} | VAT: ฿{money(branch.totalVat)}
+                      รวม VAT: ฿{money(branch.netSales)} | <span className="text-purple-700 font-medium">VAT: ฿{money(branch.totalVat)}</span>
                     </span>
                   </div>
                 </div>

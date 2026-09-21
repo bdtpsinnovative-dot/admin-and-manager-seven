@@ -59,11 +59,13 @@ export default function BulkUploadProducts() {
 const downloadTemplate = () => {
     const wb = XLSX.utils.book_new();
 
-    if (selectedType === 'prop') {
+    if (selectedType === 'prop' || selectedType === 'furniture') {
+      const templateName = selectedType === 'furniture' ? "Furniture Template" : "Props Template";
+      const fileName = selectedType === 'furniture' ? "furniture_import_template.xlsx" : "props_import_template.xlsx";
       const propTemplate = [{
         "Item NO.": "3D102672W06",
         "Factory": "Merlin",
-        "Name Product": "Ceramic Handmade vase",
+        "Name Product": selectedType === 'furniture' ? "Oak Dining Table" : "Ceramic Handmade vase",
         "Group Sisz": "L",
         "Picture": "",
         "Link Picture": "https://pub-258bd10e7e8c4a7690a74c54cfbdef93.r2.dev/original/...",
@@ -71,10 +73,10 @@ const downloadTemplate = () => {
         "Name Group": "Natural Travertine",
         "Image Group": "https://pub-258bd10e7e8c4a7690a74c54cfbdef93.r2.dev/group/...",
         "Collection Group": "3D1026",
-        "Product Sup": "Vase Normal",
-        "Material": "Ceramic",
+        "Product Sup": selectedType === 'furniture' ? "Table" : "Vase Normal",
+        "Material": selectedType === 'furniture' ? "Solid Wood" : "Ceramic",
         "Color": "White",
-        "SKU": "TR-VA-ML3D102672W06",
+        "SKU": selectedType === 'furniture' ? "FUR-TB-ML3D1026" : "TR-VA-ML3D102672W06",
         "BARCODE": "ML-VA-CR-3D102672W06",
         "W": 21.5,
         "D": 21.5,
@@ -83,8 +85,8 @@ const downloadTemplate = () => {
         "ต้นทุนรวมค่าส่ง (บาท) (Cost_TH_Shipping)": 1160,
         "Price": 4100
       }];
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(propTemplate), "Props Template");
-      XLSX.writeFile(wb, "props_import_template.xlsx");
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(propTemplate), templateName);
+      XLSX.writeFile(wb, fileName);
     } else {
       const templateHeader = [{
         Barcode: "BX001",

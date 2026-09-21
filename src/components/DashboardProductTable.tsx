@@ -33,7 +33,7 @@ export default function DashboardProductTable({
   const sortedProducts = useMemo(() => {
     const list = [...products]
     if (sortBy === "sales") {
-      return list.sort((a, b) => b.sales - a.sales)
+      return list.sort((a, b) => b.netBeforeVat - a.netBeforeVat)
     } else if (sortBy === "qty") {
       return list.sort((a, b) => b.quantity - a.quantity)
     } else {
@@ -57,7 +57,7 @@ export default function DashboardProductTable({
           <p className="mt-1 text-xs text-slate-400">{subtitle}</p>
           <div className="mt-1.5 inline-flex items-center gap-1.5 text-[11px] text-slate-500 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200">
             <HelpCircle className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-            <span>สูตรตรวจสอบ: <strong>[ยอดก่อน VAT] + [VAT 7%] = [ยอดสุทธิ]</strong> และ <strong>[ยอดก่อนลด] - [ส่วนลด] = [ยอดสุทธิ]</strong></span>
+            <span>สูตรตรวจสอบ: <strong>[ยอดรับเงินลูกค้า]</strong> - <strong className="text-purple-700">[VAT 7%]</strong> = <strong className="text-emerald-700">[เงินแท้จริงเข้าร้าน (ก่อน VAT)]</strong> และ <strong>[ยอดก่อนลด] - [ส่วนลด] = [ยอดรับเงินลูกค้า]</strong></span>
           </div>
         </div>
 
@@ -73,7 +73,7 @@ export default function DashboardProductTable({
             }`}
           >
             <TrendingUp className="w-3.5 h-3.5" />
-            ยอดขายสูงสุด
+            เงินเข้าร้านสูงสุด
           </button>
           <button
             type="button"
@@ -119,16 +119,16 @@ export default function DashboardProductTable({
                 <div className="text-[9px] font-medium text-slate-400 normal-case">(หักส่วนลด)</div>
               </th>
               <th className="px-4 py-4 text-right whitespace-nowrap">
-                <div>ยอดก่อน VAT</div>
-                <div className="text-[9px] font-medium text-slate-400 normal-case">(ไม่รวมภาษี)</div>
+                <div>ยอดรับเงินลูกค้า</div>
+                <div className="text-[9px] font-medium text-slate-400 normal-case">(รวม VAT)</div>
               </th>
               <th className="px-4 py-4 text-right whitespace-nowrap">
                 <div>VAT (7%)</div>
-                <div className="text-[9px] font-medium text-slate-400 normal-case">(ภาษีมูลค่าเพิ่ม)</div>
+                <div className="text-[9px] font-medium text-purple-600 normal-case">(ภาษีนำส่งรัฐ)</div>
               </th>
-              <th className="px-5 py-4 text-right whitespace-nowrap">
-                <div>ยอดสุทธิ (รวม VAT)</div>
-                <div className="text-[9px] font-medium text-emerald-600 normal-case">(ยอดขายจริง)</div>
+              <th className="px-5 py-4 text-right whitespace-nowrap bg-emerald-50/50">
+                <div className="text-emerald-800 font-bold">เงินเข้าร้าน (ก่อน VAT)</div>
+                <div className="text-[9px] font-bold text-emerald-600 normal-case">(เงินแท้จริงที่ได้รับ)</div>
               </th>
             </tr>
           </thead>
@@ -212,9 +212,9 @@ export default function DashboardProductTable({
                   )}
                 </td>
 
-                {/* ยอดก่อน VAT (ไม่รวมภาษี) */}
-                <td className="px-4 py-4 text-right font-semibold text-slate-700 whitespace-nowrap">
-                  ฿{money(product.netBeforeVat)}
+                {/* ยอดรับเงินลูกค้า (รวม VAT) */}
+                <td className="px-4 py-4 text-right font-bold text-slate-700 whitespace-nowrap">
+                  ฿{money(product.sales)}
                 </td>
 
                 {/* VAT (7%) */}
@@ -222,9 +222,9 @@ export default function DashboardProductTable({
                   ฿{money(product.vatAmount)}
                 </td>
 
-                {/* ยอดสุทธิ (รวม VAT) */}
-                <td className="px-5 py-4 text-right font-black text-emerald-600 whitespace-nowrap">
-                  ฿{money(product.sales)}
+                {/* ยอดก่อน VAT (เงินแท้จริงเข้าร้าน ไม่รวมภาษี) -> ชิดขวาสุด สีเขียวเด่นชัด */}
+                <td className="px-5 py-4 text-right font-black text-emerald-600 whitespace-nowrap bg-emerald-50/20">
+                  ฿{money(product.netBeforeVat)}
                 </td>
               </tr>
             ))}

@@ -224,18 +224,18 @@ export default function SaleSalesHistoryPage() {
                   <th className="p-4 text-right whitespace-nowrap">ยอดก่อนลด</th>
                   <th className="p-4 text-right whitespace-nowrap">ส่วนลด (%)</th>
                   <th className="p-4 text-right whitespace-nowrap">
-                    <div>ยอดก่อน VAT</div>
-                    <div className="text-[9px] font-medium text-slate-400 normal-case">(ไม่รวมภาษี)</div>
+                    <div>ยอดรับเงินลูกค้า</div>
+                    <div className="text-[9px] font-medium text-slate-400 normal-case">(รวม VAT)</div>
                   </th>
                   <th className="p-4 text-right whitespace-nowrap">
                     <div>VAT (7%)</div>
-                    <div className="text-[9px] font-medium text-slate-400 normal-case">(ภาษีมูลค่าเพิ่ม)</div>
+                    <div className="text-[9px] font-medium text-purple-600 normal-case">(ภาษีนำส่งรัฐ)</div>
                   </th>
                   <th className="p-4 text-right whitespace-nowrap">ยอดคลังเรา</th>
                   <th className="p-4 text-right whitespace-nowrap">ยอดคลังอื่น (Drop Ship)</th>
-                  <th className="p-4 text-right whitespace-nowrap">
-                    <div>ยอดสุทธิ (รวม VAT)</div>
-                    <div className="text-[9px] font-medium text-emerald-600 normal-case">(ยอดหลังลด)</div>
+                  <th className="p-4 text-right whitespace-nowrap bg-emerald-50/50">
+                    <div className="text-emerald-800 font-bold">เงินเข้าร้าน (ก่อน VAT)</div>
+                    <div className="text-[9px] font-bold text-emerald-600 normal-case">(เงินแท้จริงที่ได้รับ)</div>
                   </th>
                   <th className="p-4 text-center w-32">สถานะใบขาย</th>
                   <th className="p-2 w-12"><span className="sr-only">ตัวเลือก</span></th>
@@ -325,9 +325,9 @@ export default function SaleSalesHistoryPage() {
                             )}
                           </td>
 
-                          {/* ยอดก่อน VAT */}
-                          <td className="p-4 text-right font-semibold text-slate-700 text-xs whitespace-nowrap">
-                            ฿{order.netBeforeVat.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          {/* ยอดรับเงินลูกค้า (รวม VAT) */}
+                          <td className="p-4 text-right font-bold text-slate-700 text-sm whitespace-nowrap">
+                            ฿{order.totalAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </td>
 
                           {/* VAT (7%) */}
@@ -360,9 +360,9 @@ export default function SaleSalesHistoryPage() {
                             )}
                           </td>
 
-                          {/* ยอดสุทธิรวมของบิล (ยอดหลังลด) */}
-                          <td className="p-4 text-right font-black text-emerald-600 text-sm whitespace-nowrap">
-                            ฿{order.totalAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          {/* ยอดก่อน VAT (เงินแท้จริงเข้าร้าน) -> ชิดขวา */}
+                          <td className="p-4 text-right font-black text-emerald-600 bg-emerald-50/20 text-xs whitespace-nowrap">
+                            ฿{order.netBeforeVat.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </td>
 
                           {/* สถานะบิล */}
@@ -423,9 +423,9 @@ export default function SaleSalesHistoryPage() {
                                       {order.discountAmount > 0 ? `-฿${order.discountAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (ลด ${order.discountPercent}%)` : '฿0.00 (0%)'}
                                     </span>
                                   </div>
-                                  <div className="flex items-center gap-1.5">
-                                    <span className="text-slate-400 font-medium">ยอดก่อน VAT:</span>
-                                    <span className="font-bold text-slate-700">฿{order.netBeforeVat.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                  <div className="flex items-center gap-1.5 bg-emerald-50/70 px-2 py-0.5 rounded-lg border border-emerald-100">
+                                    <span className="text-emerald-700 font-bold">เงินเข้าร้าน (ก่อน VAT):</span>
+                                    <span className="font-black text-emerald-700">฿{order.netBeforeVat.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                   </div>
                                   <div className="flex items-center gap-1.5">
                                     <span className="text-slate-400 font-medium">VAT (7%):</span>
@@ -433,7 +433,7 @@ export default function SaleSalesHistoryPage() {
                                   </div>
                                   <div className="flex items-center gap-1.5">
                                     <span className="text-slate-400 font-medium">ยอดสุทธิ (รวม VAT):</span>
-                                    <span className="font-black text-emerald-600">฿{order.totalAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                    <span className="font-bold text-slate-700">฿{order.totalAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                   </div>
                                 </div>
                                 {order.status === 'CANCELLED' && order.discountSnapshot?.cancel_reason && (

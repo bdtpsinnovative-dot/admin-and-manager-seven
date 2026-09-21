@@ -80,9 +80,9 @@ function BranchRow({ branch }: { branch: DashboardBranchSummary }) {
           <span className="text-slate-300 font-mono text-xs">-</span>
         )}
       </td>
-      <td className="px-5 py-4 text-right font-semibold text-slate-700">฿{money(branch.netBeforeVat)}</td>
+      <td className="px-5 py-4 text-right font-bold text-slate-700">฿{money(branch.netSales)}</td>
       <td className="px-5 py-4 text-right font-medium text-purple-700">฿{money(branch.totalVat)}</td>
-      <td className="px-5 py-4 text-right font-black text-emerald-600">฿{money(branch.netSales)}</td>
+      <td className="px-5 py-4 text-right font-black text-emerald-600 bg-emerald-50/20">฿{money(branch.netBeforeVat)}</td>
       <td className="px-5 py-4 text-right">
         {branch.cancelledCount > 0 ? (
           <span className="font-bold text-red-600">{branch.cancelledCount} บิล · ฿{money(branch.cancelledSales)}</span>
@@ -362,7 +362,7 @@ export default async function DashboardPage({
           <div className="flex flex-col justify-between gap-2 border-b border-slate-100 p-6 md:flex-row md:items-center">
             <div>
               <h2 className="text-lg font-black text-slate-800">ยอดขายแยกตามสาขา</h2>
-              <p className="mt-1 text-xs text-slate-400">รวมใบขายของทุกสาขาในระบบเดียวกัน (ตรวจสอบความถูกต้อง: ยอดก่อน VAT + VAT 7% = ยอดสุทธิ)</p>
+              <p className="mt-1 text-xs text-slate-400">รวมใบขายของทุกสาขาในระบบเดียวกัน (สูตรคำนวณ: [ยอดรับเงินลูกค้า] - [VAT 7%] = [เงินแท้จริงเข้าร้าน (ก่อน VAT)])</p>
             </div>
             <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-600"><CheckCircle2 className="h-4 w-4" /> อัปเดตจากข้อมูลจริง</span>
           </div>
@@ -381,16 +381,16 @@ export default async function DashboardPage({
                     <div className="text-[9px] font-medium text-slate-400 normal-case">(หักส่วนลด)</div>
                   </th>
                   <th className="px-4 py-4 text-right">
-                    <div>ยอดก่อน VAT</div>
-                    <div className="text-[9px] font-medium text-slate-400 normal-case">(ไม่รวมภาษี)</div>
+                    <div>ยอดรับเงินลูกค้า</div>
+                    <div className="text-[9px] font-medium text-slate-400 normal-case">(รวม VAT)</div>
                   </th>
                   <th className="px-4 py-4 text-right">
                     <div>VAT (7%)</div>
-                    <div className="text-[9px] font-medium text-slate-400 normal-case">(ภาษีมูลค่าเพิ่ม)</div>
+                    <div className="text-[9px] font-medium text-purple-600 normal-case">(ภาษีนำส่งรัฐ)</div>
                   </th>
-                  <th className="px-5 py-4 text-right">
-                    <div>ยอดสุทธิ (รวม VAT)</div>
-                    <div className="text-[9px] font-medium text-emerald-600 normal-case">(ยอดขายจริง)</div>
+                  <th className="px-4 py-4 text-right bg-emerald-50/50">
+                    <div className="text-emerald-800 font-bold">เงินเข้าร้าน (ก่อน VAT)</div>
+                    <div className="text-[9px] font-bold text-emerald-600 normal-case">(เงินแท้จริงที่ได้รับ)</div>
                   </th>
                   <th className="px-4 py-4 text-right">บิลยกเลิก</th>
                   <th className="px-4 py-4 text-right">รายการล่าสุด</th>
@@ -419,16 +419,16 @@ export default async function DashboardPage({
                   <th className="px-4 py-4 text-right">ยอดก่อนลด</th>
                   <th className="px-4 py-4 text-right">ส่วนลด (%)</th>
                   <th className="px-4 py-4 text-right">
-                    <div>ยอดก่อน VAT</div>
-                    <div className="text-[9px] font-medium text-slate-400 normal-case">(ไม่รวมภาษี)</div>
+                    <div>ยอดรับเงินลูกค้า</div>
+                    <div className="text-[9px] font-medium text-slate-400 normal-case">(รวม VAT)</div>
                   </th>
                   <th className="px-4 py-4 text-right">
                     <div>VAT (7%)</div>
-                    <div className="text-[9px] font-medium text-slate-400 normal-case">(ภาษีมูลค่าเพิ่ม)</div>
+                    <div className="text-[9px] font-medium text-purple-600 normal-case">(ภาษีนำส่งรัฐ)</div>
                   </th>
-                  <th className="px-5 py-4 text-right">
-                    <div>ยอดสุทธิ (รวม VAT)</div>
-                    <div className="text-[9px] font-medium text-emerald-600 normal-case">(ยอดขายจริง)</div>
+                  <th className="px-5 py-4 text-right bg-emerald-50/50">
+                    <div className="text-emerald-800 font-bold">เงินเข้าร้าน (ก่อน VAT)</div>
+                    <div className="text-[9px] font-bold text-emerald-600 normal-case">(เงินแท้จริงที่ได้รับ)</div>
                   </th>
                   <th className="px-4 py-4 text-center">สถานะ</th>
                 </tr>
@@ -453,13 +453,13 @@ export default async function DashboardPage({
                         <span className="text-slate-300 font-mono text-xs">-</span>
                       )}
                     </td>
-                    <td className="px-4 py-4 text-right text-slate-700 font-semibold text-xs">
-                      ฿{money(order.netBeforeVat)}
-                    </td>
+                    <td className="px-4 py-4 text-right font-bold text-slate-700">฿{money(order.totalAmount)}</td>
                     <td className="px-4 py-4 text-right text-purple-700 font-medium text-xs">
                       ฿{money(order.vatAmount)}
                     </td>
-                    <td className="px-5 py-4 text-right font-black text-emerald-700">฿{money(order.totalAmount)}</td>
+                    <td className="px-5 py-4 text-right font-black text-emerald-600 bg-emerald-50/20 text-xs">
+                      ฿{money(order.netBeforeVat)}
+                    </td>
                     <td className="px-4 py-4 text-center"><span className={`inline-flex rounded-full border px-3 py-1 text-[10px] font-black ${statusClass(order.status)}`}>{statusLabel(order.status)}</span></td>
                   </tr>
                 ))}
