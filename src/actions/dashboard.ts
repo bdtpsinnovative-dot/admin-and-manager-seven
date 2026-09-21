@@ -91,11 +91,32 @@ export interface DashboardVatBreakdown {
   }
 }
 
+export interface DashboardDamageItem {
+  id: number
+  productId?: number
+  productName: string
+  productSku: string
+  productBarcode?: string
+  productImageUrl?: string
+  qty: number
+  reason: string
+  branchId: number
+  branchName: string
+  cost: number
+  price: number
+  totalCost: number
+  totalRetail: number
+  recordedBy: string
+  createdAt: string
+  rfidTag?: string
+}
+
 export interface DashboardDamageSummary {
   totalQty: number
   totalRecords: number
   totalCostValue: number
   totalRetailValue: number
+  items: DashboardDamageItem[]
 }
 
 export interface DashboardDayOrder {
@@ -165,6 +186,7 @@ const emptyDashboard = (error: string | null = null): DashboardData => ({
     totalRecords: 0,
     totalCostValue: 0,
     totalRetailValue: 0,
+    items: [],
   },
   shippingSummary: {
     companyPaidCount: 0,
@@ -234,10 +256,18 @@ export async function getDashboardData(requestedBranchId = "ALL", dateFrom?: str
     let damageQuery = supabase
       .from("damaged_goods_records")
       .select(`
+        id,
         qty,
+        reason,
+        rfid_tag,
+        recorded_by_name,
+        created_at,
         branch_id,
-        products ( price, cost )
+        branches ( id, branch_name ),
+        profiles!damaged_goods_records_profile_fk ( full_name ),
+        products ( id, name, sku, barcode, image_url, price, cost )
       `)
+      .order("created_at", { ascending: false })
 
     // ผู้ดูแลเห็นทุกสาขา ส่วน role อื่นจะเห็นเฉพาะสาขาที่ผูกกับบัญชี
     if (!isAdmin && profile?.branch_id) {
@@ -659,22 +689,45 @@ export async function getDashboardData(requestedBranchId = "ALL", dateFrom?: str
     let damageTotalQty = 0
     let damageTotalCost = 0
     let damageTotalRetail = 0
-    const damageTotalRecords = (damageRecords || []).length
+    const damageItems: DashboardDamageItem[] = []
 
     for (const item of (damageRecords || [])) {
       const q = Number(item.qty || 0)
       damageTotalQty += q
       const price = Number((item.products as any)?.price || 0)
       const cost = Number((item.products as any)?.cost || 0)
-      damageTotalRetail += q * price
-      damageTotalCost += q * cost
+      const totalCost = Math.round(q * cost * 100) / 100
+      const totalRetail = Math.round(q * price * 100) / 100
+      damageTotalRetail += totalRetail
+      damageTotalCost += totalCost
+
+      damageItems.push({
+        id: item.id,
+        productId: (item.products as any)?.id,
+        productName: (item.products as any)?.name || 'ไม่ระบุชื่อสินค้า',
+        productSku: (item.products as any)?.sku || '-',
+        productBarcode: (item.products as any)?.barcode || undefined,
+        productImageUrl: (item.products as any)?.image_url || undefined,
+        qty: q,
+        reason: (item.reason || '').trim() || 'ไม่ระบุสาเหตุ',
+        branchId: item.branch_id,
+        branchName: (item.branches as any)?.branch_name || `สาขา ${item.branch_id}`,
+        cost,
+        price,
+        totalCost,
+        totalRetail,
+        recordedBy: item.recorded_by_name || (item.profiles as any)?.full_name || 'ไม่ระบุผู้บันทึก',
+        createdAt: item.created_at,
+        rfidTag: item.rfid_tag || undefined,
+      })
     }
 
     const damageSummary: DashboardDamageSummary = {
       totalQty: damageTotalQty,
-      totalRecords: damageTotalRecords,
+      totalRecords: damageItems.length,
       totalCostValue: Math.round(damageTotalCost * 100) / 100,
       totalRetailValue: Math.round(damageTotalRetail * 100) / 100,
+      items: damageItems,
     }
 
     return {

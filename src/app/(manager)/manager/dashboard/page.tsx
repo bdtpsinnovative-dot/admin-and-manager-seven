@@ -23,6 +23,7 @@ import { createClient } from "../../../../lib/supabase/server"
 import DashboardVatCard from "@/components/DashboardVatCard"
 import DashboardProductTable from "@/components/DashboardProductTable"
 import DashboardMonthFilter from "@/components/DashboardMonthFilter"
+import DashboardDamageCard from "@/components/DashboardDamageCard"
 
 const money = (value: number) =>
   value.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -259,31 +260,7 @@ export default async function ManagerDashboardPage({
             </div>
 
             {/* 6. สินค้าชำรุด/เสียหาย */}
-            <Link 
-              href="/manager/damage-history" 
-              className="rounded-2xl border border-rose-100 bg-white p-5 shadow-sm hover:shadow-md hover:border-rose-300 transition-all group block flex flex-col justify-between"
-            >
-              <div>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-rose-600">สินค้าชำรุด/เสียหาย</span>
-                  <Trash2 className="h-4 w-4 text-rose-500 group-hover:scale-110 transition-transform" />
-                </div>
-                <p className="mt-2 text-3xl sm:text-4xl font-black text-rose-600 tracking-tight flex items-baseline gap-1.5">
-                  <span>{(data.damageSummary?.totalQty || 0).toLocaleString()}</span>
-                  <span className="text-sm font-bold text-rose-400">ชิ้น</span>
-                </p>
-              </div>
-              <div className="mt-2 pt-2 border-t border-rose-50 space-y-1 text-xs">
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-500">ต้นทุน:</span>
-                  <span className="font-bold text-slate-800">฿{money(data.damageSummary?.totalCostValue || 0)}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-500">ราคาขาย:</span>
-                  <span className="font-black text-rose-600">฿{money(data.damageSummary?.totalRetailValue || 0)}</span>
-                </div>
-              </div>
-            </Link>
+            <DashboardDamageCard damageSummary={data.damageSummary} />
 
           </div>
         </div>
