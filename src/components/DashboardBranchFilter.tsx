@@ -1,6 +1,6 @@
 "use client"
 
-import { usePathname, useRouter } from "next/navigation"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { useTransition } from "react"
 
 interface BranchOption {
@@ -17,11 +17,18 @@ export default function DashboardBranchFilter({
 }) {
   const router = useRouter()
   const pathname = usePathname()
+  const searchParams = useSearchParams()
   const [isPending, startTransition] = useTransition()
 
   const handleChange = (value: string) => {
-    const url = value === "ALL" ? pathname : `${pathname}?branch=${encodeURIComponent(value)}`
-    startTransition(() => router.push(url))
+    const params = new URLSearchParams(searchParams.toString())
+    if (value === "ALL") {
+      params.delete("branch")
+    } else {
+      params.set("branch", value)
+    }
+    const qs = params.toString()
+    startTransition(() => router.push(qs ? `${pathname}?${qs}` : pathname))
   }
 
   return (

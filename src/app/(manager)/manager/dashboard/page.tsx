@@ -67,14 +67,26 @@ export default async function ManagerDashboardPage({
 
   const branchName = (profile?.branches as any)?.branch_name || "สาขาประจำการ"
   
-  // คำนวณ date range จาก month param (YYYY-MM)
+  // คำนวณ date range จาก month param (YYYY-MM หรือ ALL)
+  const monthParam = typeof params?.month === "string" ? params.month : undefined
+  const isAllTime = monthParam === "ALL"
   const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Bangkok" }))
   const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
-  const selectedMonth = typeof params?.month === "string" && /^\d{4}-\d{2}$/.test(params.month) ? params.month : defaultMonth
-  const [mYear, mMonth] = selectedMonth.split("-").map(Number)
-  const dateFrom = `${selectedMonth}-01T00:00:00+07:00`
-  const lastDay = new Date(mYear, mMonth, 0).getDate()
-  const dateTo = `${selectedMonth}-${String(lastDay).padStart(2, "0")}T23:59:59+07:00`
+  const selectedMonth = isAllTime ? "ALL" : (monthParam && /^\d{4}-\d{2}$/.test(monthParam) ? monthParam : defaultMonth)
+
+  let dateFrom: string | undefined = undefined
+  let dateTo: string | undefined = undefined
+  let mYear = 0
+  let mMonth = 0
+
+  if (selectedMonth !== "ALL") {
+    const parts = selectedMonth.split("-").map(Number)
+    mYear = parts[0]
+    mMonth = parts[1]
+    dateFrom = `${selectedMonth}-01T00:00:00+07:00`
+    const lastDay = new Date(mYear, mMonth, 0).getDate()
+    dateTo = `${selectedMonth}-${String(lastDay).padStart(2, "0")}T23:59:59+07:00`
+  }
 
   // เรียกข้อมูล Dashboard (ระบบจะกรองเฉพาะสาขาของ Manager ให้อัตโนมัติ)
   const data = await getDashboardData("ALL", dateFrom, dateTo)
@@ -97,14 +109,18 @@ export default async function ManagerDashboardPage({
             </div>
             <h1 className="text-2xl font-black text-slate-800">Manager Dashboard</h1>
             <p className="mt-1 text-sm text-slate-500">
-              ภาพรวมยอดขายและข้อมูลการดำเนินงานเฉพาะสาขา {branchName}
+              ภาพรวมยอดขายและข้อมูลการดำเนินงานเฉพาะสาขา {branchName} {selectedMonth === "ALL" ? "(ทุกช่วงเวลา)" : ""}
             </p>
           </div>
           <div className="flex items-center gap-2">
             <DashboardMonthFilter selectedMonth={selectedMonth} />
             <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-600 shadow-sm">
               <Calendar className="h-4 w-4 text-blue-600" />
-              <span>{new Date(mYear, mMonth - 1, 1).toLocaleDateString("th-TH", { month: "long", year: "numeric" })}</span>
+              <span>{
+                selectedMonth === "ALL"
+                  ? "ทุกช่วงเวลา"
+                  : new Date(mYear, mMonth - 1, 1).toLocaleDateString("th-TH", { month: "long", year: "numeric" })
+              }</span>
             </div>
           </div>
         </div>

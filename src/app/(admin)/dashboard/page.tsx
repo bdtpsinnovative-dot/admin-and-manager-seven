@@ -105,14 +105,23 @@ export default async function DashboardPage({
   const params = await searchParams
   const selectedBranch = typeof params?.branch === "string" && params.branch.length > 0 ? params.branch : "ALL"
 
-  // คำนวณ date range จาก month param (YYYY-MM)
-  const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Bangkok" }))
-  const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
-  const selectedMonth = typeof params?.month === "string" && /^\d{4}-\d{2}$/.test(params.month) ? params.month : defaultMonth
-  const [mYear, mMonth] = selectedMonth.split("-").map(Number)
-  const dateFrom = `${selectedMonth}-01T00:00:00+07:00`
-  const lastDay = new Date(mYear, mMonth, 0).getDate()
-  const dateTo = `${selectedMonth}-${String(lastDay).padStart(2, "0")}T23:59:59+07:00`
+  // ตรวจสอบ month param: ค่าเริ่มต้นคือ "ALL" (ทุกช่วงเวลา) หรือตามที่เลือก
+  const monthParam = typeof params?.month === "string" ? params.month : undefined
+  const selectedMonth = monthParam && /^\d{4}-\d{2}$/.test(monthParam) ? monthParam : "ALL"
+
+  let dateFrom: string | undefined = undefined
+  let dateTo: string | undefined = undefined
+  let mYear = 0
+  let mMonth = 0
+
+  if (selectedMonth !== "ALL") {
+    const parts = selectedMonth.split("-").map(Number)
+    mYear = parts[0]
+    mMonth = parts[1]
+    dateFrom = `${selectedMonth}-01T00:00:00+07:00`
+    const lastDay = new Date(mYear, mMonth, 0).getDate()
+    dateTo = `${selectedMonth}-${String(lastDay).padStart(2, "0")}T23:59:59+07:00`
+  }
 
   const data = await getDashboardData(selectedBranch, dateFrom, dateTo)
   const maxMonthlySales = Math.max(...data.monthlySales.map((month) => month.amount), 1)
@@ -124,7 +133,9 @@ export default async function DashboardPage({
           <div>
             <h1 className="text-2xl font-black text-slate-800">Dashboard</h1>
             <p className="mt-1 text-sm text-slate-500">
-              {selectedBranch === "ALL" ? "ภาพรวมใบขายและยอดสุทธิแยกตามทุกสาขา" : `ข้อมูลของ ${data.branches[0]?.name || "สาขาที่เลือก"}`}
+              {selectedBranch === "ALL"
+                ? `ภาพรวมใบขายและยอดสุทธิแยกตามทุกสาขา ${selectedMonth === "ALL" ? "(ทุกช่วงเวลา)" : ""}`
+                : `ข้อมูลของ ${data.branches[0]?.name || "สาขาที่เลือก"}`}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -132,8 +143,8 @@ export default async function DashboardPage({
             <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-600 shadow-sm">
               <Calendar className="h-4 w-4 text-blue-600" />
               <span>{
-                selectedMonth === defaultMonth
-                  ? new Date(mYear, mMonth - 1, 1).toLocaleDateString("th-TH", { month: "long", year: "numeric" })
+                selectedMonth === "ALL"
+                  ? "ทุกช่วงเวลา"
                   : new Date(mYear, mMonth - 1, 1).toLocaleDateString("th-TH", { month: "long", year: "numeric" })
               }</span>
             </div>

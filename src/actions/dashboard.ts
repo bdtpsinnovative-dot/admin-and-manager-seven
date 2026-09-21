@@ -246,20 +246,16 @@ export async function getDashboardData(requestedBranchId = "ALL", dateFrom?: str
       damageQuery = damageQuery.eq("branch_id", profile.branch_id)
     }
 
-    // กำหนด date range — ถ้าไม่ส่งมา ให้ default เป็นเดือนปัจจุบัน
-    const nowBkk = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Bangkok" }))
-    const defaultFrom = `${nowBkk.getFullYear()}-${String(nowBkk.getMonth() + 1).padStart(2, '0')}-01T00:00:00+07:00`
-    const defaultTo = new Date(nowBkk.getFullYear(), nowBkk.getMonth() + 1, 0)
-    const defaultToStr = `${defaultTo.getFullYear()}-${String(defaultTo.getMonth() + 1).padStart(2, '0')}-${String(defaultTo.getDate()).padStart(2, '0')}T23:59:59+07:00`
-    const effectiveDateFrom = dateFrom || defaultFrom
-    const effectiveDateTo = dateTo || defaultToStr
-
-    ordersQuery = ordersQuery
-      .gte("created_at", effectiveDateFrom)
-      .lte("created_at", effectiveDateTo)
-    damageQuery = damageQuery
-      .gte("created_at", effectiveDateFrom)
-      .lte("created_at", effectiveDateTo)
+    // กำหนด date range เฉพาะเมื่อมีการระบุ dateFrom และ dateTo (ถ้าไม่ระบุ หรือส่ง "ALL" หมายถึง ทุกช่วงเวลา)
+    const isAllTime = !dateFrom || dateFrom === "ALL"
+    if (!isAllTime && dateTo) {
+      ordersQuery = ordersQuery
+        .gte("created_at", dateFrom)
+        .lte("created_at", dateTo)
+      damageQuery = damageQuery
+        .gte("created_at", dateFrom)
+        .lte("created_at", dateTo)
+    }
 
     if (selectedBranchId !== null) {
       ordersQuery = ordersQuery.eq("branch_id", selectedBranchId)
@@ -610,7 +606,7 @@ export async function getDashboardData(requestedBranchId = "ALL", dateFrom?: str
           id: order.id,
           orderCode: order.order_code || `#${order.id}`,
           createdAt: order.created_at,
-          branchName: order.branches?.[0]?.branch_name || branch?.name || "ไม่ระบุสาขา",
+          branchName: order.branches?.[0]?.branch_name || (order.branches as any)?.branch_name || branch?.name || "ไม่ระบุสาขา",
           subtotal: orderSubtotal,
           discountAmount: discount,
           discountPercent: orderSubtotal > 0 ? Math.round((discount / orderSubtotal) * 1000) / 10 : 0,
