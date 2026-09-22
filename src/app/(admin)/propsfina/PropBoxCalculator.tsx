@@ -1,4 +1,5 @@
 "use client";
+import { useMemo } from "react";
 
 const PROP_BOXES = [
   { id: "S", label: "S", size: "15 x 15 x 15", length: 15, width: 15, height: 15, tone: "green" },
@@ -10,6 +11,12 @@ const PROP_BOXES = [
   { id: "FLAT_L", label: "FLAT L", size: "45 x 30 x 5", length: 45, width: 30, height: 5, flat: true, tone: "slate" },
   { id: "FLAT_XL", label: "FLAT XL", size: "60 x 40 x 5", length: 60, width: 40, height: 5, flat: true, tone: "slate" },
 ].sort((a, b) => (a.length * a.width * a.height) - (b.length * b.width * b.height));
+
+const PREPARED_BOXES = PROP_BOXES.map(box => ({
+  ...box,
+  sortedDims: [box.length, box.width, box.height].sort((a, b) => a - b),
+  sortedBase: [box.length, box.width].sort((a, b) => a - b),
+}));
 
 type PropProductForBox = {
   length_cm?: number | string | null;
@@ -41,22 +48,20 @@ function getProductDimensions(product: PropProductForBox) {
   return length && width && thickness ? { length, width, thickness } : null;
 }
 
-function canFitBox(product: { length: number; width: number; thickness: number }, box: typeof PROP_BOXES[number]) {
+function canFitBox(product: { length: number; width: number; thickness: number }, box: typeof PREPARED_BOXES[number]) {
   if (box.flat) {
     const productBase = [product.length, product.width].sort((a, b) => a - b);
-    const boxBase = [box.length, box.width].sort((a, b) => a - b);
-    return product.thickness <= box.height && productBase[0] <= boxBase[0] && productBase[1] <= boxBase[1];
+    return product.thickness <= box.height && productBase[0] <= box.sortedBase[0] && productBase[1] <= box.sortedBase[1];
   }
 
   const productDims = [product.length, product.width, product.thickness].sort((a, b) => a - b);
-  const boxDims = [box.length, box.width, box.height].sort((a, b) => a - b);
-  return productDims.every((dimension, index) => dimension <= boxDims[index]);
+  return productDims.every((dimension, index) => dimension <= box.sortedDims[index]);
 }
 
 function getBestBoxForProduct(product: PropProductForBox) {
   const dimensions = getProductDimensions(product);
   if (!dimensions) return "NO_SIZE";
-  return PROP_BOXES.find(box => canFitBox(dimensions, box))?.id || "OVER_SIZE";
+  return PREPARED_BOXES.find(box => canFitBox(dimensions, box))?.id || "OVER_SIZE";
 }
 
 function buildBoxSummary(items: PropProductForBox[]) {
@@ -83,9 +88,9 @@ function getToneClass(tone: string) {
 }
 
 export default function PropBoxCalculator({ products, filteredProducts, selectedProducts }: PropBoxCalculatorProps) {
-  const totalBoxSummary = buildBoxSummary(products);
-  const filteredBoxSummary = buildBoxSummary(filteredProducts);
-  const selectedBoxSummary = buildBoxSummary(selectedProducts);
+  const totalBoxSummary = useMemo(() => buildBoxSummary(products), [products]);
+  const filteredBoxSummary = useMemo(() => buildBoxSummary(filteredProducts), [filteredProducts]);
+  const selectedBoxSummary = useMemo(() => buildBoxSummary(selectedProducts), [selectedProducts]);
   const activeBoxSummary = selectedProducts.length > 0 ? selectedBoxSummary : filteredBoxSummary;
   const activeBoxScope = selectedProducts.length > 0 ? "รายการที่เลือก" : "รายการที่แสดงอยู่";
 

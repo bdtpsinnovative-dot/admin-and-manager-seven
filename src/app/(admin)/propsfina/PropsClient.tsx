@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState, useTransition } from "react";
+import React, { useEffect, useRef, useState, useTransition, useMemo, useCallback } from "react";
 import Link from "next/link";
 import JsBarcode from "jsbarcode";
 import QRCode from "qrcode";
@@ -10,7 +10,7 @@ import {
   Package, Image as ImageIcon, Loader2, Plus, Trash2, Save 
 } from "lucide-react";
 
-function BarcodeSvg({ value }: { value: string }) {
+const BarcodeSvg = React.memo(function BarcodeSvg({ value }: { value: string }) {
   const ref = useRef<SVGSVGElement>(null);
   useEffect(() => {
     if (ref.current && value) {
@@ -28,7 +28,67 @@ function BarcodeSvg({ value }: { value: string }) {
     }
   }, [value]);
   return <svg ref={ref} className="w-full" />;
+});
+
+interface ProductCardProps {
+  item: any;
+  isSelected: boolean;
+  displayImage?: string;
+  onToggle: (id: number) => void;
+  onEditImage: (e: React.MouseEvent, item: any) => void;
 }
+
+const ProductCard = React.memo(function ProductCard({
+  item,
+  isSelected,
+  displayImage,
+  onToggle,
+  onEditImage,
+}: ProductCardProps) {
+  const specs = item.specs || {};
+  const L = item.length_cm ?? specs.length_cm ?? '';
+  const W = item.width_cm ?? specs.width_cm ?? '';
+  const T = item.thickness_cm ?? specs.thickness_cm ?? '';
+  const sizeStr = (L || W || T) ? `${L}×${W}×${T}` : (specs.size || '');
+
+  return (
+    <div onClick={() => onToggle(item.id)}
+      className={`bg-white rounded border hover:shadow transition overflow-hidden cursor-pointer relative
+        ${isSelected ? 'border-blue-500 bg-blue-50/10' : 'border-slate-200 hover:border-slate-300'}`}>
+
+      <div className="relative aspect-square bg-slate-50 m-1.5 rounded border border-slate-100 overflow-hidden">
+        <div className={`absolute top-1.5 left-1.5 z-10 w-4 h-4 rounded border flex items-center justify-center
+          ${isSelected ? 'bg-blue-500 border-blue-500' : 'bg-white border-slate-300'}`}>
+          {isSelected && <Check className="text-white w-3 h-3" />}
+        </div>
+        <button onClick={(e) => onEditImage(e, item)}
+          title="เปลี่ยนรูปภาพ"
+          suppressHydrationWarning
+          className="absolute top-1.5 right-1.5 z-10 w-6 h-6 rounded bg-white/90 hover:bg-white border border-slate-200 flex items-center justify-center shadow-sm transition active:scale-95">
+          <Edit className="w-3.5 h-3.5 text-slate-500" />
+        </button>
+        <img src={displayImage || "/placeholder.png"} alt={item.name} loading="lazy"
+          className="object-contain w-full h-full p-1.5" />
+      </div>
+
+      <div className="px-2.5 pb-3 pt-1">
+        <div className="flex items-center gap-1 mb-1.5 flex-wrap">
+          <span className="text-[9px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-bold uppercase">{item.color || '–'}</span>
+          {sizeStr && (
+            <span className="text-[9px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-bold">{sizeStr}</span>
+          )}
+        </div>
+        <h3 className="text-xs font-bold text-slate-800 mb-2 line-clamp-1">{item.name}</h3>
+
+        <div className="bg-slate-50 rounded p-1 border border-slate-100">
+          {item.barcode
+            ? <BarcodeSvg value={item.barcode} />
+            : <p className="text-center text-[10px] text-slate-400 py-2">ไม่มีบาร์โค้ด</p>}
+        </div>
+      </div>
+    </div>
+  );
+});
 
 interface Props { products: any[] }
 
@@ -39,9 +99,16 @@ export default function PropsClient({ products }: Props) {
   const [quantities, setQuantities] = useState<Record<number, number>>({});
   const [showImportModal, setShowImportModal] = useState(false);
   const [importText, setImportText] = useState("");
+  const [displayLimit, setDisplayLimit] = useState(100);
+  const loadMoreRef = useRef<HTMLDivElement>(null);
 
   // Search
   const [searchQuery, setSearchQuery] = useState("");
+
+  // Reset display limit when search changes
+  useEffect(() => {
+    setDisplayLimit(100);
+  }, [searchQuery]);
 
   // Image edit
   const [editImageItem, setEditImageItem] = useState<any | null>(null);
@@ -50,36 +117,35 @@ export default function PropsClient({ products }: Props) {
   const [isPending, startTransition] = useTransition();
   const [imageError, setImageError] = useState("");
 
-  const filteredProducts = searchQuery.trim()
-    ? products.filter(p => {
-        const q = searchQuery.toLowerCase().trim();
-        return (
-          (p.name || "").toLowerCase().includes(q) ||
-          (p.sku || "").toLowerCase().includes(q) ||
-          (p.barcode || "").toLowerCase().includes(q) ||
-          (p.color || "").toLowerCase().includes(q) ||
-          (p.item_no || "").toLowerCase().includes(q)
-        );
-      })
-    : products;
+  const filteredProducts = useMemo(() => {
+    if (!searchQuery.trim()) return products;
+    const q = searchQuery.toLowerCase().trim();
+    return products.filter(p => (
+      (p.name || "").toLowerCase().includes(q) ||
+      (p.sku || "").toLowerCase().includes(q) ||
+      (p.barcode || "").toLowerCase().includes(q) ||
+      (p.color || "").toLowerCase().includes(q) ||
+      (p.item_no || "").toLowerCase().includes(q)
+    ));
+  }, [products, searchQuery]);
 
-  const toggleSelect = (id: number) => {
+  const toggleSelect = useCallback((id: number) => {
     setSelected(prev => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
-  };
+  }, []);
 
   const toggleAll = () =>
     setSelected(selected.size === filteredProducts.length ? new Set() : new Set(filteredProducts.map(p => p.id)));
 
-  const openEditImage = (e: React.MouseEvent, item: any) => {
+  const openEditImage = useCallback((e: React.MouseEvent, item: any) => {
     e.stopPropagation();
     setEditImageItem(item);
     setEditImageUrl(localImages[item.id] ?? item.image_url ?? "");
     setImageError("");
-  };
+  }, [localImages]);
 
   const saveImage = () => {
     if (!editImageItem) return;
@@ -187,12 +253,11 @@ export default function PropsClient({ products }: Props) {
               <img src="${p.image_url || ''}" onerror="this.style.display='none'" />
             </div>
             
-            <div class="sku-sec">
-              <span class="sku-label">SKU:</span>
-              <span class="sku-val" title="${p.sku || ''}">${p.sku || '—'}</span>
-            </div>
-            
             <div class="bottom-sec">
+              <div class="sku-sec">
+                <span class="sku-label">SKU:</span>
+                <span class="sku-val">${p.sku || '—'}</span>
+              </div>
               <div class="price-section-wrap">
                 <div class="qr-box">
                   <img src="${qrImg}" class="qr-img" />
@@ -217,7 +282,7 @@ export default function PropsClient({ products }: Props) {
     <style>
       @page{size:A4;margin:8mm}
       *{margin:0;padding:0;box-sizing:border-box}
-      body{margin:0;padding:0;font-family:sans-serif;}
+      body{margin:0;padding:0;font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;}
       .page{width:calc(210mm - 16mm);height:calc(297mm - 16mm);overflow:hidden;page-break-after:always}
       .page:last-child{page-break-after:auto}
       
@@ -230,7 +295,7 @@ export default function PropsClient({ products }: Props) {
         border-right: 1px solid #bbb; 
         border-bottom: 1px solid #bbb; 
         background: #fff; 
-        padding: 0.8mm 1.8mm 0 1.8mm;
+        padding: 0.6mm 1.2mm 0.6mm 1.2mm;
         height: 46mm;
         overflow: hidden;
         position: relative;
@@ -241,96 +306,85 @@ export default function PropsClient({ products }: Props) {
         height: 1.6mm;
         border: none;
         background: transparent;
-        margin: 0.4mm auto 0.3mm auto;
+        margin: 0.3mm auto 0.3mm auto;
         flex-shrink: 0;
       }
       
       .photo-sec {
-        height: 17.5mm;
+        height: 18.5mm;
         min-height: 0;
         display: flex;
         align-items: center;
         justify-content: center;
         overflow: hidden;
-        margin-bottom: 0.5mm;
-        border-bottom: 1px solid #f0f0f0;
-        padding-bottom: 0.3mm;
+        margin-bottom: 0.4mm;
       }
       
       .photo-sec img {
-        max-width: 34mm;
-        max-height: 17.5mm;
+        max-width: 36mm;
+        max-height: 18.5mm;
         object-fit: contain;
         display: block;
       }
       
+      .bottom-sec {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        border-top: 1px dashed #aaa;
+        height: 23.5mm;
+        box-sizing: border-box;
+        padding-top: 1mm;
+        padding-bottom: 0.6mm;
+        margin-top: auto;
+        width: 100%;
+      }
+      
       .sku-sec {
         display: flex;
-        align-items: center;
-        font-size: 6.8pt;
-        line-height: 1.1;
-        overflow: hidden;
-        white-space: nowrap;
-        text-overflow: ellipsis;
-        margin-bottom: 0.3mm;
+        align-items: baseline;
+        font-size: 5.8pt;
+        line-height: 1.15;
+        width: 100%;
+        word-break: break-all;
+        overflow-wrap: break-word;
+        margin-bottom: 0.6mm;
+        letter-spacing: -0.25px;
       }
       
       .sku-label {
         color: #666;
         font-weight: 800;
-        margin-right: 0.6mm;
-        font-size: 6pt;
+        margin-right: 0.5mm;
+        font-size: 5.5pt;
         flex-shrink: 0;
       }
       
       .sku-val {
         color: #000;
         font-weight: 800;
-        overflow: hidden;
-        white-space: nowrap;
-        text-overflow: ellipsis;
-      }
-      
-      .bottom-sec {
-        display: flex;
-        justify-content: flex-end;
-        align-items: flex-start;
-        border-top: 1px dashed #aaa;
-        height: 18mm;
-        box-sizing: border-box;
-        padding-top: 1.2mm;
-        padding-bottom: 0.8mm;
-        margin-top: auto;
+        word-break: break-all;
+        overflow-wrap: break-word;
       }
       
       .price-section-wrap {
-        position: relative;
         display: flex;
-        align-items: flex-start;
-        gap: 2mm;
-        padding-left: 2.2mm;
-        height: 100%;
-      }
-      
-      .price-section-wrap::before {
-        content: "";
-        position: absolute;
-        left: 0;
-        top: -3.5mm;
-        bottom: 0;
-        width: 0;
-        border-left: 1px dashed #555;
+        align-items: center;
+        justify-content: space-between;
+        width: 100%;
+        gap: 1.5mm;
       }
       
       .qr-box {
         display: flex;
-        align-items: flex-start;
+        align-items: center;
         justify-content: center;
+        flex-shrink: 0;
       }
       
       .qr-img {
-        width: 12mm;
-        height: 12mm;
+        width: 14mm;
+        height: 14mm;
         object-fit: contain;
         display: block;
       }
@@ -341,7 +395,8 @@ export default function PropsClient({ products }: Props) {
         flex-direction: column;
         align-items: flex-end;
         justify-content: space-between;
-        height: 13.5mm;
+        height: 14mm;
+        flex-grow: 1;
       }
       
       .price-logo {
@@ -358,10 +413,11 @@ export default function PropsClient({ products }: Props) {
       }
       
       .price-val {
-        font-size: 12.5pt;
+        font-size: 13pt;
         font-weight: 900;
         color: #000;
         line-height: 1;
+        white-space: nowrap;
       }
     </style></head><body>
     ${pages.join("")}
@@ -370,8 +426,29 @@ export default function PropsClient({ products }: Props) {
     win.document.close();
   };
 
-  const allSelected = filteredProducts.length > 0 && filteredProducts.every(p => selected.has(p.id));
-  const selectedProducts = products.filter(p => selected.has(p.id));
+  const allSelected = useMemo(() => {
+    if (filteredProducts.length === 0) return false;
+    if (selected.size < filteredProducts.length) return false;
+    return filteredProducts.every(p => selected.has(p.id));
+  }, [filteredProducts, selected]);
+
+  const selectedProducts = useMemo(() => {
+    if (selected.size === 0) return [];
+    return products.filter(p => selected.has(p.id));
+  }, [products, selected]);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting) {
+        setDisplayLimit(prev => Math.min(prev + 100, filteredProducts.length));
+      }
+    }, { rootMargin: "600px" });
+
+    if (loadMoreRef.current) {
+      observer.observe(loadMoreRef.current);
+    }
+    return () => observer.disconnect();
+  }, [filteredProducts.length]);
 
   return (
     <>
@@ -458,52 +535,28 @@ export default function PropsClient({ products }: Props) {
               <p className="font-semibold">ไม่พบสินค้าที่ตรงกับ &quot;{searchQuery}&quot;</p>
             </div>
           )}
-          {filteredProducts.map((item) => {
-            const specs = item.specs || {};
-            const L = item.length_cm ?? specs.length_cm ?? '';
-            const W = item.width_cm ?? specs.width_cm ?? '';
-            const T = item.thickness_cm ?? specs.thickness_cm ?? '';
-            const sizeStr = (L || W || T) ? `${L}×${W}×${T}` : (specs.size || '');
-            const displayImage = localImages[item.id] ?? item.image_url;
-            return (
-              <div key={item.id} onClick={() => toggleSelect(item.id)}
-                className={`bg-white rounded border hover:shadow transition overflow-hidden cursor-pointer relative
-                  ${selected.has(item.id) ? 'border-blue-500 bg-blue-50/10' : 'border-slate-200 hover:border-slate-300'}`}>
-
-                <div className="relative aspect-square bg-slate-50 m-1.5 rounded border border-slate-100 overflow-hidden">
-                  <div className={`absolute top-1.5 left-1.5 z-10 w-4 h-4 rounded border flex items-center justify-center
-                    ${selected.has(item.id) ? 'bg-blue-500 border-blue-500' : 'bg-white border-slate-300'}`}>
-                    {selected.has(item.id) && <Check className="text-white w-3 h-3" />}
-                  </div>
-                  <button onClick={(e) => openEditImage(e, item)}
-                    title="เปลี่ยนรูปภาพ"
-                    suppressHydrationWarning
-                    className="absolute top-1.5 right-1.5 z-10 w-6 h-6 rounded bg-white/90 hover:bg-white border border-slate-200 flex items-center justify-center shadow-sm transition active:scale-95">
-                    <Edit className="w-3.5 h-3.5 text-slate-500" />
-                  </button>
-                  <img src={displayImage || "/placeholder.png"} alt={item.name}
-                    className="object-contain w-full h-full p-1.5" />
-                </div>
-
-                <div className="px-2.5 pb-3 pt-1">
-                  <div className="flex items-center gap-1 mb-1.5 flex-wrap">
-                    <span className="text-[9px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-bold uppercase">{item.color || '–'}</span>
-                    {sizeStr && (
-                      <span className="text-[9px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-bold">{sizeStr}</span>
-                    )}
-                  </div>
-                  <h3 className="text-xs font-bold text-slate-800 mb-2 line-clamp-1">{item.name}</h3>
-
-                  <div className="bg-slate-50 rounded p-1 border border-slate-100">
-                    {item.barcode
-                      ? <BarcodeSvg value={item.barcode} />
-                      : <p className="text-center text-[10px] text-slate-400 py-2">ไม่มีบาร์โค้ด</p>}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+          {filteredProducts.slice(0, displayLimit).map((item) => (
+            <ProductCard
+              key={item.id}
+              item={item}
+              isSelected={selected.has(item.id)}
+              displayImage={localImages[item.id] ?? item.image_url}
+              onToggle={toggleSelect}
+              onEditImage={openEditImage}
+            />
+          ))}
         </div>
+
+        {displayLimit < filteredProducts.length && (
+          <div ref={loadMoreRef} className="py-6 text-center text-xs text-slate-400 flex flex-col items-center gap-2">
+            <span>กำลังแสดง {Math.min(displayLimit, filteredProducts.length)} จากทั้งหมด {filteredProducts.length} รายการ</span>
+            <button
+              onClick={() => setDisplayLimit(prev => Math.min(prev + 100, filteredProducts.length))}
+              className="px-4 py-2 bg-white border border-slate-200 rounded text-slate-600 font-semibold hover:bg-slate-50 transition shadow-sm">
+              โหลดเพิ่มอีก 100 รายการ
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Print Modal */}
