@@ -80,7 +80,7 @@ export async function getPosData(forceRefresh: boolean = false) {
       .from('products')
       .select(`
         id, name, sku, price, image_url, barcode, specs,
-        collection_groups ( product_sup, tag ),
+        collection_groups ( product_sup, tag, image_url, cover_image_url ),
         stock ( branch_id, qty ),
         discount_rules (
           discounts ( id, name, discount_type, value, active )
@@ -135,6 +135,9 @@ export async function getPosData(forceRefresh: boolean = false) {
       }
     }
 
+    const colGroup = Array.isArray(p.collection_groups) ? p.collection_groups[0] : p.collection_groups
+    const resolvedImageUrl = p.image_url || colGroup?.image_url || colGroup?.cover_image_url || null
+
     return {
       id: p.id,
       name: p.name,
@@ -144,9 +147,9 @@ export async function getPosData(forceRefresh: boolean = false) {
       discount_label: discountPercentString, 
       discount_id: appliedDiscountId,
       discount_name: appliedDiscountName,
-      image_url: p.image_url,
+      image_url: resolvedImageUrl,
       barcode: p.barcode,
-      product_sup: p.collection_groups ? p.collection_groups.product_sup : null,
+      product_sup: colGroup ? colGroup.product_sup : null,
       stocks: p.stock || [],
       // ✨ ส่งข้อมูล material, color, และขนาด เพื่อให้ฟิลเตอร์หน้าบ้านทำงานได้ครบถ้วน
       specs: p.specs ? {

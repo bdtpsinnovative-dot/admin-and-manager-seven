@@ -254,10 +254,6 @@ export default function PropsClient({ products }: Props) {
             </div>
             
             <div class="bottom-sec">
-              <div class="sku-sec">
-                <span class="sku-label">SKU:</span>
-                <span class="sku-val">${p.sku || '—'}</span>
-              </div>
               <div class="price-section-wrap">
                 <div class="qr-box">
                   <img src="${qrImg}" class="qr-img" />
@@ -266,6 +262,7 @@ export default function PropsClient({ products }: Props) {
                   <div class="price-logo">
                     <img src="/logo.terra.home.png" alt="Logo" class="logo-img" />
                   </div>
+                  <div class="sku-val">${p.sku || '—'}</div>
                   ${priceStr ? `<div class="price-val">${priceStr}</div>` : ''}
                 </div>
               </div>
@@ -311,7 +308,7 @@ export default function PropsClient({ products }: Props) {
       }
       
       .photo-sec {
-        height: 18.5mm;
+        height: 20mm;
         min-height: 0;
         display: flex;
         align-items: center;
@@ -321,50 +318,22 @@ export default function PropsClient({ products }: Props) {
       }
       
       .photo-sec img {
-        max-width: 36mm;
-        max-height: 18.5mm;
+        max-width: 35mm;
+        max-height: 20mm;
         object-fit: contain;
         display: block;
       }
       
       .bottom-sec {
         display: flex;
-        flex-direction: column;
+        align-items: center;
         justify-content: space-between;
-        border-top: 1px dashed #aaa;
-        height: 23.5mm;
+        border-top: 1px dashed #bbb;
+        height: 22.5mm;
         box-sizing: border-box;
-        padding-top: 1mm;
-        padding-bottom: 0.6mm;
+        padding: 0.8mm 0;
         margin-top: auto;
         width: 100%;
-      }
-      
-      .sku-sec {
-        display: flex;
-        align-items: baseline;
-        font-size: 5.8pt;
-        line-height: 1.15;
-        width: 100%;
-        word-break: break-all;
-        overflow-wrap: break-word;
-        margin-bottom: 0.6mm;
-        letter-spacing: -0.25px;
-      }
-      
-      .sku-label {
-        color: #666;
-        font-weight: 800;
-        margin-right: 0.5mm;
-        font-size: 5.5pt;
-        flex-shrink: 0;
-      }
-      
-      .sku-val {
-        color: #000;
-        font-weight: 800;
-        word-break: break-all;
-        overflow-wrap: break-word;
       }
       
       .price-section-wrap {
@@ -372,7 +341,8 @@ export default function PropsClient({ products }: Props) {
         align-items: center;
         justify-content: space-between;
         width: 100%;
-        gap: 1.5mm;
+        gap: 1.6mm;
+        height: 100%;
       }
       
       .qr-box {
@@ -383,8 +353,8 @@ export default function PropsClient({ products }: Props) {
       }
       
       .qr-img {
-        width: 14mm;
-        height: 14mm;
+        width: 15mm;
+        height: 15mm;
         object-fit: contain;
         display: block;
       }
@@ -395,8 +365,9 @@ export default function PropsClient({ products }: Props) {
         flex-direction: column;
         align-items: flex-end;
         justify-content: space-between;
-        height: 14mm;
+        height: 15mm;
         flex-grow: 1;
+        min-width: 0;
       }
       
       .price-logo {
@@ -407,13 +378,23 @@ export default function PropsClient({ products }: Props) {
       }
       
       .price-logo .logo-img {
-        height: 3.5mm;
+        height: 3.2mm;
         object-fit: contain;
         display: block;
       }
       
+      .sku-val {
+        font-size: 5pt;
+        line-height: 1.1;
+        color: #475569;
+        text-align: right;
+        word-break: break-all;
+        font-weight: 600;
+        margin: 0.2mm 0;
+      }
+      
       .price-val {
-        font-size: 13pt;
+        font-size: 11.5pt;
         font-weight: 900;
         color: #000;
         line-height: 1;
