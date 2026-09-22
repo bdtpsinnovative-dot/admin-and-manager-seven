@@ -23,6 +23,7 @@ import DashboardMonthFilter from "../../../components/DashboardMonthFilter"
 import DashboardVatCard from "../../../components/DashboardVatCard"
 import DashboardTopBranches from "../../../components/DashboardTopBranches"
 import DashboardCategoryTable from "../../../components/DashboardCategoryTable"
+import DashboardCategoryFilter from "../../../components/DashboardCategoryFilter"
 import DashboardProductTable from "../../../components/DashboardProductTable"
 import DashboardDamageCard from "../../../components/DashboardDamageCard"
 
@@ -102,7 +103,7 @@ function BranchRow({ branch }: { branch: DashboardBranchSummary }) {
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ branch?: string | string[]; month?: string | string[] }>
+  searchParams?: Promise<{ branch?: string | string[]; month?: string | string[]; catType?: string | string[]; cat?: string | string[] }>
 }) {
   const params = await searchParams
   const selectedBranch = typeof params?.branch === "string" && params.branch.length > 0 ? params.branch : "ALL"
@@ -110,6 +111,9 @@ export default async function DashboardPage({
   // ตรวจสอบ month param: ค่าเริ่มต้นคือ "ALL" (ทุกช่วงเวลา) หรือตามที่เลือก
   const monthParam = typeof params?.month === "string" ? params.month : undefined
   const selectedMonth = monthParam && /^\d{4}-\d{2}$/.test(monthParam) ? monthParam : "ALL"
+
+  // หมวดหมู่ที่เลือก (ชื่อหมวดหมู่จริงๆ เช่น VASE & VESSELS, FIGURE หรือ ALL)
+  const selectedCategoryKey = typeof params?.cat === "string" && params.cat.length > 0 ? params.cat : "ALL"
 
   let dateFrom: string | undefined = undefined
   let dateTo: string | undefined = undefined
@@ -125,8 +129,22 @@ export default async function DashboardPage({
     dateTo = `${selectedMonth}-${String(lastDay).padStart(2, "0")}T23:59:59+07:00`
   }
 
-  const data = await getDashboardData(selectedBranch, dateFrom, dateTo)
+  const data = await getDashboardData(selectedBranch, dateFrom, dateTo, selectedCategoryKey)
   const maxMonthlySales = Math.max(...data.monthlySales.map((month) => month.amount), 1)
+
+  const selectedCategoryObj = data.categories.find(
+    (c) =>
+      c.key.trim().toLowerCase() === selectedCategoryKey.trim().toLowerCase() ||
+      c.name.trim().toLowerCase() === selectedCategoryKey.trim().toLowerCase()
+  )
+  const selectedCategoryLabel = selectedCategoryObj
+    ? selectedCategoryObj.name
+    : selectedCategoryKey
+
+  const clearCatParams = new URLSearchParams()
+  if (selectedBranch !== "ALL") clearCatParams.set("branch", selectedBranch)
+  if (selectedMonth !== "ALL") clearCatParams.set("month", selectedMonth)
+  const clearCatUrl = clearCatParams.toString() ? `/dashboard?${clearCatParams.toString()}` : "/dashboard"
 
   return (
     <div className="min-h-screen bg-[#F4F7F9] p-4 font-sans md:px-6 md:py-6">
@@ -138,10 +156,28 @@ export default async function DashboardPage({
               {selectedBranch === "ALL"
                 ? `ภาพรวมใบขายและยอดสุทธิแยกตามทุกสาขา ${selectedMonth === "ALL" ? "(ทุกช่วงเวลา)" : ""}`
                 : `ข้อมูลของ ${data.branches[0]?.name || "สาขาที่เลือก"}`}
+              {selectedCategoryKey !== "ALL" && (
+                <span className="ml-2 font-bold text-blue-600">
+                  · กรองทั้งหน้าตามหมวด: {selectedCategoryLabel}
+                </span>
+              )}
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <DashboardMonthFilter selectedMonth={selectedMonth} />
+            <DashboardCategoryFilter
+              selectedCatKey={selectedCategoryKey}
+              categories={data.categories.map((c) => ({ key: c.key, name: c.name, groupType: c.groupType }))}
+            />
+            {selectedCategoryKey !== "ALL" && (
+              <Link
+                href={clearCatUrl}
+                className="inline-flex items-center gap-1 rounded-xl border border-blue-200 bg-blue-50 hover:bg-rose-50 hover:border-rose-200 hover:text-rose-700 px-3 py-2 text-xs font-bold text-blue-700 transition-colors shadow-sm"
+                title="คลิกเพื่อล้างตัวกรองหมวดหมู่ และดูทุกหมวดหมู่"
+              >
+                <span>✕ ล้างหมวดหมู่</span>
+              </Link>
+            )}
             <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-600 shadow-sm">
               <Calendar className="h-4 w-4 text-blue-600" />
               <span>{
@@ -176,7 +212,9 @@ export default async function DashboardPage({
             <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm hover:shadow-md transition-all flex flex-col justify-between">
               <div>
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500">ยอดรับชำระจากลูกค้าทั้งหมด</span>
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                    {selectedCategoryKey !== "ALL" ? `ยอดรับชำระ (${selectedCategoryLabel})` : "ยอดรับชำระจากลูกค้าทั้งหมด"}
+                  </span>
                   <div className="p-2.5 rounded-xl bg-blue-50 text-blue-600">
                     <CreditCard className="w-5 h-5" />
                   </div>
@@ -185,7 +223,9 @@ export default async function DashboardPage({
                   ฿{money(data.summary.netSales)}
                 </div>
                 <p className="mt-1 text-xs text-slate-400">
-                  ยอดรวมเงินสดและเงินโอนที่รับจริงจากลูกค้า
+                  {selectedCategoryKey !== "ALL"
+                    ? `ยอดรวมรับจริงจากสินค้าหมวดหมู่ ${selectedCategoryLabel}`
+                    : "ยอดรวมเงินสดและเงินโอนที่รับจริงจากลูกค้า"}
                 </p>
               </div>
               <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
@@ -204,7 +244,9 @@ export default async function DashboardPage({
             <div className="rounded-2xl border border-emerald-200 bg-emerald-50/40 p-6 shadow-sm hover:shadow-md transition-all flex flex-col justify-between">
               <div>
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-xs font-bold uppercase tracking-wider text-emerald-800">เงินแท้จริงเข้าร้าน (หัก VAT แล้ว)</span>
+                  <span className="text-xs font-bold uppercase tracking-wider text-emerald-800">
+                    {selectedCategoryKey !== "ALL" ? `เงินเข้าร้าน (${selectedCategoryLabel})` : "เงินแท้จริงเข้าร้าน (หัก VAT แล้ว)"}
+                  </span>
                   <div className="p-2.5 rounded-xl bg-emerald-100 text-emerald-600">
                     <CheckCircle2 className="w-5 h-5" />
                   </div>
@@ -213,7 +255,9 @@ export default async function DashboardPage({
                   ฿{money(data.summary.netSalesBeforeVat)}
                 </div>
                 <p className="mt-1 text-xs text-emerald-600/90">
-                  รายรับสุทธิที่ร้านค้าได้รับจริงเป็นต้นทุนและกำไร
+                  {selectedCategoryKey !== "ALL"
+                    ? `รายรับสุทธิของหมวดหมู่ ${selectedCategoryLabel} หลังหักภาษี`
+                    : "รายรับสุทธิที่ร้านค้าได้รับจริงเป็นต้นทุนและกำไร"}
                 </p>
               </div>
               <div className="mt-4 pt-3 border-t border-emerald-200/60 flex items-center justify-between text-xs">
@@ -307,7 +351,11 @@ export default async function DashboardPage({
             <div className="mb-6 flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-black text-slate-800">แนวโน้มยอดขายรายเดือน</h2>
-                <p className="mt-1 text-xs text-slate-400">ยอดสุทธิจากใบขายย้อนหลัง 12 เดือน</p>
+                <p className="mt-1 text-xs text-slate-400">
+                  {selectedCategoryKey !== "ALL"
+                    ? `ยอดสุทธิหมวดหมู่ ${selectedCategoryLabel} ย้อนหลัง 12 เดือน`
+                    : "ยอดสุทธิจากใบขายย้อนหลัง 12 เดือน"}
+                </p>
               </div>
               <MoreHorizontal className="h-5 w-5 text-slate-300" />
             </div>
@@ -334,16 +382,29 @@ export default async function DashboardPage({
         </div>
 
         {/* --- สรุปอันดับหมวดหมู่ขายดี (Best-Selling Categories Ranking) --- */}
-        <DashboardCategoryTable categories={data.categories} />
+        <DashboardCategoryTable
+          categories={data.categories}
+          selectedCategoryKey={selectedCategoryKey}
+        />
 
         {/* --- สรุปยอดรายสินค้า (เรียงลำดับได้ ลำดับอยู่หน้ารูปภาพ ยอดก่อน VAT ชัดเจน) --- */}
-        <DashboardProductTable products={data.products} />
+        <DashboardProductTable
+          products={data.products}
+          title={selectedCategoryKey !== "ALL" ? `สรุปยอดรายสินค้า (${selectedCategoryLabel})` : "สรุปยอดรายสินค้า"}
+          subtitle={selectedCategoryKey !== "ALL" ? `รายการสินค้าหมวดหมู่ ${selectedCategoryLabel} ที่ขายได้` : "จำนวนที่ขายและยอดเงินของสินค้าแต่ละรายการ"}
+        />
 
         <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
           <div className="flex flex-col justify-between gap-2 border-b border-slate-100 p-6 md:flex-row md:items-center">
             <div>
-              <h2 className="text-lg font-black text-slate-800">ยอดขายแยกตามสาขา</h2>
-              <p className="mt-1 text-xs text-slate-400">รวมใบขายของทุกสาขาในระบบเดียวกัน (สูตรคำนวณ: [ยอดรับเงินลูกค้า] - [VAT 7%] = [เงินแท้จริงเข้าร้าน (ก่อน VAT)])</p>
+              <h2 className="text-lg font-black text-slate-800">
+                {selectedCategoryKey !== "ALL" ? `ยอดขายหมวดหมู่ ${selectedCategoryLabel} แยกตามสาขา` : "ยอดขายแยกตามสาขา"}
+              </h2>
+              <p className="mt-1 text-xs text-slate-400">
+                {selectedCategoryKey !== "ALL"
+                  ? `ยอดขายสินค้าหมวดหมู่ ${selectedCategoryLabel} รวมใบขายของทุกสาขาในระบบเดียวกัน`
+                  : "รวมใบขายของทุกสาขาในระบบเดียวกัน (สูตรคำนวณ: [ยอดรับเงินลูกค้า] - [VAT 7%] = [เงินแท้จริงเข้าร้าน (ก่อน VAT)])"}
+              </p>
             </div>
             <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-600"><CheckCircle2 className="h-4 w-4" /> อัปเดตจากข้อมูลจริง</span>
           </div>
@@ -387,8 +448,14 @@ export default async function DashboardPage({
 
         <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
           <div className="border-b border-slate-100 p-6">
-            <h2 className="text-lg font-black text-slate-800">ใบขายล่าสุดจากทุกสาขา</h2>
-            <p className="mt-1 text-xs text-slate-400">ใช้ตรวจสอบรายการล่าสุดได้อย่างรวดเร็ว เรียงตามวันที่ขายล่าสุด</p>
+            <h2 className="text-lg font-black text-slate-800">
+              {selectedCategoryKey !== "ALL" ? `ใบขายล่าสุดที่มีสินค้าหมวดหมู่ ${selectedCategoryLabel}` : "ใบขายล่าสุดจากทุกสาขา"}
+            </h2>
+            <p className="mt-1 text-xs text-slate-400">
+              {selectedCategoryKey !== "ALL"
+                ? `แสดงเฉพาะใบขายที่มีสินค้าหมวด ${selectedCategoryLabel} (คิดเฉพาะยอดสินค้าในหมวดนี้)`
+                : "ใช้ตรวจสอบรายการล่าสุดได้อย่างรวดเร็ว เรียงตามวันที่ขายล่าสุด"}
+            </p>
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-[950px] w-full text-left text-sm">

@@ -18,18 +18,32 @@ interface DashboardCategoryTableProps {
   categories: DashboardCategorySummary[]
   title?: string
   subtitle?: string
+  initialTab?: "PROP" | "ALL" | "FURNITURE" | "WOOD"
+  selectedCategoryKey?: string // กรองตามชื่อหมวดหมู่จริงๆ เช่น VASE & VESSELS, FIGURE
 }
 
 export default function DashboardCategoryTable({
   categories,
   title = "สรุปยอดขายแยกตามหมวดหมู่",
   subtitle = "อันดับหมวดหมู่สินค้าขายดี เรียงตามเงินแท้จริงเข้าร้าน",
+  initialTab = "PROP",
+  selectedCategoryKey = "ALL",
 }: DashboardCategoryTableProps) {
-  const [activeTab, setActiveTab] = useState<"PROP" | "ALL" | "FURNITURE" | "WOOD">("PROP")
+  const [activeTab, setActiveTab] = useState<"PROP" | "ALL" | "FURNITURE" | "WOOD">(initialTab)
   const [sortBy, setSortBy] = useState<"sales" | "qty" | "bills">("sales")
 
-  // กรองตามแท็บประเภทสินค้า
+  // กรองตามหมวดหมู่จริง (จาก URL param) ถ้าเลือกเฉพาะหมวด จะข้ามแท็บ PROP/FURNITURE/WOOD
   const filteredCategories = useMemo(() => {
+    // ถ้าเลือกหมวดหมู่เฉพาะ ให้กรองตาม key หรือ name นั้นเลย ไม่ต้องกรองแท็บ
+    if (selectedCategoryKey && selectedCategoryKey !== "ALL") {
+      const lower = selectedCategoryKey.trim().toLowerCase()
+      return categories.filter(
+        (cat) =>
+          cat.key.trim().toLowerCase() === lower ||
+          cat.name.trim().toLowerCase() === lower
+      )
+    }
+    // ปกติกรองตามแท็บ
     return categories.filter((cat) => {
       if (activeTab === "ALL") return true
       if (activeTab === "PROP") return cat.groupType === "prop"
@@ -37,7 +51,7 @@ export default function DashboardCategoryTable({
       if (activeTab === "WOOD") return cat.groupType === "wood"
       return true
     })
-  }, [categories, activeTab])
+  }, [categories, activeTab, selectedCategoryKey])
 
   // จัดเรียง
   const sortedCategories = useMemo(() => {
@@ -300,7 +314,9 @@ export default function DashboardCategoryTable({
             <tfoot className="bg-slate-50/90 font-black border-t-2 border-slate-200 text-xs text-slate-800">
               <tr>
                 <td className="px-5 py-4 text-slate-700 uppercase tracking-wider">
-                  รวมทุกหมวดหมู่ ({sortedCategories.length} หมวด)
+                  {selectedCategoryKey && selectedCategoryKey !== "ALL"
+                    ? `รวมหมวดหมู่ ${sortedCategories[0]?.name || selectedCategoryKey}`
+                    : `รวมทุกหมวดหมู่ (${sortedCategories.length} หมวด)`}
                 </td>
                 <td className="px-4 py-4 text-center text-slate-700">100%</td>
                 <td className="px-4 py-4 text-right">{totals.quantity.toLocaleString()}</td>

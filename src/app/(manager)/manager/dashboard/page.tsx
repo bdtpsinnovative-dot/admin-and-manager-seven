@@ -22,6 +22,7 @@ import { getDashboardData } from "../../../../actions/dashboard"
 import { createClient } from "../../../../lib/supabase/server"
 import DashboardVatCard from "@/components/DashboardVatCard"
 import DashboardCategoryTable from "@/components/DashboardCategoryTable"
+import DashboardCategoryFilter from "@/components/DashboardCategoryFilter"
 import DashboardProductTable from "@/components/DashboardProductTable"
 import DashboardMonthFilter from "@/components/DashboardMonthFilter"
 import DashboardDamageCard from "@/components/DashboardDamageCard"
@@ -54,7 +55,7 @@ const statusLabel = (status: string) => {
 export default async function ManagerDashboardPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ month?: string | string[] }>
+  searchParams?: Promise<{ month?: string | string[]; cat?: string | string[] }>
 }) {
   const params = await searchParams
   const supabase = await createClient()
@@ -76,6 +77,9 @@ export default async function ManagerDashboardPage({
   const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
   const selectedMonth = isAllTime ? "ALL" : (monthParam && /^\d{4}-\d{2}$/.test(monthParam) ? monthParam : defaultMonth)
 
+  // หมวดหมู่ที่เลือก
+  const selectedCategoryKey = typeof params?.cat === "string" && params.cat.length > 0 ? params.cat : "ALL"
+
   let dateFrom: string | undefined = undefined
   let dateTo: string | undefined = undefined
   let mYear = 0
@@ -91,8 +95,21 @@ export default async function ManagerDashboardPage({
   }
 
   // เรียกข้อมูล Dashboard (ระบบจะกรองเฉพาะสาขาของ Manager ให้อัตโนมัติ)
-  const data = await getDashboardData("ALL", dateFrom, dateTo)
+  const data = await getDashboardData("ALL", dateFrom, dateTo, selectedCategoryKey)
   const maxMonthlySales = Math.max(...data.monthlySales.map((month) => month.amount), 1)
+
+  const selectedCategoryObj = data.categories.find(
+    (c) =>
+      c.key.trim().toLowerCase() === selectedCategoryKey.trim().toLowerCase() ||
+      c.name.trim().toLowerCase() === selectedCategoryKey.trim().toLowerCase()
+  )
+  const selectedCategoryLabel = selectedCategoryObj
+    ? selectedCategoryObj.name
+    : selectedCategoryKey
+
+  const clearCatParams = new URLSearchParams()
+  if (selectedMonth !== "ALL") clearCatParams.set("month", selectedMonth)
+  const clearCatUrl = clearCatParams.toString() ? `/manager/dashboard?${clearCatParams.toString()}` : "/manager/dashboard"
 
   // คำนวณยอดขายเฉลี่ยต่อบิล
   const avgPerBill = data.summary.billCount > 0
@@ -112,10 +129,28 @@ export default async function ManagerDashboardPage({
             <h1 className="text-2xl font-black text-slate-800">Manager Dashboard</h1>
             <p className="mt-1 text-sm text-slate-500">
               ภาพรวมยอดขายและข้อมูลการดำเนินงานเฉพาะสาขา {branchName} {selectedMonth === "ALL" ? "(ทุกช่วงเวลา)" : ""}
+              {selectedCategoryKey !== "ALL" && (
+                <span className="ml-2 font-bold text-blue-600">
+                  · กรองทั้งหน้าตามหมวด: {selectedCategoryLabel}
+                </span>
+              )}
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <DashboardMonthFilter selectedMonth={selectedMonth} />
+            <DashboardCategoryFilter
+              selectedCatKey={selectedCategoryKey}
+              categories={data.categories.map((c) => ({ key: c.key, name: c.name, groupType: c.groupType }))}
+            />
+            {selectedCategoryKey !== "ALL" && (
+              <Link
+                href={clearCatUrl}
+                className="inline-flex items-center gap-1 rounded-xl border border-blue-200 bg-blue-50 hover:bg-rose-50 hover:border-rose-200 hover:text-rose-700 px-3 py-2 text-xs font-bold text-blue-700 transition-colors shadow-sm"
+                title="คลิกเพื่อล้างตัวกรองหมวดหมู่ และดูทุกหมวดหมู่"
+              >
+                <span>✕ ล้างหมวดหมู่</span>
+              </Link>
+            )}
             <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-600 shadow-sm">
               <Calendar className="h-4 w-4 text-blue-600" />
               <span>{
@@ -337,7 +372,10 @@ export default async function ManagerDashboardPage({
         </div>
 
         {/* --- อันดับหมวดหมู่ขายดี (Best-Selling Categories Ranking) --- */}
-        <DashboardCategoryTable categories={data.categories} />
+        <DashboardCategoryTable
+          categories={data.categories}
+          selectedCategoryKey={selectedCategoryKey}
+        />
 
         {/* --- 3. ตารางสรุปยอดขายรายสินค้า (Product Sales Breakdown) --- */}
         <DashboardProductTable

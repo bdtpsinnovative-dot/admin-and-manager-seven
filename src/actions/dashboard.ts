@@ -77,6 +77,7 @@ export interface DashboardProductSummary {
   name: string
   sku: string | null
   imageUrl: string | null
+  categoryKey?: string | null
   categoryName?: string | null
   categoryThaiName?: string | null
   quantity: number
@@ -239,7 +240,31 @@ const emptyDashboard = (error: string | null = null): DashboardData => ({
   error,
 })
 
-export async function getDashboardData(requestedBranchId = "ALL", dateFrom?: string, dateTo?: string): Promise<DashboardData> {
+function normalizeCategoryString(str: string): string {
+  try {
+    return decodeURIComponent(str).trim().toLowerCase()
+  } catch {
+    return str.trim().toLowerCase()
+  }
+}
+
+function isMatchingCategoryKey(catInfo: ReturnType<typeof resolveCategoryInfo>, targetKey: string): boolean {
+  if (!targetKey || targetKey === "ALL") return true
+  const target = normalizeCategoryString(targetKey)
+  return (
+    normalizeCategoryString(catInfo.mainKey) === target ||
+    normalizeCategoryString(catInfo.mainLabel) === target ||
+    normalizeCategoryString(catInfo.subKey) === target ||
+    normalizeCategoryString(catInfo.subLabel) === target
+  )
+}
+
+export async function getDashboardData(
+  requestedBranchId = "ALL",
+  dateFrom?: string,
+  dateTo?: string,
+  selectedCategoryKey = "ALL"
+): Promise<DashboardData> {
   const supabase = await createClient()
 
   try {
@@ -311,7 +336,19 @@ export async function getDashboardData(requestedBranchId = "ALL", dateFrom?: str
         branch_id,
         branches ( id, branch_name ),
         profiles!damaged_goods_records_profile_fk ( full_name ),
-        products ( id, name, sku, barcode, image_url, price, cost )
+        products (
+          id,
+          name,
+          sku,
+          barcode,
+          image_url,
+          price,
+          cost,
+          category_id,
+          collection_group_id,
+          specs,
+          collection_groups ( id, name, product_sup, tag )
+        )
       `)
       .order("created_at", { ascending: false })
 
@@ -457,6 +494,8 @@ export async function getDashboardData(requestedBranchId = "ALL", dateFrom?: str
       })
     }
 
+    const isAllCategory = !selectedCategoryKey || selectedCategoryKey === "ALL"
+
     const includedOrders: VatOrderItem[] = []
     const excludedOrders: VatOrderItem[] = []
     let includedSales = 0
@@ -498,174 +537,82 @@ export async function getDashboardData(requestedBranchId = "ALL", dateFrom?: str
         : (amount - (amount / 1.07))
       const branch = branchMap.get(branchId)
 
-      if (branch) {
-        if (isCancelled) {
-          branch.cancelledCount += 1
-          branch.cancelledSales += amount
-        } else {
-          branch.billCount += 1
-          branch.grossSales += orderSubtotal
-          branch.netSales += amount
-          branch.totalDiscount += discount
-          branch.totalVat += orderVat
-          branch.netBeforeVat += Math.max(0, amount - orderVat)
-        }
-        if (!branch.lastSaleAt || new Date(order.created_at) > new Date(branch.lastSaleAt)) {
-          branch.lastSaleAt = order.created_at
-        }
-      }
+      // สัดส่วนส่วนลดของบิลนี้ (ถ้ามี เช่น คูปอง หรือส่วนลดท้ายบิล)
+      const billDiscountRatio = orderSubtotal > 0 && discount > 0
+        ? Math.min(1, Math.max(0, discount / orderSubtotal))
+        : 0
 
-      if (isCancelled) {
-        cancelledCount += 1
-        cancelledSales += amount
-      } else {
-        billCount += 1
-        grossSales += orderSubtotal
-        netSales += amount
-        totalDiscount += discount
-        totalVat += orderVat
+      // 1. ประมวลผล order_items ก่อน เพื่อจัดกลุ่ม categoryMap, productMap และคำนวณยอดที่ตรงกับหมวดหมู่ที่เลือก
+      let orderCatGross = 0
+      let orderCatDiscount = 0
+      let orderCatNet = 0
+      let orderCatVat = 0
+      let orderCatNetBeforeVat = 0
+      let hasMatchingItemInOrder = false
 
-        // ✨ จำแนกประเภทการคิด VAT แบบ Dynamic จากข้อมูลบิลจริง (ห้าม Hardcode)
-        const afterDiscount = Math.round(Math.max(0, orderSubtotal - discount) * 100) / 100
-        const isExcludedVat = afterDiscount > 0 && Math.abs(amount - (afterDiscount * 1.07)) < 0.05
-        const roundedVat = Math.round(orderVat * 100) / 100
-        const roundedNet = Math.round((amount - orderVat) * 100) / 100
-
-        const vatItem: VatOrderItem = {
-          id: order.id,
-          orderCode: order.order_code || `ORD-${order.id}`,
-          totalAmount: amount,
-          subtotal: orderSubtotal,
-          discountAmount: discount,
-          netBeforeVat: roundedNet,
-          vatAmount: roundedVat,
+      order.order_items?.forEach((item) => {
+        const product = Array.isArray(item.products) ? item.products[0] : item.products
+        const productKey = String(item.product_id ?? product?.sku ?? product?.name ?? "unknown")
+        const current = productMap.get(productKey) || {
+          key: productKey,
+          name: product?.name || "ไม่พบชื่อสินค้า",
+          sku: product?.sku || null,
+          imageUrl: product?.image_url || null,
+          categoryKey: null,
+          categoryName: null,
+          categoryThaiName: null,
+          quantity: 0,
+          grossSales: 0,
+          discountAmount: 0,
+          discountPercent: 0,
+          netBeforeVat: 0,
+          vatAmount: 0,
+          sales: 0,
+          billCount: 0,
+          lastSaleAt: null,
         }
 
-        if (isExcludedVat) {
-          excludedOrders.push(vatItem)
-          excludedSales += amount
-          excludedVat += orderVat
-          excludedNet += (amount - orderVat)
-        } else {
-          includedOrders.push(vatItem)
-          includedSales += amount
-          includedVat += orderVat
-          includedNet += (amount - orderVat)
+        const itemQty = Number(item.qty) || 0
+        const itemTotalAmount = Number(item.total_item_amount) || 0
+        const itemPriceAtSale = Number(item.price_at_sale) || (itemQty > 0 ? (itemTotalAmount / itemQty) : 0)
+        const itemDiscountPerPiece = Number((item as any).discount_amount_per_piece) || 0
+
+        // ยอดก่อนลด (Gross) ของรายการนี้: ราคาเต็ม x จำนวนชิ้น
+        let itemGross = (itemPriceAtSale + itemDiscountPerPiece) * itemQty
+        if (itemGross <= 0 && Number((product as any)?.price) > 0) {
+          itemGross = Number((product as any)?.price) * itemQty
+        }
+        if (itemGross < itemTotalAmount) {
+          itemGross = itemTotalAmount
         }
 
-        const orderDate = new Date(order.created_at)
-        const bangkokDateStr = orderDate.toLocaleDateString("sv-SE", { timeZone: "Asia/Bangkok" })
-        const [oYear, oMonth, oDay] = bangkokDateStr.split("-").map(Number)
-        const oMonthKey = `${oYear}-${String(oMonth).padStart(2, "0")}`
+        // ยอดหลังลด (Net) ของสินค้ารายการนี้ (รวม VAT)
+        const itemNet = billDiscountRatio > 0
+          ? Math.round(itemGross * (1 - billDiscountRatio) * 100) / 100
+          : (itemDiscountPerPiece > 0 ? itemTotalAmount : (itemGross > 0 ? itemGross : itemTotalAmount))
 
-        monthlyMap.set(oMonthKey, (monthlyMap.get(oMonthKey) || 0) + amount)
+        const itemDiscount = Math.max(0, Math.round((itemGross - itemNet) * 100) / 100)
 
-        if (!monthKeyMap.has(oMonthKey)) {
-          const d = new Date(oYear, oMonth - 1, 1)
-          const daysInMonth = new Date(oYear, oMonth, 0).getDate()
-          const label = d.toLocaleDateString("th-TH", { month: "short", year: "numeric" })
-          const fullLabel = d.toLocaleDateString("th-TH", { month: "long", year: "numeric" })
-          const dayList: DashboardDaySale[] = []
-          for (let day = 1; day <= daysInMonth; day++) {
-            const dayDate = new Date(oYear, oMonth - 1, day)
-            const dateStr = `${oYear}-${String(oMonth).padStart(2, "0")}-${String(day).padStart(2, "0")}`
-            dayList.push({
-              dateStr,
-              day,
-              dayOfWeek: thaiDayNames[dayDate.getDay()],
-              amount: 0,
-              billCount: 0,
-              orders: [],
-            })
-          }
-          monthKeyMap.set(oMonthKey, {
-            monthKey: oMonthKey,
-            year: oYear,
-            month: oMonth,
-            label,
-            fullLabel,
-            totalAmount: 0,
-            billCount: 0,
-            daysCount: daysInMonth,
-            days: dayList,
-          })
+        // คำนวณ VAT (7%) ของรายการนี้ตามสัดส่วนของบิล
+        const itemVat = amount > 0
+          ? Math.round((itemNet / amount) * orderVat * 100) / 100
+          : 0
+        // ยอดก่อน VAT ของรายการนี้ (ไม่รวมภาษี)
+        const itemNetBeforeVat = Math.max(0, Math.round((itemNet - itemVat) * 100) / 100)
+
+        const catInfo = resolveCategoryInfo(product)
+        const itemMatchesCategory = isMatchingCategoryKey(catInfo, selectedCategoryKey)
+
+        if (itemMatchesCategory) {
+          hasMatchingItemInOrder = true
+          orderCatGross += itemGross
+          orderCatDiscount += itemDiscount
+          orderCatNet += itemNet
+          orderCatVat += itemVat
+          orderCatNetBeforeVat += itemNetBeforeVat
         }
 
-        const monthObj = monthKeyMap.get(oMonthKey)
-        if (monthObj) {
-          monthObj.totalAmount += amount
-          monthObj.billCount += 1
-          const dayObj = monthObj.days[oDay - 1]
-          if (dayObj) {
-            dayObj.amount += amount
-            dayObj.billCount += 1
-            const timeStr = orderDate.toLocaleTimeString("th-TH", {
-              timeZone: "Asia/Bangkok",
-              hour: "2-digit",
-              minute: "2-digit",
-            })
-            dayObj.orders.push({
-              id: order.id,
-              orderCode: order.order_code || `#${order.id}`,
-              time: `${timeStr} น.`,
-              amount,
-              status,
-            })
-          }
-        }
-
-        order.order_items?.forEach((item) => {
-          const product = Array.isArray(item.products) ? item.products[0] : item.products
-          const productKey = String(item.product_id ?? product?.sku ?? product?.name ?? "unknown")
-          const current = productMap.get(productKey) || {
-            key: productKey,
-            name: product?.name || "ไม่พบชื่อสินค้า",
-            sku: product?.sku || null,
-            imageUrl: product?.image_url || null,
-            quantity: 0,
-            grossSales: 0,
-            discountAmount: 0,
-            discountPercent: 0,
-            netBeforeVat: 0,
-            vatAmount: 0,
-            sales: 0,
-            billCount: 0,
-            lastSaleAt: null,
-          }
-
-          const itemQty = Number(item.qty) || 0
-          const itemTotalAmount = Number(item.total_item_amount) || 0
-          const itemPriceAtSale = Number(item.price_at_sale) || (itemQty > 0 ? (itemTotalAmount / itemQty) : 0)
-          const itemDiscountPerPiece = Number((item as any).discount_amount_per_piece) || 0
-
-          // ยอดก่อนลด (Gross) ของรายการนี้: ราคาเต็ม x จำนวนชิ้น
-          let itemGross = (itemPriceAtSale + itemDiscountPerPiece) * itemQty
-          if (itemGross <= 0 && Number((product as any)?.price) > 0) {
-            itemGross = Number((product as any)?.price) * itemQty
-          }
-          if (itemGross < itemTotalAmount) {
-            itemGross = itemTotalAmount
-          }
-
-          // สัดส่วนส่วนลดของบิลนี้ (ถ้ามี เช่น คูปอง หรือส่วนลดท้ายบิล)
-          const billDiscountRatio = orderSubtotal > 0 && discount > 0
-            ? Math.min(1, Math.max(0, discount / orderSubtotal))
-            : 0
-
-          // ยอดหลังลด (Net) ของสินค้ารายการนี้ (รวม VAT)
-          const itemNet = billDiscountRatio > 0
-            ? Math.round(itemGross * (1 - billDiscountRatio) * 100) / 100
-            : (itemDiscountPerPiece > 0 ? itemTotalAmount : (itemGross > 0 ? itemGross : itemTotalAmount))
-
-          const itemDiscount = Math.max(0, Math.round((itemGross - itemNet) * 100) / 100)
-
-          // คำนวณ VAT (7%) ของรายการนี้ตามสัดส่วนของบิล
-          const itemVat = amount > 0
-            ? Math.round((itemNet / amount) * orderVat * 100) / 100
-            : 0
-          // ยอดก่อน VAT ของรายการนี้ (ไม่รวมภาษี)
-          const itemNetBeforeVat = Math.max(0, Math.round((itemNet - itemVat) * 100) / 100)
-
+        if (!isCancelled) {
           current.quantity += itemQty
           current.grossSales += itemGross
           current.discountAmount += itemDiscount
@@ -678,7 +625,7 @@ export async function getDashboardData(requestedBranchId = "ALL", dateFrom?: str
           }
 
           // 🏷️ จัดกลุ่มหมวดหมู่ขายดี (Best-Selling Categories)
-          const catInfo = resolveCategoryInfo(product)
+          current.categoryKey = catInfo.mainKey
           current.categoryName = catInfo.mainLabel
           current.categoryThaiName = catInfo.mainThaiLabel
           productMap.set(productKey, current)
@@ -735,49 +682,188 @@ export async function getDashboardData(requestedBranchId = "ALL", dateFrom?: str
           subEntry.vatAmount += itemVat
           subEntry.sales += itemNet
           subEntry.billOrderIds.add(order.id)
-        })
-      }
+        }
+      })
 
-      const discountSnapshot = (order as any).discount_snapshot
-      const shippingCost = Number(discountSnapshot?.shipping_cost || 0)
-      const netGoods = Math.max(0, orderSubtotal - discount)
-      const isOver20k = netGoods >= 20000
-      const shippingWaived = Boolean(discountSnapshot?.shipping_waived && isOver20k)
-      let shippingPayer: 'COMPANY' | 'CUSTOMER' | 'NONE' = 'NONE'
+      // กำหนดยอดของบิลนี้ที่จะนำไปรวมในภาพรวม
+      let effGross = orderSubtotal
+      let effDiscount = discount
+      let effNet = amount
+      let effVat = orderVat
+      let effNetBeforeVat = Math.max(0, amount - orderVat)
+      let shouldIncludeOrder = true
 
-      if (shippingCost > 0) {
-        if (shippingWaived) {
-          shippingPayer = 'COMPANY'
-          if (!isCancelled) {
-            companyPaidCount += 1
-            companyPaidTotal += shippingCost
-          }
+      if (!isAllCategory) {
+        if (!hasMatchingItemInOrder) {
+          shouldIncludeOrder = false
         } else {
-          shippingPayer = 'CUSTOMER'
-          if (!isCancelled) {
-            customerPaidCount += 1
-            customerPaidTotal += shippingCost
-          }
+          effGross = orderCatGross
+          effDiscount = orderCatDiscount
+          effNet = orderCatNet
+          effVat = orderCatVat
+          effNetBeforeVat = orderCatNetBeforeVat
         }
       }
 
-      if (recentOrders.length < 10) {
-        recentOrders.push({
-          id: order.id,
-          orderCode: order.order_code || `#${order.id}`,
-          createdAt: order.created_at,
-          branchName: order.branches?.[0]?.branch_name || (order.branches as any)?.branch_name || branch?.name || "ไม่ระบุสาขา",
-          subtotal: orderSubtotal,
-          discountAmount: discount,
-          discountPercent: orderSubtotal > 0 ? Math.round((discount / orderSubtotal) * 1000) / 10 : 0,
-          netBeforeVat: Math.max(0, Math.round((amount - orderVat) * 100) / 100),
-          vatAmount: orderVat,
-          totalAmount: amount,
-          status,
-          shippingCost,
-          shippingWaived,
-          shippingPayer,
-        })
+      if (shouldIncludeOrder) {
+        if (branch) {
+          if (isCancelled) {
+            branch.cancelledCount += 1
+            branch.cancelledSales += effNet > 0 ? effNet : effGross
+          } else {
+            branch.billCount += 1
+            branch.grossSales += effGross
+            branch.netSales += effNet
+            branch.totalDiscount += effDiscount
+            branch.totalVat += effVat
+            branch.netBeforeVat += effNetBeforeVat
+          }
+          if (!branch.lastSaleAt || new Date(order.created_at) > new Date(branch.lastSaleAt)) {
+            branch.lastSaleAt = order.created_at
+          }
+        }
+
+        if (isCancelled) {
+          cancelledCount += 1
+          cancelledSales += effNet > 0 ? effNet : effGross
+        } else {
+          billCount += 1
+          grossSales += effGross
+          netSales += effNet
+          totalDiscount += effDiscount
+          totalVat += effVat
+
+          // ✨ จำแนกประเภทการคิด VAT แบบ Dynamic จากข้อมูลบิลจริง (ห้าม Hardcode)
+          const afterDiscount = Math.round(Math.max(0, effGross - effDiscount) * 100) / 100
+          const isExcludedVat = afterDiscount > 0 && Math.abs(effNet - (afterDiscount * 1.07)) < 0.05
+          const roundedVat = Math.round(effVat * 100) / 100
+          const roundedNet = Math.round(effNetBeforeVat * 100) / 100
+
+          const vatItem: VatOrderItem = {
+            id: order.id,
+            orderCode: order.order_code || `ORD-${order.id}`,
+            totalAmount: effNet,
+            subtotal: effGross,
+            discountAmount: effDiscount,
+            netBeforeVat: roundedNet,
+            vatAmount: roundedVat,
+          }
+
+          if (isExcludedVat) {
+            excludedOrders.push(vatItem)
+            excludedSales += effNet
+            excludedVat += effVat
+            excludedNet += effNetBeforeVat
+          } else {
+            includedOrders.push(vatItem)
+            includedSales += effNet
+            includedVat += effVat
+            includedNet += effNetBeforeVat
+          }
+
+          const orderDate = new Date(order.created_at)
+          const bangkokDateStr = orderDate.toLocaleDateString("sv-SE", { timeZone: "Asia/Bangkok" })
+          const [oYear, oMonth, oDay] = bangkokDateStr.split("-").map(Number)
+          const oMonthKey = `${oYear}-${String(oMonth).padStart(2, "0")}`
+
+          monthlyMap.set(oMonthKey, (monthlyMap.get(oMonthKey) || 0) + effNet)
+
+          if (!monthKeyMap.has(oMonthKey)) {
+            const d = new Date(oYear, oMonth - 1, 1)
+            const daysInMonth = new Date(oYear, oMonth, 0).getDate()
+            const label = d.toLocaleDateString("th-TH", { month: "short", year: "numeric" })
+            const fullLabel = d.toLocaleDateString("th-TH", { month: "long", year: "numeric" })
+            const dayList: DashboardDaySale[] = []
+            for (let day = 1; day <= daysInMonth; day++) {
+              const dayDate = new Date(oYear, oMonth - 1, day)
+              const dateStr = `${oYear}-${String(oMonth).padStart(2, "0")}-${String(day).padStart(2, "0")}`
+              dayList.push({
+                dateStr,
+                day,
+                dayOfWeek: thaiDayNames[dayDate.getDay()],
+                amount: 0,
+                billCount: 0,
+                orders: [],
+              })
+            }
+            monthKeyMap.set(oMonthKey, {
+              monthKey: oMonthKey,
+              year: oYear,
+              month: oMonth,
+              label,
+              fullLabel,
+              totalAmount: 0,
+              billCount: 0,
+              daysCount: daysInMonth,
+              days: dayList,
+            })
+          }
+
+          const monthObj = monthKeyMap.get(oMonthKey)
+          if (monthObj) {
+            monthObj.totalAmount += effNet
+            monthObj.billCount += 1
+            const dayObj = monthObj.days[oDay - 1]
+            if (dayObj) {
+              dayObj.amount += effNet
+              dayObj.billCount += 1
+              const timeStr = orderDate.toLocaleTimeString("th-TH", {
+                timeZone: "Asia/Bangkok",
+                hour: "2-digit",
+                minute: "2-digit",
+              })
+              dayObj.orders.push({
+                id: order.id,
+                orderCode: order.order_code || `#${order.id}`,
+                time: `${timeStr} น.`,
+                amount: effNet,
+                status,
+              })
+            }
+          }
+        }
+
+        const discountSnapshot = (order as any).discount_snapshot
+        const shippingCost = Number(discountSnapshot?.shipping_cost || 0)
+        const netGoods = Math.max(0, effGross - effDiscount)
+        const isOver20k = netGoods >= 20000
+        const shippingWaived = Boolean(discountSnapshot?.shipping_waived && isOver20k)
+        let shippingPayer: 'COMPANY' | 'CUSTOMER' | 'NONE' = 'NONE'
+
+        if (shippingCost > 0) {
+          if (shippingWaived) {
+            shippingPayer = 'COMPANY'
+            if (!isCancelled) {
+              companyPaidCount += 1
+              companyPaidTotal += shippingCost
+            }
+          } else {
+            shippingPayer = 'CUSTOMER'
+            if (!isCancelled) {
+              customerPaidCount += 1
+              customerPaidTotal += shippingCost
+            }
+          }
+        }
+
+        if (recentOrders.length < 10) {
+          recentOrders.push({
+            id: order.id,
+            orderCode: order.order_code || `#${order.id}`,
+            createdAt: order.created_at,
+            branchName: order.branches?.[0]?.branch_name || (order.branches as any)?.branch_name || branch?.name || "ไม่ระบุสาขา",
+            subtotal: effGross,
+            discountAmount: effDiscount,
+            discountPercent: effGross > 0 ? Math.round((effDiscount / effGross) * 1000) / 10 : 0,
+            netBeforeVat: Math.max(0, Math.round((effNet - effVat) * 100) / 100),
+            vatAmount: effVat,
+            totalAmount: effNet,
+            status,
+            shippingCost,
+            shippingWaived,
+            shippingPayer,
+          })
+        }
       }
     })
 
@@ -822,6 +908,11 @@ export async function getDashboardData(requestedBranchId = "ALL", dateFrom?: str
     const damageItems: DashboardDamageItem[] = []
 
     for (const item of (damageRecords || [])) {
+      const catInfo = resolveCategoryInfo(item.products)
+      if (!isAllCategory && !isMatchingCategoryKey(catInfo, selectedCategoryKey)) {
+        continue
+      }
+
       const q = Number(item.qty || 0)
       damageTotalQty += q
       const price = Number((item.products as any)?.price || 0)
@@ -896,6 +987,27 @@ export async function getDashboardData(requestedBranchId = "ALL", dateFrom?: str
       }
     }).sort((a, b) => b.netBeforeVat - a.netBeforeVat)
 
+    const filteredProducts = isAllCategory
+      ? Array.from(productMap.values())
+      : Array.from(productMap.values()).filter((p) => {
+          const lower = normalizeCategoryString(selectedCategoryKey)
+          return (
+            (p.categoryKey && normalizeCategoryString(p.categoryKey) === lower) ||
+            (p.categoryName && normalizeCategoryString(p.categoryName) === lower) ||
+            (p.categoryThaiName && normalizeCategoryString(p.categoryThaiName) === lower)
+          )
+        })
+
+    const products = filteredProducts.map((p) => ({
+      ...p,
+      grossSales: Math.round(p.grossSales * 100) / 100,
+      discountAmount: Math.round(p.discountAmount * 100) / 100,
+      netBeforeVat: Math.round(p.netBeforeVat * 100) / 100,
+      vatAmount: Math.round(p.vatAmount * 100) / 100,
+      sales: Math.round(p.sales * 100) / 100,
+      discountPercent: p.grossSales > 0 ? Math.round((p.discountAmount / p.grossSales) * 1000) / 10 : 0,
+    })).sort((a, b) => b.sales - a.sales)
+
     return {
       summary: {
         grossSales,
@@ -906,7 +1018,9 @@ export async function getDashboardData(requestedBranchId = "ALL", dateFrom?: str
         billCount,
         cancelledCount,
         cancelledSales,
-        branchCount: branchMap.size,
+        branchCount: isAllCategory
+          ? branchMap.size
+          : Array.from(branchMap.values()).filter((b) => b.billCount > 0).length,
       },
       vatBreakdown,
       damageSummary,
@@ -926,15 +1040,7 @@ export async function getDashboardData(requestedBranchId = "ALL", dateFrom?: str
       })).sort((a, b) => b.netSales - a.netSales),
       availableBranches,
       categories,
-      products: Array.from(productMap.values()).map((p) => ({
-        ...p,
-        grossSales: Math.round(p.grossSales * 100) / 100,
-        discountAmount: Math.round(p.discountAmount * 100) / 100,
-        netBeforeVat: Math.round(p.netBeforeVat * 100) / 100,
-        vatAmount: Math.round(p.vatAmount * 100) / 100,
-        sales: Math.round(p.sales * 100) / 100,
-        discountPercent: p.grossSales > 0 ? Math.round((p.discountAmount / p.grossSales) * 1000) / 10 : 0,
-      })).sort((a, b) => b.sales - a.sales),
+      products,
       monthlySales,
       monthlyBreakdowns,
       recentOrders,
