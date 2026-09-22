@@ -451,3 +451,144 @@ export function getPosMaterialOptions(products: any[], activeCategory: string): 
     .filter((opt) => opt.count > 0)
     .sort((a, b) => b.count - a.count)
 }
+
+export interface ResolvedCategory {
+  mainKey: string
+  mainLabel: string
+  mainThaiLabel: string
+  subKey: string
+  subLabel: string
+  subThaiLabel?: string
+  groupType: 'prop' | 'furniture' | 'wood' | 'other'
+}
+
+export function resolveCategoryInfo(product: any): ResolvedCategory {
+  const colGroup = Array.isArray(product?.collection_groups)
+    ? product.collection_groups[0]
+    : product?.collection_groups
+
+  const rawSup = String(
+    colGroup?.product_sup ||
+    product?.specs?.product_sup ||
+    colGroup?.name ||
+    product?.specs?.type ||
+    product?.specs?.spec_type ||
+    ""
+  ).trim()
+
+  const rawTag = String(colGroup?.tag || "").toLowerCase()
+  const catId = String(product?.category_id || "").toLowerCase()
+  const lowerSup = rawSup.toLowerCase()
+
+  // 1. ตรวจสอบการจับคู่กับหมวดหมู่พร็อพ (PRODUCT_FILTER_ITEMS / CATEGORY_MAP)
+  for (const item of PRODUCT_FILTER_ITEMS) {
+    if (item.isSpecial || item.label === "ALL") continue
+
+    // ตรวจสอบหมวดหมู่ย่อย (Subcategories) ก่อนเพื่อให้ระบุได้อย่างแม่นยำ
+    if (item.items && item.items.length > 0) {
+      for (const sub of item.items) {
+        const subKey = sub.fullValue
+        const allowed = CATEGORY_MAP[subKey] || CATEGORY_MAP[subKey.toUpperCase()] || [subKey.toLowerCase()]
+        if (
+          lowerSup === subKey.toLowerCase() ||
+          lowerSup === (sub.displayLabel || "").toLowerCase() ||
+          allowed.some(a => {
+            const al = a.toLowerCase()
+            return al === lowerSup || (lowerSup.length >= 3 && al.includes(lowerSup)) || (al.length >= 3 && lowerSup.includes(al))
+          })
+        ) {
+          return {
+            mainKey: item.label,
+            mainLabel: item.displayLabel || item.label,
+            mainThaiLabel: item.thaiLabel || item.label,
+            subKey: sub.fullValue,
+            subLabel: sub.displayLabel || sub.fullValue,
+            subThaiLabel: sub.thaiLabel,
+            groupType: 'prop',
+          }
+        }
+      }
+    }
+
+    // ตรวจสอบหมวดหมู่หลัก (Main Category)
+    const mainKey = item.label
+    const mainAllowed = CATEGORY_MAP[mainKey] || CATEGORY_MAP[item.fullValue || ""] || [mainKey.toLowerCase()]
+    if (
+      lowerSup === mainKey.toLowerCase() ||
+      lowerSup === (item.displayLabel || "").toLowerCase() ||
+      (item.fullValue && lowerSup === item.fullValue.toLowerCase()) ||
+      mainAllowed.some(a => {
+        const al = a.toLowerCase()
+        return al === lowerSup || (lowerSup.length >= 3 && al.includes(lowerSup)) || (al.length >= 3 && lowerSup.includes(al))
+      })
+    ) {
+      return {
+        mainKey: item.label,
+        mainLabel: item.displayLabel || item.label,
+        mainThaiLabel: item.thaiLabel || item.label,
+        subKey: rawSup || item.label,
+        subLabel: rawSup || item.displayLabel || item.label,
+        subThaiLabel: item.thaiLabel,
+        groupType: 'prop',
+      }
+    }
+  }
+
+  // 2. Fallbacks สำหรับหมวดหมู่พร็อพที่อาจระบุชื่อเฉพาะ
+  if (catId === 'prop' || rawTag.includes('prop')) {
+    return {
+      mainKey: rawSup ? rawSup.toUpperCase() : "PROPS_OTHER",
+      mainLabel: rawSup || "OTHER PROPS",
+      mainThaiLabel: rawSup ? `พร็อพ (${rawSup})` : "พร็อพตกแต่งอื่น ๆ",
+      subKey: rawSup || "Other Props",
+      subLabel: rawSup || "Other Props",
+      groupType: 'prop',
+    }
+  }
+
+  // 3. หมวดหมู่เฟอร์นิเจอร์
+  if (catId === 'furniture' || rawTag.includes('furn')) {
+    return {
+      mainKey: "FURNITURE",
+      mainLabel: "FURNITURE",
+      mainThaiLabel: "เฟอร์นิเจอร์",
+      subKey: rawSup || "Furniture",
+      subLabel: rawSup || "เฟอร์นิเจอร์",
+      groupType: 'furniture',
+    }
+  }
+
+  // 4. หมวดหมู่แผ่นไม้
+  if (catId === 'slabs' || catId === 'slab') {
+    return {
+      mainKey: "WOOD SLABS",
+      mainLabel: "WOOD SLABS",
+      mainThaiLabel: "แผ่นไม้จามจุรี",
+      subKey: rawSup || "Wood Slabs",
+      subLabel: rawSup || "แผ่นไม้",
+      groupType: 'wood',
+    }
+  }
+
+  // 5. หมวดหมู่ไม้ดิบ
+  if (catId === 'rough_wood') {
+    return {
+      mainKey: "ROUGH WOOD",
+      mainLabel: "ROUGH WOOD",
+      mainThaiLabel: "ไม้ดิบ",
+      subKey: rawSup || "Rough Wood",
+      subLabel: rawSup || "ไม้ดิบ",
+      groupType: 'wood',
+    }
+  }
+
+  // 6. สินค้าอื่นๆ
+  return {
+    mainKey: rawSup ? rawSup.toUpperCase() : "OTHER",
+    mainLabel: rawSup || "OTHER",
+    mainThaiLabel: rawSup || "สินค้าทั่วไป",
+    subKey: rawSup || "Other",
+    subLabel: rawSup || "ทั่วไป",
+    groupType: 'other',
+  }
+}

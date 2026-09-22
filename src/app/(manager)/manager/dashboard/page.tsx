@@ -21,6 +21,7 @@ import {
 import { getDashboardData } from "../../../../actions/dashboard"
 import { createClient } from "../../../../lib/supabase/server"
 import DashboardVatCard from "@/components/DashboardVatCard"
+import DashboardCategoryTable from "@/components/DashboardCategoryTable"
 import DashboardProductTable from "@/components/DashboardProductTable"
 import DashboardMonthFilter from "@/components/DashboardMonthFilter"
 import DashboardDamageCard from "@/components/DashboardDamageCard"
@@ -334,6 +335,9 @@ export default async function ManagerDashboardPage({
             </div>
           </div>
         </div>
+
+        {/* --- อันดับหมวดหมู่ขายดี (Best-Selling Categories Ranking) --- */}
+        <DashboardCategoryTable categories={data.categories} />
 
         {/* --- 3. ตารางสรุปยอดขายรายสินค้า (Product Sales Breakdown) --- */}
         <DashboardProductTable

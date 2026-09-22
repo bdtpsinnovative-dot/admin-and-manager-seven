@@ -22,6 +22,7 @@ import DashboardBranchFilter from "../../../components/DashboardBranchFilter"
 import DashboardMonthFilter from "../../../components/DashboardMonthFilter"
 import DashboardVatCard from "../../../components/DashboardVatCard"
 import DashboardTopBranches from "../../../components/DashboardTopBranches"
+import DashboardCategoryTable from "../../../components/DashboardCategoryTable"
 import DashboardProductTable from "../../../components/DashboardProductTable"
 import DashboardDamageCard from "../../../components/DashboardDamageCard"
 
@@ -331,6 +332,9 @@ export default async function DashboardPage({
 
           <DashboardTopBranches branches={data.branches} />
         </div>
+
+        {/* --- สรุปอันดับหมวดหมู่ขายดี (Best-Selling Categories Ranking) --- */}
+        <DashboardCategoryTable categories={data.categories} />
 
         {/* --- สรุปยอดรายสินค้า (เรียงลำดับได้ ลำดับอยู่หน้ารูปภาพ ยอดก่อน VAT ชัดเจน) --- */}
         <DashboardProductTable products={data.products} />

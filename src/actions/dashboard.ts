@@ -1,6 +1,38 @@
 "use server"
 
 import { createClient } from "../lib/supabase/server"
+import { resolveCategoryInfo } from "../lib/propFilterModel"
+
+export interface DashboardCategorySubItem {
+  key: string
+  name: string
+  thaiName?: string
+  quantity: number
+  grossSales: number
+  discountAmount: number
+  netBeforeVat: number
+  vatAmount: number
+  sales: number
+  billCount: number
+  shareOfParent: number
+}
+
+export interface DashboardCategorySummary {
+  key: string
+  name: string
+  thaiName: string
+  groupType: 'prop' | 'furniture' | 'wood' | 'other'
+  quantity: number
+  grossSales: number
+  discountAmount: number
+  discountPercent: number
+  netBeforeVat: number
+  vatAmount: number
+  sales: number
+  billCount: number
+  shareOfTotal: number
+  subcategories: DashboardCategorySubItem[]
+}
 
 export interface DashboardBranchSummary {
   id: number
@@ -45,6 +77,8 @@ export interface DashboardProductSummary {
   name: string
   sku: string | null
   imageUrl: string | null
+  categoryName?: string | null
+  categoryThaiName?: string | null
   quantity: number
   grossSales: number
   discountAmount: number
@@ -165,6 +199,7 @@ export interface DashboardData {
   shippingSummary: DashboardShippingSummary
   branches: DashboardBranchSummary[]
   availableBranches: DashboardAvailableBranch[]
+  categories: DashboardCategorySummary[]
   products: DashboardProductSummary[]
   monthlySales: { label: string; amount: number; monthKey?: string }[]
   monthlyBreakdowns: DashboardMonthBreakdown[]
@@ -196,6 +231,7 @@ const emptyDashboard = (error: string | null = null): DashboardData => ({
   },
   branches: [],
   availableBranches: [],
+  categories: [],
   products: [],
   monthlySales: [],
   monthlyBreakdowns: [],
@@ -247,7 +283,17 @@ export async function getDashboardData(requestedBranchId = "ALL", dateFrom?: str
           price_at_sale,
           total_item_amount,
           discount_amount_per_piece,
-          products:products!order_items_product_fk ( name, sku, image_url, price )
+          products:products!order_items_product_fk (
+            id,
+            name,
+            sku,
+            image_url,
+            price,
+            category_id,
+            collection_group_id,
+            specs,
+            collection_groups ( id, name, product_sup, tag )
+          )
         )
       `)
       .neq("status", "PENDING")
@@ -342,6 +388,32 @@ export async function getDashboardData(requestedBranchId = "ALL", dateFrom?: str
     let customerPaidTotal = 0
     const monthlyMap = new Map<string, number>()
     const productMap = new Map<string, DashboardProductSummary>()
+    type CategoryMapEntry = {
+      key: string
+      name: string
+      thaiName: string
+      groupType: 'prop' | 'furniture' | 'wood' | 'other'
+      quantity: number
+      grossSales: number
+      discountAmount: number
+      netBeforeVat: number
+      vatAmount: number
+      sales: number
+      billOrderIds: Set<number>
+      subcategories: Map<string, {
+        key: string
+        name: string
+        thaiName?: string
+        quantity: number
+        grossSales: number
+        discountAmount: number
+        netBeforeVat: number
+        vatAmount: number
+        sales: number
+        billOrderIds: Set<number>
+      }>
+    }
+    const categoryMap = new Map<string, CategoryMapEntry>()
     const recentOrders: DashboardOrder[] = []
 
     const now = new Date()
@@ -604,7 +676,65 @@ export async function getDashboardData(requestedBranchId = "ALL", dateFrom?: str
           if (!current.lastSaleAt || new Date(order.created_at) > new Date(current.lastSaleAt)) {
             current.lastSaleAt = order.created_at
           }
+
+          // 🏷️ จัดกลุ่มหมวดหมู่ขายดี (Best-Selling Categories)
+          const catInfo = resolveCategoryInfo(product)
+          current.categoryName = catInfo.mainLabel
+          current.categoryThaiName = catInfo.mainThaiLabel
           productMap.set(productKey, current)
+
+          let catEntry = categoryMap.get(catInfo.mainKey)
+          if (!catEntry) {
+            catEntry = {
+              key: catInfo.mainKey,
+              name: catInfo.mainLabel,
+              thaiName: catInfo.mainThaiLabel,
+              groupType: catInfo.groupType,
+              quantity: 0,
+              grossSales: 0,
+              discountAmount: 0,
+              netBeforeVat: 0,
+              vatAmount: 0,
+              sales: 0,
+              billOrderIds: new Set<number>(),
+              subcategories: new Map(),
+            }
+            categoryMap.set(catInfo.mainKey, catEntry)
+          }
+
+          catEntry.quantity += itemQty
+          catEntry.grossSales += itemGross
+          catEntry.discountAmount += itemDiscount
+          catEntry.netBeforeVat += itemNetBeforeVat
+          catEntry.vatAmount += itemVat
+          catEntry.sales += itemNet
+          catEntry.billOrderIds.add(order.id)
+
+          // จัดกลุ่มหมวดหมู่ย่อย (Subcategories)
+          let subEntry = catEntry.subcategories.get(catInfo.subKey)
+          if (!subEntry) {
+            subEntry = {
+              key: catInfo.subKey,
+              name: catInfo.subLabel,
+              thaiName: catInfo.subThaiLabel,
+              quantity: 0,
+              grossSales: 0,
+              discountAmount: 0,
+              netBeforeVat: 0,
+              vatAmount: 0,
+              sales: 0,
+              billOrderIds: new Set<number>(),
+            }
+            catEntry.subcategories.set(catInfo.subKey, subEntry)
+          }
+
+          subEntry.quantity += itemQty
+          subEntry.grossSales += itemGross
+          subEntry.discountAmount += itemDiscount
+          subEntry.netBeforeVat += itemNetBeforeVat
+          subEntry.vatAmount += itemVat
+          subEntry.sales += itemNet
+          subEntry.billOrderIds.add(order.id)
         })
       }
 
@@ -730,6 +860,42 @@ export async function getDashboardData(requestedBranchId = "ALL", dateFrom?: str
       items: damageItems,
     }
 
+    const totalCatSales = Array.from(categoryMap.values()).reduce((sum, c) => sum + c.netBeforeVat, 0)
+
+    const categories: DashboardCategorySummary[] = Array.from(categoryMap.values()).map((c) => {
+      const parentNet = c.netBeforeVat
+      const subcategories: DashboardCategorySubItem[] = Array.from(c.subcategories.values()).map((s) => ({
+        key: s.key,
+        name: s.name,
+        thaiName: s.thaiName,
+        quantity: s.quantity,
+        grossSales: Math.round(s.grossSales * 100) / 100,
+        discountAmount: Math.round(s.discountAmount * 100) / 100,
+        netBeforeVat: Math.round(s.netBeforeVat * 100) / 100,
+        vatAmount: Math.round(s.vatAmount * 100) / 100,
+        sales: Math.round(s.sales * 100) / 100,
+        billCount: s.billOrderIds.size,
+        shareOfParent: parentNet > 0 ? Math.round((s.netBeforeVat / parentNet) * 1000) / 10 : 0,
+      })).sort((a, b) => b.netBeforeVat - a.netBeforeVat)
+
+      return {
+        key: c.key,
+        name: c.name,
+        thaiName: c.thaiName,
+        groupType: c.groupType,
+        quantity: c.quantity,
+        grossSales: Math.round(c.grossSales * 100) / 100,
+        discountAmount: Math.round(c.discountAmount * 100) / 100,
+        discountPercent: c.grossSales > 0 ? Math.round((c.discountAmount / c.grossSales) * 1000) / 10 : 0,
+        netBeforeVat: Math.round(c.netBeforeVat * 100) / 100,
+        vatAmount: Math.round(c.vatAmount * 100) / 100,
+        sales: Math.round(c.sales * 100) / 100,
+        billCount: c.billOrderIds.size,
+        shareOfTotal: totalCatSales > 0 ? Math.round((c.netBeforeVat / totalCatSales) * 1000) / 10 : 0,
+        subcategories,
+      }
+    }).sort((a, b) => b.netBeforeVat - a.netBeforeVat)
+
     return {
       summary: {
         grossSales,
@@ -759,6 +925,7 @@ export async function getDashboardData(requestedBranchId = "ALL", dateFrom?: str
         totalVat: Math.round(b.totalVat * 100) / 100,
       })).sort((a, b) => b.netSales - a.netSales),
       availableBranches,
+      categories,
       products: Array.from(productMap.values()).map((p) => ({
         ...p,
         grossSales: Math.round(p.grossSales * 100) / 100,

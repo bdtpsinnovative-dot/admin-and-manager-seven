@@ -57,7 +57,7 @@ export default function DashboardProductTable({
           <p className="mt-1 text-xs text-slate-400">{subtitle}</p>
           <div className="mt-1.5 inline-flex items-center gap-1.5 text-[11px] text-slate-500 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200">
             <HelpCircle className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-            <span>สูตรตรวจสอบ: <strong>[ยอดรับเงินลูกค้า]</strong> - <strong className="text-purple-700">[VAT 7%]</strong> = <strong className="text-emerald-700">[เงินแท้จริงเข้าร้าน (ก่อน VAT)]</strong> และ <strong>[ยอดก่อนลด] - [ส่วนลด] = [ยอดรับเงินลูกค้า]</strong></span>
+            <span>สูตรตรวจสอบ: <strong>[ยอดรับเงินลูกค้า]</strong> - <strong className="text-slate-700">[VAT 7%]</strong> = <strong className="text-emerald-700">[เงินแท้จริงเข้าร้าน (ก่อน VAT)]</strong> และ <strong>[ยอดก่อนลด] - [ส่วนลด] = [ยอดรับเงินลูกค้า]</strong></span>
           </div>
         </div>
 
@@ -169,9 +169,16 @@ export default function DashboardProductTable({
                       <p className="font-bold text-slate-800 truncate max-w-[220px]" title={product.name}>
                         {product.name}
                       </p>
-                      <p className="text-[11px] text-slate-400 font-mono">
-                        SKU: {product.sku || "-"}
-                      </p>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <p className="text-[11px] text-slate-400 font-mono">
+                          SKU: {product.sku || "-"}
+                        </p>
+                        {product.categoryName && (
+                          <span className="text-[9.5px] font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                            {product.categoryName}
+                          </span>
+                        )}
+                      </div>
                       {product.lastSaleAt && (
                         <p className="text-[10px] text-blue-600 font-medium mt-0.5 inline-flex items-center gap-1">
                           <Clock className="w-2.5 h-2.5" />
