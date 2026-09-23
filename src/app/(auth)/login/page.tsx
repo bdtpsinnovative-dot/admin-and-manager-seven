@@ -156,7 +156,7 @@ export default function LoginPage() {
         const role = result.role
         let targetUrl = '/dashboard'
         if (role === 'manager') targetUrl = '/manager/dashboard'
-        else if (role === 'sale') targetUrl = '/sale/pos'
+        else if (role === 'sale') targetUrl = '/sale/dashboard'
         window.location.href = targetUrl
       }
     } catch {
@@ -209,7 +209,7 @@ export default function LoginPage() {
         const role = result.role
         let targetUrl = '/dashboard'
         if (role === 'manager') targetUrl = '/manager/dashboard'
-        else if (role === 'sale') targetUrl = '/sale/pos'
+        else if (role === 'sale') targetUrl = '/sale/dashboard'
         window.location.href = targetUrl
       }
     } catch {

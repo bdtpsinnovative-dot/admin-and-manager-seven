@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { updateMyProfile } from "../../../../actions/profiles"
+import { updateMyProfile } from "@/actions/profiles"
 import { Loader2, Save, User, Camera, Shield, QrCode, Mail, Phone, Building, Hash } from "lucide-react"
 import { QRCodeCanvas } from "qrcode.react" 
 

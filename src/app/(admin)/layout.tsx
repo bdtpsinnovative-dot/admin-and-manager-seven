@@ -22,7 +22,13 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     .maybeSingle();
 
   if (profile && profile.role !== "admin") {
-    redirect(profile.role === "manager" ? "/manager/dashboard" : "/login");
+    if (profile.role === "manager") {
+      redirect("/manager/dashboard");
+    } else if (profile.role === "sale") {
+      redirect("/sale/dashboard");
+    } else {
+      redirect("/login");
+    }
   }
 
   const name = profile?.full_name || user.email || "Admin User";

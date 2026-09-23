@@ -21,8 +21,8 @@ import {
   Trash2,
   Truck,
 } from "lucide-react"
-import { getDashboardData } from "../../../../actions/dashboard"
-import { createClient } from "../../../../lib/supabase/server"
+import { getDashboardData } from "@/actions/dashboard"
+import { createClient } from "@/lib/supabase/server"
 import DashboardVatCard from "@/components/DashboardVatCard"
 import DashboardProductTable from "@/components/DashboardProductTable"
 import DashboardMonthFilter from "@/components/DashboardMonthFilter"

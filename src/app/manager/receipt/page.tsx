@@ -6,7 +6,7 @@ import {
 } from "lucide-react"
 
 // Import Server Actions
-import { getReceipts, getSaleItems, getBranches, type SaleRecord, type SaleItem } from "../../../../actions/receipt"
+import { getReceipts, getSaleItems, getBranches, type SaleRecord, type SaleItem } from "@/actions/receipt"
 
 // --- Helper Functions ---
 const fmtMoney = (n: number | null) => 

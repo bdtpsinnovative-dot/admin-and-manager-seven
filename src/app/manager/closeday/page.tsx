@@ -8,7 +8,7 @@ import {
 } from "lucide-react"
 
 // ✅ เรียกใช้ Server Action
-import { getPendingDays, closeDayAction, getUserProfile } from "../../../../actions/close_day"
+import { getPendingDays, closeDayAction, getUserProfile } from "@/actions/close_day"
 
 // --- Types ---
 interface DaySummary {

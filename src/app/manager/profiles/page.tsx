@@ -1,11 +1,14 @@
-import { getMyProfile } from "../../../../actions/profiles"
-import ProfileForm from "@/app/(manager)/manager/profiles/ProfileForm"
+import { getMyProfile } from "@/actions/profiles"
+import ProfileForm from "@/app/manager/profiles/ProfileForm"
+import { Loader2 } from "lucide-react"
 
-export default async function SaleProfilePage() {
+// ❌ ไม่ใส่ "use client" เพราะเราจะรันบน Server เพื่ออ่าน ENV
+export default async function ManagerProfilePage() {
+  
   // 1. ดึงข้อมูล Profile (Server Action)
   const { data: profile } = await getMyProfile()
 
-  // 2. ดึง SUPABASE_URL จาก Server Environment
+  // 2. ✅ ดึง SUPABASE_URL จาก Server Environment (ตัวเดียวกับ server.ts)
   const supabaseUrl = process.env.SUPABASE_URL
 
   if (!profile) {
@@ -20,6 +23,7 @@ export default async function SaleProfilePage() {
         <p className="text-slate-500 text-sm">จัดการข้อมูลบัญชีผู้ใช้ของคุณ</p>
       </div>
       
+      {/* ส่ง supabaseUrl ไปให้ ProfileForm ใช้ต่อ string */}
       <ProfileForm 
         profile={profile} 
         supabaseUrl={supabaseUrl!} 

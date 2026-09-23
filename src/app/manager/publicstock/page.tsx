@@ -5,7 +5,7 @@ import {
   Package, Search, RefreshCcw, ChevronLeft, ChevronRight,
   Loader2, Barcode, Tag, Layers, Download
 } from "lucide-react"
-import { getStockList, getStockStats, getInitialProfile, getTotalQty, generateExcelFile, type ProductStock } from "../../../../actions/publicstock"
+import { getStockList, getStockStats, getInitialProfile, getTotalQty, generateExcelFile, type ProductStock } from "@/actions/publicstock"
 import { useRouter } from "next/navigation"
 import { saveAs } from "file-saver"
 

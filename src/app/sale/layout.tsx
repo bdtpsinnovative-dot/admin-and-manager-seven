@@ -1,10 +1,9 @@
-import { createClient } from "../../lib/supabase/server"
-import { supabaseAdmin } from "../../lib/supabase/admin"
+import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
-import ManagerSidebar from "../../components/ManagerSidebar"
-import MaintenanceGuard from "../../components/MaintenanceGuard"
+import SaleSidebar from "@/components/SaleSidebar"
+import MaintenanceGuard from "@/components/MaintenanceGuard"
 
-export default async function ManagerLayout({ children }: { children: React.ReactNode }) {
+export default async function SaleLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
 
   // 1. Check User
@@ -13,19 +12,25 @@ export default async function ManagerLayout({ children }: { children: React.Reac
     redirect("/login")
   }
 
-  // 2. Fetch Profile
-  const { data: profile } = await supabaseAdmin
+  // 2. Fetch Profile and Role
+  const { data: profile } = await supabase
     .from('profiles')
     .select(`
       full_name,
       email,
       avatar_url,
+      role,
       branches ( branch_name )
     `)
     .eq('user_id', user.id)
-    .maybeSingle()
+    .single()
 
-  // 3. ✅ Logic to build the image URL (Same as Admin)
+  // Verify Role is indeed sale
+  if (profile?.role !== 'sale') {
+    redirect("/login")
+  }
+
+  // 3. Logic to build the image URL
   let avatarFullUrl = "";
   if (profile?.avatar_url) {
     const path = profile.avatar_url;
@@ -34,7 +39,6 @@ export default async function ManagerLayout({ children }: { children: React.Reac
         avatarFullUrl = path;
     } else {
         const baseUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public`;
-        // Check for 'profiles/' prefix
         if (path.startsWith('profiles/')) {
             avatarFullUrl = `${baseUrl}/${path}`;
         } else {
@@ -45,29 +49,28 @@ export default async function ManagerLayout({ children }: { children: React.Reac
 
   // 4. Fallback if no image
   if (!avatarFullUrl) {
-      const name = profile?.full_name || "Manager";
+      const name = profile?.full_name || "Sale";
       avatarFullUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=cbd5e1&color=64748b`;
   }
 
   // Prepare data
-  const userName = profile?.full_name || profile?.email || "Manager"
+  const userName = profile?.full_name || profile?.email || "Sale"
   // @ts-ignore
   const branchName = profile?.branches?.branch_name || "ไม่ระบุสาขา"
 
   return (
-    <MaintenanceGuard type="web_manager">
+    <MaintenanceGuard type="web_sale">
       <div className="flex min-h-screen bg-slate-50 font-sans text-slate-900 print:bg-white print:text-black">
         
-        {/* 💡 1. สั่งซ่อน Sidebar ตัวป่วนทั้งหมดไม่ให้หลุดไปในกระดาษพริ้นท์ */}
+        {/* Hide Sidebar in print mode */}
         <div className="print:hidden">
-          <ManagerSidebar 
+          <SaleSidebar 
             userName={userName} 
             branchName={branchName} 
             userAvatar={avatarFullUrl} 
           />
         </div>
 
-        {/* 💡 2. ปลดล็อกระยะเว้นขอบ (md:ml-[88px]) และ Padding ออกให้หมดตอนพริ้นท์ เพื่อให้ข้อมูลกางเต็มกระดาษ A4 สวยๆ */}
         <main className="flex-1 md:ml-[88px] bg-slate-50/50 min-h-screen transition-all duration-300 print:ml-0 print:p-0 print:bg-white">
           <div className="w-full pt-16 md:pt-6 pb-8 px-4 md:px-6 lg:px-8 print:p-0 print:max-w-full">
               {children}

@@ -66,9 +66,9 @@ export async function middleware(request: NextRequest) {
     return redirectWithCookies('/login')
   }
 
-  // 2. ถ้า Login แล้วแต่อยู่หน้า /login -> ส่งไป Dashboard
+  // 2. ถ้า Login แล้วแต่อยู่หน้า /login -> ส่งไปหน้าแรกให้ระบบคัดแยก Role อัตโนมัติ
   if (user && isLoginPage) {
-    return redirectWithCookies('/dashboard')
+    return redirectWithCookies('/')
   }
 
   return response

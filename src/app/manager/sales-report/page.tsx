@@ -12,7 +12,7 @@ import {
 } from "lucide-react"
 
 // ✅ เรียกใช้ Server Action แทน
-import { getSalesReport, getUserProfile } from "../../../../actions/sales_report"
+import { getSalesReport, getUserProfile } from "@/actions/sales_report"
 
 // --- Types ---
 interface SaleRecord {
