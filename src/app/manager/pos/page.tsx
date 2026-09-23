@@ -111,7 +111,7 @@ export default function ManagerPOSPage() {
 
   useEffect(() => {
     setDisplayLimit(48)
-  }, [searchQuery, selectedCategory, storefrontCategory, selectedColors, selectedMaterials, dimensionFilter])
+  }, [searchQuery, selectedCategory, storefrontCategory, selectedColors, selectedMaterials, dimensionFilter, selectedLocation])
   const [submitting, setSubmitting] = useState(false)
   const [isConfirmingClear, setIsConfirmingClear] = useState(false)
   const [isMobileCartOpen, setIsMobileCartOpen] = useState(false)
@@ -375,7 +375,7 @@ export default function ManagerPOSPage() {
   }
 
   const addToCart = async (product: Product) => {
-    const targetBranchId = myBranchId
+    const targetBranchId = selectedLocation === 'ALL' ? myBranchId : selectedLocation
 
     const branchStock = product.stocks.find(s => s.branch_id === targetBranchId)
     const availableQty = branchStock ? Number(branchStock.qty) : 0
@@ -909,12 +909,26 @@ export default function ManagerPOSPage() {
         if (!productMatchesDimensions(p, dimensionFilter)) return false
       }
       
-      // 🚫 กรองสต็อก: หากเลือกดูพรีออเดอร์ให้แสดงของหมดได้ ถ้าทั่วไปให้แสดงเฉพาะของที่มีสต็อก
-      const totalStock = p.stocks.reduce((sum, s) => sum + Number(s.qty), 0)
-      if (storefrontCategory === 'PRE_ORDER') {
-        return totalStock <= 0
+      // 🏢 กรองสต็อกตามสาขาที่เลือก (Location Filter)
+      if (selectedLocation !== 'ALL') {
+        const locStock = p.stocks.find(s => s.branch_id === selectedLocation)?.qty || 0
+        const hasSearch = searchQuery.trim().length > 0
+        
+        if (storefrontCategory === 'PRE_ORDER') {
+          if (!hasSearch && Number(locStock) > 0) return false
+        } else {
+          // ถ้าไม่ได้พิมพ์ค้นหา ให้แสดงเฉพาะสินค้าที่มีสต็อกในสาขานี้
+          if (!hasSearch && Number(locStock) <= 0) return false
+        }
+      } else {
+        // กรองสต็อกรวมทุกสาขา (ALL STOCKS)
+        const totalStock = p.stocks.reduce((sum, s) => sum + Number(s.qty), 0)
+        if (storefrontCategory === 'PRE_ORDER') {
+          return totalStock <= 0
+        }
+        return totalStock > 0
       }
-      return totalStock > 0
+      return true
     })
     .sort((a, b) => {
       // 🎨 อัลกอริทึมจัดลำดับแบบหน้าเว็บหน้าร้าน (Storefront Algorithm):
@@ -923,11 +937,12 @@ export default function ManagerPOSPage() {
       const bCatOrder = getStorefrontCategoryOrder(b.product_sup)
       if (aCatOrder !== bCatOrder) return aCatOrder - bCatOrder
 
-      // 🏬 อันดับ 2: สินค้าที่มีสต็อกในสาขาเราพร้อมหยิบขึ้นก่อน
-      const aMyStock = a.stocks.find(s => s.branch_id === myBranchId)?.qty || 0
-      const bMyStock = b.stocks.find(s => s.branch_id === myBranchId)?.qty || 0
-      const aHasLocal = Number(aMyStock) > 0 ? 0 : 1
-      const bHasLocal = Number(bMyStock) > 0 ? 0 : 1
+      // 🏬 อันดับ 2: สินค้าที่มีสต็อกในสาขาที่เลือกดู พร้อมหยิบขึ้นก่อน
+      const activeBranchForSort = selectedLocation === 'ALL' ? myBranchId : selectedLocation
+      const aLocStock = a.stocks.find(s => s.branch_id === activeBranchForSort)?.qty || 0
+      const bLocStock = b.stocks.find(s => s.branch_id === activeBranchForSort)?.qty || 0
+      const aHasLocal = Number(aLocStock) > 0 ? 0 : 1
+      const bHasLocal = Number(bLocStock) > 0 ? 0 : 1
       if (aHasLocal !== bHasLocal) return aHasLocal - bHasLocal
 
       // 🏷️ อันดับ 3: สินค้าที่มีโปรโมชั่น/ส่วนลด ดันขึ้นมาก่อนในหมวด
@@ -1174,7 +1189,11 @@ export default function ManagerPOSPage() {
                 hasActiveDimensions={hasActiveDimensions(dimensionFilter)}
                 branches={branches}
                 selectedLocation={selectedLocation}
-                onSelectLocation={(loc) => setSelectedLocation(loc)}
+                onSelectLocation={(loc) => {
+                  setSelectedLocation(loc)
+                  const bName = loc === 'ALL' ? 'ทุกสาขาทั่วประเทศ' : branches.find(b => b.id === loc)?.branch_name || 'สาขาที่เลือก'
+                  toast.info(`📍 แสดงสต็อก: ${bName}`)
+                }}
               />
 
               {/* Active Filter Badges */}
@@ -1376,8 +1395,9 @@ export default function ManagerPOSPage() {
             <>
               <div className="grid grid-cols-4 md:grid-cols-5 xl:grid-cols-6 gap-2 sm:gap-4 w-full">
                 {filteredProducts.slice(0, displayLimit).map((product) => {
-                  const branchStock = product.stocks.find(s => s.branch_id === myBranchId)
-                  const myBranchQty = branchStock ? Number(branchStock.qty) : 0
+                  const targetBranch = selectedLocation === 'ALL' ? myBranchId : selectedLocation
+                  const branchStock = product.stocks.find(s => s.branch_id === targetBranch)
+                  const currentBranchQty = branchStock ? Number(branchStock.qty) : 0
                   const totalStock = product.stocks.reduce((sum, s) => sum + Number(s.qty), 0)
                   return (
                     <div
@@ -1391,9 +1411,9 @@ export default function ManagerPOSPage() {
                         ) : (
                           <span className="text-xs text-slate-300 font-medium">ไม่มีรูป</span>
                         )}
-                        {myBranchQty > 0 ? (
+                        {currentBranchQty > 0 ? (
                           <div className="absolute top-2 right-2 bg-slate-900/80 text-white text-[9px] px-1.5 py-0.5 rounded-md backdrop-blur-xs font-bold">
-                            เหลือ {myBranchQty}
+                            เหลือ {currentBranchQty}
                           </div>
                         ) : (
                           <div className="absolute top-2 right-2 bg-amber-600 text-white text-[9px] px-1.5 py-0.5 rounded-md backdrop-blur-xs font-bold shadow-xs flex items-center gap-0.5">
@@ -1431,7 +1451,7 @@ export default function ManagerPOSPage() {
               <div className="w-full flex flex-col sm:flex-row items-center justify-between gap-3 p-4 bg-white rounded-2xl border border-slate-100 shadow-2xs mt-2 mb-24 lg:mb-4">
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-slate-600 font-bold">
-                    แสดง {Math.min(displayLimit, filteredProducts.length)} จาก {filteredProducts.length} รายการ (พร้อมส่งทั้งหมด)
+                    แสดง {Math.min(displayLimit, filteredProducts.length)} จาก {filteredProducts.length} รายการ ({selectedLocation === 'ALL' ? 'พร้อมส่งทุกสาขา' : branches.find(b => b.id === selectedLocation)?.branch_name || 'สาขาที่เลือก'})
                   </span>
                 </div>
                 {displayLimit < filteredProducts.length && (

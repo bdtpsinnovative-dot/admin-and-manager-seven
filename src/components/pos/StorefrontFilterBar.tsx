@@ -124,7 +124,7 @@ export default function StorefrontFilterBar({
   }, [isBranchDropdownOpen, isMobile])
 
   const selectedBranch = branches.find(b => b.id.toString() === selectedLocation.toString())
-  const selectedBranchName = selectedLocation === 'ALL' ? 'ALL' : (selectedBranch?.branch_name || 'สาขา')
+  const selectedBranchName = selectedLocation === 'ALL' ? 'ALL STOCKS' : (selectedBranch?.branch_name || 'สาขา')
 
   const hasCategoryFilter = selectedCategory !== 'All' && selectedCategory !== 'ALL'
 
