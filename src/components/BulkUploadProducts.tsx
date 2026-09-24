@@ -6,7 +6,7 @@ import * as XLSX from 'xlsx'
 
 import { 
   FileUp, CheckCircle, AlertCircle, Loader2, 
-  Table as TableIcon, Trash2, Save, X, Layers, Hammer, Info, Armchair, DownloadCloud, Image as ImageIcon, Tag, Sparkles, RefreshCw, Folder
+  Table as TableIcon, Trash2, Save, X, Layers, Hammer, Info, Armchair, DownloadCloud, Image as ImageIcon, Tag, Sparkles, RefreshCw, Folder, Shield
 } from 'lucide-react'
 
 const SLAB_TYPES = [
@@ -21,7 +21,18 @@ const SLAB_TYPES = [
 
 type SelectedType = string | null
 
-export default function BulkUploadProducts() {
+interface BulkUploadProductsProps {
+  allowedTabs?: string[]
+}
+
+const CATEGORY_NAMES: Record<string, string> = {
+  SLABS: "Wood Slabs (แผ่นไม้)",
+  ROUGH: "Rough Wood (ไม้ดิบ)",
+  PROP: "Props (พร็อพ)",
+  FURNITURE: "Furniture (เฟอร์นิเจอร์)"
+}
+
+export default function BulkUploadProducts({ allowedTabs = ['SLABS', 'ROUGH', 'PROP', 'FURNITURE'] }: BulkUploadProductsProps) {
   const [data, setData] = useState<any[]>([])
   // ✅ State ไว้เก็บ SKU ที่ซ้ำกับในระบบ
   const [existingSkus, setExistingSkus] = useState<Set<string>>(new Set()) 
@@ -37,8 +48,25 @@ export default function BulkUploadProducts() {
   const [downloadOptions, setDownloadOptions] = useState<{ slabs: any[], rough: any[], props: any[], furniture: any[] } | null>(null)
   const [status, setStatus] = useState<{ type: 'success' | 'error' | 'info', msg: string } | null>(null)
 
-  const [defaultCategory, setDefaultCategory] = useState<'SLABS' | 'rough_wood' | 'prop' | 'furniture'>('SLABS')
-  const [selectedType, setSelectedType] = useState<SelectedType>(null)
+  // ถ้าพนักงานมีสิทธิ์เฉพาะหมวดใดหมวดหนึ่ง ให้ auto-select หมวดนั้นเป็นค่าเริ่มต้นทันที
+  const getInitialSelection = (): { type: SelectedType; cat: 'SLABS' | 'rough_wood' | 'prop' | 'furniture' } => {
+    if (allowedTabs.length === 1) {
+      if (allowedTabs[0] === 'ROUGH') return { type: 'rough_wood', cat: 'rough_wood' };
+      if (allowedTabs[0] === 'PROP') return { type: 'prop', cat: 'prop' };
+      if (allowedTabs[0] === 'FURNITURE') return { type: 'furniture', cat: 'furniture' };
+      if (allowedTabs[0] === 'SLABS') return { type: 'Wood slabs', cat: 'SLABS' };
+    }
+    if (!allowedTabs.includes('SLABS')) {
+      if (allowedTabs.includes('ROUGH')) return { type: 'rough_wood', cat: 'rough_wood' };
+      if (allowedTabs.includes('PROP')) return { type: 'prop', cat: 'prop' };
+      if (allowedTabs.includes('FURNITURE')) return { type: 'furniture', cat: 'furniture' };
+    }
+    return { type: null, cat: 'SLABS' };
+  };
+
+  const initialSelect = getInitialSelection();
+  const [defaultCategory, setDefaultCategory] = useState<'SLABS' | 'rough_wood' | 'prop' | 'furniture'>(initialSelect.cat);
+  const [selectedType, setSelectedType] = useState<SelectedType>(initialSelect.type);
   // ✅ FilterMode สำหรับเลือกดูสินค้า (ALL = ทั้งหมด, NEW = ของใหม่, UPDATE = ของเดิม)
   const [filterMode, setFilterMode] = useState<'ALL' | 'NEW' | 'UPDATE'>('ALL')
 
@@ -86,6 +114,32 @@ const downloadTemplate = () => {
         "Price": 4100
       }];
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(propTemplate), templateName);
+      XLSX.writeFile(wb, fileName);
+    } else if (selectedType === 'rough_wood' || (!allowedTabs.includes('SLABS') && allowedTabs.length === 1 && allowedTabs[0] === 'ROUGH')) {
+      const templateName = "Rough Wood Template";
+      const fileName = "rough_wood_import_template.xlsx";
+      const roughTemplate = [{
+        Barcode: "RW001",
+        sku: "ROUGH-001",
+        name: "ไม้ดิบตัวอย่าง",
+        category_id: "rough_wood",
+        color: "Natural",
+        unit: "ท่อน",
+        description: "ไม้ดิบนำเข้า",
+        cost: 0,
+        price: 3500,
+        status: "active",
+        image_url: "",
+        size: "200x50x10",
+        width: 50,
+        length: 200,
+        thickness: 10,
+        weight: 15,
+        material: "ไม้สัก",
+        finish: "ดิบ",
+        grade: "A",
+      }];
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(roughTemplate), templateName);
       XLSX.writeFile(wb, fileName);
     } else {
       const templateHeader = [{
@@ -208,19 +262,19 @@ const downloadTemplate = () => {
         };
       });
 
-      if ((type === 'slabs' || type === 'all') && downloadOptions.slabs.length > 0) {
+      if ((type === 'slabs' || (type === 'all' && allowedTabs.includes('SLABS'))) && downloadOptions.slabs.length > 0) {
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(getSlabsData(downloadOptions.slabs)), "Wood Slabs");
       }
       
-      if ((type === 'rough' || type === 'all') && downloadOptions.rough.length > 0) {
+      if ((type === 'rough' || (type === 'all' && allowedTabs.includes('ROUGH'))) && downloadOptions.rough.length > 0) {
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(getSlabsData(downloadOptions.rough)), "Rough Wood");
       }
 
-      if ((type === 'props' || type === 'all') && downloadOptions.props.length > 0) {
+      if ((type === 'props' || (type === 'all' && allowedTabs.includes('PROP'))) && downloadOptions.props.length > 0) {
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(getPropsData(downloadOptions.props)), "Props");
       }
       
-      if ((type === 'furniture' || type === 'all') && downloadOptions.furniture.length > 0) {
+      if ((type === 'furniture' || (type === 'all' && allowedTabs.includes('FURNITURE'))) && downloadOptions.furniture.length > 0) {
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(getPropsData(downloadOptions.furniture)), "Furniture");
       }
 
@@ -396,9 +450,22 @@ const downloadTemplate = () => {
           }
         })
 
+        // กรองเฉพาะหมวดหมู่สินค้าที่ผู้ใช้ได้รับสิทธิ์
+        const isAllowedCategory = (catId: string) => {
+          if (catId === 'prop') return allowedTabs.includes('PROP');
+          if (catId === 'furniture') return allowedTabs.includes('FURNITURE');
+          if (catId === 'rough_wood') return allowedTabs.includes('ROUGH');
+          return allowedTabs.includes('SLABS');
+        };
+
+        const permittedProcessed = processed.filter(item => isAllowedCategory(item.category_id));
+        if (permittedProcessed.length === 0 && processed.length > 0) {
+          throw new Error(`คุณไม่มีสิทธิ์นำเข้าสินค้าในหมวดหมู่นี้ (สิทธิ์ของคุณคือ: ${allowedTabs.map(t => CATEGORY_NAMES[t] || t).join(', ')})`);
+        }
+
         // กรองข้อมูลที่ SKU ซ้ำกันในไฟล์ออก
         const uniqueData = Array.from(
-          new Map(processed.map((item) => [item.sku, item])).values()
+          new Map(permittedProcessed.map((item) => [item.sku, item])).values()
         );
 
         // เช็ค Database ว่ามี SKU ไหนอยู่แล้วบ้าง
@@ -587,75 +654,104 @@ const downloadTemplate = () => {
         </div>
       </div>
 
+      {/* สรุปสิทธิ์หมวดหมู่สินค้าที่ได้รับมอบหมาย */}
+      {allowedTabs.length < 4 && (
+        <div className="mb-5 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200/80 p-3.5 rounded-xl flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center shadow-sm shrink-0">
+              <Shield className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-slate-800">หมวดหมู่สินค้าที่คุณได้รับมอบหมายให้จัดการ:</p>
+              <div className="flex flex-wrap gap-1.5 mt-1">
+                {allowedTabs.map(tab => (
+                  <span key={tab} className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-white text-blue-700 border border-blue-200 shadow-2xs">
+                    {CATEGORY_NAMES[tab] || tab}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* เลือกประเภทสินค้าก่อน Import */}
       {data.length === 0 && !loading && (
         <div className="mb-6 bg-slate-50 p-4 rounded-xl border border-slate-200">
           <p className="text-sm font-bold text-slate-700 mb-3">เลือกประเภทสินค้าที่ต้องการ Import:</p>
           
           {/* SLABS types */}
-          <div className="mb-3">
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1">
-              <Layers size={12} /> Wood Slabs
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {SLAB_TYPES.map(t => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => handleSelectType(t)}
-                  className={`px-3 py-2 rounded-lg border-2 text-sm font-semibold transition-all
-                    ${selectedType === t ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm' : 'border-slate-200 bg-white text-slate-600 hover:border-blue-300 hover:text-blue-600'}`}
-                >
-                  {t}
-                </button>
-              ))}
+          {allowedTabs.includes('SLABS') && (
+            <div className="mb-3">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1">
+                <Layers size={12} /> Wood Slabs
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {SLAB_TYPES.map(t => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => handleSelectType(t)}
+                    className={`px-3 py-2 rounded-lg border-2 text-sm font-semibold transition-all
+                      ${selectedType === t ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm' : 'border-slate-200 bg-white text-slate-600 hover:border-blue-300 hover:text-blue-600'}`}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Rough Wood */}
-          <div className="border-t border-slate-200 pt-3">
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1">
-              <Hammer size={12} /> Rough Wood
-            </p>
-            <button
-              type="button"
-              onClick={() => handleSelectType('rough_wood')}
-              className={`px-3 py-2 rounded-lg border-2 text-sm font-semibold transition-all
-                ${selectedType === 'rough_wood' ? 'border-orange-500 bg-orange-50 text-orange-700 shadow-sm' : 'border-slate-200 bg-white text-slate-600 hover:border-orange-300 hover:text-orange-600'}`}
-            >
-              Rough Wood (ไม้ดิบ)
-            </button>
-          </div>
+          {allowedTabs.includes('ROUGH') && (
+            <div className={`${allowedTabs.includes('SLABS') ? 'border-t border-slate-200 pt-3' : 'mb-3'}`}>
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1">
+                <Hammer size={12} /> Rough Wood
+              </p>
+              <button
+                type="button"
+                onClick={() => handleSelectType('rough_wood')}
+                className={`px-3 py-2 rounded-lg border-2 text-sm font-semibold transition-all
+                  ${selectedType === 'rough_wood' ? 'border-orange-500 bg-orange-50 text-orange-700 shadow-sm' : 'border-slate-200 bg-white text-slate-600 hover:border-orange-300 hover:text-orange-600'}`}
+              >
+                Rough Wood (ไม้ดิบ)
+              </button>
+            </div>
+          )}
 
           {/* Props */}
-          <div className="border-t border-slate-200 pt-3">
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1">
-              <ImageIcon size={12} /> Props / Decor
-            </p>
-            <button
-              type="button"
-              onClick={() => handleSelectType('prop')}
-              className={`px-3 py-2 rounded-lg border-2 text-sm font-semibold transition-all
-                ${selectedType === 'prop' ? 'border-purple-500 bg-purple-50 text-purple-700 shadow-sm' : 'border-slate-200 bg-white text-slate-600 hover:border-purple-300 hover:text-purple-600'}`}
-            >
-              Props / Decor (สินค้าประกอบฉาก)
-            </button>
-          </div>
+          {allowedTabs.includes('PROP') && (
+            <div className={`${(allowedTabs.includes('SLABS') || allowedTabs.includes('ROUGH')) ? 'border-t border-slate-200 pt-3' : 'mb-3'}`}>
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1">
+                <ImageIcon size={12} /> Props / Decor
+              </p>
+              <button
+                type="button"
+                onClick={() => handleSelectType('prop')}
+                className={`px-3 py-2 rounded-lg border-2 text-sm font-semibold transition-all
+                  ${selectedType === 'prop' ? 'border-purple-500 bg-purple-50 text-purple-700 shadow-sm' : 'border-slate-200 bg-white text-slate-600 hover:border-purple-300 hover:text-purple-600'}`}
+              >
+                Props / Decor (สินค้าประกอบฉาก)
+              </button>
+            </div>
+          )}
 
           {/* Furniture */}
-          <div className="border-t border-slate-200 pt-3">
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1">
-              <Armchair size={12} /> Furniture
-            </p>
-            <button
-              type="button"
-              onClick={() => handleSelectType('furniture')}
-              className={`px-3 py-2 rounded-lg border-2 text-sm font-semibold transition-all
-                ${selectedType === 'furniture' ? 'border-emerald-500 bg-emerald-50 text-emerald-700 shadow-sm' : 'border-slate-200 bg-white text-slate-600 hover:border-emerald-300 hover:text-emerald-600'}`}
-            >
-              Furniture (เฟอร์นิเจอร์)
-            </button>
-          </div>
+          {allowedTabs.includes('FURNITURE') && (
+            <div className={`${(allowedTabs.includes('SLABS') || allowedTabs.includes('ROUGH') || allowedTabs.includes('PROP')) ? 'border-t border-slate-200 pt-3' : 'mb-3'}`}>
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1">
+                <Armchair size={12} /> Furniture
+              </p>
+              <button
+                type="button"
+                onClick={() => handleSelectType('furniture')}
+                className={`px-3 py-2 rounded-lg border-2 text-sm font-semibold transition-all
+                  ${selectedType === 'furniture' ? 'border-emerald-500 bg-emerald-50 text-emerald-700 shadow-sm' : 'border-slate-200 bg-white text-slate-600 hover:border-emerald-300 hover:text-emerald-600'}`}
+              >
+                Furniture (เฟอร์นิเจอร์)
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -882,68 +978,78 @@ const downloadTemplate = () => {
               </div>
               
               <div className="space-y-3 mt-6">
-                <button 
-                  onClick={() => confirmDownload('slabs')}
-                  disabled={downloadOptions.slabs.length === 0}
-                  className="w-full flex items-center justify-between p-4 rounded-xl border border-slate-200 hover:border-blue-300 hover:bg-blue-50 transition disabled:opacity-50 disabled:cursor-not-allowed group"
-                >
-                  <div className="flex items-center gap-3">
-                    <Layers className="text-slate-400 group-hover:text-blue-500 transition" size={20} />
-                    <span className="font-bold text-slate-700 group-hover:text-blue-700 text-left">Wood Slabs (ไม้แผ่น)</span>
-                  </div>
-                  <span className="bg-slate-100 text-slate-600 group-hover:bg-blue-100 group-hover:text-blue-700 py-1 px-3 rounded-full text-xs font-bold transition">
-                    {downloadOptions.slabs.length} รายการ
-                  </span>
-                </button>
+                {allowedTabs.includes('SLABS') && (
+                  <button 
+                    onClick={() => confirmDownload('slabs')}
+                    disabled={downloadOptions.slabs.length === 0}
+                    className="w-full flex items-center justify-between p-4 rounded-xl border border-slate-200 hover:border-blue-300 hover:bg-blue-50 transition disabled:opacity-50 disabled:cursor-not-allowed group"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Layers className="text-slate-400 group-hover:text-blue-500 transition" size={20} />
+                      <span className="font-bold text-slate-700 group-hover:text-blue-700 text-left">Wood Slabs (ไม้แผ่น)</span>
+                    </div>
+                    <span className="bg-slate-100 text-slate-600 group-hover:bg-blue-100 group-hover:text-blue-700 py-1 px-3 rounded-full text-xs font-bold transition">
+                      {downloadOptions.slabs.length} รายการ
+                    </span>
+                  </button>
+                )}
 
-                <button 
-                  onClick={() => confirmDownload('rough')}
-                  disabled={downloadOptions.rough.length === 0}
-                  className="w-full flex items-center justify-between p-4 rounded-xl border border-slate-200 hover:border-orange-300 hover:bg-orange-50 transition disabled:opacity-50 disabled:cursor-not-allowed group"
-                >
-                  <div className="flex items-center gap-3">
-                    <Hammer className="text-slate-400 group-hover:text-orange-500 transition" size={20} />
-                    <span className="font-bold text-slate-700 group-hover:text-orange-700 text-left">Rough Wood (ไม้ดิบ)</span>
-                  </div>
-                  <span className="bg-slate-100 text-slate-600 group-hover:bg-orange-100 group-hover:text-orange-700 py-1 px-3 rounded-full text-xs font-bold transition">
-                    {downloadOptions.rough.length} รายการ
-                  </span>
-                </button>
+                {allowedTabs.includes('ROUGH') && (
+                  <button 
+                    onClick={() => confirmDownload('rough')}
+                    disabled={downloadOptions.rough.length === 0}
+                    className="w-full flex items-center justify-between p-4 rounded-xl border border-slate-200 hover:border-orange-300 hover:bg-orange-50 transition disabled:opacity-50 disabled:cursor-not-allowed group"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Hammer className="text-slate-400 group-hover:text-orange-500 transition" size={20} />
+                      <span className="font-bold text-slate-700 group-hover:text-orange-700 text-left">Rough Wood (ไม้ดิบ)</span>
+                    </div>
+                    <span className="bg-slate-100 text-slate-600 group-hover:bg-orange-100 group-hover:text-orange-700 py-1 px-3 rounded-full text-xs font-bold transition">
+                      {downloadOptions.rough.length} รายการ
+                    </span>
+                  </button>
+                )}
                 
-                <button 
-                  onClick={() => confirmDownload('props')}
-                  disabled={downloadOptions.props.length === 0}
-                  className="w-full flex items-center justify-between p-4 rounded-xl border border-slate-200 hover:border-purple-300 hover:bg-purple-50 transition disabled:opacity-50 disabled:cursor-not-allowed group"
-                >
-                  <div className="flex items-center gap-3">
-                    <ImageIcon className="text-slate-400 group-hover:text-purple-500 transition" size={20} />
-                    <span className="font-bold text-slate-700 group-hover:text-purple-700 text-left">Props / Decor (ของตกแต่ง)</span>
-                  </div>
-                  <span className="bg-slate-100 text-slate-600 group-hover:bg-purple-100 group-hover:text-purple-700 py-1 px-3 rounded-full text-xs font-bold transition">
-                    {downloadOptions.props.length} รายการ
-                  </span>
-                </button>
+                {allowedTabs.includes('PROP') && (
+                  <button 
+                    onClick={() => confirmDownload('props')}
+                    disabled={downloadOptions.props.length === 0}
+                    className="w-full flex items-center justify-between p-4 rounded-xl border border-slate-200 hover:border-purple-300 hover:bg-purple-50 transition disabled:opacity-50 disabled:cursor-not-allowed group"
+                  >
+                    <div className="flex items-center gap-3">
+                      <ImageIcon className="text-slate-400 group-hover:text-purple-500 transition" size={20} />
+                      <span className="font-bold text-slate-700 group-hover:text-purple-700 text-left">Props / Decor (ของตกแต่ง)</span>
+                    </div>
+                    <span className="bg-slate-100 text-slate-600 group-hover:bg-purple-100 group-hover:text-purple-700 py-1 px-3 rounded-full text-xs font-bold transition">
+                      {downloadOptions.props.length} รายการ
+                    </span>
+                  </button>
+                )}
 
-                <button 
-                  onClick={() => confirmDownload('furniture')}
-                  disabled={downloadOptions.furniture.length === 0}
-                  className="w-full flex items-center justify-between p-4 rounded-xl border border-slate-200 hover:border-emerald-300 hover:bg-emerald-50 transition disabled:opacity-50 disabled:cursor-not-allowed group"
-                >
-                  <div className="flex items-center gap-3">
-                    <Armchair className="text-slate-400 group-hover:text-emerald-500 transition" size={20} />
-                    <span className="font-bold text-slate-700 group-hover:text-emerald-700 text-left">Furniture (เฟอร์นิเจอร์)</span>
-                  </div>
-                  <span className="bg-slate-100 text-slate-600 group-hover:bg-emerald-100 group-hover:text-emerald-700 py-1 px-3 rounded-full text-xs font-bold transition">
-                    {downloadOptions.furniture.length} รายการ
-                  </span>
-                </button>
+                {allowedTabs.includes('FURNITURE') && (
+                  <button 
+                    onClick={() => confirmDownload('furniture')}
+                    disabled={downloadOptions.furniture.length === 0}
+                    className="w-full flex items-center justify-between p-4 rounded-xl border border-slate-200 hover:border-emerald-300 hover:bg-emerald-50 transition disabled:opacity-50 disabled:cursor-not-allowed group"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Armchair className="text-slate-400 group-hover:text-emerald-500 transition" size={20} />
+                      <span className="font-bold text-slate-700 group-hover:text-emerald-700 text-left">Furniture (เฟอร์นิเจอร์)</span>
+                    </div>
+                    <span className="bg-slate-100 text-slate-600 group-hover:bg-emerald-100 group-hover:text-emerald-700 py-1 px-3 rounded-full text-xs font-bold transition">
+                      {downloadOptions.furniture.length} รายการ
+                    </span>
+                  </button>
+                )}
 
-                <button 
-                  onClick={() => confirmDownload('all')}
-                  className="w-full flex items-center justify-center gap-2 p-4 rounded-xl bg-slate-800 text-white font-bold hover:bg-slate-700 transition shadow-md shadow-slate-200 mt-4"
-                >
-                  <TableIcon size={18} /> ดาวน์โหลดทั้งหมด (แยก 4 Sheet)
-                </button>
+                {allowedTabs.length > 1 && (
+                  <button 
+                    onClick={() => confirmDownload('all')}
+                    className="w-full flex items-center justify-center gap-2 p-4 rounded-xl bg-slate-800 text-white font-bold hover:bg-slate-700 transition shadow-md shadow-slate-200 mt-4"
+                  >
+                    <TableIcon size={18} /> {allowedTabs.length === 4 ? 'ดาวน์โหลดทั้งหมด (แยก 4 Sheet)' : `ดาวน์โหลดเฉพาะหมวดที่ได้รับสิทธิ์ (${allowedTabs.length} หมวด)`}
+                  </button>
+                )}
               </div>
             </div>
             
