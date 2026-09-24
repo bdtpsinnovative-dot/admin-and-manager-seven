@@ -20,6 +20,8 @@ export default async function RootPage() {
     redirect('/manager/dashboard');
   } else if (role === 'sale') {
     redirect('/sale/dashboard');
+  } else if (role === 'data_entry' || role === 'warehouse') {
+    redirect('/inventory');
   }
 
   redirect('/dashboard');

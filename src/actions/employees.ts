@@ -18,6 +18,8 @@ export interface Employee {
   avatar_url: string | null
   branch_id: number | null
   created_at: string
+  allowed_inventory_tabs?: string[]
+  member_tags?: string[]
 }
 
 // --- Helper: Check Auth & Get Profile ---
@@ -98,24 +100,47 @@ export async function updateEmployee(formData: FormData) {
     const phone = formData.get('phone') as string
     const birthDate = formData.get('birth_date') as string
 
-    // เช็ค Constraint Database
-    if (role !== 'admin' && (!branchId || branchId === "")) {
-      return { error: "ตำแหน่ง Sale/Manager/Warehouse ต้องระบุสาขา (ตามกฎ Database)" }
+    // เช็ค Constraint Database (เฉพาะตำแหน่งที่ต้องผูกสาขา)
+    const rolesRequiringBranch = ['sale', 'manager', 'warehouse']
+    if (rolesRequiringBranch.includes(role) && (!branchId || branchId === "" || branchId === "null")) {
+      return { error: `ตำแหน่ง ${role} ต้องระบุสาขา (ตามกฎ Database)` }
+    }
+
+    // จัดการหมวดสินค้าที่รับผิดชอบ
+    const rawCategories = formData.get('allowed_inventory_tabs') as string
+    let categoryList: string[] = ['SLABS', 'ROUGH', 'PROP', 'FURNITURE']
+    if (rawCategories) {
+      try {
+        const parsed = JSON.parse(rawCategories)
+        if (Array.isArray(parsed) && parsed.length > 0) categoryList = parsed
+      } catch {
+        const splitted = rawCategories.split(',').map(s => s.trim()).filter(Boolean)
+        if (splitted.length > 0) categoryList = splitted
+      }
     }
 
     // เตรียมข้อมูล Update
-    const profileData = {
+    const profileData: Record<string, any> = {
         user_id: userId,
         full_name: fullName,
         role: role,
-        branch_id: (branchId && branchId !== "") ? Number(branchId) : null,
+        branch_id: (branchId && branchId !== "" && branchId !== "null") ? Number(branchId) : null,
         phone: phone || null,
-        birth_date: birthDate || null
+        birth_date: birthDate || null,
+        member_tags: categoryList // สำรองใน member_tags ทันที
     }
 
-    const { error } = await supabaseAdmin
+    // ลองอัปเดตทั้ง allowed_inventory_tabs ถ้ามีคอลัมน์ ถ้ายังไม่มีให้ fallback อัปเดตเฉพาะ member_tags
+    let { error } = await supabaseAdmin
       .from(TABLE_PROFILES)
-      .upsert(profileData, { onConflict: 'user_id' })
+      .upsert({ ...profileData, allowed_inventory_tabs: categoryList }, { onConflict: 'user_id' })
+
+    if (error && error.message?.includes('allowed_inventory_tabs')) {
+      const res = await supabaseAdmin
+        .from(TABLE_PROFILES)
+        .upsert(profileData, { onConflict: 'user_id' })
+      error = res.error
+    }
 
     if (error) return { error: error.message }
     
@@ -154,9 +179,23 @@ export async function createEmployee(formData: FormData) {
       return { error: "กรุณากรอก อีเมล, รหัสผ่าน และชื่อ-นามสกุล" }
     }
     
-    // เช็ค Constraint Database
-    if (role !== 'admin' && (!branchId || branchId === "")) {
-      return { error: "ตำแหน่ง Sale/Manager/Warehouse ต้องระบุสาขา" }
+    // เช็ค Constraint Database (เฉพาะตำแหน่งที่ต้องผูกสาขา)
+    const rolesRequiringBranch = ['sale', 'manager', 'warehouse']
+    if (rolesRequiringBranch.includes(role) && (!branchId || branchId === "" || branchId === "null")) {
+      return { error: `ตำแหน่ง ${role} ต้องระบุสาขา` }
+    }
+
+    // จัดการหมวดสินค้าที่รับผิดชอบ
+    const rawCategories = formData.get('allowed_inventory_tabs') as string
+    let categoryList: string[] = ['SLABS', 'ROUGH', 'PROP', 'FURNITURE']
+    if (rawCategories) {
+      try {
+        const parsed = JSON.parse(rawCategories)
+        if (Array.isArray(parsed) && parsed.length > 0) categoryList = parsed
+      } catch {
+        const splitted = rawCategories.split(',').map(s => s.trim()).filter(Boolean)
+        if (splitted.length > 0) categoryList = splitted
+      }
     }
 
     // 1. สร้าง User ใน Auth
@@ -171,16 +210,26 @@ export async function createEmployee(formData: FormData) {
     if (!authData.user) return { error: "ไม่พบข้อมูล User ที่ถูกสร้าง" }
 
     // 2. สร้าง Profile ใน DB
-    const { error: profileError } = await supabaseAdmin
+    const profileData: Record<string, any> = { 
+      user_id: authData.user.id,
+      full_name: fullName,
+      role: role,
+      branch_id: (branchId && branchId !== "" && branchId !== "null") ? Number(branchId) : null,
+      phone: phone || null,
+      birth_date: birthDate || null,
+      member_tags: categoryList
+    }
+
+    let { error: profileError } = await supabaseAdmin
       .from(TABLE_PROFILES)
-      .upsert({ 
-        user_id: authData.user.id,
-        full_name: fullName,
-        role: role,
-        branch_id: (branchId && branchId !== "" && branchId !== "null") ? Number(branchId) : null,
-        phone: phone || null,
-        birth_date: birthDate || null
-      }, { onConflict: 'user_id' })
+      .upsert({ ...profileData, allowed_inventory_tabs: categoryList }, { onConflict: 'user_id' })
+
+    if (profileError && profileError.message?.includes('allowed_inventory_tabs')) {
+      const res = await supabaseAdmin
+        .from(TABLE_PROFILES)
+        .upsert(profileData, { onConflict: 'user_id' })
+      profileError = res.error
+    }
 
     if (profileError) {
       // ถ้าสร้าง Profile พลาด -> ลบ User ทิ้งเพื่อความสะอาด

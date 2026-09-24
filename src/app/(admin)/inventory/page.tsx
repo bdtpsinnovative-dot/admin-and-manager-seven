@@ -7,14 +7,44 @@ import InventoryLoadingOverlay from "../../../components/InventoryLoadingOverlay
 import { Package, Layers, Hammer, FileUp, Box, Search, Loader2, Armchair, X } from "lucide-react"
 import { Suspense } from "react"
 import CollectionGroupTable from "../../../components/CollectionGroupTable"
+import { createClient } from "../../../lib/supabase/server"
+import { supabaseAdmin } from "../../../lib/supabase/admin"
+import { redirect } from "next/navigation"
 
 type Props = {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>
 }
 
 export default async function InventoryPage({ searchParams }: Props) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect("/login")
+
+  const { data: profile } = await supabaseAdmin
+    .from('profiles')
+    .select('role, member_tags, allowed_inventory_tabs')
+    .eq('user_id', user.id)
+    .maybeSingle()
+
+  const userRole = profile?.role || 'admin'
+  const isSuperAccess = userRole === 'admin' || userRole === 'data_analyst'
+
+  const rawAllowed = (profile as any)?.allowed_inventory_tabs?.length > 0
+    ? (profile as any).allowed_inventory_tabs
+    : ((profile as any)?.member_tags?.length > 0 ? (profile as any).member_tags : ['SLABS', 'ROUGH', 'PROP', 'FURNITURE'])
+
+  const allowedTabs: string[] = isSuperAccess ? ['SLABS', 'ROUGH', 'PROP', 'FURNITURE'] : rawAllowed
+
   const resolvedSearchParams = await searchParams
-  const activeTab = (resolvedSearchParams.tab as string) || 'SLABS'
+  const requestedTab = (resolvedSearchParams.tab as string) || (allowedTabs[0] || 'SLABS')
+
+  // 🛡️ ป้องกันการพิมพ์ URL ข้ามหมวดที่ตนเองไม่มีสิทธิ์
+  if (!allowedTabs.includes(requestedTab)) {
+    const fallbackTab = allowedTabs[0] || 'SLABS'
+    redirect(`/inventory?tab=${fallbackTab}`)
+  }
+
+  const activeTab = requestedTab
   const activeType = (resolvedSearchParams.type as string) || ''
   const activeStatus = (resolvedSearchParams.status as string) || ''
   const searchQuery = (resolvedSearchParams.search as string) || '' // 💡 รับคำค้นหาจาก URL
@@ -127,49 +157,57 @@ export default async function InventoryPage({ searchParams }: Props) {
               <FileUp className="w-4 h-4" />
               นำเข้า Excel
             </Link>
-            <InventoryActions />
+            <InventoryActions allowedTabs={allowedTabs} />
           </div>
         </div>
 
         {/* Main Category Tabs */}
         <div className="mb-0 border-b border-slate-200">
           <div className="flex gap-6 overflow-x-auto">
-            <Link
-              href="/inventory?tab=SLABS"
-              className={`pb-3 text-sm font-bold flex items-center gap-2 border-b-2 transition-colors whitespace-nowrap
-                ${activeTab === 'SLABS'
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-slate-500 hover:text-slate-700'}`}
-            >
-              <Layers className="w-4 h-4" /> Wood Slabs (แผ่นไม้)
-            </Link>
-            <Link
-              href="/inventory?tab=ROUGH"
-              className={`pb-3 text-sm font-bold flex items-center gap-2 border-b-2 transition-colors whitespace-nowrap
-                ${activeTab === 'ROUGH'
-                  ? 'border-orange-500 text-orange-600'
-                  : 'border-transparent text-slate-500 hover:text-slate-700'}`}
-            >
-              <Hammer className="w-4 h-4" /> Rough Wood (ไม้ดิบ)
-            </Link>
-            <Link
-              href="/inventory?tab=PROP"
-              className={`pb-3 text-sm font-bold flex items-center gap-2 border-b-2 transition-colors whitespace-nowrap
-                ${activeTab === 'PROP'
-                  ? 'border-purple-600 text-purple-600'
-                  : 'border-transparent text-slate-500 hover:text-slate-700'}`}
-            >
-              <Box className="w-4 h-4" /> Props (พร็อพ)
-            </Link>
-            <Link
-              href="/inventory?tab=FURNITURE"
-              className={`pb-3 text-sm font-bold flex items-center gap-2 border-b-2 transition-colors whitespace-nowrap
-                ${activeTab === 'FURNITURE'
-                  ? 'border-emerald-600 text-emerald-600'
-                  : 'border-transparent text-slate-500 hover:text-slate-700'}`}
-            >
-              <Armchair className="w-4 h-4" /> Furniture (เฟอร์นิเจอร์)
-            </Link>
+            {allowedTabs.includes('SLABS') && (
+              <Link
+                href="/inventory?tab=SLABS"
+                className={`pb-3 text-sm font-bold flex items-center gap-2 border-b-2 transition-colors whitespace-nowrap
+                  ${activeTab === 'SLABS'
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+              >
+                <Layers className="w-4 h-4" /> Wood Slabs (แผ่นไม้)
+              </Link>
+            )}
+            {allowedTabs.includes('ROUGH') && (
+              <Link
+                href="/inventory?tab=ROUGH"
+                className={`pb-3 text-sm font-bold flex items-center gap-2 border-b-2 transition-colors whitespace-nowrap
+                  ${activeTab === 'ROUGH'
+                    ? 'border-orange-500 text-orange-600'
+                    : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+              >
+                <Hammer className="w-4 h-4" /> Rough Wood (ไม้ดิบ)
+              </Link>
+            )}
+            {allowedTabs.includes('PROP') && (
+              <Link
+                href="/inventory?tab=PROP"
+                className={`pb-3 text-sm font-bold flex items-center gap-2 border-b-2 transition-colors whitespace-nowrap
+                  ${activeTab === 'PROP'
+                    ? 'border-purple-600 text-purple-600'
+                    : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+              >
+                <Box className="w-4 h-4" /> Props (พร็อพ)
+              </Link>
+            )}
+            {allowedTabs.includes('FURNITURE') && (
+              <Link
+                href="/inventory?tab=FURNITURE"
+                className={`pb-3 text-sm font-bold flex items-center gap-2 border-b-2 transition-colors whitespace-nowrap
+                  ${activeTab === 'FURNITURE'
+                    ? 'border-emerald-600 text-emerald-600'
+                    : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+              >
+                <Armchair className="w-4 h-4" /> Furniture (เฟอร์นิเจอร์)
+              </Link>
+            )}
           </div>
         </div>
 

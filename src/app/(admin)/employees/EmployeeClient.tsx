@@ -20,23 +20,39 @@ interface Profile {
   birth_date: string | null;
   avatar_url: string | null;
   branch_id: number | null;
+  allowed_inventory_tabs?: string[];
   branches: Branch | null;
 }
 
 // --- Role config ---
 const ROLE_CONFIG: Record<string, { label: string; labelTh: string; color: string; bg: string; border: string; dot: string; icon: string }> = {
-  admin:     { label: "Admin",     labelTh: "ผู้ดูแลระบบ",  color: "text-rose-700",    bg: "bg-rose-50",     border: "border-rose-200",    dot: "bg-rose-500",    icon: "" },
-  manager:   { label: "Manager",   labelTh: "ผู้จัดการ",     color: "text-violet-700",  bg: "bg-violet-50",   border: "border-violet-200",  dot: "bg-violet-500",  icon: "" },
-  warehouse: { label: "Warehouse", labelTh: "คลังสินค้า",   color: "text-amber-700",   bg: "bg-amber-50",    border: "border-amber-200",   dot: "bg-amber-500",   icon: "" },
-  sale:      { label: "Sale",      labelTh: "พนักงานขาย",   color: "text-sky-700",     bg: "bg-sky-50",      border: "border-sky-200",     dot: "bg-sky-500",     icon: "" },
-  unassigned:{ label: "No Role",   labelTh: "ยังไม่กำหนด",  color: "text-slate-500",   bg: "bg-slate-50",    border: "border-slate-200",   dot: "bg-slate-400",   icon: "" },
+  admin:        { label: "Admin",        labelTh: "ผู้ดูแลระบบ",           color: "text-rose-700",    bg: "bg-rose-50",     border: "border-rose-200",    dot: "bg-rose-500",    icon: "👑" },
+  manager:      { label: "Manager",      labelTh: "ผู้จัดการ",            color: "text-violet-700",  bg: "bg-violet-50",   border: "border-violet-200",  dot: "bg-violet-500",  icon: "💼" },
+  sale:         { label: "Sale",         labelTh: "พนักงานขาย",          color: "text-sky-700",     bg: "bg-sky-50",      border: "border-sky-200",     dot: "bg-sky-500",     icon: "🏷️" },
+  data_entry:   { label: "Data Entry",   labelTh: "เจ้าหน้าที่บันทึกข้อมูล", color: "text-amber-700",   bg: "bg-amber-50",    border: "border-amber-200",   dot: "bg-amber-500",   icon: "📝" },
+  data_analyst: { label: "Data Analyst", labelTh: "นักวิเคราะห์ข้อมูล",     color: "text-indigo-700",  bg: "bg-indigo-50",   border: "border-indigo-200",  dot: "bg-indigo-500",  icon: "📊" },
+  warehouse:    { label: "Warehouse",    labelTh: "คลังสินค้า",           color: "text-emerald-700", bg: "bg-emerald-50", border: "border-emerald-200", dot: "bg-emerald-500", icon: "📦" },
+  unassigned:   { label: "No Role",      labelTh: "ยังไม่กำหนด",          color: "text-slate-500",   bg: "bg-slate-50",    border: "border-slate-200",   dot: "bg-slate-400",   icon: "" },
 }
+
+// --- หมวดหมู่สินค้าในคลัง ---
+const CATEGORY_ITEMS = [
+  { id: 'SLABS',     label: 'Wood Slabs', labelTh: 'แผ่นไม้',     color: 'border-blue-300 text-blue-700 bg-blue-50',    badgeBg: 'bg-blue-100 text-blue-800 border-blue-200',    icon: '🪵' },
+  { id: 'ROUGH',     label: 'Rough Wood', labelTh: 'ไม้ดิบ',     color: 'border-orange-300 text-orange-700 bg-orange-50',badgeBg: 'bg-orange-100 text-orange-800 border-orange-200',icon: '🌲' },
+  { id: 'PROP',      label: 'Props',      labelTh: 'พร็อพ',       color: 'border-purple-300 text-purple-700 bg-purple-50',badgeBg: 'bg-purple-100 text-purple-800 border-purple-200',icon: '📦' },
+  { id: 'FURNITURE', label: 'Furniture',  labelTh: 'เฟอร์นิเจอร์', color: 'border-emerald-300 text-emerald-700 bg-emerald-50',badgeBg: 'bg-emerald-100 text-emerald-800 border-emerald-200',icon: '🪑' },
+]
 
 // --- Component หลัก ---
 export default function EmployeeClient({ initialData, branches, storageBaseUrl }: { initialData: Profile[], branches: Branch[], storageBaseUrl: string }) {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
+  const [isMatrixModalOpen, setIsMatrixModalOpen] = useState(false) // 💡 โมดอลแสดงผังสิทธิ์การกรอง
   const [editingEmp, setEditingEmp] = useState<Profile | null>(null)
+  const [editCategories, setEditCategories] = useState<string[]>(['SLABS', 'ROUGH', 'PROP', 'FURNITURE'])
+  const [createCategories, setCreateCategories] = useState<string[]>(['SLABS', 'ROUGH', 'PROP', 'FURNITURE'])
+  const [editRole, setEditRole] = useState<string>('data_entry')
+  const [createRole, setCreateRole] = useState<string>('data_entry')
   const [loading, setLoading] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
   const [filterRole, setFilterRole] = useState("all")
@@ -146,6 +162,23 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
 
   const closeModal = () => { setIsModalOpen(false); setEditingEmp(null); }
 
+  const openEditModal = (emp: Profile) => {
+    setEditingEmp(emp)
+    setEditRole(emp.role || 'data_entry')
+    const cats = (emp.allowed_inventory_tabs && emp.allowed_inventory_tabs.length > 0)
+      ? emp.allowed_inventory_tabs
+      : ['SLABS', 'ROUGH', 'PROP', 'FURNITURE']
+    setEditCategories(cats)
+    setIsModalOpen(true)
+  }
+
+  const openCreateModal = () => {
+    setCreateRole('data_entry')
+    setCreateCategories(['SLABS', 'ROUGH', 'PROP', 'FURNITURE'])
+    setShowPassword(false)
+    setIsCreateModalOpen(true)
+  }
+
   const getRoleInfo = (role: string) => ROLE_CONFIG[role] || ROLE_CONFIG.unassigned
 
   // ==========================================
@@ -166,19 +199,29 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
                 <h1 className="text-2xl md:text-3xl font-extrabold text-slate-800 tracking-tight">
                   จัดการพนักงาน
                 </h1>
-                <p className="text-slate-500 text-sm mt-0.5">บริหารจัดการข้อมูลพนักงานทั้งระบบ</p>
+                <p className="text-slate-500 text-sm mt-0.5">บริหารจัดการข้อมูลและกำหนดสิทธิ์หมวดหมู่สินค้าในคลัง</p>
               </div>
             </div>
           </div>
-          <button
-            onClick={() => { setIsCreateModalOpen(true); setShowPassword(false); }}
-            className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-6 py-3 rounded-2xl shadow-lg shadow-blue-300/40 transition-all flex items-center gap-2.5 font-bold active:scale-[0.97] text-sm group"
-          >
-            <div className="w-7 h-7 rounded-lg bg-white/20 flex items-center justify-center group-hover:bg-white/30 transition">
-              <UserPlus className="w-4 h-4" />
-            </div>
-            เพิ่มพนักงานใหม่
-          </button>
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setIsMatrixModalOpen(true)}
+              className="bg-white border border-slate-200 hover:bg-slate-50 hover:border-indigo-300 text-slate-700 px-5 py-3 rounded-2xl shadow-sm transition-all flex items-center gap-2.5 font-bold active:scale-[0.97] text-sm group"
+            >
+              <Shield className="w-4 h-4 text-indigo-600 group-hover:scale-110 transition-transform" />
+              ผังสิทธิ์การกรอง (Permission Matrix)
+            </button>
+            <button
+              onClick={openCreateModal}
+              className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-6 py-3 rounded-2xl shadow-lg shadow-blue-300/40 transition-all flex items-center gap-2.5 font-bold active:scale-[0.97] text-sm group"
+            >
+              <div className="w-7 h-7 rounded-lg bg-white/20 flex items-center justify-center group-hover:bg-white/30 transition">
+                <UserPlus className="w-4 h-4" />
+              </div>
+              เพิ่มพนักงานใหม่
+            </button>
+          </div>
         </div>
       </div>
 
@@ -235,10 +278,12 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
               className="w-full pl-9 pr-8 py-3 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400 transition bg-slate-50/50 appearance-none cursor-pointer"
             >
               <option value="all">ทุกตำแหน่ง</option>
-              <option value="admin">Admin</option>
-              <option value="manager">Manager</option>
-              <option value="warehouse">Warehouse</option>
-              <option value="sale">Sale</option>
+              <option value="admin">Admin (ผู้ดูแลระบบ)</option>
+              <option value="data_entry">Data Entry (บันทึกข้อมูลสินค้า)</option>
+              <option value="data_analyst">Data Analyst (นักวิเคราะห์ข้อมูล)</option>
+              <option value="manager">Manager (ผู้จัดการ)</option>
+              <option value="warehouse">Warehouse (คลังสินค้า)</option>
+              <option value="sale">Sale (พนักงานขาย)</option>
             </select>
             <ChevronDown className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
           </div>
@@ -284,6 +329,7 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
               <tr className="bg-gradient-to-r from-slate-50 to-slate-100/50 border-b border-slate-200">
                 <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">พนักงาน</th>
                 <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">ตำแหน่ง</th>
+                <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">หมวดสินค้าที่รับผิดชอบ</th>
                 <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">สาขา</th>
                 <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">เบอร์โทร</th>
                 <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest hidden lg:table-cell">วันเกิด</th>
@@ -294,6 +340,10 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
               {filteredData.map((emp, idx) => {
                 const avatarSrc = getAvatarUrl(emp.avatar_url);
                 const roleInfo = getRoleInfo(emp.role);
+                const assignedCats = (emp.allowed_inventory_tabs && emp.allowed_inventory_tabs.length > 0)
+                  ? emp.allowed_inventory_tabs
+                  : ['SLABS', 'ROUGH', 'PROP', 'FURNITURE'];
+
                 return (
                   <tr
                     key={emp.user_id}
@@ -331,15 +381,42 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
                     <td className="px-6 py-4">
                       <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold border ${roleInfo.bg} ${roleInfo.color} ${roleInfo.border}`}>
                         <span className={`w-1.5 h-1.5 rounded-full ${roleInfo.dot}`} />
+                        <span>{roleInfo.icon}</span>
                         {roleInfo.label}
                       </div>
                     </td>
 
+                    {/* Category permissions */}
+                    <td className="px-6 py-4">
+                      {emp.role === 'admin' || emp.role === 'data_analyst' ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                          ✨ ดูแลครบทุกหมวด (All)
+                        </span>
+                      ) : (
+                        <div className="flex flex-wrap gap-1 max-w-[220px]">
+                          {assignedCats.map((catId) => {
+                            const cItem = CATEGORY_ITEMS.find(c => c.id === catId);
+                            if (!cItem) return null;
+                            return (
+                              <span
+                                key={catId}
+                                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold border ${cItem.badgeBg}`}
+                                title={cItem.label}
+                              >
+                                <span>{cItem.icon}</span>
+                                <span>{cItem.labelTh}</span>
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </td>
+
                     {/* Branch */}
                     <td className="px-6 py-4">
-                      {emp.role === 'admin' ? (
+                      {emp.role === 'admin' || emp.role === 'data_analyst' ? (
                         <span className="text-xs text-slate-400 italic font-medium flex items-center gap-1.5">
-                          <Shield className="w-3.5 h-3.5" /> Global Access
+                          <Shield className="w-3.5 h-3.5" /> All Branches
                         </span>
                       ) : (
                         <div className="flex items-center gap-1.5 text-sm text-slate-700 font-medium">
@@ -373,7 +450,7 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
                     <td className="px-6 py-4 text-right">
                       <div className="flex justify-end gap-1.5 opacity-0 group-hover:opacity-100 transition-all duration-200">
                         <button
-                          onClick={() => { setEditingEmp(emp); setIsModalOpen(true); }}
+                          onClick={() => openEditModal(emp)}
                           className="p-2 text-blue-600 hover:bg-blue-100 rounded-lg transition-all active:scale-90"
                           title="แก้ไขข้อมูล"
                         >
@@ -394,7 +471,7 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
 
               {filteredData.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="text-center py-16">
+                  <td colSpan={7} className="text-center py-16">
                     <div className="flex flex-col items-center gap-3">
                       <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center">
                         <Users className="w-8 h-8 text-slate-300" />
@@ -550,27 +627,113 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
                 {/* Role & Branch */}
                 <div className="bg-gradient-to-br from-blue-50/50 to-indigo-50/30 p-4 rounded-2xl border border-blue-200/50 space-y-4">
                   <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest flex items-center gap-1.5">
-                    <Shield className="w-3 h-3" /> การจัดการสิทธิ์
+                    <Shield className="w-3 h-3" /> การจัดการสิทธิ์และหน้าที่
                   </p>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="text-xs font-semibold text-slate-600 mb-1.5 block">ตำแหน่ง</label>
-                      <select name="role" defaultValue={editingEmp.role === 'unassigned' ? 'sale' : editingEmp.role} className="w-full border border-slate-200 rounded-xl p-2.5 text-sm bg-white focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400 outline-none appearance-none cursor-pointer">
+                      <select 
+                        name="role" 
+                        value={editRole}
+                        onChange={(e) => setEditRole(e.target.value)}
+                        className="w-full border border-slate-200 rounded-xl p-2.5 text-sm bg-white focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400 outline-none appearance-none cursor-pointer"
+                      >
+                        <option value="data_entry">Data Entry (เจ้าหน้าที่บันทึกข้อมูล)</option>
+                        <option value="data_analyst">Data Analyst (นักวิเคราะห์ข้อมูล)</option>
                         <option value="sale">Sale (พนักงานขาย)</option>
                         <option value="manager">Manager (ผู้จัดการ)</option>
-                        <option value="warehouse">Warehouse (คลัง)</option>
-                        <option value="admin">Admin (ผู้ดูแล)</option>
+                        <option value="warehouse">Warehouse (คลังสินค้า)</option>
+                        <option value="admin">Admin (ผู้ดูแลระบบ)</option>
                       </select>
                     </div>
                     <div>
                       <label className="text-xs font-semibold text-slate-600 mb-1.5 block">สาขา</label>
                       <select name="branch_id" defaultValue={editingEmp.branch_id || ""} className="w-full border border-slate-200 rounded-xl p-2.5 text-sm bg-white focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400 outline-none appearance-none cursor-pointer">
-                        <option value="">-- เลือกสาขา --</option>
+                        <option value="">-- ส่วนกลาง / ทุกสาขา --</option>
                         {branches.map(b => (
                           <option key={b.id} value={b.id}>{b.branch_name} ({b.branch_code})</option>
                         ))}
                       </select>
                     </div>
+                  </div>
+
+                  {/* หมวดหมู่สินค้าที่รับผิดชอบในคลัง */}
+                  <div className="pt-3 border-t border-blue-200/60 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                        <span>📦</span> หมวดสินค้าที่รับผิดชอบ (/inventory)
+                      </label>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setEditCategories(['SLABS', 'ROUGH', 'PROP', 'FURNITURE'])}
+                          className="text-[10px] text-blue-600 hover:text-blue-800 font-semibold px-2 py-0.5 rounded bg-blue-50/80 hover:bg-blue-100 border border-blue-200 transition"
+                        >
+                          ทุกหมวด
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditCategories(['ROUGH'])}
+                          className="text-[10px] text-orange-600 hover:text-orange-800 font-semibold px-2 py-0.5 rounded bg-orange-50/80 hover:bg-orange-100 border border-orange-200 transition"
+                        >
+                          ไม้ดิบ
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditCategories(['SLABS'])}
+                          className="text-[10px] text-blue-600 hover:text-blue-800 font-semibold px-2 py-0.5 rounded bg-blue-50/80 hover:bg-blue-100 border border-blue-200 transition"
+                        >
+                          แผ่นไม้
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditCategories(['PROP', 'FURNITURE'])}
+                          className="text-[10px] text-purple-600 hover:text-purple-800 font-semibold px-2 py-0.5 rounded bg-purple-50/80 hover:bg-purple-100 border border-purple-200 transition"
+                        >
+                          พร็อพ+เฟอร์
+                        </button>
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-slate-500">
+                      เมื่อพนักงานเข้าหน้าคลังสินค้า จะเห็นและคีย์ได้เฉพาะแท็บที่เลือกนี้เท่านั้น (แท็บอื่นจะถูกซ่อน)
+                    </p>
+                    <div className="grid grid-cols-2 gap-2 pt-1">
+                      {CATEGORY_ITEMS.map((cat) => {
+                        const isChecked = editCategories.includes(cat.id);
+                        return (
+                          <button
+                            key={cat.id}
+                            type="button"
+                            onClick={() => {
+                              if (isChecked) {
+                                if (editCategories.length > 1) {
+                                  setEditCategories(editCategories.filter(c => c !== cat.id));
+                                }
+                              } else {
+                                setEditCategories([...editCategories, cat.id]);
+                              }
+                            }}
+                            className={`flex items-center gap-2 p-2.5 rounded-xl border text-left transition-all ${
+                              isChecked 
+                                ? `${cat.color} font-bold shadow-sm ring-1 ring-blue-400`
+                                : 'border-slate-200 bg-white/70 text-slate-400 hover:bg-white'
+                            }`}
+                          >
+                            <span className="text-base">{cat.icon}</span>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs">{cat.labelTh}</p>
+                              <p className="text-[10px] opacity-70 font-mono">{cat.id}</p>
+                            </div>
+                            <div className={`w-4 h-4 rounded-md flex items-center justify-center text-[10px] ${
+                              isChecked ? 'bg-blue-600 text-white font-bold' : 'border border-slate-300'
+                            }`}>
+                              {isChecked && '✓'}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <input type="hidden" name="allowed_inventory_tabs" value={JSON.stringify(editCategories)} />
                   </div>
                 </div>
 
@@ -696,22 +859,108 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="text-xs font-semibold text-slate-600 mb-1.5 block">ตำแหน่ง</label>
-                      <select name="role" className="w-full border border-slate-200 rounded-xl p-2.5 text-sm bg-white focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400 outline-none appearance-none cursor-pointer">
-                        <option value="sale">Sale</option>
-                        <option value="manager">Manager</option>
-                        <option value="warehouse">Warehouse</option>
-                        <option value="admin">Admin</option>
+                      <select 
+                        name="role" 
+                        value={createRole}
+                        onChange={(e) => setCreateRole(e.target.value)}
+                        className="w-full border border-slate-200 rounded-xl p-2.5 text-sm bg-white focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400 outline-none appearance-none cursor-pointer"
+                      >
+                        <option value="data_entry">Data Entry (เจ้าหน้าที่บันทึกข้อมูล)</option>
+                        <option value="data_analyst">Data Analyst (นักวิเคราะห์ข้อมูล)</option>
+                        <option value="sale">Sale (พนักงานขาย)</option>
+                        <option value="manager">Manager (ผู้จัดการ)</option>
+                        <option value="warehouse">Warehouse (คลังสินค้า)</option>
+                        <option value="admin">Admin (ผู้ดูแลระบบ)</option>
                       </select>
                     </div>
                     <div>
                       <label className="text-xs font-semibold text-slate-600 mb-1.5 block">สาขา</label>
                       <select name="branch_id" className="w-full border border-slate-200 rounded-xl p-2.5 text-sm bg-white focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400 outline-none appearance-none cursor-pointer">
-                        <option value="">-- เลือกสาขา --</option>
+                        <option value="">-- ส่วนกลาง / ทุกสาขา --</option>
                         {branches.map(b => (
                           <option key={b.id} value={b.id}>{b.branch_name} ({b.branch_code})</option>
                         ))}
                       </select>
                     </div>
+                  </div>
+
+                  {/* หมวดหมู่สินค้าที่รับผิดชอบในคลัง */}
+                  <div className="pt-3 border-t border-blue-200/60 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                        <span>📦</span> หมวดสินค้าที่รับผิดชอบ (/inventory)
+                      </label>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setCreateCategories(['SLABS', 'ROUGH', 'PROP', 'FURNITURE'])}
+                          className="text-[10px] text-blue-600 hover:text-blue-800 font-semibold px-2 py-0.5 rounded bg-blue-50/80 hover:bg-blue-100 border border-blue-200 transition"
+                        >
+                          ทุกหมวด
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCreateCategories(['ROUGH'])}
+                          className="text-[10px] text-orange-600 hover:text-orange-800 font-semibold px-2 py-0.5 rounded bg-orange-50/80 hover:bg-orange-100 border border-orange-200 transition"
+                        >
+                          ไม้ดิบ
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCreateCategories(['SLABS'])}
+                          className="text-[10px] text-blue-600 hover:text-blue-800 font-semibold px-2 py-0.5 rounded bg-blue-50/80 hover:bg-blue-100 border border-blue-200 transition"
+                        >
+                          แผ่นไม้
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCreateCategories(['PROP', 'FURNITURE'])}
+                          className="text-[10px] text-purple-600 hover:text-purple-800 font-semibold px-2 py-0.5 rounded bg-purple-50/80 hover:bg-purple-100 border border-purple-200 transition"
+                        >
+                          พร็อพ+เฟอร์
+                        </button>
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-slate-500">
+                      เมื่อพนักงานเข้าหน้าคลังสินค้า จะเห็นและคีย์ได้เฉพาะแท็บที่เลือกนี้เท่านั้น (แท็บอื่นจะถูกซ่อน)
+                    </p>
+                    <div className="grid grid-cols-2 gap-2 pt-1">
+                      {CATEGORY_ITEMS.map((cat) => {
+                        const isChecked = createCategories.includes(cat.id);
+                        return (
+                          <button
+                            key={cat.id}
+                            type="button"
+                            onClick={() => {
+                              if (isChecked) {
+                                if (createCategories.length > 1) {
+                                  setCreateCategories(createCategories.filter(c => c !== cat.id));
+                                }
+                              } else {
+                                setCreateCategories([...createCategories, cat.id]);
+                              }
+                            }}
+                            className={`flex items-center gap-2 p-2.5 rounded-xl border text-left transition-all ${
+                              isChecked 
+                                ? `${cat.color} font-bold shadow-sm ring-1 ring-blue-400`
+                                : 'border-slate-200 bg-white/70 text-slate-400 hover:bg-white'
+                            }`}
+                          >
+                            <span className="text-base">{cat.icon}</span>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs">{cat.labelTh}</p>
+                              <p className="text-[10px] opacity-70 font-mono">{cat.id}</p>
+                            </div>
+                            <div className={`w-4 h-4 rounded-md flex items-center justify-center text-[10px] ${
+                              isChecked ? 'bg-blue-600 text-white font-bold' : 'border border-slate-300'
+                            }`}>
+                              {isChecked && '✓'}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <input type="hidden" name="allowed_inventory_tabs" value={JSON.stringify(createCategories)} />
                   </div>
                 </div>
 
@@ -734,6 +983,218 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
 
               </form>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* =================================================================================== */}
+      {/* 🛡️ PERMISSION MATRIX MODAL */}
+      {/* =================================================================================== */}
+      {isMatrixModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 overflow-y-auto" style={{ animation: 'fadeIn 0.2s ease-out' }}>
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col my-8 max-h-[90vh]" style={{ animation: 'scaleIn 0.25s ease-out' }}>
+
+            {/* Modal Header */}
+            <div className="flex justify-between items-center px-6 py-5 border-b border-slate-100 bg-gradient-to-r from-indigo-50/70 via-blue-50/50 to-white">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-600 to-blue-600 flex items-center justify-center shadow-md text-white">
+                  <Shield className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-extrabold text-slate-800 flex items-center gap-2">
+                    ผังสิทธิ์และการกรองในระบบ (Role & Permission Matrix)
+                  </h2>
+                  <p className="text-[12px] text-slate-500">ตารางแจกแจงสิทธิ์การเข้าถึง และการกรองข้อมูลสินค้าตามตำแหน่งงาน</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setIsMatrixModalOpen(false)} 
+                className="p-2 hover:bg-slate-200/50 rounded-xl transition active:scale-90"
+              >
+                <X className="w-5 h-5 text-slate-400" />
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="overflow-y-auto p-6 space-y-6">
+
+              {/* 1. สรุปตำแหน่งงานหลัก */}
+              <div>
+                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-1.5">
+                  <Briefcase className="w-3.5 h-3.5" /> สรุปหน้าที่ตามตำแหน่ง (Role Overview)
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {/* Data Entry */}
+                  <div className="p-4 rounded-2xl border border-amber-200 bg-amber-50/40 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xl">📝</span>
+                      <div>
+                        <p className="font-extrabold text-sm text-amber-900">Data Entry</p>
+                        <p className="text-[11px] text-amber-700">เจ้าหน้าที่บันทึกข้อมูลสินค้า</p>
+                      </div>
+                    </div>
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      เข้าหน้า <strong>/inventory</strong> ได้เฉพาะหมวดที่ได้รับมอบหมาย เช่น คีย์เฉพาะไม้ดิบ, เฉพาะแผ่นไม้, หรือเฉพาะพร็อพ (ซ่อนหมวดอื่นเด็ดขาดและซ่อนเมนูระบบ)
+                    </p>
+                  </div>
+
+                  {/* Data Analyst */}
+                  <div className="p-4 rounded-2xl border border-indigo-200 bg-indigo-50/40 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xl">📊</span>
+                      <div>
+                        <p className="font-extrabold text-sm text-indigo-900">Data Analyst</p>
+                        <p className="text-[11px] text-indigo-700">นักวิเคราะห์ข้อมูล</p>
+                      </div>
+                    </div>
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      ดูแดชบอร์ด, รายงานยอดขาย, ประวัติการขาย, อัลกอริทึม, และสินค้าครบทั้ง 4 หมวดเพื่อวิเคราะห์ข้อมูล (ซ่อนปุ่มลบ/แก้ไขระบบหลัก)
+                    </p>
+                  </div>
+
+                  {/* Admin */}
+                  <div className="p-4 rounded-2xl border border-rose-200 bg-rose-50/40 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xl">👑</span>
+                      <div>
+                        <p className="font-extrabold text-sm text-rose-900">Admin</p>
+                        <p className="text-[11px] text-rose-700">ผู้ดูแลระบบสูงสุด</p>
+                      </div>
+                    </div>
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      เข้าถึงได้ทุกหน้า ทุกสาขา ดูแลสินค้าครบทั้ง 4 หมวด จัดการพนักงาน ตั้งค่าระบบ และกู้คืนข้อมูล
+                    </p>
+                  </div>
+
+                  {/* Manager */}
+                  <div className="p-4 rounded-2xl border border-violet-200 bg-violet-50/40 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xl">💼</span>
+                      <div>
+                        <p className="font-extrabold text-sm text-violet-900">Manager</p>
+                        <p className="text-[11px] text-violet-700">ผู้จัดการสาขา</p>
+                      </div>
+                    </div>
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      จัดการหน้าร้าน POS, ตรวจสอบสต็อก, จัดการพนักงาน และดูรายงานยอดขายเฉพาะสาขาของตนเอง
+                    </p>
+                  </div>
+
+                  {/* Sale */}
+                  <div className="p-4 rounded-2xl border border-sky-200 bg-sky-50/40 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xl">🏷️</span>
+                      <div>
+                        <p className="font-extrabold text-sm text-sky-900">Sale</p>
+                        <p className="text-[11px] text-sky-700">พนักงานขายหน้าร้าน</p>
+                      </div>
+                    </div>
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      ขายสินค้าหน้าร้านผ่านระบบ POS และเชื่อมต่อ Mobile RFID ประจำสาขา
+                    </p>
+                  </div>
+
+                  {/* Warehouse */}
+                  <div className="p-4 rounded-2xl border border-emerald-200 bg-emerald-50/40 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xl">📦</span>
+                      <div>
+                        <p className="font-extrabold text-sm text-emerald-900">Warehouse</p>
+                        <p className="text-[11px] text-emerald-700">คลังสินค้า</p>
+                      </div>
+                    </div>
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      ตรวจรับสินค้าเข้าคลัง จัดการลอตสินค้า และดูแลสินค้าตามหมวดหมู่ที่ได้รับมอบหมาย
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* 2. ผังการกรองในหน้าคลังสินค้า */}
+              <div>
+                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-1.5">
+                  <span>🎯</span> ตัวอย่างการกรองสินค้าในหน้าคลัง (/inventory)
+                </h3>
+                <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-200 text-slate-600">
+                        <th className="p-3 font-bold">ตำแหน่งงาน</th>
+                        <th className="p-3 font-bold">หมวดที่ติ๊กเลือก</th>
+                        <th className="p-3 font-bold text-center">🪵 แผ่นไม้</th>
+                        <th className="p-3 font-bold text-center">🌲 ไม้ดิบ</th>
+                        <th className="p-3 font-bold text-center">📦 พร็อพ</th>
+                        <th className="p-3 font-bold text-center">🪑 เฟอร์ฯ</th>
+                        <th className="p-3 font-bold">ผลลัพธ์ในหน้า /inventory</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      <tr className="hover:bg-amber-50/30">
+                        <td className="p-3 font-bold text-amber-800">Data Entry (คีย์ไม้ดิบ)</td>
+                        <td className="p-3"><span className="px-2 py-0.5 rounded bg-orange-100 text-orange-800 font-bold border border-orange-200">ไม้ดิบ (ROUGH)</span></td>
+                        <td className="p-3 text-center text-slate-300">ซ่อน</td>
+                        <td className="p-3 text-center text-emerald-600 font-bold">✓ แสดง</td>
+                        <td className="p-3 text-center text-slate-300">ซ่อน</td>
+                        <td className="p-3 text-center text-slate-300">ซ่อน</td>
+                        <td className="p-3 text-slate-600">เห็นและจัดการได้เฉพาะแท็บ Rough Wood เท่านั้น</td>
+                      </tr>
+                      <tr className="hover:bg-amber-50/30">
+                        <td className="p-3 font-bold text-amber-800">Data Entry (คีย์แผ่นไม้)</td>
+                        <td className="p-3"><span className="px-2 py-0.5 rounded bg-blue-100 text-blue-800 font-bold border border-blue-200">แผ่นไม้ (SLABS)</span></td>
+                        <td className="p-3 text-center text-emerald-600 font-bold">✓ แสดง</td>
+                        <td className="p-3 text-center text-slate-300">ซ่อน</td>
+                        <td className="p-3 text-center text-slate-300">ซ่อน</td>
+                        <td className="p-3 text-center text-slate-300">ซ่อน</td>
+                        <td className="p-3 text-slate-600">เห็นและจัดการได้เฉพาะแท็บ Wood Slabs เท่านั้น</td>
+                      </tr>
+                      <tr className="hover:bg-amber-50/30">
+                        <td className="p-3 font-bold text-amber-800">Data Entry (พร็อพ & เฟอร์)</td>
+                        <td className="p-3">
+                          <span className="px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-bold border border-purple-200 mr-1">พร็อพ</span>
+                          <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold border border-emerald-200">เฟอร์ฯ</span>
+                        </td>
+                        <td className="p-3 text-center text-slate-300">ซ่อน</td>
+                        <td className="p-3 text-center text-slate-300">ซ่อน</td>
+                        <td className="p-3 text-center text-emerald-600 font-bold">✓ แสดง</td>
+                        <td className="p-3 text-center text-emerald-600 font-bold">✓ แสดง</td>
+                        <td className="p-3 text-slate-600">สลับดูได้ 2 แท็บ (Props & Furniture)</td>
+                      </tr>
+                      <tr className="hover:bg-indigo-50/30 bg-indigo-50/10">
+                        <td className="p-3 font-bold text-indigo-800">Data Analyst</td>
+                        <td className="p-3"><span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-bold border border-slate-200">อัตโนมัติครบทุกหมวด</span></td>
+                        <td className="p-3 text-center text-emerald-600 font-bold">✓ แสดง</td>
+                        <td className="p-3 text-center text-emerald-600 font-bold">✓ แสดง</td>
+                        <td className="p-3 text-center text-emerald-600 font-bold">✓ แสดง</td>
+                        <td className="p-3 text-center text-emerald-600 font-bold">✓ แสดง</td>
+                        <td className="p-3 text-slate-600">เห็นครบทั้ง 4 หมวด เพื่อใช้วิเคราะห์และดูข้อมูล</td>
+                      </tr>
+                      <tr className="hover:bg-rose-50/30 bg-rose-50/10">
+                        <td className="p-3 font-bold text-rose-800">Admin</td>
+                        <td className="p-3"><span className="px-2 py-0.5 rounded bg-rose-100 text-rose-800 font-bold border border-rose-200">สิทธิ์เต็มทุกหมวด</span></td>
+                        <td className="p-3 text-center text-emerald-600 font-bold">✓ แสดง</td>
+                        <td className="p-3 text-center text-emerald-600 font-bold">✓ แสดง</td>
+                        <td className="p-3 text-center text-emerald-600 font-bold">✓ แสดง</td>
+                        <td className="p-3 text-center text-emerald-600 font-bold">✓ แสดง</td>
+                        <td className="p-3 text-slate-600">เห็นและจัดการได้ครบทุกหมวดหมู่และทุกระบบ</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setIsMatrixModalOpen(false)}
+                className="px-6 py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl font-bold text-sm transition shadow-sm"
+              >
+                เข้าใจแล้ว / ปิดหน้าต่าง
+              </button>
+            </div>
+
           </div>
         </div>
       )}

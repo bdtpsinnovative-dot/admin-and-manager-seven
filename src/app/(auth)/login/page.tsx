@@ -157,6 +157,7 @@ export default function LoginPage() {
         let targetUrl = '/dashboard'
         if (role === 'manager') targetUrl = '/manager/dashboard'
         else if (role === 'sale') targetUrl = '/sale/dashboard'
+        else if (role === 'data_entry' || role === 'warehouse') targetUrl = '/inventory'
         window.location.href = targetUrl
       }
     } catch {
@@ -210,6 +211,7 @@ export default function LoginPage() {
         let targetUrl = '/dashboard'
         if (role === 'manager') targetUrl = '/manager/dashboard'
         else if (role === 'sale') targetUrl = '/sale/dashboard'
+        else if (role === 'data_entry' || role === 'warehouse') targetUrl = '/inventory'
         window.location.href = targetUrl
       }
     } catch {

@@ -60,6 +60,18 @@ export default function AdminSidebar({ user }: { user?: UserData }) {
     avatar: `https://ui-avatars.com/api/?name=User&background=cbd5e1&color=64748b`
   };
 
+  // กรองเมนูตามบทบาท (Role-based menu filtering)
+  let visiblePrimary = primaryItems;
+  let visibleSecondary = secondaryItems;
+
+  if (safeUser.role === 'data_entry' || safeUser.role === 'warehouse') {
+    visiblePrimary = primaryItems.filter(item => ['/inventory', '/lots', '/props'].includes(item.href));
+    visibleSecondary = [];
+  } else if (safeUser.role === 'data_analyst') {
+    visiblePrimary = primaryItems.filter(item => ['/dashboard', '/sales-history', '/inventory', '/algorithm'].includes(item.href));
+    visibleSecondary = secondaryItems.filter(item => ['/balance-check', '/rfid-mismatch', '/stock-audit', '/manager/damage-history', '/filters'].includes(item.href));
+  }
+
   const renderItems = (items: typeof primaryItems) => (
     items.map((item) => {
       const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
@@ -98,24 +110,30 @@ export default function AdminSidebar({ user }: { user?: UserData }) {
           </div>
           <div className="opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-x-[-10px] group-hover:translate-x-0 whitespace-nowrap overflow-hidden">
             <h1 className="text-xl font-bold text-slate-800 leading-none">WoodSlab</h1>
-            <p className="text-[10px] text-slate-400 font-bold tracking-[0.2em] uppercase mt-1">Admin Panel</p>
+            <p className="text-[10px] text-slate-400 font-bold tracking-[0.2em] uppercase mt-1">
+              {safeUser.role === 'data_entry' ? 'Data Entry Panel' : (safeUser.role === 'data_analyst' ? 'Analyst Panel' : 'Admin Panel')}
+            </p>
           </div>
         </div>
 
         {/* --- 2. Menu Sections --- */}
         <nav className="flex-1 py-2 overflow-y-auto no-scrollbar flex flex-col">
           <div className="space-y-1">
-            {renderItems(primaryItems)}
+            {renderItems(visiblePrimary)}
           </div>
 
-          <div className="mx-6 my-4 border-t border-slate-50 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-          <div className="px-7 mb-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-             <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">Management</span>
-          </div>
+          {visibleSecondary.length > 0 && (
+            <>
+              <div className="mx-6 my-4 border-t border-slate-50 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+              <div className="px-7 mb-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                 <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">Management</span>
+              </div>
 
-          <div className="space-y-1 mb-6">
-            {renderItems(secondaryItems)}
-          </div>
+              <div className="space-y-1 mb-6">
+                {renderItems(visibleSecondary)}
+              </div>
+            </>
+          )}
         </nav>
 
         {/* --- 3. User Section (จัดกลุ่มโปรไฟล์และล็อกเอาท์ใหม่) --- */}

@@ -15,7 +15,7 @@ export default async function EmployeesPage() {
 
   const { data: profiles } = await supabaseAdmin
     .from('profiles')
-    .select('user_id, full_name, role, phone, citizen_id, birth_date, avatar_url, branch_id, branches(id, branch_name, branch_code)');
+    .select('user_id, full_name, role, phone, citizen_id, birth_date, avatar_url, branch_id, member_tags, branches(id, branch_name, branch_code)');
 
   const { data: branches } = await supabaseAdmin
     .from('branches')
@@ -24,12 +24,16 @@ export default async function EmployeesPage() {
 
   // ✅ แก้ไข Logic การ Map ข้อมูล
   const allEmployees = authUsers?.map((user) => {
-    const profile = profiles?.find((p) => p.user_id === user.id);
+    const profile = profiles?.find((p) => p.user_id === user.id) as any;
     
     // ตรวจสอบว่า profile.branches เป็น array หรือไม่ ถ้าใช่ให้หยิบเอาตัวแรกมา
     const branchInfo = profile?.branches && Array.isArray(profile.branches) && profile.branches.length > 0 
       ? profile.branches[0] 
       : null;
+
+    const allowedCategories = profile?.allowed_inventory_tabs?.length > 0 
+      ? profile.allowed_inventory_tabs 
+      : (profile?.member_tags?.length > 0 ? profile.member_tags : ['SLABS', 'ROUGH', 'PROP', 'FURNITURE']);
 
     return {
       user_id: user.id,
@@ -41,6 +45,7 @@ export default async function EmployeesPage() {
       birth_date: profile?.birth_date || null,
       avatar_url: profile?.avatar_url || null, 
       branch_id: profile?.branch_id || null,
+      allowed_inventory_tabs: allowedCategories,
       // ✅ ส่งเป็น Object อันเดียว (หรือ null) ตามที่ TypeScript ต้องการ
       branches: branchInfo 
     };

@@ -21,7 +21,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     .eq('user_id', user.id)
     .maybeSingle();
 
-  if (profile && profile.role !== "admin") {
+  const allowedRoles = ["admin", "data_entry", "data_analyst", "warehouse"];
+  if (profile && !allowedRoles.includes(profile.role)) {
     if (profile.role === "manager") {
       redirect("/manager/dashboard");
     } else if (profile.role === "sale") {
