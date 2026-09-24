@@ -15,7 +15,7 @@ export default function UploadPropPage() {
     try {
       await addProp(new FormData(e.currentTarget));
       alert("บันทึกสินค้า Prop เรียบร้อยแล้ว");
-      router.push("/props");
+      router.push("/propsfina");
     } catch (err: any) {
       alert("มีปัญหาตอนบันทึก: " + err.message);
     }
@@ -27,7 +27,7 @@ export default function UploadPropPage() {
       
       {/* Back link */}
       <div className="mb-4">
-        <Link href="/props" className="inline-flex items-center text-sm text-slate-500 hover:text-blue-600 transition">
+        <Link href="/propsfina" className="inline-flex items-center text-sm text-slate-500 hover:text-blue-600 transition">
           <ArrowLeft className="w-4 h-4 mr-1" /> กลับหน้าคลัง Props
         </Link>
       </div>

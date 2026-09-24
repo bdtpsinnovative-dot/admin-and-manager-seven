@@ -37,6 +37,7 @@ export async function addProp(formData: FormData) {
     if (error) throw new Error(error.message);
 
     revalidatePath("/props");
+    revalidatePath("/propsfina");
     return { success: true };
 
   } catch (error: any) {
@@ -97,5 +98,6 @@ export async function updatePropImageUrl(id: number, imageUrl: string) {
   if (error) throw new Error(error.message);
 
   revalidatePath("/props");
+  revalidatePath("/propsfina");
   return { success: true };
 }
