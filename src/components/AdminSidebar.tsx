@@ -24,7 +24,7 @@ const primaryItems = [
   { name: "Props / Decor (ใหม่)", href: "/props-new",   icon: Frame },
   { name: "Props Final (คิวอาหน้าชื่อ)", href: "/propsfina", icon: Frame },
   { name: "Algorithm",      href: "/algorithm",    icon: Activity },
-  { name: "จัดการลอต",       href: "/lots",         icon: Package },
+  // { name: "จัดการลอต",       href: "/lots",         icon: Package },
 ];
 
 // 2. เมนูการจัดการและรายงาน
@@ -65,7 +65,7 @@ export default function AdminSidebar({ user }: { user?: UserData }) {
   let visibleSecondary = secondaryItems;
 
   if (safeUser.role === 'data_entry' || safeUser.role === 'warehouse') {
-    visiblePrimary = primaryItems.filter(item => ['/inventory', '/lots', '/props'].includes(item.href));
+    visiblePrimary = primaryItems.filter(item => ['/inventory', '/props'].includes(item.href));
     visibleSecondary = [];
   } else if (safeUser.role === 'data_analyst') {
     visiblePrimary = primaryItems.filter(item => ['/dashboard', '/sales-history', '/inventory', '/algorithm'].includes(item.href));
