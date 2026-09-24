@@ -188,6 +188,7 @@ export default function WoodSlabForm({
       let skuPrefix = 'WOODSLABS'
       if (categoryId === 'prop') skuPrefix = 'PROP'
       else if (categoryId === 'rough_wood') skuPrefix = 'ROUGH'
+      else if (categoryId === 'furniture') skuPrefix = 'FURN'
 
       const rawSku = formData.get('sku') as string
       const sku = rawSku?.trim() 
@@ -483,6 +484,7 @@ export default function WoodSlabForm({
                     <option value="SLABS">Wood Slabs (แผ่นไม้)</option>
                     <option value="rough_wood">Rough Wood (ไม้ดิบ)</option>
                     <option value="prop">Props (พร็อพ)</option>
+                    <option value="furniture">Furniture (เฟอร์นิเจอร์)</option>
                   </select>
                 </div>
 
