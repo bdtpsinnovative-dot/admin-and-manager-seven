@@ -8,7 +8,7 @@ import {
   MapPin, Tag, LogOut, Users, Receipt,
   BarChart3, History, Package, Settings, Frame,
   Layers, ShieldCheck, AlertTriangle, Scale, Activity,
-  Images, Ticket, SlidersHorizontal, Trash2
+  Images, Ticket, SlidersHorizontal, Trash2, PackagePlus
 } from "lucide-react";
 
 // 1. เมนูที่ใช้บ่อย (งานประจำวัน)
@@ -19,6 +19,7 @@ const primaryItems = [
   // { name: "ประวัติสต็อก",    href: "/stockmovement",icon: History },
   // { name: "ขายสินค้า (Slab)",href: "/sale_slab",    icon: ShoppingCart },
   { name: "สินค้าทั้งหมด",   href: "/inventory",    icon: Box },
+  { name: "รับสินค้าเข้า (Stock In)", href: "/stock-in", icon: PackagePlus },
   // { name: "เพิ่มสินค้า",     href: "/addproduct",   icon: PlusCircle },
   // { name: "Props / Decor",   href: "/props",        icon: Frame },
   // { name: "Props / Decor (ใหม่)", href: "/props-new",   icon: Frame },
@@ -65,10 +66,10 @@ export default function AdminSidebar({ user }: { user?: UserData }) {
   let visibleSecondary = secondaryItems;
 
   if (safeUser.role === 'data_entry' || safeUser.role === 'warehouse') {
-    visiblePrimary = primaryItems.filter(item => ['/inventory', '/propsfina'].includes(item.href));
+    visiblePrimary = primaryItems.filter(item => ['/inventory', '/propsfina', '/stock-in'].includes(item.href));
     visibleSecondary = [];
   } else if (safeUser.role === 'data_analyst') {
-    visiblePrimary = primaryItems.filter(item => ['/dashboard', '/sales-history', '/inventory', '/algorithm'].includes(item.href));
+    visiblePrimary = primaryItems.filter(item => ['/dashboard', '/sales-history', '/inventory', '/algorithm', '/stock-in'].includes(item.href));
     visibleSecondary = secondaryItems.filter(item => ['/balance-check', '/rfid-mismatch', '/stock-audit', '/manager/damage-history', '/filters'].includes(item.href));
   }
 
