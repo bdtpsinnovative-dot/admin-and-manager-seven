@@ -148,6 +148,9 @@ export async function updateEmployee(formData: FormData) {
       if (error.message?.includes('profiles_phone_uidx') || (error.code === '23505' && error.message?.includes('phone'))) {
         return { error: "เบอร์โทรศัพท์นี้ถูกใช้ไปแล้วโดยผู้ใช้อื่นในระบบ (หากไม่มีเบอร์เฉพาะตัว สามารถเว้นว่างไว้ได้ครับ ไม่จำเป็นต้องกรอก)" }
       }
+      if (error.message?.includes('profiles_branch_logic_check') || error.message?.includes('profiles_role_check')) {
+        return { error: "ฐานข้อมูลยังไม่อนุญาตตำแหน่งใหม่นี้ (ติด profiles_branch_logic_check หรือ profiles_role_check) กรุณารัน SQL Migration ใน Supabase SQL Editor" }
+      }
       return { error: error.message }
     }
     
@@ -245,6 +248,9 @@ export async function createEmployee(formData: FormData) {
       await supabaseAdmin.auth.admin.deleteUser(authData.user.id)
       if (profileError.message?.includes('profiles_phone_uidx') || (profileError.code === '23505' && profileError.message?.includes('phone'))) {
         return { error: "เบอร์โทรศัพท์นี้ถูกใช้ไปแล้วโดยผู้ใช้อื่นในระบบ (หากไม่มีเบอร์เฉพาะตัว สามารถเว้นว่างไว้ได้ครับ ไม่จำเป็นต้องกรอก)" }
+      }
+      if (profileError.message?.includes('profiles_branch_logic_check') || profileError.message?.includes('profiles_role_check')) {
+        return { error: "ฐานข้อมูลยังไม่อนุญาตตำแหน่งใหม่นี้ (ติด profiles_branch_logic_check หรือ profiles_role_check) กรุณารัน SQL Migration ใน Supabase SQL Editor" }
       }
       return { error: "สร้างข้อมูลส่วนตัวไม่สำเร็จ: " + profileError.message }
     }

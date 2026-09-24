@@ -73,6 +73,8 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
     let friendlyMessage = errorMsg;
     if (errorMsg.includes("profiles_citizen_id_check")) {
       friendlyMessage = "เลขบัตรประชาชนไม่ถูกต้อง กรุณาตรวจสอบว่ากรอกครบ 13 หลัก";
+    } else if (errorMsg.includes("profiles_branch_logic_check") || errorMsg.includes("profiles_role_check")) {
+      friendlyMessage = "ฐานข้อมูลติดกฎข้อจำกัด (profiles_branch_logic_check) สำหรับตำแหน่งใหม่ กรุณานำคำสั่งในไฟล์ supabase_migration_employee_roles_and_branches.sql ไปรันใน Supabase SQL Editor";
     } else if (errorMsg.includes("profiles_phone_uidx") || (errorMsg.includes("duplicate key") && errorMsg.includes("phone"))) {
       friendlyMessage = "เบอร์โทรศัพท์นี้ถูกใช้ไปแล้วโดยผู้ใช้อื่นในระบบ (หากไม่มีเบอร์เฉพาะตัว สามารถเว้นว่างไว้ได้ครับ ไม่จำเป็นต้องกรอก)";
     } else if (errorMsg.includes("duplicate key value")) {
