@@ -22,34 +22,40 @@ export default async function EmployeesPage() {
     .select('id, branch_name, branch_code')
     .order('id', { ascending: true });
 
-  // ✅ แก้ไข Logic การ Map ข้อมูล
-  const allEmployees = authUsers?.map((user) => {
-    const profile = profiles?.find((p) => p.user_id === user.id) as any;
-    
-    // ตรวจสอบว่า profile.branches เป็น array หรือไม่ ถ้าใช่ให้หยิบเอาตัวแรกมา
-    const branchInfo = profile?.branches && Array.isArray(profile.branches) && profile.branches.length > 0 
-      ? profile.branches[0] 
-      : null;
+  // ✅ กรองเฉพาะพนักงานจริงในระบบ (ไม่แสดงลูกค้าหน้าเว็บที่ไม่มี Role หรือมี Role เป็น customer)
+  const NON_STAFF_ROLES = ['customer', 'unassigned', ''];
 
-    const allowedCategories = profile?.allowed_inventory_tabs?.length > 0 
-      ? profile.allowed_inventory_tabs 
-      : (profile?.member_tags?.length > 0 ? profile.member_tags : ['SLABS', 'ROUGH', 'PROP', 'FURNITURE']);
+  const allEmployees = authUsers
+    ?.map((user) => {
+      const profile = profiles?.find((p) => p.user_id === user.id) as any;
+      
+      // ตรวจสอบว่า profile.branches เป็น array หรือไม่ ถ้าใช่ให้หยิบเอาตัวแรกมา
+      const branchInfo = profile?.branches && Array.isArray(profile.branches) && profile.branches.length > 0 
+        ? profile.branches[0] 
+        : null;
 
-    return {
-      user_id: user.id,
-      email: user.email || "",
-      full_name: profile?.full_name || null,
-      role: profile?.role || "unassigned",
-      phone: profile?.phone || null,
-      citizen_id: profile?.citizen_id || null,
-      birth_date: profile?.birth_date || null,
-      avatar_url: profile?.avatar_url || null, 
-      branch_id: profile?.branch_id || null,
-      allowed_inventory_tabs: allowedCategories,
-      // ✅ ส่งเป็น Object อันเดียว (หรือ null) ตามที่ TypeScript ต้องการ
-      branches: branchInfo 
-    };
-  }) || [];
+      const allowedCategories = profile?.allowed_inventory_tabs?.length > 0 
+        ? profile.allowed_inventory_tabs 
+        : (profile?.member_tags?.length > 0 ? profile.member_tags : ['SLABS', 'ROUGH', 'PROP', 'FURNITURE']);
+
+      const userRole = (profile?.role || "").toLowerCase().trim();
+
+      return {
+        user_id: user.id,
+        email: user.email || "",
+        full_name: profile?.full_name || null,
+        role: userRole || "unassigned",
+        phone: profile?.phone || null,
+        citizen_id: profile?.citizen_id || null,
+        birth_date: profile?.birth_date || null,
+        avatar_url: profile?.avatar_url || null, 
+        branch_id: profile?.branch_id || null,
+        allowed_inventory_tabs: allowedCategories,
+        // ✅ ส่งเป็น Object อันเดียว (หรือ null) ตามที่ TypeScript ต้องการ
+        branches: branchInfo 
+      };
+    })
+    .filter((emp) => emp.role && !NON_STAFF_ROLES.includes(emp.role)) || [];
 
   const storageBaseUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public`;
 

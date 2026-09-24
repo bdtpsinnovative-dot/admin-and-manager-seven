@@ -32,7 +32,6 @@ const ROLE_CONFIG: Record<string, { label: string; labelTh: string; color: strin
   data_entry:   { label: "Data Entry",   labelTh: "เจ้าหน้าที่บันทึกข้อมูล", color: "text-amber-700",   bg: "bg-amber-50",    border: "border-amber-200",   dot: "bg-amber-500",   icon: "📝" },
   data_analyst: { label: "Data Analyst", labelTh: "นักวิเคราะห์ข้อมูล",     color: "text-indigo-700",  bg: "bg-indigo-50",   border: "border-indigo-200",  dot: "bg-indigo-500",  icon: "📊" },
   warehouse:    { label: "Warehouse",    labelTh: "คลังสินค้า",           color: "text-emerald-700", bg: "bg-emerald-50", border: "border-emerald-200", dot: "bg-emerald-500", icon: "📦" },
-  unassigned:   { label: "No Role",      labelTh: "ยังไม่กำหนด",          color: "text-slate-500",   bg: "bg-slate-50",    border: "border-slate-200",   dot: "bg-slate-400",   icon: "" },
 }
 
 // --- หมวดหมู่สินค้าในคลัง ---
@@ -179,7 +178,15 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
     setIsCreateModalOpen(true)
   }
 
-  const getRoleInfo = (role: string) => ROLE_CONFIG[role] || ROLE_CONFIG.unassigned
+  const getRoleInfo = (role: string) => ROLE_CONFIG[role] || {
+    label: role || "Staff",
+    labelTh: role || "พนักงาน",
+    color: "text-slate-600",
+    bg: "bg-slate-50",
+    border: "border-slate-200",
+    dot: "bg-slate-400",
+    icon: "👤"
+  }
 
   // ==========================================
   // RENDER
