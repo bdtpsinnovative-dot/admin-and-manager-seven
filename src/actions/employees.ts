@@ -97,8 +97,10 @@ export async function updateEmployee(formData: FormData) {
     const role = formData.get('role') as string
     const branchId = formData.get('branch_id')
     const fullName = formData.get('full_name') as string
-    const phone = formData.get('phone') as string
-    const birthDate = formData.get('birth_date') as string
+    const rawPhone = formData.get('phone') as string
+    const phone = rawPhone?.trim() ? rawPhone.trim() : null
+    const rawBirthDate = formData.get('birth_date') as string
+    const birthDate = rawBirthDate?.trim() ? rawBirthDate.trim() : null
 
     // เช็ค Constraint Database (เฉพาะตำแหน่งที่ต้องผูกสาขา)
     const rolesRequiringBranch = ['sale', 'manager', 'warehouse']
@@ -125,8 +127,8 @@ export async function updateEmployee(formData: FormData) {
         full_name: fullName,
         role: role,
         branch_id: (branchId && branchId !== "" && branchId !== "null") ? Number(branchId) : null,
-        phone: phone || null,
-        birth_date: birthDate || null,
+        phone: phone,
+        birth_date: birthDate,
         member_tags: categoryList // สำรองใน member_tags ทันที
     }
 
@@ -142,7 +144,12 @@ export async function updateEmployee(formData: FormData) {
       error = res.error
     }
 
-    if (error) return { error: error.message }
+    if (error) {
+      if (error.message?.includes('profiles_phone_uidx') || (error.code === '23505' && error.message?.includes('phone'))) {
+        return { error: "เบอร์โทรศัพท์นี้ถูกใช้ไปแล้วโดยผู้ใช้อื่นในระบบ (หากไม่มีเบอร์เฉพาะตัว สามารถเว้นว่างไว้ได้ครับ ไม่จำเป็นต้องกรอก)" }
+      }
+      return { error: error.message }
+    }
     
     revalidatePath('/employees') 
     revalidatePath('/manager/employees') 
@@ -171,8 +178,10 @@ export async function createEmployee(formData: FormData) {
     const fullName = formData.get('full_name') as string
     const role = formData.get('role') as string
     const branchId = formData.get('branch_id')
-    const phone = formData.get('phone') as string
-    const birthDate = formData.get('birth_date') as string
+    const rawPhone = formData.get('phone') as string
+    const phone = rawPhone?.trim() ? rawPhone.trim() : null
+    const rawBirthDate = formData.get('birth_date') as string
+    const birthDate = rawBirthDate?.trim() ? rawBirthDate.trim() : null
 
     // Validation
     if (!email || !password || !fullName) {
@@ -215,8 +224,8 @@ export async function createEmployee(formData: FormData) {
       full_name: fullName,
       role: role,
       branch_id: (branchId && branchId !== "" && branchId !== "null") ? Number(branchId) : null,
-      phone: phone || null,
-      birth_date: birthDate || null,
+      phone: phone,
+      birth_date: birthDate,
       member_tags: categoryList
     }
 
@@ -234,6 +243,9 @@ export async function createEmployee(formData: FormData) {
     if (profileError) {
       // ถ้าสร้าง Profile พลาด -> ลบ User ทิ้งเพื่อความสะอาด
       await supabaseAdmin.auth.admin.deleteUser(authData.user.id)
+      if (profileError.message?.includes('profiles_phone_uidx') || (profileError.code === '23505' && profileError.message?.includes('phone'))) {
+        return { error: "เบอร์โทรศัพท์นี้ถูกใช้ไปแล้วโดยผู้ใช้อื่นในระบบ (หากไม่มีเบอร์เฉพาะตัว สามารถเว้นว่างไว้ได้ครับ ไม่จำเป็นต้องกรอก)" }
+      }
       return { error: "สร้างข้อมูลส่วนตัวไม่สำเร็จ: " + profileError.message }
     }
     

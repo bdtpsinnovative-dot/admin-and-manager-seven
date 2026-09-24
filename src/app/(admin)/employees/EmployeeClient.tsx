@@ -73,6 +73,8 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
     let friendlyMessage = errorMsg;
     if (errorMsg.includes("profiles_citizen_id_check")) {
       friendlyMessage = "เลขบัตรประชาชนไม่ถูกต้อง กรุณาตรวจสอบว่ากรอกครบ 13 หลัก";
+    } else if (errorMsg.includes("profiles_phone_uidx") || (errorMsg.includes("duplicate key") && errorMsg.includes("phone"))) {
+      friendlyMessage = "เบอร์โทรศัพท์นี้ถูกใช้ไปแล้วโดยผู้ใช้อื่นในระบบ (หากไม่มีเบอร์เฉพาะตัว สามารถเว้นว่างไว้ได้ครับ ไม่จำเป็นต้องกรอก)";
     } else if (errorMsg.includes("duplicate key value")) {
       friendlyMessage = "อีเมล หรือ ข้อมูลบางอย่างซ้ำกับในระบบ กรุณาตรวจสอบ";
     } else if (errorMsg.includes("auth/email-already-in-use")) {
@@ -615,14 +617,20 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-xs font-semibold text-slate-600 mb-1.5 block">เบอร์โทรศัพท์</label>
+                      <label className="text-xs font-semibold text-slate-600 mb-1.5 flex items-center justify-between">
+                        <span>เบอร์โทรศัพท์</span>
+                        <span className="text-[10px] text-slate-400 font-normal">ไม่บังคับ</span>
+                      </label>
                       <div className="relative">
                         <Phone className="w-4 h-4 absolute left-3.5 top-3 text-slate-400" />
-                        <input name="phone" defaultValue={editingEmp.phone || ""} className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm font-mono focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400 outline-none transition bg-slate-50/30" placeholder="0xxxxxxxxx" />
+                        <input name="phone" defaultValue={editingEmp.phone || ""} className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm font-mono focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400 outline-none transition bg-slate-50/30" placeholder="0xxxxxxxxx (เว้นว่างได้)" />
                       </div>
                     </div>
                     <div>
-                      <label className="text-xs font-semibold text-slate-600 mb-1.5 block">วันเกิด</label>
+                      <label className="text-xs font-semibold text-slate-600 mb-1.5 flex items-center justify-between">
+                        <span>วันเกิด</span>
+                        <span className="text-[10px] text-slate-400 font-normal">ไม่บังคับ</span>
+                      </label>
                       <div className="relative">
                         <Calendar className="w-4 h-4 absolute left-3.5 top-3 text-slate-400" />
                         <input type="date" name="birth_date" defaultValue={editingEmp.birth_date || ""} className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm font-mono focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400 outline-none transition bg-slate-50/30 text-slate-600" />
@@ -842,14 +850,20 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-xs font-semibold text-slate-600 mb-1.5 block">เบอร์โทรศัพท์</label>
+                      <label className="text-xs font-semibold text-slate-600 mb-1.5 flex items-center justify-between">
+                        <span>เบอร์โทรศัพท์</span>
+                        <span className="text-[10px] text-slate-400 font-normal">ไม่บังคับ</span>
+                      </label>
                       <div className="relative">
                         <Phone className="w-4 h-4 absolute left-3.5 top-3 text-slate-400" />
-                        <input name="phone" className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm font-mono focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400 outline-none transition bg-slate-50/30" placeholder="0xxxxxxxxx" />
+                        <input name="phone" className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm font-mono focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400 outline-none transition bg-slate-50/30" placeholder="0xxxxxxxxx (เว้นว่างได้)" />
                       </div>
                     </div>
                     <div>
-                      <label className="text-xs font-semibold text-slate-600 mb-1.5 block">วันเกิด</label>
+                      <label className="text-xs font-semibold text-slate-600 mb-1.5 flex items-center justify-between">
+                        <span>วันเกิด</span>
+                        <span className="text-[10px] text-slate-400 font-normal">ไม่บังคับ</span>
+                      </label>
                       <div className="relative">
                         <Calendar className="w-4 h-4 absolute left-3.5 top-3 text-slate-400" />
                         <input type="date" name="birth_date" className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm font-mono focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400 outline-none transition bg-slate-50/30 text-slate-600" />
