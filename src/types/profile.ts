@@ -12,4 +12,5 @@ export interface Profile {
   created_at: string;
   allowed_inventory_tabs?: string[];
   member_tags?: string[];
+  can_view_costs?: boolean;
 }

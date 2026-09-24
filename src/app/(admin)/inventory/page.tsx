@@ -20,14 +20,32 @@ export default async function InventoryPage({ searchParams }: Props) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect("/login")
 
-  const { data: profile } = await supabaseAdmin
+  const initialPfRes = await supabaseAdmin
     .from('profiles')
-    .select('role, member_tags, allowed_inventory_tabs')
+    .select('role, member_tags, allowed_inventory_tabs, can_view_costs')
     .eq('user_id', user.id)
     .maybeSingle()
 
+  let profile: any = initialPfRes.data
+
+  if (initialPfRes.error && initialPfRes.error.message?.includes('can_view_costs')) {
+    const fallback = await supabaseAdmin
+      .from('profiles')
+      .select('role, member_tags, allowed_inventory_tabs')
+      .eq('user_id', user.id)
+      .maybeSingle()
+    profile = fallback.data
+  }
+
   const userRole = profile?.role || 'admin'
   const isSuperAccess = userRole === 'admin' || userRole === 'data_analyst'
+
+  let canViewCosts: boolean
+  if (profile?.can_view_costs !== undefined && profile?.can_view_costs !== null) {
+    canViewCosts = Boolean(profile.can_view_costs)
+  } else {
+    canViewCosts = ['admin', 'manager', 'data_analyst'].includes(userRole)
+  }
 
   const rawAllowed = (profile as any)?.allowed_inventory_tabs?.length > 0
     ? (profile as any).allowed_inventory_tabs
@@ -270,6 +288,7 @@ export default async function InventoryPage({ searchParams }: Props) {
             activeStatus={activeStatus} 
             viewMode={viewMode}
             categoryTotalCount={categoryTotalCount}
+            canViewCosts={canViewCosts}
             extraFilters={{
               material: activeMaterial,
               grade: activeGrade,
@@ -299,7 +318,8 @@ async function InventoryData({
   activeStatus, 
   viewMode,
   categoryTotalCount,
-  extraFilters
+  extraFilters,
+  canViewCosts = true
 }: { 
   activeTab: string, 
   activeType: string, 
@@ -307,7 +327,8 @@ async function InventoryData({
   activeStatus: string, 
   viewMode: string,
   categoryTotalCount: number,
-  extraFilters?: ProductExtraFilters
+  extraFilters?: ProductExtraFilters,
+  canViewCosts?: boolean
 }) {
   if (viewMode === 'groups' && (activeTab === 'FURNITURE' || activeTab === 'PROP')) {
     const tag = activeTab === 'FURNITURE' ? 'furniture' : 'prop'
@@ -346,6 +367,17 @@ async function InventoryData({
     )
   }
 
+  // 🛡️ ป้องกันข้อมูลต้นทุนรั่วไหล: หากไม่มีสิทธิ์ ให้ลบต้นทุนออกจากข้อมูลก่อนส่งให้ Client
+  if (!canViewCosts && products) {
+    products.forEach((p: any) => {
+      p.cost = null;
+      if (p.specs) {
+        delete p.specs.cost_dollar;
+        delete p.specs.cost_th_shipping;
+      }
+    });
+  }
+
   return (
     <InventoryTable 
       products={products || []} 
@@ -356,6 +388,7 @@ async function InventoryData({
       searchQuery={searchQuery}
       activeStatus={activeStatus}
       extraFilters={extraFilters}
+      canViewCosts={canViewCosts}
     />
   )
 }

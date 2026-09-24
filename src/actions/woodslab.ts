@@ -3,11 +3,51 @@
 "use server"
 
 import { createClient } from "../lib/supabase/server"
+import { supabaseAdmin } from "../lib/supabase/admin"
 import { revalidatePath } from "next/cache"
 import { CATEGORY_MAP } from "@/lib/propFilterModel"
 
 const TABLE_NAME = "products"
 const STORAGE_BUCKET = "product-images"
+
+// --- Helper เช็คสิทธิ์การดูต้นทุน (Cost Visibility) ---
+export async function checkCanViewCosts(): Promise<boolean> {
+  try {
+    const supabase = await createClient()
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) return false
+
+    const initialRes = await supabaseAdmin
+      .from('profiles')
+      .select('role, can_view_costs')
+      .eq('user_id', user.id)
+      .maybeSingle()
+
+    let profile: any = initialRes.data
+
+    // กรณีตารางยังไม่ได้รัน SQL Migration เพิ่มคอลัมน์ can_view_costs
+    if (initialRes.error && initialRes.error.message?.includes('can_view_costs')) {
+      const fallback = await supabaseAdmin
+        .from('profiles')
+        .select('role')
+        .eq('user_id', user.id)
+        .maybeSingle()
+      profile = fallback.data
+    }
+
+    if (!profile) return false
+    const role = profile.role || 'staff'
+
+    if (profile.can_view_costs !== undefined && profile.can_view_costs !== null) {
+      return Boolean(profile.can_view_costs)
+    }
+
+    return ['admin', 'manager', 'data_analyst'].includes(role)
+  } catch (err) {
+    console.error("Error checking can_view_costs in woodslab.ts:", err)
+    return false
+  }
+}
 
 // ⚡ Cache ข้อมูลกลุ่มหมวดหมู่ (collection_groups) เพื่อความเร็วและประหยัด Database
 let colGroupsCache: { data: Array<{ id: string; product_sup: string | null; tag: string | null }>; timestamp: number } | null = null
@@ -74,12 +114,16 @@ export async function getProducts(
   limit: number = 250
 ) {
   const supabase = await createClient()
+  const canViewCosts = await checkCanViewCosts()
 
   let query = supabase
     .from(TABLE_NAME)
     .select('*, collection_groups(id, name, cover_image_url, product_sup)', { count: 'exact' })
-    .order('cost', { ascending: false, nullsFirst: false })
-    .order('created_at', { ascending: false })
+
+  if (canViewCosts) {
+    query = query.order('cost', { ascending: false, nullsFirst: false })
+  }
+  query = query.order('created_at', { ascending: false })
 
   if (category) {
     query = query.eq('category_id', category)
@@ -124,11 +168,13 @@ export async function getProducts(
     }
   }
 
-  // 💰 ฟิลเตอร์ต้นทุน (Cost)
-  if (costFilter === 'has_cost') {
-    query = query.gt('cost', 0)
-  } else if (costFilter === 'no_cost') {
-    query = query.or('cost.eq.0,cost.is.null')
+  // 💰 ฟิลเตอร์ต้นทุน (Cost) - เฉพาะผู้มีสิทธิ์ดูต้นทุนเท่านั้น
+  if (canViewCosts) {
+    if (costFilter === 'has_cost') {
+      query = query.gt('cost', 0)
+    } else if (costFilter === 'no_cost') {
+      query = query.or('cost.eq.0,cost.is.null')
+    }
   }
 
   if (extraFilters?.material) {
@@ -221,7 +267,16 @@ export async function getProducts(
            publicUrl = data.publicUrl
        }
     }
-    return { ...item, image_url: publicUrl }
+    const cleanItem = { ...item, image_url: publicUrl }
+    if (!canViewCosts) {
+      cleanItem.cost = null
+      if (cleanItem.specs) {
+        cleanItem.specs = { ...cleanItem.specs }
+        delete cleanItem.specs.cost_dollar
+        delete cleanItem.specs.cost_th_shipping
+      }
+    }
+    return cleanItem
   })
 
   const totalCount = count ?? 0
@@ -262,7 +317,14 @@ export async function loadMoreProducts(params: {
 
 export async function getCategoryCounts(category: string) {
   try {
+    const canViewCosts = await checkCanViewCosts()
     const supabase = await createClient()
+
+    if (!canViewCosts) {
+      const { count: totalCount } = await supabase.from(TABLE_NAME).select('*', { count: 'exact', head: true }).eq('category_id', category)
+      return { total: totalCount ?? 0, withCost: 0, noCost: 0 }
+    }
+
     const [
       { count: totalCount },
       { count: withCostCount }
@@ -404,6 +466,7 @@ export async function getCategoryFilterOptions(category: string) {
 
 export async function getAllProductsForExport() {
   const supabase = await createClient()
+  const canViewCosts = await checkCanViewCosts()
   let allData: any[] = []
   let hasMore = true
   let page = 0
@@ -446,7 +509,16 @@ export async function getAllProductsForExport() {
            publicUrl = data.publicUrl
        }
     }
-    return { ...item, image_url: publicUrl }
+    const cleanItem = { ...item, image_url: publicUrl }
+    if (!canViewCosts) {
+      cleanItem.cost = null
+      if (cleanItem.specs) {
+        cleanItem.specs = { ...cleanItem.specs }
+        delete cleanItem.specs.cost_dollar
+        delete cleanItem.specs.cost_th_shipping
+      }
+    }
+    return cleanItem
   })
 
   return { data: processedData, error: null }
@@ -455,6 +527,7 @@ export async function getAllProductsForExport() {
 // ✅ 3. ดึงสินค้าชิ้นเดียว (Edit Page ใช้ตัวนี้)
 export async function getProductById(id: string) {
   const supabase = await createClient()
+  const canViewCosts = await checkCanViewCosts()
   const { data, error } = await supabase.from(TABLE_NAME).select('*').eq('id', id).single()
 
   if (error) return { data: null, error: error.message }
@@ -476,6 +549,14 @@ export async function getProductById(id: string) {
       })
   }
 
+  if (!canViewCosts && data) {
+    data.cost = null
+    if (data.specs) {
+      delete data.specs.cost_dollar
+      delete data.specs.cost_th_shipping
+    }
+  }
+
   return { data, error: null }
 }
 
@@ -483,6 +564,15 @@ export async function getProductById(id: string) {
 export async function createInitialProduct(productData: any) {
   const supabase = await createClient()
   await checkAuth(supabase) 
+  const canViewCosts = await checkCanViewCosts()
+
+  if (!canViewCosts) {
+    productData.cost = null
+    if (productData.specs) {
+      delete productData.specs.cost_dollar
+      delete productData.specs.cost_th_shipping
+    }
+  }
 
   const { data, error } = await supabase.from(TABLE_NAME).insert([productData]).select('id').single()
   if (error) return { error: error.message }
@@ -495,6 +585,23 @@ export async function createInitialProduct(productData: any) {
 export async function updateProduct(id: string | number, updateData: any) {
   const supabase = await createClient()
   await checkAuth(supabase)
+  const canViewCosts = await checkCanViewCosts()
+
+  // 🛡️ Data Protection: ถ้าไม่มีสิทธิ์ดูต้นทุน ห้ามลบหรือเขียนทับต้นทุนในฐานข้อมูลเด็ดขาด!
+  if (!canViewCosts) {
+    delete updateData.cost
+    if (updateData.specs) {
+      const { data: existing } = await supabase.from(TABLE_NAME).select('specs').eq('id', id).single()
+      if (existing?.specs) {
+        if (existing.specs.cost_dollar !== undefined) {
+          updateData.specs.cost_dollar = existing.specs.cost_dollar
+        }
+        if (existing.specs.cost_th_shipping !== undefined) {
+          updateData.specs.cost_th_shipping = existing.specs.cost_th_shipping
+        }
+      }
+    }
+  }
 
   const { error } = await supabase.from(TABLE_NAME).update(updateData).eq('id', id)
   if (error) return { error: error.message }
@@ -534,6 +641,7 @@ export async function deleteProduct(id: string | number) {
 export async function bulkCreateProducts(productsArray: any[]) {
   const supabase = await createClient()
   await checkAuth(supabase)
+  const canViewCosts = await checkCanViewCosts()
 
   // 1. ⚡ ดึงรหัส Collection Group (ID) และ Product Sup ออกมาจาก Excel
   const uniqueGroupsMap = new Map<string, any>()
@@ -586,6 +694,45 @@ export async function bulkCreateProducts(productsArray: any[]) {
 
   for (let i = 0; i < cleanProductsArray.length; i += CHUNK_SIZE) {
     const chunk = cleanProductsArray.slice(i, i + CHUNK_SIZE)
+
+    // 🛡️ Data Protection: ถ้าไม่มีสิทธิ์ดูต้นทุน ห้ามเขียนทับต้นทุนเดิมในฐานข้อมูลเด็ดขาด!
+    if (!canViewCosts) {
+      const chunkSkus = chunk.map((p: any) => p.sku).filter(Boolean)
+      if (chunkSkus.length > 0) {
+        const { data: existingProducts } = await supabase
+          .from('products')
+          .select('sku, cost, specs')
+          .in('sku', chunkSkus)
+
+        const existingMap = new Map<string, any>(
+          (existingProducts || []).map((item: any) => [item.sku, item])
+        )
+
+        chunk.forEach((p: any) => {
+          const existing = existingMap.get(p.sku)
+          if (existing) {
+            // สินค้ามีอยู่ในระบบแล้ว: รักษาค่าต้นทุนเดิมในฐานข้อมูลไว้ 100%
+            p.cost = existing.cost
+            if (p.specs && existing.specs) {
+              if (existing.specs.cost_dollar !== undefined) {
+                p.specs.cost_dollar = existing.specs.cost_dollar
+              }
+              if (existing.specs.cost_th_shipping !== undefined) {
+                p.specs.cost_th_shipping = existing.specs.cost_th_shipping
+              }
+            }
+          } else {
+            // สินค้าใหม่: ไม่อนุญาตให้พนักงานที่ไม่มีสิทธิ์กำหนดต้นทุน
+            p.cost = null
+            if (p.specs) {
+              delete p.specs.cost_dollar
+              delete p.specs.cost_th_shipping
+            }
+          }
+        })
+      }
+    }
+
     const { data, error } = await supabase
       .from('products')
       .upsert(chunk, { onConflict: 'sku' }) 

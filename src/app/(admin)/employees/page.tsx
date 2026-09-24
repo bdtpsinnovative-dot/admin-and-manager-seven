@@ -13,9 +13,18 @@ export default async function EmployeesPage() {
     return <div className="p-8 text-center text-red-500">Error: ไม่สามารถดึงข้อมูล User ได้ ({authError.message})</div>;
   }
 
-  const { data: profiles } = await supabaseAdmin
+  const initialRes = await supabaseAdmin
     .from('profiles')
-    .select('user_id, full_name, role, phone, citizen_id, birth_date, avatar_url, branch_id, member_tags, branches(id, branch_name, branch_code)');
+    .select('user_id, full_name, role, phone, citizen_id, birth_date, avatar_url, branch_id, member_tags, allowed_inventory_tabs, can_view_costs, branches(id, branch_name, branch_code)');
+
+  let profiles: any[] | null = initialRes.data;
+
+  if (initialRes.error && initialRes.error.message?.includes('can_view_costs')) {
+    const fallback = await supabaseAdmin
+      .from('profiles')
+      .select('user_id, full_name, role, phone, citizen_id, birth_date, avatar_url, branch_id, member_tags, allowed_inventory_tabs, branches(id, branch_name, branch_code)');
+    profiles = fallback.data;
+  }
 
   const { data: branches } = await supabaseAdmin
     .from('branches')
@@ -40,6 +49,13 @@ export default async function EmployeesPage() {
 
       const userRole = (profile?.role || "").toLowerCase().trim();
 
+      let canViewCosts: boolean;
+      if (profile?.can_view_costs !== undefined && profile?.can_view_costs !== null) {
+        canViewCosts = Boolean(profile.can_view_costs);
+      } else {
+        canViewCosts = ['admin', 'manager', 'data_analyst'].includes(userRole);
+      }
+
       return {
         user_id: user.id,
         email: user.email || "",
@@ -51,6 +67,7 @@ export default async function EmployeesPage() {
         avatar_url: profile?.avatar_url || null, 
         branch_id: profile?.branch_id || null,
         allowed_inventory_tabs: allowedCategories,
+        can_view_costs: canViewCosts,
         // ✅ ส่งเป็น Object อันเดียว (หรือ null) ตามที่ TypeScript ต้องการ
         branches: branchInfo 
       };

@@ -15,7 +15,13 @@ const BASE_FOLDER = "products"
 const UPLOAD_MAX_BYTES = 350 * 1024 
 const UPLOAD_MAX_DIM = 1600 
 
-export default function WoodSlabForm({ initialData }: { initialData?: any }) {
+export default function WoodSlabForm({ 
+  initialData, 
+  canViewCosts = true 
+}: { 
+  initialData?: any
+  canViewCosts?: boolean 
+}) {
   const router = useRouter()
   const isEditMode = !!initialData
 
@@ -188,18 +194,21 @@ export default function WoodSlabForm({ initialData }: { initialData?: any }) {
         ? (rawSku.toUpperCase().startsWith(skuPrefix) ? rawSku : `${skuPrefix}-${rawSku}`)
         : `${skuPrefix}-${Date.now()}`
 
-      const payload = {
+      const payload: any = {
         name: formData.get('name'),
         barcode: formData.get('barcode'),
         sku: sku,
         category_id: categoryId,
-        cost: Number(formData.get('cost') || 0),
         price: Number(formData.get('price') || 0),
         unit: formData.get('unit'),
         weight: Number(formData.get('weight') || 0),
         status: formData.get('status'),
         description: formData.get('description'),
         specs: specsRaw
+      }
+
+      if (canViewCosts) {
+        payload.cost = Number(formData.get('cost') || 0)
       }
 
       let productId = initialData?.id
@@ -486,10 +495,12 @@ export default function WoodSlabForm({ initialData }: { initialData?: any }) {
                     <option value="draft">Draft (ฉบับร่าง)</option>
                   </select>
                 </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">ต้นทุน (Cost)</label>
-                  <input name="cost" defaultValue={initialData?.cost} type="number" step="0.01" placeholder="0.00" className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 text-sm text-right font-mono" />
-                </div>
+                {canViewCosts && (
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">ต้นทุน (Cost)</label>
+                    <input name="cost" defaultValue={initialData?.cost} type="number" step="0.01" placeholder="0.00" className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 text-sm text-right font-mono" />
+                  </div>
+                )}
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase mb-1">ราคาขาย (Price)</label>
                   <input name="price" defaultValue={initialData?.price} type="number" step="0.01" placeholder="0.00" className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 text-sm text-right font-mono text-blue-600 font-bold" />

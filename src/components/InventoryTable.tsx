@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import Link from "next/link"
 import { Edit, Package, AlertCircle, Hammer, Layers, Box, Trash2, Plus, Loader2 } from "lucide-react"
 import RoughWoodForm from "./RoughWoodForm"
@@ -17,6 +17,7 @@ interface InventoryTableProps {
   activeStatus?: string
   extraFilters?: ProductExtraFilters
   costFilter?: string
+  canViewCosts?: boolean
 }
 
 export default function InventoryTable({ 
@@ -28,7 +29,8 @@ export default function InventoryTable({
   searchQuery,
   activeStatus,
   extraFilters,
-  costFilter
+  costFilter,
+  canViewCosts = true
 }: InventoryTableProps) {
   const [items, setItems] = useState<any[]>(products || [])
   const [offset, setOffset] = useState((products || []).length)
@@ -124,6 +126,19 @@ export default function InventoryTable({
   const isProp = activeTab === 'PROP'
   const isFurniture = activeTab === 'FURNITURE'
 
+  const columnCount = useMemo(() => {
+    let base = 6 // 3 start (check, img, name) + 3 end (price, status, action)
+    if (isSlab) base += 2
+    else if (isRough) base += 4
+    else if (isProp || isFurniture) base += 5
+    else base += 1
+
+    if (canViewCosts) {
+      base += isProp ? 2 : 1
+    }
+    return base
+  }, [isSlab, isRough, isProp, isFurniture, canViewCosts])
+
   const formatDims = (specs: any) => {
     if (!specs) return '-'
     const w = specs.width_cm ?? specs.W
@@ -208,13 +223,15 @@ export default function InventoryTable({
                   <th className="p-4">หมวดหมู่</th>
                 )}
 
-                {isProp ? (
-                  <>
-                    <th className="p-4 text-right min-w-[130px]">ต้นทุน ดอลลาร์ ไม่รวมค่าส่ง</th>
-                    <th className="p-4 text-right min-w-[130px]">ต้นทุนรวมค่าส่ง (บาท)</th>
-                  </>
-                ) : (
-                  <th className="p-4 text-right min-w-[110px]">ต้นทุน (Cost)</th>
+                {canViewCosts && (
+                  isProp ? (
+                    <>
+                      <th className="p-4 text-right min-w-[130px]">ต้นทุน ดอลลาร์ ไม่รวมค่าส่ง</th>
+                      <th className="p-4 text-right min-w-[130px]">ต้นทุนรวมค่าส่ง (บาท)</th>
+                    </>
+                  ) : (
+                    <th className="p-4 text-right min-w-[110px]">ต้นทุน (Cost)</th>
+                  )
                 )}
                 <th className="p-4 text-right min-w-[120px]">ราคาขาย (บาท)</th>
                 <th className="p-4 text-center w-[90px]">สถานะ</th>
@@ -224,7 +241,7 @@ export default function InventoryTable({
             <tbody className="divide-y divide-slate-100">
               {items.length === 0 ? (
                 <tr>
-                  <td colSpan={isProp ? 14 : 13} className="p-12 text-center text-slate-500">
+                  <td colSpan={columnCount} className="p-12 text-center text-slate-500">
                       <div className="flex flex-col items-center justify-center gap-3">
                         <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center">
                           <AlertCircle className="w-8 h-8 text-slate-400" />
@@ -393,35 +410,37 @@ export default function InventoryTable({
                     )}
 
                     {/* 💰 ต้นทุน (Cost) */}
-                    {isProp ? (
-                      <>
-                        {/* 1. ต้นทุน ดอลล่าร์ */}
-                        <td className="p-4 align-top text-right">
-                          {item.specs?.cost_dollar != null && item.specs?.cost_dollar !== '' ? (
-                            <div className="font-mono text-xs font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200/80 inline-block">
-                              ${Number(item.specs.cost_dollar).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </div>
-                          ) : (
-                            <span className="text-slate-300 text-xs font-mono">-</span>
-                          )}
-                        </td>
-                        {/* 2. ต้นทุนร่วมค่าส่งแล้ว */}
-                        <td className="p-4 align-top text-right">
-                          <div className="font-mono text-xs font-semibold text-slate-700">
-                            {(item.specs?.cost_th_shipping != null && item.specs?.cost_th_shipping !== '') || item.cost ? (
-                              formatCurrency(Number(item.specs?.cost_th_shipping ?? item.cost))
+                    {canViewCosts && (
+                      isProp ? (
+                        <>
+                          {/* 1. ต้นทุน ดอลล่าร์ */}
+                          <td className="p-4 align-top text-right">
+                            {item.specs?.cost_dollar != null && item.specs?.cost_dollar !== '' ? (
+                              <div className="font-mono text-xs font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200/80 inline-block">
+                                ${Number(item.specs.cost_dollar).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </div>
                             ) : (
-                              <span className="text-slate-300">฿0.00</span>
+                              <span className="text-slate-300 text-xs font-mono">-</span>
                             )}
+                          </td>
+                          {/* 2. ต้นทุนร่วมค่าส่งแล้ว */}
+                          <td className="p-4 align-top text-right">
+                            <div className="font-mono text-xs font-semibold text-slate-700">
+                              {(item.specs?.cost_th_shipping != null && item.specs?.cost_th_shipping !== '') || item.cost ? (
+                                formatCurrency(Number(item.specs?.cost_th_shipping ?? item.cost))
+                              ) : (
+                                <span className="text-slate-300">฿0.00</span>
+                              )}
+                            </div>
+                          </td>
+                        </>
+                      ) : (
+                        <td className="p-4 align-top text-right">
+                          <div className="font-mono text-xs font-semibold text-slate-500">
+                            {item.cost ? formatCurrency(item.cost) : <span className="text-slate-300">฿0.00</span>}
                           </div>
                         </td>
-                      </>
-                    ) : (
-                      <td className="p-4 align-top text-right">
-                        <div className="font-mono text-xs font-semibold text-slate-500">
-                          {item.cost ? formatCurrency(item.cost) : <span className="text-slate-300">฿0.00</span>}
-                        </div>
-                      </td>
+                      )
                     )}
 
                     {/* 🏷️ ราคาขาย (Price) */}
@@ -429,7 +448,7 @@ export default function InventoryTable({
                       <div className="font-mono text-sm font-bold text-slate-900">
                         {formatCurrency(item.price || 0)}
                       </div>
-                      {(() => {
+                      {canViewCosts && (() => {
                         const effectiveCost = Number(item.specs?.cost_th_shipping ?? item.cost ?? 0);
                         return effectiveCost > 0 && item.price > effectiveCost ? (
                           <div className="text-[10px] font-mono text-emerald-600 font-medium mt-0.5">

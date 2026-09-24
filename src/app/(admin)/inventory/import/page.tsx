@@ -12,14 +12,32 @@ export default async function ImportPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect("/login")
 
-  const { data: profile } = await supabaseAdmin
+  const initialPfRes = await supabaseAdmin
     .from('profiles')
-    .select('role, member_tags, allowed_inventory_tabs')
+    .select('role, member_tags, allowed_inventory_tabs, can_view_costs')
     .eq('user_id', user.id)
     .maybeSingle()
 
+  let profile: any = initialPfRes.data
+
+  if (initialPfRes.error && initialPfRes.error.message?.includes('can_view_costs')) {
+    const fallback = await supabaseAdmin
+      .from('profiles')
+      .select('role, member_tags, allowed_inventory_tabs')
+      .eq('user_id', user.id)
+      .maybeSingle()
+    profile = fallback.data
+  }
+
   const userRole = profile?.role || 'admin'
   const isSuperAccess = userRole === 'admin' || userRole === 'data_analyst'
+
+  let canViewCosts: boolean
+  if (profile?.can_view_costs !== undefined && profile?.can_view_costs !== null) {
+    canViewCosts = Boolean(profile.can_view_costs)
+  } else {
+    canViewCosts = ['admin', 'manager', 'data_analyst'].includes(userRole)
+  }
 
   const rawAllowed = (profile as any)?.allowed_inventory_tabs?.length > 0
     ? (profile as any).allowed_inventory_tabs
@@ -37,8 +55,8 @@ export default async function ImportPage() {
           <ArrowLeft className="w-4 h-4 mr-1" /> กลับไปหน้าคลังสินค้า
         </Link>
         
-        {/* เรียกใช้ Component พร้อมส่งสิทธิ์หมวดหมู่ที่ได้รับอนุญาต */}
-        <BulkUploadProducts allowedTabs={allowedTabs} />
+        {/* เรียกใช้ Component พร้อมส่งสิทธิ์หมวดหมู่และสิทธิ์ดูต้นทุน */}
+        <BulkUploadProducts allowedTabs={allowedTabs} canViewCosts={canViewCosts} />
       </div>
     </div>
   )

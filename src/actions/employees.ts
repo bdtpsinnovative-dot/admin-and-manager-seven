@@ -20,6 +20,7 @@ export interface Employee {
   created_at: string
   allowed_inventory_tabs?: string[]
   member_tags?: string[]
+  can_view_costs?: boolean
 }
 
 // --- Helper: Check Auth & Get Profile ---
@@ -121,6 +122,12 @@ export async function updateEmployee(formData: FormData) {
       }
     }
 
+    // จัดการสิทธิ์ดูต้นทุน (Cost Visibility)
+    const rawCanViewCosts = formData.get('can_view_costs')
+    const canViewCosts = rawCanViewCosts !== null
+      ? (rawCanViewCosts === 'true' || rawCanViewCosts === '1' || rawCanViewCosts === 'on')
+      : ['admin', 'manager', 'data_analyst'].includes(role)
+
     // เตรียมข้อมูล Update
     const profileData: Record<string, any> = {
         user_id: userId,
@@ -132,15 +139,20 @@ export async function updateEmployee(formData: FormData) {
         member_tags: categoryList // สำรองใน member_tags ทันที
     }
 
-    // ลองอัปเดตทั้ง allowed_inventory_tabs ถ้ามีคอลัมน์ ถ้ายังไม่มีให้ fallback อัปเดตเฉพาะ member_tags
+    // ลองอัปเดตพร้อม can_view_costs และ allowed_inventory_tabs ถ้ามีคอลัมน์ ถ้ายังไม่มีให้ fallback อัปเดตแบบปลอดภัย
     let { error } = await supabaseAdmin
       .from(TABLE_PROFILES)
-      .upsert({ ...profileData, allowed_inventory_tabs: categoryList }, { onConflict: 'user_id' })
+      .upsert({ ...profileData, allowed_inventory_tabs: categoryList, can_view_costs: canViewCosts }, { onConflict: 'user_id' })
 
-    if (error && error.message?.includes('allowed_inventory_tabs')) {
-      const res = await supabaseAdmin
+    if (error && (error.message?.includes('can_view_costs') || error.message?.includes('allowed_inventory_tabs'))) {
+      let res = await supabaseAdmin
         .from(TABLE_PROFILES)
-        .upsert(profileData, { onConflict: 'user_id' })
+        .upsert({ ...profileData, allowed_inventory_tabs: categoryList }, { onConflict: 'user_id' })
+      if (res.error && res.error.message?.includes('allowed_inventory_tabs')) {
+        res = await supabaseAdmin
+          .from(TABLE_PROFILES)
+          .upsert(profileData, { onConflict: 'user_id' })
+      }
       error = res.error
     }
 
@@ -221,6 +233,12 @@ export async function createEmployee(formData: FormData) {
     if (authError) return { error: "สร้างบัญชีไม่สำเร็จ: " + authError.message }
     if (!authData.user) return { error: "ไม่พบข้อมูล User ที่ถูกสร้าง" }
 
+    // จัดการสิทธิ์ดูต้นทุน (Cost Visibility)
+    const rawCanViewCosts = formData.get('can_view_costs')
+    const canViewCosts = rawCanViewCosts !== null
+      ? (rawCanViewCosts === 'true' || rawCanViewCosts === '1' || rawCanViewCosts === 'on')
+      : ['admin', 'manager', 'data_analyst'].includes(role)
+
     // 2. สร้าง Profile ใน DB
     const profileData: Record<string, any> = { 
       user_id: authData.user.id,
@@ -234,12 +252,17 @@ export async function createEmployee(formData: FormData) {
 
     let { error: profileError } = await supabaseAdmin
       .from(TABLE_PROFILES)
-      .upsert({ ...profileData, allowed_inventory_tabs: categoryList }, { onConflict: 'user_id' })
+      .upsert({ ...profileData, allowed_inventory_tabs: categoryList, can_view_costs: canViewCosts }, { onConflict: 'user_id' })
 
-    if (profileError && profileError.message?.includes('allowed_inventory_tabs')) {
-      const res = await supabaseAdmin
+    if (profileError && (profileError.message?.includes('can_view_costs') || profileError.message?.includes('allowed_inventory_tabs'))) {
+      let res = await supabaseAdmin
         .from(TABLE_PROFILES)
-        .upsert(profileData, { onConflict: 'user_id' })
+        .upsert({ ...profileData, allowed_inventory_tabs: categoryList }, { onConflict: 'user_id' })
+      if (res.error && res.error.message?.includes('allowed_inventory_tabs')) {
+        res = await supabaseAdmin
+          .from(TABLE_PROFILES)
+          .upsert(profileData, { onConflict: 'user_id' })
+      }
       profileError = res.error
     }
 

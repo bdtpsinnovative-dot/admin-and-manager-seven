@@ -22,6 +22,7 @@ interface Profile {
   branch_id: number | null;
   allowed_inventory_tabs?: string[];
   branches: Branch | null;
+  can_view_costs?: boolean;
 }
 
 // --- Role config ---
@@ -52,6 +53,8 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
   const [createCategories, setCreateCategories] = useState<string[]>(['SLABS', 'ROUGH', 'PROP', 'FURNITURE'])
   const [editRole, setEditRole] = useState<string>('data_entry')
   const [createRole, setCreateRole] = useState<string>('data_entry')
+  const [editCanViewCosts, setEditCanViewCosts] = useState<boolean>(true)
+  const [createCanViewCosts, setCreateCanViewCosts] = useState<boolean>(false)
   const [loading, setLoading] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
   const [filterRole, setFilterRole] = useState("all")
@@ -172,12 +175,18 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
       ? emp.allowed_inventory_tabs
       : ['SLABS', 'ROUGH', 'PROP', 'FURNITURE']
     setEditCategories(cats)
+    if (emp.can_view_costs !== undefined && emp.can_view_costs !== null) {
+      setEditCanViewCosts(emp.can_view_costs)
+    } else {
+      setEditCanViewCosts(['admin', 'manager', 'data_analyst'].includes(emp.role || ''))
+    }
     setIsModalOpen(true)
   }
 
   const openCreateModal = () => {
     setCreateRole('data_entry')
     setCreateCategories(['SLABS', 'ROUGH', 'PROP', 'FURNITURE'])
+    setCreateCanViewCosts(false)
     setShowPassword(false)
     setIsCreateModalOpen(true)
   }
@@ -341,6 +350,7 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
                 <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">พนักงาน</th>
                 <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">ตำแหน่ง</th>
                 <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">หมวดสินค้าที่รับผิดชอบ</th>
+                <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">สิทธิ์ดูต้นทุน</th>
                 <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">สาขา</th>
                 <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">เบอร์โทร</th>
                 <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest hidden lg:table-cell">วันเกิด</th>
@@ -423,6 +433,19 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
                       )}
                     </td>
 
+                    {/* Cost Permission Badge */}
+                    <td className="px-6 py-4">
+                      {emp.can_view_costs !== false ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-sm" title="สามารถมองเห็นและจัดการต้นทุนสินค้าได้">
+                          <span>💰</span> ดูต้นทุนได้
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-100 text-slate-500 border border-slate-200" title="ซ่อนข้อมูลต้นทุนและกำไรทั้งหมด">
+                          <span>🔒</span> ซ่อนต้นทุน
+                        </span>
+                      )}
+                    </td>
+
                     {/* Branch */}
                     <td className="px-6 py-4">
                       {emp.role === 'admin' || emp.role === 'data_analyst' ? (
@@ -482,7 +505,7 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
 
               {filteredData.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="text-center py-16">
+                  <td colSpan={8} className="text-center py-16">
                     <div className="flex flex-col items-center gap-3">
                       <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center">
                         <Users className="w-8 h-8 text-slate-300" />
@@ -752,6 +775,52 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
                     </div>
                     <input type="hidden" name="allowed_inventory_tabs" value={JSON.stringify(editCategories)} />
                   </div>
+
+                  {/* สิทธิ์การมองเห็นและจัดการต้นทุน (Cost Permission) */}
+                  <div className="pt-3 border-t border-blue-200/60 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                          <span>💰</span> สิทธิ์การดูและจัดการต้นทุนสินค้า
+                        </label>
+                        <p className="text-[11px] text-slate-500 mt-0.5">
+                          ต้นทุนดอลลาร์, ต้นทุนรวมค่าส่ง (บาท) และกำไรในหน้าคลังสินค้า
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setEditCanViewCosts(!editCanViewCosts)}
+                        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                          editCanViewCosts ? 'bg-emerald-600' : 'bg-slate-300'
+                        }`}
+                        title={editCanViewCosts ? "คลิกเพื่อปิดสิทธิ์ดูต้นทุน" : "คลิกเพื่อเปิดสิทธิ์ดูต้นทุน"}
+                      >
+                        <span
+                          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                            editCanViewCosts ? 'translate-x-5' : 'translate-x-0'
+                          }`}
+                        />
+                      </button>
+                    </div>
+                    <div className={`p-2.5 rounded-xl border text-xs flex items-center gap-2 transition-all ${
+                      editCanViewCosts 
+                        ? 'bg-emerald-50/70 border-emerald-200 text-emerald-800' 
+                        : 'bg-slate-50 border-slate-200 text-slate-600'
+                    }`}>
+                      {editCanViewCosts ? (
+                        <>
+                          <span className="text-sm">👁️</span>
+                          <span><strong>อนุญาตให้ดูต้นทุนได้:</strong> สามารถมองเห็นต้นทุน, คำนวณกำไร และอัปโหลดไฟล์ที่มีต้นทุนได้</span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-sm">🔒</span>
+                          <span><strong>ซ่อนต้นทุน:</strong> ระบบจะซ่อนคอลัมน์ต้นทุนและกำไร และป้องกันไม่ให้เขียนทับต้นทุนเดิมในระบบ</span>
+                        </>
+                      )}
+                    </div>
+                    <input type="hidden" name="can_view_costs" value={editCanViewCosts ? 'true' : 'false'} />
+                  </div>
                 </div>
 
                 {/* Actions */}
@@ -885,7 +954,11 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
                       <select 
                         name="role" 
                         value={createRole}
-                        onChange={(e) => setCreateRole(e.target.value)}
+                        onChange={(e) => {
+                          const newR = e.target.value;
+                          setCreateRole(newR);
+                          setCreateCanViewCosts(['admin', 'manager', 'data_analyst'].includes(newR));
+                        }}
                         className="w-full border border-slate-200 rounded-xl p-2.5 text-sm bg-white focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400 outline-none appearance-none cursor-pointer"
                       >
                         <option value="data_entry">Data Entry (เจ้าหน้าที่บันทึกข้อมูล)</option>
@@ -984,6 +1057,52 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
                       })}
                     </div>
                     <input type="hidden" name="allowed_inventory_tabs" value={JSON.stringify(createCategories)} />
+                  </div>
+
+                  {/* สิทธิ์การมองเห็นและจัดการต้นทุน (Cost Permission) */}
+                  <div className="pt-3 border-t border-blue-200/60 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                          <span>💰</span> สิทธิ์การดูและจัดการต้นทุนสินค้า
+                        </label>
+                        <p className="text-[11px] text-slate-500 mt-0.5">
+                          ต้นทุนดอลลาร์, ต้นทุนรวมค่าส่ง (บาท) และกำไรในหน้าคลังสินค้า
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setCreateCanViewCosts(!createCanViewCosts)}
+                        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                          createCanViewCosts ? 'bg-emerald-600' : 'bg-slate-300'
+                        }`}
+                        title={createCanViewCosts ? "คลิกเพื่อปิดสิทธิ์ดูต้นทุน" : "คลิกเพื่อเปิดสิทธิ์ดูต้นทุน"}
+                      >
+                        <span
+                          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                            createCanViewCosts ? 'translate-x-5' : 'translate-x-0'
+                          }`}
+                        />
+                      </button>
+                    </div>
+                    <div className={`p-2.5 rounded-xl border text-xs flex items-center gap-2 transition-all ${
+                      createCanViewCosts 
+                        ? 'bg-emerald-50/70 border-emerald-200 text-emerald-800' 
+                        : 'bg-slate-50 border-slate-200 text-slate-600'
+                    }`}>
+                      {createCanViewCosts ? (
+                        <>
+                          <span className="text-sm">👁️</span>
+                          <span><strong>อนุญาตให้ดูต้นทุนได้:</strong> สามารถมองเห็นต้นทุน, คำนวณกำไร และอัปโหลดไฟล์ที่มีต้นทุนได้</span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-sm">🔒</span>
+                          <span><strong>ซ่อนต้นทุน:</strong> ระบบจะซ่อนคอลัมน์ต้นทุนและกำไร และป้องกันไม่ให้เขียนทับต้นทุนเดิมในระบบ</span>
+                        </>
+                      )}
+                    </div>
+                    <input type="hidden" name="can_view_costs" value={createCanViewCosts ? 'true' : 'false'} />
                   </div>
                 </div>
 
@@ -1202,6 +1321,33 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
                       </tr>
                     </tbody>
                   </table>
+                </div>
+              </div>
+
+              {/* 3. การควบคุมสิทธิ์การมองเห็นต้นทุน (Cost Visibility Protection) */}
+              <div>
+                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-1.5">
+                  <span>💰</span> การควบคุมสิทธิ์การมองเห็นต้นทุน (Cost Visibility & Protection)
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="p-4 rounded-2xl border border-emerald-200 bg-emerald-50/50 space-y-1.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">👁️</span>
+                      <p className="font-bold text-sm text-emerald-900">ดูต้นทุนได้ (เปิดสิทธิ์)</p>
+                    </div>
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      เห็นคอลัมน์ต้นทุนดอลลาร์, ต้นทุนรวมค่าส่ง (บาท) และผลกำไร ในหน้าคลังสินค้า สามารถดาวน์โหลดเทมเพลตและอัปเดตข้อมูลต้นทุนผ่านไฟล์ Excel ได้
+                    </p>
+                  </div>
+                  <div className="p-4 rounded-2xl border border-slate-200 bg-slate-50/80 space-y-1.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">🔒</span>
+                      <p className="font-bold text-sm text-slate-800">ซ่อนต้นทุน (ปิดสิทธิ์ - Smart Protect)</p>
+                    </div>
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      ซ่อนคอลัมน์ต้นทุนและตัวเลขกำไรทั้งหมด หากนำเข้าไฟล์ Excel ระบบจะ<strong>รักษาต้นทุนเดิมในฐานข้อมูลไว้เสมอ</strong> ไม่เขียนทับเป็น 0 และไม่แสดงข้อมูลต้นทุนในเทมเพลต
+                    </p>
+                  </div>
                 </div>
               </div>
 

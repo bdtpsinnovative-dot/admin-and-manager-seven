@@ -23,6 +23,7 @@ type SelectedType = string | null
 
 interface BulkUploadProductsProps {
   allowedTabs?: string[]
+  canViewCosts?: boolean
 }
 
 const CATEGORY_NAMES: Record<string, string> = {
@@ -32,7 +33,10 @@ const CATEGORY_NAMES: Record<string, string> = {
   FURNITURE: "Furniture (เฟอร์นิเจอร์)"
 }
 
-export default function BulkUploadProducts({ allowedTabs = ['SLABS', 'ROUGH', 'PROP', 'FURNITURE'] }: BulkUploadProductsProps) {
+export default function BulkUploadProducts({ 
+  allowedTabs = ['SLABS', 'ROUGH', 'PROP', 'FURNITURE'],
+  canViewCosts = true
+}: BulkUploadProductsProps) {
   const [data, setData] = useState<any[]>([])
   // ✅ State ไว้เก็บ SKU ที่ซ้ำกับในระบบ
   const [existingSkus, setExistingSkus] = useState<Set<string>>(new Set()) 
@@ -47,6 +51,8 @@ export default function BulkUploadProducts({ allowedTabs = ['SLABS', 'ROUGH', 'P
   const [downloading, setDownloading] = useState(false)
   const [downloadOptions, setDownloadOptions] = useState<{ slabs: any[], rough: any[], props: any[], furniture: any[] } | null>(null)
   const [status, setStatus] = useState<{ type: 'success' | 'error' | 'info', msg: string } | null>(null)
+  // 🛡️ แจ้งเตือนเมื่อตรวจพบต้นทุนในไฟล์นำเข้า แต่พนักงานไม่มีสิทธิ์จัดการต้นทุน
+  const [costsProtectedNotice, setCostsProtectedNotice] = useState<boolean>(false)
 
   // ถ้าพนักงานมีสิทธิ์เฉพาะหมวดใดหมวดหนึ่ง ให้ auto-select หมวดนั้นเป็นค่าเริ่มต้นทันที
   const getInitialSelection = (): { type: SelectedType; cat: 'SLABS' | 'rough_wood' | 'prop' | 'furniture' } => {
@@ -90,7 +96,7 @@ const downloadTemplate = () => {
     if (selectedType === 'prop' || selectedType === 'furniture') {
       const templateName = selectedType === 'furniture' ? "Furniture Template" : "Props Template";
       const fileName = selectedType === 'furniture' ? "furniture_import_template.xlsx" : "props_import_template.xlsx";
-      const propTemplate = [{
+      const propRow: Record<string, any> = {
         "Item NO.": "3D102672W06",
         "Factory": "Merlin",
         "Name Product": selectedType === 'furniture' ? "Oak Dining Table" : "Ceramic Handmade vase",
@@ -109,16 +115,19 @@ const downloadTemplate = () => {
         "W": 21.5,
         "D": 21.5,
         "H": 30,
-        "ต้นทุน ดอลลาร์ ไม่รวมค่าส่ง (Cost_Dollar)": 12.5,
-        "ต้นทุนรวมค่าส่ง (บาท) (Cost_TH_Shipping)": 1160,
-        "Price": 4100
-      }];
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(propTemplate), templateName);
+      };
+      if (canViewCosts) {
+        propRow["ต้นทุน ดอลลาร์ ไม่รวมค่าส่ง (Cost_Dollar)"] = 12.5;
+        propRow["ต้นทุนรวมค่าส่ง (บาท) (Cost_TH_Shipping)"] = 1160;
+      }
+      propRow["Price"] = 4100;
+
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([propRow]), templateName);
       XLSX.writeFile(wb, fileName);
     } else if (selectedType === 'rough_wood' || (!allowedTabs.includes('SLABS') && allowedTabs.length === 1 && allowedTabs[0] === 'ROUGH')) {
       const templateName = "Rough Wood Template";
       const fileName = "rough_wood_import_template.xlsx";
-      const roughTemplate = [{
+      const roughRow: Record<string, any> = {
         Barcode: "RW001",
         sku: "ROUGH-001",
         name: "ไม้ดิบตัวอย่าง",
@@ -126,23 +135,26 @@ const downloadTemplate = () => {
         color: "Natural",
         unit: "ท่อน",
         description: "ไม้ดิบนำเข้า",
-        cost: 0,
-        price: 3500,
-        status: "active",
-        image_url: "",
-        size: "200x50x10",
-        width: 50,
-        length: 200,
-        thickness: 10,
-        weight: 15,
-        material: "ไม้สัก",
-        finish: "ดิบ",
-        grade: "A",
-      }];
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(roughTemplate), templateName);
+      };
+      if (canViewCosts) {
+        roughRow.cost = 0;
+      }
+      roughRow.price = 3500;
+      roughRow.status = "active";
+      roughRow.image_url = "";
+      roughRow.size = "200x50x10";
+      roughRow.width = 50;
+      roughRow.length = 200;
+      roughRow.thickness = 10;
+      roughRow.weight = 15;
+      roughRow.material = "ไม้สัก";
+      roughRow.finish = "ดิบ";
+      roughRow.grade = "A";
+
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([roughRow]), templateName);
       XLSX.writeFile(wb, fileName);
     } else {
-      const templateHeader = [{
+      const slabRow: Record<string, any> = {
         Barcode: "BX001",
         sku: "WOODSLABS-001",
         name: "ไม้แผ่นตัวอย่าง",
@@ -150,25 +162,28 @@ const downloadTemplate = () => {
         color: "Natural",
         unit: "แผ่น",
         description: "ไม้เนื้อแข็งลายสวยงาม",
-        cost: 0,
-        price: 5000,
-        status: "active",
-        image_url: "https://.../main.webp",
-        size: "200-80-5 CM",
-        width: 80,
-        length: 200,
-        thickness: 5,
-        weight: 25,
-        material: "Beech Wood",
-        finish: "Wood Wax Oil",
-        grade: "A",
-        spec_type: "Wood slabs",
-        panel_design: "Natural",
-        edge_design: "Live Edge",
-        color_craft: "Original",
-        panel_craft: "Solid",
-      }];
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(templateHeader), "Template");
+      };
+      if (canViewCosts) {
+        slabRow.cost = 0;
+      }
+      slabRow.price = 5000;
+      slabRow.status = "active";
+      slabRow.image_url = "https://.../main.webp";
+      slabRow.size = "200-80-5 CM";
+      slabRow.width = 80;
+      slabRow.length = 200;
+      slabRow.thickness = 5;
+      slabRow.weight = 25;
+      slabRow.material = "Beech Wood";
+      slabRow.finish = "Wood Wax Oil";
+      slabRow.grade = "A";
+      slabRow.spec_type = "Wood slabs";
+      slabRow.panel_design = "Natural";
+      slabRow.edge_design = "Live Edge";
+      slabRow.color_craft = "Original";
+      slabRow.panel_craft = "Solid";
+
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([slabRow]), "Template");
       XLSX.writeFile(wb, "product_import_template.xlsx");
     }
   };
@@ -208,36 +223,41 @@ const downloadTemplate = () => {
     try {
       const wb = XLSX.utils.book_new();
 
-      const getSlabsData = (source: any[]) => source.map(p => ({
-        Barcode: p.barcode || "",
-        sku: p.sku || "",
-        name: p.name || "",
-        category_id: p.category_id || "",
-        color: p.color || "",
-        unit: p.unit || "แผ่น",
-        description: p.description || "",
-        cost: p.cost || 0,
-        price: p.price || 0,
-        status: p.status || "active",
-        image_url: p.image_url || "",
-        size: p.specs?.size || "",
-        width: p.specs?.width_cm || "",
-        length: p.specs?.length_cm || "",
-        thickness: p.specs?.thickness_cm || "",
-        weight: p.weight || "",
-        material: p.specs?.material || "",
-        finish: p.specs?.finish || "",
-        grade: p.specs?.grade || "",
-        spec_type: p.specs?.spec_type || p.specs?.type || "",
-        panel_design: p.specs?.panel_design || "",
-        edge_design: p.specs?.edge_design || "",
-        color_craft: p.specs?.color_craft || "",
-        panel_craft: p.specs?.panel_craft || "",
-      }));
+      const getSlabsData = (source: any[]) => source.map(p => {
+        const row: Record<string, any> = {
+          Barcode: p.barcode || "",
+          sku: p.sku || "",
+          name: p.name || "",
+          category_id: p.category_id || "",
+          color: p.color || "",
+          unit: p.unit || "แผ่น",
+          description: p.description || "",
+        };
+        if (canViewCosts) {
+          row.cost = p.cost || 0;
+        }
+        row.price = p.price || 0;
+        row.status = p.status || "active";
+        row.image_url = p.image_url || "";
+        row.size = p.specs?.size || "";
+        row.width = p.specs?.width_cm || "";
+        row.length = p.specs?.length_cm || "";
+        row.thickness = p.specs?.thickness_cm || "";
+        row.weight = p.weight || "";
+        row.material = p.specs?.material || "";
+        row.finish = p.specs?.finish || "";
+        row.grade = p.specs?.grade || "";
+        row.spec_type = p.specs?.spec_type || p.specs?.type || "";
+        row.panel_design = p.specs?.panel_design || "";
+        row.edge_design = p.specs?.edge_design || "";
+        row.color_craft = p.specs?.color_craft || "";
+        row.panel_craft = p.specs?.panel_craft || "";
+        return row;
+      });
 
       const getPropsData = (source: any[]) => source.map(p => {
         const colGroup = Array.isArray(p.collection_groups) ? p.collection_groups[0] : p.collection_groups;
-        return {
+        const row: Record<string, any> = {
           "Item NO.": p.factory_name || "",
           "Factory": p.specs?.brand || "",
           "Name Product": p.name || "",
@@ -256,10 +276,13 @@ const downloadTemplate = () => {
           "W": p.specs?.width_cm || "",
           "D": p.specs?.length_cm || "",
           "H": p.specs?.thickness_cm || "",
-          "ต้นทุน ดอลลาร์ ไม่รวมค่าส่ง (Cost_Dollar)": p.specs?.cost_dollar ?? "",
-          "ต้นทุนรวมค่าส่ง (บาท) (Cost_TH_Shipping)": p.specs?.cost_th_shipping ?? p.cost ?? 0,
-          "Price": p.price || 0
         };
+        if (canViewCosts) {
+          row["ต้นทุน ดอลลาร์ ไม่รวมค่าส่ง (Cost_Dollar)"] = p.specs?.cost_dollar ?? "";
+          row["ต้นทุนรวมค่าส่ง (บาท) (Cost_TH_Shipping)"] = p.specs?.cost_th_shipping ?? p.cost ?? 0;
+        }
+        row["Price"] = p.price || 0;
+        return row;
       });
 
       if ((type === 'slabs' || (type === 'all' && allowedTabs.includes('SLABS'))) && downloadOptions.slabs.length > 0) {
@@ -301,6 +324,7 @@ const downloadTemplate = () => {
         const wsname = wb.SheetNames[0]
         const ws = wb.Sheets[wsname]
         const rawJson = XLSX.utils.sheet_to_json(ws)
+        let detectedCostInFile = false;
         
         const processed = rawJson.map((row: any, idx: number) => {
         // --- Props / Furniture mode ---
@@ -335,7 +359,14 @@ const downloadTemplate = () => {
             // จัดการตัวเลขที่อาจมีลูกน้ำ (,) ติดมา (รองรับทั้ง Cost_TH_Shipping และ Cost TH เดิม)
             const rawCostTh = getVal("Cost TH") || getVal("CostTH") || rawCostThShipping || 0;
             const costTh = Number(rawCostTh.toString().replace(/,/g, '')) || 0;
-            const finalCostTh = costThShipping != null ? costThShipping : costTh;
+
+            if (rawCostDollar != null || rawCostThShipping != null || getVal("Cost TH") || getVal("CostTH")) {
+              detectedCostInFile = true;
+            }
+
+            const finalCostTh = canViewCosts ? (costThShipping != null ? costThShipping : costTh) : null;
+            const finalCostDollar = canViewCosts ? costDollar : null;
+            const finalCostThShipping = canViewCosts ? (costThShipping ?? (costTh > 0 ? costTh : null)) : null;
             
             const rawPrice = getVal("Price") || 0;
             const priceRounded = Number(rawPrice.toString().replace(/,/g, '')) || 0;
@@ -382,8 +413,8 @@ const downloadTemplate = () => {
                 brand: factoryName,
                 group_size: getVal("Group Sisz")?.toString() || getVal("Group Size")?.toString() || null,
                 material: getVal("Material")?.toString() || null,
-                cost_dollar: costDollar,
-                cost_th_shipping: costThShipping ?? (costTh > 0 ? costTh : null),
+                cost_dollar: finalCostDollar,
+                cost_th_shipping: finalCostThShipping,
               }
             }
           }
@@ -433,13 +464,19 @@ const downloadTemplate = () => {
             finalCategory = 'rough_wood';
           }
 
+          if (row.cost != null && row.cost !== '') {
+            detectedCostInFile = true;
+          }
+          const parsedSlabCost = Number(row.cost?.toString().replace(/[^0-9.]/g, '') || 0);
+          const finalSlabCost = canViewCosts ? parsedSlabCost : null;
+
           return {
             name: row.name || "Untitled Product",
             barcode: row.Barcode?.toString() || row.barcode?.toString(),
             sku: row.sku?.toString() || `WOODSLABS-${Date.now()}-${idx}-${Math.floor(Math.random() * 1000)}`,
             image_url: row.image_url,
             status: row.status || 'active',
-            cost: Number(row.cost?.toString().replace(/[^0-9.]/g, '') || 0),
+            cost: finalSlabCost,
             price: Number(row.price?.toString().replace(/[^0-9.]/g, '') || 0),
             weight: Number(row.weight || 0),
             specs: specs,
@@ -449,6 +486,8 @@ const downloadTemplate = () => {
             description: row.description?.toString() || null
           }
         })
+
+        setCostsProtectedNotice(!canViewCosts && detectedCostInFile);
 
         // กรองเฉพาะหมวดหมู่สินค้าที่ผู้ใช้ได้รับสิทธิ์
         const isAllowedCategory = (catId: string) => {
@@ -588,6 +627,7 @@ const downloadTemplate = () => {
     setExistingSkus(new Set())
     setExistingGroupIds([])
     setNewGroupsPreview([]) // เคลียร์ Preview หลังเซฟ
+    setCostsProtectedNotice(false)
   }
 
   const handleClearData = () => {
@@ -596,6 +636,7 @@ const downloadTemplate = () => {
     setExistingSkus(new Set()); 
     setExistingGroupIds([]); 
     setNewGroupsPreview([]); // เคลียร์ Preview
+    setCostsProtectedNotice(false);
     setFilterMode('ALL');
   }
 
@@ -871,6 +912,19 @@ const downloadTemplate = () => {
             </div>
           )}
 
+          {/* 🛡️ แจ้งเตือนการปกป้องต้นทุน (Cost Protection Banner) */}
+          {!canViewCosts && costsProtectedNotice && (
+            <div className="w-full mt-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-sm shadow-sm animate-in fade-in duration-300 flex items-start gap-2.5">
+              <Shield className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold text-amber-900">🛡️ โหมดพนักงานทั่วไป (Cost Data Protected)</p>
+                <p className="text-xs text-amber-700 mt-0.5">
+                  ระบบตรวจพบข้อมูลต้นทุนในไฟล์นำเข้า แต่เนื่องจากคุณไม่มีสิทธิ์จัดการต้นทุน ระบบจะ<strong>รักษาข้อมูลต้นทุนเดิมในฐานข้อมูลไว้โดยอัตโนมัติ</strong> (จะไม่เขียนทับต้นทุนเดิมเป็น 0 หรือค่าว่าง)
+                </p>
+              </div>
+            </div>
+          )}
+
           <div className="overflow-x-auto border rounded-xl max-h-[500px] overflow-y-auto mt-4">
             <table className="w-full text-left text-sm border-collapse relative">
               <thead className="bg-slate-50 text-slate-600 font-bold uppercase text-[10px] sticky top-0 z-10 shadow-sm">
@@ -883,8 +937,12 @@ const downloadTemplate = () => {
                       <th className="p-3 border-b">Color</th>
                       <th className="p-3 border-b">Material</th>
                       <th className="p-3 border-b text-center">W x D x H</th>
-                      <th className="p-3 border-b text-right">ต้นทุน ดอลลาร์ ไม่รวมค่าส่ง</th>
-                      <th className="p-3 border-b text-right">ต้นทุนรวมค่าส่ง (บาท)</th>
+                      {canViewCosts && (
+                        <>
+                          <th className="p-3 border-b text-right">ต้นทุน ดอลลาร์ ไม่รวมค่าส่ง</th>
+                          <th className="p-3 border-b text-right">ต้นทุนรวมค่าส่ง (บาท)</th>
+                        </>
+                      )}
                       <th className="p-3 border-b text-right">Price</th>
                     </>
                   ) : (
@@ -892,6 +950,7 @@ const downloadTemplate = () => {
                       <th className="p-3 border-b">Category</th>
                       <th className="p-3 border-b">Name</th>
                       <th className="p-3 border-b">Size</th>
+                      {canViewCosts && <th className="p-3 border-b text-right">Cost</th>}
                       <th className="p-3 border-b text-right">Price</th>
                     </>
                   )}
@@ -915,16 +974,20 @@ const downloadTemplate = () => {
                         <>
                           <td className="p-3 font-mono text-xs text-slate-500">{item.barcode || '-'}</td>
                           <td className="p-3 text-xs">{item.color || '-'}</td>
-                          <td className="p-3 text-xs">{item.specs.material || '-'}</td>
+                          <td className="p-3 text-xs">{item.specs?.material || '-'}</td>
                           <td className="p-3 text-center text-xs font-medium text-slate-600">
-                            {item.specs.width_cm || '-'} x {item.specs.length_cm || '-'} x {item.specs.thickness_cm || '-'}
+                            {item.specs?.width_cm || '-'} x {item.specs?.length_cm || '-'} x {item.specs?.thickness_cm || '-'}
                           </td>
-                          <td className="p-3 text-right text-xs font-mono font-semibold text-amber-700">
-                            {item.specs.cost_dollar != null ? `$${Number(item.specs.cost_dollar).toFixed(2)}` : '-'}
-                          </td>
-                          <td className="p-3 text-right text-xs font-mono font-semibold text-slate-700">
-                            {(item.specs.cost_th_shipping ?? item.cost) ? `฿${Number(item.specs.cost_th_shipping ?? item.cost).toLocaleString()}` : '-'}
-                          </td>
+                          {canViewCosts && (
+                            <>
+                              <td className="p-3 text-right text-xs font-mono font-semibold text-amber-700">
+                                {item.specs?.cost_dollar != null ? `$${Number(item.specs.cost_dollar).toFixed(2)}` : '-'}
+                              </td>
+                              <td className="p-3 text-right text-xs font-mono font-semibold text-slate-700">
+                                {(item.specs?.cost_th_shipping ?? item.cost) ? `฿${Number(item.specs.cost_th_shipping ?? item.cost).toLocaleString()}` : '-'}
+                              </td>
+                            </>
+                          )}
                           <td className="p-3 text-right text-blue-600 font-bold">{item.price.toLocaleString()}</td>
                         </>
                       ) : (
@@ -935,7 +998,12 @@ const downloadTemplate = () => {
                             </span>
                           </td>
                           <td className="p-3 font-medium text-slate-800">{item.name}</td>
-                          <td className="p-3 text-slate-500 text-xs">{item.specs.size || '-'}</td>
+                          <td className="p-3 text-slate-500 text-xs">{item.specs?.size || '-'}</td>
+                          {canViewCosts && (
+                            <td className="p-3 text-right text-xs font-mono text-slate-500 font-medium">
+                              {item.cost ? `฿${Number(item.cost).toLocaleString()}` : '-'}
+                            </td>
+                          )}
                           <td className="p-3 text-right text-blue-600 font-bold">{item.price.toLocaleString()}</td>
                         </>
                       )}

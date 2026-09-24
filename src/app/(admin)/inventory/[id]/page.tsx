@@ -1,10 +1,11 @@
 
 //src/app/(admin)/inventory/[id]/page.tsx
 import WoodSlabForm from "../../../../components/WoodSlabForm" 
-import { getProductById } from "../../../../actions/woodslab"
-import { notFound } from "next/navigation"
+import { getProductById, checkCanViewCosts } from "../../../../actions/woodslab"
+import { notFound, redirect } from "next/navigation"
 import BackButton from "../../../../components/BackButton"
 import { ArrowLeft } from "lucide-react"
+import { createClient } from "../../../../lib/supabase/server"
 
 // 定義 type
 type Props = {
@@ -12,11 +13,17 @@ type Props = {
 }
 
 export default async function EditProductPage({ params }: Props) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect("/login")
+
+  const canViewCosts = await checkCanViewCosts()
+
   const resolvedParams = await params
   const id = resolvedParams.id
   
   if (id === 'new') {
-      return <WoodSlabForm />
+      return <WoodSlabForm canViewCosts={canViewCosts} />
   }
 
   const { data: product, error } = await getProductById(id)
@@ -34,7 +41,7 @@ export default async function EditProductPage({ params }: Props) {
        </div>
 
        {/* ส่งข้อมูล product เก่าเข้าไปใน form */}
-       <WoodSlabForm initialData={product} />
+       <WoodSlabForm initialData={product} canViewCosts={canViewCosts} />
     </div>
   )
 }
