@@ -121,6 +121,9 @@ const downloadTemplate = () => {
         propRow["ต้นทุนรวมค่าส่ง (บาท) (Cost_TH_Shipping)"] = 1160;
       }
       propRow["Price"] = 4100;
+      propRow["images_1"] = "https://pub-258bd10e7e8c4a7690a74c54cfbdef93.r2.dev/extra/image1.webp";
+      propRow["images_2"] = "https://pub-258bd10e7e8c4a7690a74c54cfbdef93.r2.dev/extra/image2.webp";
+      propRow["images_3"] = "";
 
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([propRow]), templateName);
       XLSX.writeFile(wb, fileName);
@@ -150,6 +153,9 @@ const downloadTemplate = () => {
       roughRow.material = "ไม้สัก";
       roughRow.finish = "ดิบ";
       roughRow.grade = "A";
+      roughRow.images_1 = "https://.../extra1.webp";
+      roughRow.images_2 = "https://.../extra2.webp";
+      roughRow.images_3 = "";
 
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([roughRow]), templateName);
       XLSX.writeFile(wb, fileName);
@@ -182,6 +188,9 @@ const downloadTemplate = () => {
       slabRow.edge_design = "Live Edge";
       slabRow.color_craft = "Original";
       slabRow.panel_craft = "Solid";
+      slabRow.images_1 = "https://.../extra1.webp";
+      slabRow.images_2 = "https://.../extra2.webp";
+      slabRow.images_3 = "";
 
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([slabRow]), "Template");
       XLSX.writeFile(wb, "product_import_template.xlsx");
@@ -252,6 +261,11 @@ const downloadTemplate = () => {
         row.edge_design = p.specs?.edge_design || "";
         row.color_craft = p.specs?.color_craft || "";
         row.panel_craft = p.specs?.panel_craft || "";
+        // Extra images
+        const slabImages: any[] = p.specs?.images || [];
+        row.images_1 = slabImages[0]?.path || "";
+        row.images_2 = slabImages[1]?.path || "";
+        row.images_3 = slabImages[2]?.path || "";
         return row;
       });
 
@@ -282,6 +296,11 @@ const downloadTemplate = () => {
           row["ต้นทุนรวมค่าส่ง (บาท) (Cost_TH_Shipping)"] = p.specs?.cost_th_shipping ?? p.cost ?? 0;
         }
         row["Price"] = p.price || 0;
+        // Extra images
+        const propImages: any[] = p.specs?.images || [];
+        row["images_1"] = propImages[0]?.path || "";
+        row["images_2"] = propImages[1]?.path || "";
+        row["images_3"] = propImages[2]?.path || "";
         return row;
       });
 
@@ -415,6 +434,12 @@ const downloadTemplate = () => {
                 material: getVal("Material")?.toString() || null,
                 cost_dollar: finalCostDollar,
                 cost_th_shipping: finalCostThShipping,
+                images: [
+                  getVal("images_1")?.toString() || null,
+                  getVal("images_2")?.toString() || null,
+                  getVal("images_3")?.toString() || null,
+                ].filter(Boolean).map((path, i) => ({ path, role: "extra", sort: i + 1 })),
+                images_count: [getVal("images_1"), getVal("images_2"), getVal("images_3")].filter(v => v && String(v).trim()).length,
               }
             }
           }
