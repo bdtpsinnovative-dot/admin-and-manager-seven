@@ -13,7 +13,10 @@ import {
   Calendar,
   ChevronDown,
   ChevronUp,
+  Download,
   Eye,
+  FileSpreadsheet,
+  FileText,
   Filter,
   Globe2,
   Navigation,
@@ -21,6 +24,14 @@ import {
   Smartphone,
   UsersRound,
 } from "lucide-react"
+import { toast } from "sonner"
+import {
+  exportProductsExcel,
+  exportProductsCsv,
+  exportPersonasExcel,
+  exportPersonasCsv,
+  exportAllAudienceExcel,
+} from "./audienceExport"
 import type {
   AudienceAnalytics,
   AudienceBreakdownItem,
@@ -624,8 +635,15 @@ function PersonaTable({
                 <span className="mt-1 block">ดูล่าสุด: {dateTime(persona.lastSeenAt)}</span>
               </td>
               <td className="px-4 py-4 border-b border-slate-100">
-                <span className="block font-bold text-slate-900">{persona.identityLabel}</span>
-                <span className="mt-1 block text-[10px] text-slate-400">{persona.identityType === "user" ? "บัญชีที่ล็อกอิน" : "ผู้เข้าชมทั่วไป"}</span>
+                <span
+                  className="block font-bold text-slate-900 cursor-help"
+                  title={`รหัสเต็ม (UUID): ${persona.identityKey.replace(/^visitor:/, "")}`}
+                >
+                  {persona.identityLabel}
+                </span>
+                <span className="mt-1 block text-[10px] text-slate-400">
+                  {persona.identityType === "user" ? "บัญชีที่ล็อกอิน" : "ผู้เข้าชมทั่วไป (ยังไม่ล็อกอิน)"}
+                </span>
               </td>
               <td className="max-w-[180px] px-4 py-4 text-xs text-slate-600 border-b border-slate-100">{persona.location || "ไม่ระบุ"}</td>
               <td className="whitespace-nowrap px-4 py-4 text-xs border-b border-slate-100">
@@ -760,6 +778,87 @@ export default function AudienceAnalyticsClient({
   const filteredPersonas = useMemo(() => data.personas
     .filter((item) => item.sessions >= Number(minSessions || 0) && (personaCategory === "all" || item.categories.includes(personaCategory)) && (personaBehavior === "all" || item.labels.includes(personaBehavior)) && isPersonaActionMatch(item, personaActionFilter) && (personaSource === "all" || item.latestSource === personaSource || item.firstTouchSource === personaSource) && (personaLocation === "all" || item.location === personaLocation) && (personaDevice === "all" || item.device === personaDevice) && (personaOs === "all" || item.os === personaOs) && (personaBrowser === "all" || item.browser === personaBrowser))
     .toSorted((left, right) => compareSortValues(personaSortValue(left, personaSortKey), personaSortValue(right, personaSortKey), personaSortDirection) || sortCollator.compare(left.identityLabel, right.identityLabel)), [data.personas, minSessions, personaCategory, personaBehavior, personaActionFilter, personaSource, personaLocation, personaDevice, personaOs, personaBrowser, personaSortKey, personaSortDirection])
+
+  const finalFilteredProducts = useMemo(() => {
+    if (!productQuery.trim()) return filteredProducts
+    const q = productQuery.toLowerCase()
+    return filteredProducts.filter((p) =>
+      `${p.name} ${p.sku || ""} ${p.category} ${p.collection || ""} ${p.color || ""} ${p.primarySource || ""} ${p.primaryLocation || ""}`
+        .toLowerCase()
+        .includes(q)
+    )
+  }, [filteredProducts, productQuery])
+
+  const finalFilteredPersonas = useMemo(() => {
+    if (!personaQuery.trim()) return filteredPersonas
+    const q = personaQuery.toLowerCase()
+    return filteredPersonas.filter((p) =>
+      `${p.identityLabel} ${p.location || ""} ${p.categories.join(" ")} ${p.labels.join(" ")}`
+        .toLowerCase()
+        .includes(q)
+    )
+  }, [filteredPersonas, personaQuery])
+
+  const [showExportMenu, setShowExportMenu] = useState(false)
+
+  const handleExportCurrentExcel = () => {
+    try {
+      if (tab === "products") {
+        const isFiltered = finalFilteredProducts.length !== data.products.length
+        exportProductsExcel(
+          finalFilteredProducts,
+          `Audience_Products_${isFiltered ? "Filtered_" : ""}${data.rangeDays}D`,
+          isFiltered ? "สินค้า (ตามตัวกรอง)" : "วิเคราะห์สินค้า"
+        )
+        toast.success(`ดาวน์โหลด Excel สินค้า (${number(finalFilteredProducts.length)} รายการ) เรียบร้อยแล้ว`)
+      } else {
+        const isFiltered = finalFilteredPersonas.length !== data.personas.length
+        exportPersonasExcel(
+          finalFilteredPersonas,
+          `Audience_Personas_${isFiltered ? "Filtered_" : ""}${data.rangeDays}D`,
+          isFiltered ? "Persona (ตามตัวกรอง)" : "วิเคราะห์ผู้ชม_Persona"
+        )
+        toast.success(`ดาวน์โหลด Excel ผู้ชม Persona (${number(finalFilteredPersonas.length)} รายการ) เรียบร้อยแล้ว`)
+      }
+    } catch (err: any) {
+      toast.error(`ส่งออกไม่สำเร็จ: ${err?.message || err}`)
+    }
+  }
+
+  const handleExportCurrentCsv = () => {
+    try {
+      if (tab === "products") {
+        const isFiltered = finalFilteredProducts.length !== data.products.length
+        exportProductsCsv(
+          finalFilteredProducts,
+          `Audience_Products_${isFiltered ? "Filtered_" : ""}${data.rangeDays}D`
+        )
+        toast.success(`ดาวน์โหลด CSV สินค้า (${number(finalFilteredProducts.length)} รายการ) เรียบร้อยแล้ว`)
+      } else {
+        const isFiltered = finalFilteredPersonas.length !== data.personas.length
+        exportPersonasCsv(
+          finalFilteredPersonas,
+          `Audience_Personas_${isFiltered ? "Filtered_" : ""}${data.rangeDays}D`
+        )
+        toast.success(`ดาวน์โหลด CSV ผู้ชม Persona (${number(finalFilteredPersonas.length)} รายการ) เรียบร้อยแล้ว`)
+      }
+    } catch (err: any) {
+      toast.error(`ส่งออกไม่สำเร็จ: ${err?.message || err}`)
+    }
+  }
+
+  const handleExportAllWorkbook = () => {
+    try {
+      exportAllAudienceExcel(
+        data.products,
+        data.personas,
+        `Audience_Analytics_Full_${data.rangeDays}D`
+      )
+      toast.success(`ดาวน์โหลด Excel รวม 2 ชีต (สินค้า ${number(data.products.length)} + Persona ${number(data.personas.length)}) เรียบร้อยแล้ว`)
+    } catch (err: any) {
+      toast.error(`ส่งออกไม่สำเร็จ: ${err?.message || err}`)
+    }
+  }
   const productSourceOptions = data.products.map((item) => item.primarySource || "")
   const personaSourceOptions = data.personas.flatMap((item) => [item.latestSource || "", item.firstTouchSource || ""])
   const labelOptions = data.personas.flatMap((item) => item.labels)
@@ -838,28 +937,221 @@ export default function AudienceAnalyticsClient({
         </div>
       )}
 
-      {/* Tabs */}
-      <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm w-fit">
-        <button
-          onClick={() => setTab("products")}
-          className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold transition-colors ${
-            tab === "products"
-              ? "bg-slate-900 text-white shadow-sm"
-              : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-          }`}
-        >
-          <Eye className="h-3.5 w-3.5" /> วิเคราะห์สินค้า ({number(data.products.length)})
-        </button>
-        <button
-          onClick={() => setTab("personas")}
-          className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold transition-colors ${
-            tab === "personas"
-              ? "bg-slate-900 text-white shadow-sm"
-              : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-          }`}
-        >
-          <UsersRound className="h-3.5 w-3.5" /> วิเคราะห์ผู้ชม Persona ({number(data.personas.length)})
-        </button>
+      {/* Tabs & Export Bar */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm w-fit">
+          <button
+            onClick={() => setTab("products")}
+            className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold transition-colors ${
+              tab === "products"
+                ? "bg-slate-900 text-white shadow-sm"
+                : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+            }`}
+          >
+            <Eye className="h-3.5 w-3.5" /> วิเคราะห์สินค้า ({number(data.products.length)})
+          </button>
+          <button
+            onClick={() => setTab("personas")}
+            className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold transition-colors ${
+              tab === "personas"
+                ? "bg-slate-900 text-white shadow-sm"
+                : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+            }`}
+          >
+            <UsersRound className="h-3.5 w-3.5" /> วิเคราะห์ผู้ชม Persona ({number(data.personas.length)})
+          </button>
+        </div>
+
+        {/* Export Toolbar */}
+        <div className="relative flex flex-wrap items-center gap-2">
+          {/* Main Quick Excel */}
+          <button
+            type="button"
+            onClick={handleExportCurrentExcel}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-300 bg-emerald-50 px-3.5 py-2 text-xs font-bold text-emerald-800 shadow-sm transition-all hover:bg-emerald-100 hover:border-emerald-400 active:scale-95 cursor-pointer"
+            title={`ดาวน์โหลดข้อมูล${tab === "products" ? "สินค้า" : "Persona"}ที่แสดงเป็น Excel (.xlsx)`}
+          >
+            <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
+            <span>โหลด Excel (.xlsx)</span>
+          </button>
+
+          {/* Main Quick CSV */}
+          <button
+            type="button"
+            onClick={handleExportCurrentCsv}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 shadow-sm transition-all hover:bg-slate-50 hover:text-slate-900 active:scale-95 cursor-pointer"
+            title={`ดาวน์โหลดข้อมูล${tab === "products" ? "สินค้า" : "Persona"}ที่แสดงเป็น CSV (.csv) แยกคอลัมน์ UTF-8`}
+          >
+            <FileText className="h-4 w-4 text-slate-500" />
+            <span>โหลด CSV (.csv)</span>
+          </button>
+
+          {/* Dropdown Options */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setShowExportMenu((v) => !v)}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50/70 px-3 py-2 text-xs font-bold text-blue-700 shadow-sm hover:bg-blue-100 transition-colors cursor-pointer"
+              title="ตัวเลือกการส่งออกเพิ่มเติม และส่งออกรวมทั้งหมด"
+            >
+              <Download className="h-3.5 w-3.5 text-blue-600" />
+              <span>ตัวเลือกส่งออก</span>
+              <ChevronDown className={`h-3 w-3 text-blue-500 transition-transform ${showExportMenu ? "rotate-180" : ""}`} />
+            </button>
+
+            {showExportMenu && (
+              <>
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setShowExportMenu(false)}
+                />
+                <div className="absolute right-0 top-full mt-2 z-50 w-80 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl space-y-2 animate-in fade-in zoom-in-95 duration-100">
+                  <div className="border-b border-slate-100 pb-2">
+                    <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">ส่งออกทั้งหมดในเล่มเดียว</p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleExportAllWorkbook()
+                        setShowExportMenu(false)
+                      }}
+                      className="mt-1.5 flex w-full items-center gap-2.5 rounded-xl bg-blue-50/80 px-3 py-2 text-left text-xs font-bold text-blue-900 hover:bg-blue-100 transition-colors cursor-pointer"
+                    >
+                      <FileSpreadsheet className="h-4 w-4 text-blue-600 shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <div>Excel รวม 2 ชีต (สินค้า + Persona)</div>
+                        <div className="text-[10px] font-normal text-blue-600">
+                          {number(data.products.length)} สินค้า · {number(data.personas.length)} Persona
+                        </div>
+                      </div>
+                    </button>
+                  </div>
+
+                  <div className="border-b border-slate-100 pb-2 space-y-1">
+                    <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">หมวดสินค้า (Products)</p>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          exportProductsExcel(data.products, `Audience_Products_All_${data.rangeDays}D`, "สินค้าทั้งหมด")
+                          toast.success(`โหลด Excel สินค้าทั้งหมด (${number(data.products.length)}) สำเร็จ`)
+                          setShowExportMenu(false)
+                        }}
+                        className="flex items-center justify-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-[11px] font-bold text-slate-700 hover:bg-emerald-50 hover:text-emerald-800 hover:border-emerald-300 transition-colors cursor-pointer"
+                      >
+                        <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />
+                        <span>Excel ทั้งหมด</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          exportProductsCsv(data.products, `Audience_Products_All_${data.rangeDays}D`)
+                          toast.success(`โหลด CSV สินค้าทั้งหมด (${number(data.products.length)}) สำเร็จ`)
+                          setShowExportMenu(false)
+                        }}
+                        className="flex items-center justify-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-[11px] font-bold text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                      >
+                        <FileText className="h-3.5 w-3.5 text-slate-500" />
+                        <span>CSV ทั้งหมด</span>
+                      </button>
+                    </div>
+                    {finalFilteredProducts.length !== data.products.length && (
+                      <div className="pt-1">
+                        <div className="text-[10px] text-slate-500 mb-1">กรองอยู่ ({number(finalFilteredProducts.length)} สินค้า):</div>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              exportProductsExcel(finalFilteredProducts, `Audience_Products_Filtered_${data.rangeDays}D`, "สินค้า (ตามตัวกรอง)")
+                              toast.success(`โหลด Excel สินค้าที่กรอง (${number(finalFilteredProducts.length)}) สำเร็จ`)
+                              setShowExportMenu(false)
+                            }}
+                            className="flex items-center justify-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50/50 px-2 py-1.5 text-[11px] font-bold text-emerald-800 hover:bg-emerald-100 transition-colors cursor-pointer"
+                          >
+                            <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />
+                            <span>Excel ที่กรอง</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              exportProductsCsv(finalFilteredProducts, `Audience_Products_Filtered_${data.rangeDays}D`)
+                              toast.success(`โหลด CSV สินค้าที่กรอง (${number(finalFilteredProducts.length)}) สำเร็จ`)
+                              setShowExportMenu(false)
+                            }}
+                            className="flex items-center justify-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-[11px] font-bold text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                          >
+                            <FileText className="h-3.5 w-3.5 text-slate-500" />
+                            <span>CSV ที่กรอง</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">หมวดผู้ชม (Personas)</p>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          exportPersonasExcel(data.personas, `Audience_Personas_All_${data.rangeDays}D`, "Persona ทั้งหมด")
+                          toast.success(`โหลด Excel Persona ทั้งหมด (${number(data.personas.length)}) สำเร็จ`)
+                          setShowExportMenu(false)
+                        }}
+                        className="flex items-center justify-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-[11px] font-bold text-slate-700 hover:bg-emerald-50 hover:text-emerald-800 hover:border-emerald-300 transition-colors cursor-pointer"
+                      >
+                        <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />
+                        <span>Excel ทั้งหมด</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          exportPersonasCsv(data.personas, `Audience_Personas_All_${data.rangeDays}D`)
+                          toast.success(`โหลด CSV Persona ทั้งหมด (${number(data.personas.length)}) สำเร็จ`)
+                          setShowExportMenu(false)
+                        }}
+                        className="flex items-center justify-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-[11px] font-bold text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                      >
+                        <FileText className="h-3.5 w-3.5 text-slate-500" />
+                        <span>CSV ทั้งหมด</span>
+                      </button>
+                    </div>
+                    {finalFilteredPersonas.length !== data.personas.length && (
+                      <div className="pt-1">
+                        <div className="text-[10px] text-slate-500 mb-1">กรองอยู่ ({number(finalFilteredPersonas.length)} คน):</div>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              exportPersonasExcel(finalFilteredPersonas, `Audience_Personas_Filtered_${data.rangeDays}D`, "Persona (ตามตัวกรอง)")
+                              toast.success(`โหลด Excel Persona ที่กรอง (${number(finalFilteredPersonas.length)}) สำเร็จ`)
+                              setShowExportMenu(false)
+                            }}
+                            className="flex items-center justify-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50/50 px-2 py-1.5 text-[11px] font-bold text-emerald-800 hover:bg-emerald-100 transition-colors cursor-pointer"
+                          >
+                            <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />
+                            <span>Excel ที่กรอง</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              exportPersonasCsv(finalFilteredPersonas, `Audience_Personas_Filtered_${data.rangeDays}D`)
+                              toast.success(`โหลด CSV Persona ที่กรอง (${number(finalFilteredPersonas.length)}) สำเร็จ`)
+                              setShowExportMenu(false)
+                            }}
+                            className="flex items-center justify-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-[11px] font-bold text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                          >
+                            <FileText className="h-3.5 w-3.5 text-slate-500" />
+                            <span>CSV ที่กรอง</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Filters Box */}
