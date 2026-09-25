@@ -13,5 +13,11 @@ export default async function AlgorithmProductsPage({
   const page = typeof query?.page === "string" ? Number(query.page) : 1
   const data = await getAlgorithmProducts(range, page)
 
-  return <AlgorithmProductsList data={data} />
+  return (
+    <div className="min-h-screen bg-slate-50 p-4 md:p-6 font-sans text-slate-800">
+      <div className="w-full space-y-6">
+        <AlgorithmProductsList data={data} />
+      </div>
+    </div>
+  )
 }

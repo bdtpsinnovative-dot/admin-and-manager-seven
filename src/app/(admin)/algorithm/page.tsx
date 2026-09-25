@@ -1,30 +1,43 @@
 import { Suspense } from "react"
 import { getAlgorithmOverview } from "../../../actions/algorithm"
 import { getAudienceAnalytics } from "../../../actions/audience-analytics"
+import { getDailyTrafficAnalytics } from "../../../actions/daily-traffic"
 import AlgorithmDashboard from "./AlgorithmDashboard"
 import AudienceAnalyticsClient from "./audience/AudienceAnalyticsClient"
 
 export const dynamic = "force-dynamic"
 
 async function AudienceSection({ rangeValue, offsetValue }: { rangeValue: number; offsetValue: number }) {
-  const audience = await getAudienceAnalytics(rangeValue, offsetValue)
-  return <AudienceAnalyticsClient data={audience} embedded={true} />
+  try {
+    const [audience, dailyTraffic] = await Promise.all([
+      getAudienceAnalytics(rangeValue, offsetValue),
+      getDailyTrafficAnalytics(rangeValue, offsetValue),
+    ])
+    return <AudienceAnalyticsClient data={audience} dailyTraffic={dailyTraffic} embedded={true} />
+  } catch (error) {
+    console.error("[algorithm-audience] load failed:", error)
+    return (
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-500 text-center shadow-sm">
+        ยังไม่สามารถโหลดข้อมูล Audience Analytics ในช่วงเวลานี้ได้ (กรุณาลองใหม่อีกครั้ง)
+      </div>
+    )
+  }
 }
 
 function AudienceSkeleton() {
   return (
-    <div className="mt-5 rounded-[2rem] border border-[var(--algorithm-rule)] bg-[var(--algorithm-surface)] p-4 sm:p-6 shadow-[var(--algorithm-shadow)] animate-pulse">
-      <div className="flex items-center gap-2 mb-6">
-        <div className="h-9 w-36 rounded-full bg-[var(--algorithm-surface-soft)]" />
-        <div className="h-9 w-44 rounded-full bg-[var(--algorithm-surface-soft)]" />
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 md:p-6 shadow-sm animate-pulse space-y-5">
+      <div className="flex items-center gap-2">
+        <div className="h-9 w-36 rounded-xl bg-slate-100" />
+        <div className="h-9 w-44 rounded-xl bg-slate-100" />
       </div>
-      <div className="h-14 rounded-2xl bg-[var(--algorithm-surface-soft)] mb-5" />
-      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3 mb-6">
+      <div className="h-14 rounded-xl bg-slate-100" />
+      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
         {[...Array(6)].map((_, i) => (
-          <div key={i} className="h-24 rounded-2xl bg-[var(--algorithm-surface-soft)]" />
+          <div key={i} className="h-24 rounded-xl bg-slate-100" />
         ))}
       </div>
-      <div className="h-72 rounded-2xl bg-[var(--algorithm-surface-soft)]" />
+      <div className="h-72 rounded-xl bg-slate-100" />
     </div>
   )
 }
@@ -40,12 +53,14 @@ export default async function AlgorithmPage({
   const data = await getAlgorithmOverview(rangeValue, offsetValue)
 
   return (
-    <div className="space-y-6 pb-12">
-      <AlgorithmDashboard data={data} />
-      <div className="algorithm-audience-embedded mx-auto max-w-[1680px] px-3 sm:px-5 lg:px-8">
-        <Suspense fallback={<AudienceSkeleton />}>
-          <AudienceSection rangeValue={rangeValue} offsetValue={offsetValue} />
-        </Suspense>
+    <div className="min-h-screen bg-slate-50 p-4 md:p-6 font-sans text-slate-800">
+      <div className="w-full space-y-6">
+        <AlgorithmDashboard data={data} />
+        <div className="w-full">
+          <Suspense fallback={<AudienceSkeleton />}>
+            <AudienceSection rangeValue={rangeValue} offsetValue={offsetValue} />
+          </Suspense>
+        </div>
       </div>
     </div>
   )

@@ -358,6 +358,8 @@ async function fetchScoreEvents(cutoff: string, until?: string) {
       .select("product_id, identity_key, identity_type, user_id, visitor_id, metadata, view_bucket, created_at, traffic_type, is_countable, country_code, country, region, city")
       .eq("source_tag", "prop")
       .eq("event_type", "product_view")
+      .eq("is_countable", true)
+      .neq("traffic_type", "bot")
       .gte("created_at", queryCutoff)
 
     if (until) {
@@ -478,40 +480,36 @@ async function fetchPropProducts(productIds: number[], includeInactive = false) 
   return productMap
 }
 
-async function fetchAllPropProductIds() {
-  const productIds: number[] = []
-  const pageSize = 1000
+async function fetchAllPropProductIds(cutoff?: string) {
+  const { data: catalogData, error: catalogError } = await supabaseAdmin
+    .from("products")
+    .select("id")
+    .eq("category_id", "prop")
+    .eq("status", "active")
+    .order("id", { ascending: true })
+    .limit(1000)
 
-  for (let offset = 0; ; offset += pageSize) {
-    const { data, error } = await supabaseAdmin
-      .from("products")
-      .select("id")
-      .eq("category_id", "prop")
-      .order("id", { ascending: true })
-      .range(offset, offset + pageSize - 1)
+  if (catalogError) throw new Error(catalogError.message)
+  const productIds: number[] = (catalogData ?? []).map((product) => Number(product.id))
 
-    if (error) throw new Error(error.message)
-    const batch = (data ?? []) as Array<{ id: number }>
-    productIds.push(...batch.map((product) => Number(product.id)))
-    if (batch.length < pageSize) break
-  }
-
-  const eventIds: number[] = []
-  for (let offset = 0; ; offset += pageSize) {
-    const { data, error } = await supabaseAdmin
+  if (cutoff) {
+    const { data: eventData } = await supabaseAdmin
       .from("algorithm_events")
       .select("product_id")
       .eq("source_tag", "prop")
       .eq("event_type", "product_view")
+      .eq("is_countable", true)
+      .gte("created_at", cutoff)
       .not("product_id", "is", null)
-      .range(offset, offset + pageSize - 1)
-    if (error) throw new Error(error.message)
-    const batch = (data ?? []) as Array<{ product_id: number | null }>
-    eventIds.push(...batch.map((row) => Number(row.product_id)).filter(Number.isSafeInteger))
-    if (batch.length < pageSize) break
+      .limit(2000)
+
+    if (eventData) {
+      const eventIds = eventData.map((row) => Number(row.product_id)).filter(Number.isSafeInteger)
+      return Array.from(new Set([...productIds, ...eventIds]))
+    }
   }
 
-  return Array.from(new Set([...productIds, ...eventIds]))
+  return productIds
 }
 
 function emptyOverview(rangeDays: AlgorithmRange, error: string | null, offset: number = 0, startTime?: string, endTime?: string): AlgorithmOverview {
@@ -678,7 +676,28 @@ export async function getAlgorithmOverview(rangeValue: number, offset: number = 
   const cutoff = getCutoff(rangeDays, endTime)
 
   try {
-    const events = await fetchScoreEvents(cutoff, endTime)
+    const [events, botRes, internalRes] = await Promise.all([
+      fetchScoreEvents(cutoff, endTime),
+      supabaseAdmin
+        .from("algorithm_events")
+        .select("id", { count: "exact", head: true })
+        .eq("source_tag", "prop")
+        .eq("event_type", "product_view")
+        .eq("traffic_type", "bot")
+        .gte("created_at", cutoff)
+        .lte("created_at", endTime),
+      supabaseAdmin
+        .from("algorithm_events")
+        .select("id", { count: "exact", head: true })
+        .eq("source_tag", "prop")
+        .eq("event_type", "product_view")
+        .eq("traffic_type", "internal")
+        .gte("created_at", cutoff)
+        .lte("created_at", endTime),
+    ])
+    const botCount = botRes.count ?? 0
+    const internalCount = internalRes.count ?? 0
+
     const cutoffMs = new Date(cutoff).getTime()
     const untilMs = new Date(endTime).getTime()
     const inRangeEvents = events.filter((event) => {
@@ -696,10 +715,9 @@ export async function getAlgorithmOverview(rangeValue: number, offset: number = 
       const identityType = event.identity_type === "user" ? "user" : "visitor"
       identityCounts.set(identityType, (identityCounts.get(identityType) ?? 0) + 1)
     }
-    for (const event of inRangeEvents) {
-      const trafficType = event.traffic_type === "customer" ? "unknown" : event.traffic_type || "unknown"
-      trafficCounts.set(trafficType, (trafficCounts.get(trafficType) ?? 0) + 1)
-    }
+    trafficCounts.set("unknown", inRangeEvents.length)
+    if (botCount > 0) trafficCounts.set("bot", botCount)
+    if (internalCount > 0) trafficCounts.set("internal", internalCount)
 
     uniqueEvents = rollingUniqueScoreEvents(events, cutoff, endTime)
 
@@ -812,7 +830,7 @@ export async function getAlgorithmOverview(rangeValue: number, offset: number = 
       generatedAt: new Date().toISOString(),
       topItems: ranked,
       totalUniqueViews: Array.from(aggregate.values()).reduce((total, item) => total + item.uniqueViews, 0),
-      totalEvents: inRangeEvents.length,
+      totalEvents: inRangeEvents.length + botCount + internalCount,
       locationSummary: Array.from(locationTotals.entries())
         .filter(([label]) => label !== "ไม่ระบุ location")
         .map(([label, views]) => ({ label, views }))
@@ -866,9 +884,10 @@ export async function getAlgorithmProducts(rangeValue: number, pageValue: number
   const pageSize = 50
 
   try {
+    const cutoff = getCutoff(rangeDays)
     const [events, productIds] = await Promise.all([
-      fetchScoreEvents(getCutoff(rangeDays)),
-      fetchAllPropProductIds(),
+      fetchScoreEvents(cutoff),
+      fetchAllPropProductIds(cutoff),
     ])
     const productMap = await fetchPropProducts(productIds, true)
     const rankedProducts = rankProductCatalog(events, productMap, getCutoff(rangeDays))

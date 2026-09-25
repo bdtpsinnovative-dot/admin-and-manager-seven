@@ -40,10 +40,9 @@ function ProductHomeTable({ products }: { products: AudienceProduct[] }) {
 
 export default function AudienceHomeTables({ data }: { data: AudienceAnalytics }) {
   return (
-    <div className="algorithm-shell relative min-h-screen overflow-x-clip bg-[var(--algorithm-paper)] px-3 py-3 sm:px-5 sm:py-5 lg:px-8 lg:py-8">
-      <main className="mx-auto max-w-[1680px]">
-        <section className="space-y-5">
-          <article className="min-w-0 rounded-[1.5rem] border border-[var(--algorithm-rule)] bg-[var(--algorithm-surface)] p-4 shadow-[var(--algorithm-shadow)] sm:p-6">
+    <div className="w-full space-y-6">
+      <section className="space-y-6">
+        <article className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 md:p-6 shadow-sm">
             <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--algorithm-blue)]">Persona Analytics · {data.rangeDays} วันล่าสุด</p>
@@ -55,19 +54,18 @@ export default function AudienceHomeTables({ data }: { data: AudienceAnalytics }
             <div className="mt-5"><PersonaHomeTable personas={data.personas} /></div>
           </article>
 
-          <article className="min-w-0 rounded-[1.5rem] border border-[var(--algorithm-rule)] bg-[var(--algorithm-surface)] p-4 shadow-[var(--algorithm-shadow)] sm:p-6">
+          <article className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 md:p-6 shadow-sm">
             <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--algorithm-accent-strong)]">Product Analytics · {data.rangeDays} วันล่าสุด</p>
-                <h2 className="mt-2 flex items-center gap-2 text-xl font-semibold tracking-[-0.04em]"><Eye className="h-5 w-5 text-[var(--algorithm-accent-strong)]" />สินค้าและพฤติกรรมการดู</h2>
-                <p className="mt-1 text-xs text-[var(--algorithm-muted)]">เรียงจากยอดดูไม่ซ้ำ พร้อมรูปสินค้าและช่องทางที่พาคนเข้ามาดู</p>
+                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-blue-600">Product Analytics · {data.rangeDays} วันล่าสุด</p>
+                <h2 className="mt-2 flex items-center gap-2 text-xl font-semibold tracking-[-0.04em] text-slate-900"><Eye className="h-5 w-5 text-blue-600" />สินค้าและพฤติกรรมการดู</h2>
+                <p className="mt-1 text-xs text-slate-500">เรียงจากยอดดูไม่ซ้ำ พร้อมรูปสินค้าและช่องทางที่พาคนเข้ามาดู</p>
               </div>
-              <Link href="/algorithm/audience" className="inline-flex min-h-10 items-center justify-center gap-1 whitespace-nowrap rounded-full border border-[var(--algorithm-rule-strong)] px-4 text-xs font-bold hover:border-[var(--algorithm-blue)] hover:text-[var(--algorithm-blue)]">ดู Product Analytics ทั้งหมด <ArrowUpRight className="h-3.5 w-3.5" /></Link>
+              <Link href="/algorithm/audience" className="inline-flex min-h-10 items-center justify-center gap-1 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50">ดู Product Analytics ทั้งหมด <ArrowUpRight className="h-3.5 w-3.5" /></Link>
             </div>
             <div className="mt-5"><ProductHomeTable products={data.products} /></div>
           </article>
         </section>
-      </main>
     </div>
   )
 }

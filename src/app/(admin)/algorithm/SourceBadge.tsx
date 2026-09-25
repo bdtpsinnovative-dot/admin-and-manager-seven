@@ -103,8 +103,8 @@ const sourceStyles: Record<string, SourceStyle> = {
   "microsoft ads": { icon: MicrosoftIcon, iconClass: "bg-white ring-1 ring-cyan-100", logoClass: "h-4 w-4" },
   x: { icon: XIcon, iconClass: "bg-white ring-1 ring-slate-200", logoClass: "h-3.5 w-3.5" },
   twitter: { icon: XIcon, iconClass: "bg-white ring-1 ring-slate-200", logoClass: "h-3.5 w-3.5" },
-  direct: { icon: Navigation, iconClass: "bg-[var(--algorithm-accent-soft)] text-[var(--algorithm-accent-strong)]" },
-  referral: { icon: Link2, iconClass: "bg-[var(--algorithm-blue-soft)] text-[var(--algorithm-blue)]" },
+  direct: { icon: Navigation, iconClass: "bg-blue-50 text-blue-700" },
+  referral: { icon: Link2, iconClass: "bg-blue-50 text-blue-700" },
 }
 
 function sourceParts(value: string | null) {
@@ -115,14 +115,14 @@ function sourceParts(value: string | null) {
 
 export default function SourceBadge({ value, note }: { value: string | null; note?: string }) {
   const { name, detail } = sourceParts(value)
-  const style = sourceStyles[name.toLowerCase()] || { icon: CircleHelp, iconClass: "bg-[var(--algorithm-surface-soft)] text-[var(--algorithm-muted)]" }
+  const style = sourceStyles[name.toLowerCase()] || { icon: CircleHelp, iconClass: "bg-slate-100 text-slate-500" }
   const Icon = style.icon
 
   return <span className="inline-flex min-w-0 items-center gap-2" title={detail ? `${name} · ${detail}` : name}>
     <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg ${style.iconClass}`} aria-hidden="true"><Icon className={style.logoClass || "h-3.5 w-3.5"} /></span>
     <span className="min-w-0">
-      <span className="block truncate font-semibold text-[var(--algorithm-ink-soft)]">{name}</span>
-      {(detail || note) && <span className="mt-0.5 block max-w-[180px] truncate text-[10px] font-normal text-[var(--algorithm-muted)]">{detail || note}</span>}
+      <span className="block truncate font-semibold text-slate-700">{name}</span>
+      {(detail || note) && <span className="mt-0.5 block max-w-[180px] truncate text-[10px] font-normal text-slate-400">{detail || note}</span>}
     </span>
   </span>
 }

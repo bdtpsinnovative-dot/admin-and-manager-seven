@@ -27,5 +27,11 @@ export default async function AlgorithmProductPage({
   })
 
   if (!detail) notFound()
-  return <ProductAlgorithmDetail detail={detail} />
+  return (
+    <div className="min-h-screen bg-slate-50 p-4 md:p-6 font-sans text-slate-800">
+      <div className="w-full space-y-6">
+        <ProductAlgorithmDetail detail={detail} />
+      </div>
+    </div>
+  )
 }

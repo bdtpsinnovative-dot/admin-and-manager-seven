@@ -98,8 +98,8 @@ type TechnologyStyle = {
   logoClass?: string
 }
 
-const brandIconClass = "text-[var(--algorithm-ink-soft)]"
-const deviceIconClass = "text-[var(--algorithm-blue)]"
+const brandIconClass = "text-slate-700"
+const deviceIconClass = "text-blue-600"
 
 function normalize(value: string | null) {
   return value?.trim().toLowerCase() || ""
@@ -111,7 +111,7 @@ function deviceStyle(value: string): TechnologyStyle {
   if (/tv|television/.test(value)) return { icon: Tv, iconClass: deviceIconClass }
   if (/watch|wearable/.test(value)) return { icon: Watch, iconClass: deviceIconClass }
   if (/desktop|computer|pc|laptop/.test(value)) return { icon: Monitor, iconClass: deviceIconClass }
-  return { icon: CircleHelp, iconClass: "text-[var(--algorithm-muted)]" }
+  return { icon: CircleHelp, iconClass: "text-slate-400" }
 }
 
 function osStyle(value: string): TechnologyStyle {
@@ -120,7 +120,7 @@ function osStyle(value: string): TechnologyStyle {
   if (/mac|os x/.test(value)) return { icon: AppleIcon, iconClass: brandIconClass, logoClass: "h-4 w-4" }
   if (/windows/.test(value)) return { icon: WindowsIcon, iconClass: brandIconClass, logoClass: "h-4 w-4" }
   if (/linux|ubuntu|debian|fedora/.test(value)) return { icon: LinuxIcon, iconClass: brandIconClass, logoClass: "h-4 w-4" }
-  return { icon: CircleHelp, iconClass: "text-[var(--algorithm-muted)]" }
+  return { icon: CircleHelp, iconClass: "text-slate-400" }
 }
 
 function browserStyle(value: string): TechnologyStyle {
@@ -130,7 +130,7 @@ function browserStyle(value: string): TechnologyStyle {
   if (/opera|opr\//.test(value)) return { icon: OperaIcon, iconClass: brandIconClass, logoClass: "h-4 w-4" }
   if (/chrome|chromium|crios/.test(value)) return { icon: ChromeIcon, iconClass: brandIconClass, logoClass: "h-4 w-4" }
   if (/safari/.test(value)) return { icon: SafariIcon, iconClass: brandIconClass, logoClass: "h-4 w-4" }
-  return { icon: Globe2, iconClass: "text-[var(--algorithm-muted)]" }
+  return { icon: Globe2, iconClass: "text-slate-400" }
 }
 
 function technologyStyle(kind: TechnologyKind, value: string): TechnologyStyle {
@@ -153,8 +153,8 @@ export default function TechnologyBadge({ value, kind, note }: { value: string |
   return <span className="inline-flex min-w-0 items-center gap-2" title={note ? `${label} · ${note}` : label}>
     {Icon ? <span className={`grid h-7 w-7 shrink-0 place-items-center ${style.iconClass}`} aria-hidden="true"><Icon className={style.logoClass || "h-3.5 w-3.5"} /></span> : null}
     <span className="min-w-0">
-      <span className="block truncate font-semibold text-[var(--algorithm-ink-soft)]">{label}</span>
-      {note ? <span className="mt-0.5 block truncate text-[10px] font-normal text-[var(--algorithm-muted)]">{note}</span> : null}
+      <span className="block truncate font-semibold text-slate-700">{label}</span>
+      {note ? <span className="mt-0.5 block truncate text-[10px] font-normal text-slate-400">{note}</span> : null}
     </span>
   </span>
 }

@@ -67,6 +67,19 @@ export type AudienceSummaryMetric = {
   count: number
 }
 
+export type AudienceBreakdownItem = {
+  name: string
+  count: number
+  share: number
+}
+
+export type AudienceBreakdowns = {
+  sources: AudienceBreakdownItem[]
+  devices: AudienceBreakdownItem[]
+  browsers: AudienceBreakdownItem[]
+  totalCount: number
+}
+
 export type AudienceProductSummary = {
   uniqueViews: number
   totalViews: number
@@ -78,6 +91,7 @@ export type AudienceProductSummary = {
   location: AudienceSummaryMetric
   category: AudienceSummaryMetric
   color: AudienceSummaryMetric
+  breakdowns: AudienceBreakdowns
 }
 
 export type AudiencePersonaSummary = {
@@ -91,6 +105,7 @@ export type AudiencePersonaSummary = {
   source: AudienceSummaryMetric
   location: AudienceSummaryMetric
   persona: AudienceSummaryMetric
+  breakdowns: AudienceBreakdowns
 }
 
 type RawProfile = {
@@ -144,6 +159,7 @@ type RawEvent = {
   session_id: string | null
   page_instance_id: string | null
   event_type: string
+  event_name: string | null
   page_type: string | null
   page_path: string | null
   created_at: string
@@ -207,6 +223,59 @@ function emptySummaryMetric(): AudienceSummaryMetric {
   return { value: null, share: 0, count: 0 }
 }
 
+function emptyBreakdowns(): AudienceBreakdowns {
+  return {
+    sources: [],
+    devices: [],
+    browsers: [],
+    totalCount: 0,
+  }
+}
+
+function formatDevice(device: string | null | undefined): string {
+  const raw = device?.trim().toLowerCase()
+  if (!raw) return "ไม่ระบุอุปกรณ์"
+  if (raw === "mobile" || raw === "smartphone") return "มือถือ (Mobile)"
+  if (raw === "desktop" || raw === "pc" || raw === "computer") return "คอมพิวเตอร์ (Desktop)"
+  if (raw === "tablet" || raw === "ipad") return "แท็บเล็ต (Tablet)"
+  return device?.trim() || "ไม่ระบุอุปกรณ์"
+}
+
+function formatBrowser(browser: string | null | undefined): string {
+  const raw = browser?.trim()
+  if (!raw) return "ไม่ระบุ Browser"
+  if (/mobile safari/i.test(raw)) return "Safari (Mobile)"
+  return raw
+}
+
+function calculateBreakdownList(items: string[]): { list: AudienceBreakdownItem[]; total: number } {
+  const counts = new Map<string, number>()
+  for (const item of items) {
+    counts.set(item, (counts.get(item) || 0) + 1)
+  }
+  const total = items.length
+  const list = Array.from(counts.entries())
+    .map(([name, count]) => ({
+      name,
+      count,
+      share: total > 0 ? Math.round((count / total) * 100) : 0,
+    }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+  return { list, total }
+}
+
+function calculateBreakdowns(sources: string[], devices: string[], browsers: string[]): AudienceBreakdowns {
+  const s = calculateBreakdownList(sources)
+  const d = calculateBreakdownList(devices)
+  const b = calculateBreakdownList(browsers)
+  return {
+    sources: s.list,
+    devices: d.list,
+    browsers: b.list,
+    totalCount: Math.max(s.total, d.total, b.total),
+  }
+}
+
 function emptySummary() {
   return {
     products: {
@@ -220,6 +289,7 @@ function emptySummary() {
       location: emptySummaryMetric(),
       category: emptySummaryMetric(),
       color: emptySummaryMetric(),
+      breakdowns: emptyBreakdowns(),
     },
     personas: {
       viewers: 0,
@@ -232,6 +302,7 @@ function emptySummary() {
       source: emptySummaryMetric(),
       location: emptySummaryMetric(),
       persona: emptySummaryMetric(),
+      breakdowns: emptyBreakdowns(),
     },
   }
 }
@@ -321,6 +392,20 @@ async function requireAdmin() {
   if (!profile || !["admin", "super_admin"].includes(String(profile.role))) throw new Error("ไม่มีสิทธิ์ดูข้อมูล Analytics")
 }
 
+async function mapConcurrent<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length)
+  let nextIdx = 0
+  async function worker() {
+    while (nextIdx < items.length) {
+      const idx = nextIdx++
+      results[idx] = await fn(items[idx])
+    }
+  }
+  const workers = Array.from({ length: Math.min(limit, items.length) }, () => worker())
+  await Promise.all(workers)
+  return results
+}
+
 async function fetchPagedAlgorithmEvents(cutoff: string, until?: string) {
   const pageSize = 1000
   let countReq = supabaseAdmin
@@ -328,6 +413,8 @@ async function fetchPagedAlgorithmEvents(cutoff: string, until?: string) {
     .select("id", { count: "exact", head: true })
     .eq("source_tag", "prop")
     .in("event_type", ["product_view", "page_view", "session_end", "journey", "cta"])
+    .eq("is_countable", true)
+    .neq("traffic_type", "bot")
     .gte("created_at", cutoff)
 
   if (until) countReq = countReq.lte("created_at", until)
@@ -335,128 +422,90 @@ async function fetchPagedAlgorithmEvents(cutoff: string, until?: string) {
   const { count, error: countError } = await countReq
 
   if (countError) throw new Error(countError.message)
-  const total = count || 0
+  const total = Math.min(count || 0, 15000)
   const pageCount = Math.ceil(total / pageSize)
   if (pageCount === 0) return []
 
   const pageIndexes = Array.from({ length: pageCount }, (_, i) => i)
-  const results = await Promise.all(
-    pageIndexes.map(async (pageIdx) => {
-      const offset = pageIdx * pageSize
-      let req = supabaseAdmin
-        .from("algorithm_events")
-        .select("id, product_id, collection_group_id, product_category_snapshot, product_price_snapshot, product_name_snapshot, product_sku_snapshot, product_color_snapshot, product_material_snapshot, identity_key, identity_type, user_id, visitor_id, session_id, page_instance_id, event_type, page_type, page_path, created_at, duration_seconds, is_bounce, is_quick_bounce, activity_interval_id, next_page_type, journey_outcome, is_countable, traffic_type, country_code, country, region, city, device_type, os_name, browser_name, source_platform, first_touch_source, session_source, referrer_host, metadata")
-        .eq("source_tag", "prop")
-        .in("event_type", ["product_view", "page_view", "session_end", "journey", "cta"])
-        .gte("created_at", cutoff)
+  const results = await mapConcurrent(pageIndexes, 2, async (pageIdx) => {
+    const offset = pageIdx * pageSize
+    let req = supabaseAdmin
+      .from("algorithm_events")
+      .select("id, product_id, collection_group_id, product_category_snapshot, product_price_snapshot, product_name_snapshot, product_sku_snapshot, product_color_snapshot, product_material_snapshot, identity_key, identity_type, user_id, visitor_id, session_id, page_instance_id, event_type, event_name, page_type, page_path, created_at, duration_seconds, is_bounce, is_quick_bounce, activity_interval_id, next_page_type, journey_outcome, is_countable, traffic_type, country_code, country, region, city, device_type, os_name, browser_name, source_platform, first_touch_source, session_source, referrer_host, metadata")
+      .eq("source_tag", "prop")
+      .in("event_type", ["product_view", "page_view", "session_end", "journey", "cta"])
+      .eq("is_countable", true)
+      .neq("traffic_type", "bot")
+      .gte("created_at", cutoff)
 
-      if (until) req = req.lte("created_at", until)
+    if (until) req = req.lte("created_at", until)
 
-      const { data, error } = await req
-        .order("created_at", { ascending: false })
-        .range(offset, offset + pageSize - 1)
-      if (error) throw new Error(error.message)
-      return (data || []) as unknown as RawEvent[]
-    })
-  )
+    const { data, error } = await req
+      .order("created_at", { ascending: false })
+      .range(offset, offset + pageSize - 1)
+    if (error) throw new Error(error.message)
+    return (data || []) as unknown as RawEvent[]
+  })
   return results.flat()
 }
 
 async function fetchPagedActivities(cutoff: string, until?: string) {
-  const pageSize = 1000
-  let countReq = supabaseAdmin
+  let req = supabaseAdmin
     .from("algorithm_activity_intervals")
-    .select("id", { count: "exact", head: true })
+    .select("id, identity_key, session_id, page_instance_id, product_id, active_seconds, started_at")
     .gte("started_at", cutoff)
+    .order("started_at", { ascending: false })
+    .limit(3000)
 
-  if (until) countReq = countReq.lte("started_at", until)
+  if (until) req = req.lte("started_at", until)
 
-  const { count, error: countError } = await countReq
-
-  if (countError) throw new Error(countError.message)
-  const total = count || 0
-  const pageCount = Math.ceil(total / pageSize)
-  if (pageCount === 0) return []
-
-  const pageIndexes = Array.from({ length: pageCount }, (_, i) => i)
-  const results = await Promise.all(
-    pageIndexes.map(async (pageIdx) => {
-      const offset = pageIdx * pageSize
-      let req = supabaseAdmin
-        .from("algorithm_activity_intervals")
-        .select("id, identity_key, session_id, page_instance_id, product_id, active_seconds, started_at")
-        .gte("started_at", cutoff)
-
-      if (until) req = req.lte("started_at", until)
-
-      const { data, error } = await req
-        .order("started_at", { ascending: false })
-        .range(offset, offset + pageSize - 1)
-      if (error) throw new Error(error.message)
-      return (data || []) as unknown as RawActivity[]
-    })
-  )
-  return results.flat()
+  const { data, error } = await req
+  if (error) throw new Error(error.message)
+  return (data || []) as unknown as RawActivity[]
 }
 
-async function fetchPagedPropProducts() {
-  const pageSize = 1000
-  const { count, error: countError } = await supabaseAdmin
+async function fetchPagedPropProducts(targetProductIds?: number[]) {
+  if (targetProductIds) {
+    const cleanIds = Array.from(new Set(targetProductIds.filter(Number.isSafeInteger)))
+    if (cleanIds.length === 0) return []
+    const chunks: number[][] = []
+    for (let i = 0; i < cleanIds.length; i += 200) chunks.push(cleanIds.slice(i, i + 200))
+    const results = await Promise.all(
+      chunks.map((chunk) =>
+        supabaseAdmin
+          .from("products")
+          .select("id, name, sku, image_url, price, status, collection_group_id, color, specs, collection_groups!inner(id, product_sup, tag)")
+          .in("id", chunk)
+          .eq("category_id", "prop")
+      )
+    )
+    return results.flatMap((r) => (r.data || []) as unknown as RawProduct[])
+  }
+
+  const { data, error } = await supabaseAdmin
     .from("products")
-    .select("id", { count: "exact", head: true })
+    .select("id, name, sku, image_url, price, status, collection_group_id, color, specs, collection_groups!inner(id, product_sup, tag)")
     .eq("category_id", "prop")
-
-  if (countError) throw new Error(countError.message)
-  const total = count || 0
-  const pageCount = Math.ceil(total / pageSize)
-  if (pageCount === 0) return []
-
-  const pageIndexes = Array.from({ length: pageCount }, (_, i) => i)
-  const results = await Promise.all(
-    pageIndexes.map(async (pageIdx) => {
-      const offset = pageIdx * pageSize
-      const { data, error } = await supabaseAdmin
-        .from("products")
-        .select("id, name, sku, image_url, price, status, collection_group_id, color, specs, collection_groups!inner(id, product_sup, tag)")
-        .eq("category_id", "prop")
-        .ilike("collection_groups.tag", "%prop%")
-        .order("id", { ascending: true })
-        .range(offset, offset + pageSize - 1)
-      if (error) throw new Error(error.message)
-      return (data || []) as unknown as RawProduct[]
-    })
-  )
-  return results.flat()
+    .ilike("collection_groups.tag", "%prop%")
+    .order("id", { ascending: true })
+    .limit(500)
+  if (error) throw new Error(error.message)
+  return (data || []) as unknown as RawProduct[]
 }
 
-async function fetchPagedViewerLinks() {
-  const pageSize = 1000
-  const { count, error: countError } = await supabaseAdmin
+async function fetchPagedViewerLinks(cutoff?: string) {
+  let req = supabaseAdmin
     .from("algorithm_events")
-    .select("id", { count: "exact", head: true })
+    .select("user_id, metadata")
     .eq("source_tag", "prop")
     .not("user_id", "is", null)
+    .limit(2000)
 
-  if (countError) throw new Error(countError.message)
-  const total = count || 0
-  const pageCount = Math.ceil(total / pageSize)
-  if (pageCount === 0) return []
+  if (cutoff) req = req.gte("created_at", cutoff)
 
-  const pageIndexes = Array.from({ length: pageCount }, (_, i) => i)
-  const results = await Promise.all(
-    pageIndexes.map(async (pageIdx) => {
-      const offset = pageIdx * pageSize
-      const { data, error } = await supabaseAdmin
-        .from("algorithm_events")
-        .select("user_id, metadata")
-        .eq("source_tag", "prop")
-        .not("user_id", "is", null)
-        .range(offset, offset + pageSize - 1)
-      if (error) throw new Error(error.message)
-      return (data || []) as unknown as Array<{ user_id: string | null; metadata: Record<string, unknown> | null }>
-    })
-  )
-  return results.flat()
+  const { data, error } = await req
+  if (error) throw new Error(error.message)
+  return (data || []) as unknown as Array<{ user_id: string | null; metadata: Record<string, unknown> | null }>
 }
 
 function productActiveValues(activities: RawActivity[], views: RawEvent[]) {
@@ -521,16 +570,16 @@ export async function getAudienceAnalytics(rangeValue: number, offset: number = 
 
   try {
     await requireAdmin()
-    const [productRows, eventRows, activityRows, linkRows] = await Promise.all([
-      fetchPagedPropProducts(),
+    const [eventRows, activityRows, linkRows] = await Promise.all([
       fetchPagedAlgorithmEvents(cutoff, endTime),
       fetchPagedActivities(cutoff, endTime),
-      fetchPagedViewerLinks(),
+      fetchPagedViewerLinks(cutoff),
     ])
 
-    const currentProducts = productRows
     const events = eventRows as RawEvent[]
     const activities = activityRows as RawActivity[]
+    const viewedProductIds = Array.from(new Set(events.map((e) => Number(e.product_id)).filter(Number.isSafeInteger)))
+    const currentProducts = await fetchPagedPropProducts(viewedProductIds)
     const currentProductIds = new Set(currentProducts.map((product) => Number(product.id)))
     const historicalProducts = new Map<number, RawProduct>()
     for (const event of events) {
@@ -550,15 +599,6 @@ export async function getAudienceAnalytics(rangeValue: number, offset: number = 
       })
     }
     const products = [...currentProducts, ...historicalProducts.values()]
-    
-    // Background aggregate refresh (non-blocking)
-    void supabaseAdmin.rpc("refresh_prop_analytics", {
-      p_from: cutoff,
-      p_to: new Date().toISOString(),
-      p_range_days: rangeDays,
-    }).then(({ error: refreshError }) => {
-      if (refreshError) console.warn("[audience-analytics] aggregate refresh unavailable", refreshError.message)
-    })
     const userIds = [...new Set(events.map((event) => event.user_id).filter((userId): userId is string => Boolean(userId)))]
     const { data: profileRows, error: profileError } = userIds.length
       ? await supabaseAdmin.from("profiles").select("user_id, email").in("user_id", userIds)
@@ -695,7 +735,47 @@ export async function getAudienceAnalytics(rangeValue: number, offset: number = 
       if (averagePrice !== null && averagePrice >= highPriceThreshold && uniqueProductViews.length >= 3) { labels.push("สนใจสินค้าราคาสูง"); reasons.push(`ราคาเฉลี่ย ${Math.round(averagePrice).toLocaleString()} บาท`) }
       if (activeSeconds / Math.max(sessions.size, 1) >= 60 || uniquePages.size >= 5 || uniqueProductViews.length >= 3) { labels.push("ผู้ชมมีส่วนร่วมสูง"); reasons.push("ใช้เวลา ดูหลายหน้า หรือดูหลายสินค้า") }
       if (bucket.some((event) => event.is_quick_bounce)) { labels.push("ผู้ชมออกเร็ว"); reasons.push("มีการออกภายใน 15 วินาทีโดยไม่มีหน้าถัดไป") }
-      if (bucket.some((event) => event.event_type === "cta")) { labels.push("มีความสนใจสูง"); reasons.push("มีการกด CTA") }
+      const ctaEvents = bucket.filter((event) => event.event_type === "cta")
+      if (ctaEvents.length > 0) {
+        const lineEvents = ctaEvents.filter((e) => e.event_name === "open_line_contact")
+        const messengerEvents = ctaEvents.filter((e) => e.event_name === "open_messenger_inquiry")
+        const igEvents = ctaEvents.filter((e) => e.event_name === "open_instagram_profile")
+        const contactBoxEvents = ctaEvents.filter((e) => e.event_name === "open_contact_channels")
+        const cartEvents = ctaEvents.filter((e) => e.event_name === "add_to_cart")
+        const mapEvents = ctaEvents.filter((e) => e.event_name === "open_directions")
+
+        if (lineEvents.length > 0) {
+          labels.push("กดติดต่อ LINE")
+          const targetProducts = lineEvents.map((e) => e.product_name_snapshot || (e.metadata?.target_product_name as string)).filter(Boolean)
+          reasons.push(targetProducts.length ? `กดติดต่อ LINE ที่สินค้า: ${[...new Set(targetProducts)].join(", ")}` : `กดปุ่มติดต่อผ่าน LINE (${lineEvents.length} ครั้ง)`)
+        }
+        if (messengerEvents.length > 0) {
+          labels.push("กด Inbox Messenger")
+          const targetProducts = messengerEvents.map((e) => e.product_name_snapshot || (e.metadata?.target_product_name as string)).filter(Boolean)
+          reasons.push(targetProducts.length ? `กด Inbox Messenger ที่สินค้า: ${[...new Set(targetProducts)].join(", ")}` : `กดปุ่ม Inbox Messenger (${messengerEvents.length} ครั้ง)`)
+        }
+        if (igEvents.length > 0) {
+          labels.push("กดดู Instagram")
+          reasons.push(`กดลิงก์ดู Instagram ร้าน (${igEvents.length} ครั้ง)`)
+        }
+        if (cartEvents.length > 0) {
+          labels.push("หยิบใส่ตะกร้า")
+          const targetProducts = cartEvents.map((e) => e.product_name_snapshot).filter(Boolean)
+          reasons.push(targetProducts.length ? `หยิบใส่ตะกร้า: ${[...new Set(targetProducts)].join(", ")}` : `กดหยิบใส่ตะกร้า (${cartEvents.length} ครั้ง)`)
+        }
+        if (contactBoxEvents.length > 0 && !lineEvents.length && !messengerEvents.length && !igEvents.length) {
+          labels.push("เปิดเมนูติดต่อ")
+          reasons.push(`กดเปิดดูช่องทางติดต่อ (${contactBoxEvents.length} ครั้ง)`)
+        }
+        if (mapEvents.length > 0) {
+          labels.push("กดดูแผนที่")
+          reasons.push(`กดเปิดดูเส้นทางไปสาขาบน Google Maps (${mapEvents.length} ครั้ง)`)
+        }
+        if (!lineEvents.length && !messengerEvents.length && !igEvents.length && !cartEvents.length && !contactBoxEvents.length && !mapEvents.length) {
+          labels.push("มีความสนใจสูง (CTA)")
+          reasons.push("มีการกดปุ่ม CTA ในหน้าเว็บ")
+        }
+      }
       if (bucket.some((event) => ["LINE", "Instagram", "Facebook", "Meta Ads", "TikTok", "YouTube", "Pinterest", "X"].includes(event.source_platform || ""))) { labels.push("เคยตรวจพบ Social"); reasons.push("พบหลักฐาน Social จาก UTM, Click ID หรือ Referrer") }
       if (!labels.length) { labels.push("ยังจำแนกไม่ได้"); reasons.push("ข้อมูลพฤติกรรมยังไม่พอ") }
       const first = bucket[bucket.length - 1]
@@ -756,6 +836,11 @@ export async function getAudienceAnalytics(rangeValue: number, offset: number = 
         const product = event.product_id ? productMap.get(Number(event.product_id)) : null
         return product?.color || null
       })),
+      breakdowns: calculateBreakdowns(
+        uniqueProductViews.map((event) => sourceWithDetail(event.source_platform || event.session_source || event.first_touch_source, event) || "Direct"),
+        uniqueProductViews.map((event) => formatDevice(event.device_type)),
+        uniqueProductViews.map((event) => formatBrowser(event.browser_name))
+      ),
     }
 
     const personaSessions = personas.reduce((sum, persona) => sum + persona.sessions, 0)
@@ -774,6 +859,11 @@ export async function getAudienceAnalytics(rangeValue: number, offset: number = 
       source: topWithShare(personas.map((persona) => persona.firstTouchSource)),
       location: topWithShare(personas.map((persona) => persona.location)),
       persona: topWithShare(personaLabels),
+      breakdowns: calculateBreakdowns(
+        personas.map((persona) => persona.latestSource || persona.firstTouchSource || "Direct"),
+        personas.map((persona) => formatDevice(persona.device)),
+        personas.map((persona) => formatBrowser(persona.browser))
+      ),
     }
 
     const result: AudienceAnalytics = {
