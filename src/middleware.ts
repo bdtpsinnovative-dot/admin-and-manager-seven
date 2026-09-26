@@ -46,7 +46,20 @@ export async function middleware(request: NextRequest) {
   )
 
   // ดึง User ผ่าน getUser() เพื่อ Refresh Token อัตโนมัติในเบื้องหลัง
-  const { data: { user } } = await supabase.auth.getUser()
+  // ป้องกัน 504 MIDDLEWARE_INVOCATION_TIMEOUT บน Vercel Edge ด้วย Timeout Race
+  let user: any = null
+  let isAuthTimeoutOrError = false
+
+  try {
+    const getUserPromise = supabase.auth.getUser()
+    const timeoutPromise = new Promise<{ data: { user: null }; error: any }>((_, reject) =>
+      setTimeout(() => reject(new Error('MIDDLEWARE_AUTH_TIMEOUT')), 3500)
+    )
+    const result = await Promise.race([getUserPromise, timeoutPromise])
+    user = result.data?.user ?? null
+  } catch (err) {
+    isAuthTimeoutOrError = true
+  }
 
   // Helper สำหรับ Redirect โดยส่งคุกกี้ Session ไปด้วย
   const redirectWithCookies = (targetPath: string) => {
@@ -63,6 +76,14 @@ export async function middleware(request: NextRequest) {
 
   // 1. ถ้ายังไม่ Login แต่จะเข้าหน้าที่ต้องล็อกอิน -> ส่งไปหน้า /login
   if (!user && !isPublicPath) {
+    // หาก Supabase Auth ช้าหรือ Timeout แต่ผู้ใช้มี Session Cookie อยู่แล้ว
+    // ให้ปล่อยผ่านไปยัง Server Component (Layout / Page) จัดการต่อ เพื่อป้องกันหน้าจอ 504 ล่มทั้งระบบ
+    const hasAuthCookies = request.cookies.getAll().some(
+      (c) => c.name.includes('auth-token') || c.name.startsWith('sb-')
+    )
+    if (isAuthTimeoutOrError && hasAuthCookies) {
+      return response
+    }
     return redirectWithCookies('/login')
   }
 
