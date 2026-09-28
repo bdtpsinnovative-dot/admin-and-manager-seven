@@ -54,6 +54,12 @@ async function dispatch(request: NextRequest, path: string[]) {
     if (request.method === "POST" && subpath === "quotes") {
       return withCors(request, await MobilePosSalesController.createQuote(user, await request.json()))
     }
+    if (request.method === "POST" && subpath === "checkout") {
+      return withCors(request, await MobilePosSalesController.checkout(user, await request.json()))
+    }
+    if (request.method === "POST" && subpath === "coupons/validate") {
+      return withCors(request, await MobilePosSalesController.validateCoupon(user, await request.json()))
+    }
   } catch (error) {
     console.error("Mobile POS authorization error:", error)
     return unauthorized(request)
