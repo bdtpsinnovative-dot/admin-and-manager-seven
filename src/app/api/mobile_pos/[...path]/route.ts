@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { MobilePosAuthController } from "@/api/mobile_pos/auth"
 import { MobilePosSalesController } from "@/api/mobile_pos/sales"
+import { MobilePosDispatchController } from "@/api/mobile_pos/dispatch"
 import { MobileRfidService } from "@/api/mobile_rfid/service"
 
 function withCors(request: NextRequest, response: NextResponse) {
@@ -59,6 +60,21 @@ async function dispatch(request: NextRequest, path: string[]) {
     }
     if (request.method === "POST" && subpath === "coupons/validate") {
       return withCors(request, await MobilePosSalesController.validateCoupon(user, await request.json()))
+    }
+    if (request.method === "GET" && subpath === "dispatches") {
+      return withCors(request, await MobilePosDispatchController.getDispatches(user))
+    }
+    if (request.method === "POST" && subpath === "dispatches/approve") {
+      return withCors(request, await MobilePosDispatchController.approveAndCutStock(user, await request.json()))
+    }
+    if (request.method === "POST" && subpath === "dispatches/ship") {
+      return withCors(request, await MobilePosDispatchController.markShipped(user, await request.json()))
+    }
+    if (request.method === "POST" && subpath === "dispatches/cancel") {
+      return withCors(request, await MobilePosDispatchController.cancelOrder(user, await request.json()))
+    }
+    if (request.method === "POST" && subpath === "dispatches/update-customer") {
+      return withCors(request, await MobilePosDispatchController.updateCustomer(user, await request.json()))
     }
   } catch (error) {
     console.error("Mobile POS authorization error:", error)
