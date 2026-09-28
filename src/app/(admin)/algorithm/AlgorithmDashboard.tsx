@@ -22,6 +22,7 @@ import {
   UsersRound,
 } from "lucide-react"
 import type { AlgorithmOverview, AlgorithmRange, HotItem, TrendPoint } from "../../../actions/algorithm"
+import LiveAudienceWidget from "./LiveAudienceWidget"
 
 function number(value: number) {
   return new Intl.NumberFormat("th-TH").format(value)
@@ -609,6 +610,9 @@ export default function AlgorithmDashboard({ data }: { data: AlgorithmOverview }
           </div>
         </div>
       </div>
+
+      {/* Live Realtime Viewers Widget */}
+      <LiveAudienceWidget />
 
       {/* 4 Metric Cards */}
       <section className="grid min-w-0 grid-cols-2 gap-4 lg:grid-cols-4">
