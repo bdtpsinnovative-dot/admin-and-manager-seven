@@ -204,6 +204,16 @@ export class MobilePosDispatchController {
               )
               const availableQty = branchStock ? Number(branchStock.qty) : 0
 
+              const cg = Array.isArray(product.collection_groups)
+                ? product.collection_groups[0]
+                : product.collection_groups
+              const rawSub = cg?.product_sup || product.specs?.product_sup || null
+              const material = product.specs?.material || null
+              const w = product.width_cm ?? product.specs?.width_cm
+              const d = product.length_cm ?? product.specs?.length_cm
+              const h = product.thickness_cm ?? product.specs?.thickness_cm
+              const sizeStr = w || d || h ? `W${w || "-"} x D${d || "-"} x H${h || "-"} cm` : null
+
               return {
                 id: item.id,
                 qty: Number(item.qty) || 0,
@@ -219,6 +229,9 @@ export class MobilePosDispatchController {
                   sku: product.sku || "",
                   image_url: product.image_url || null,
                   price: Number(product.price) || 0,
+                  product_sup: rawSub,
+                  material: material,
+                  size_str: sizeStr,
                 },
               }
             })
