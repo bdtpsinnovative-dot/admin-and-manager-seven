@@ -31,6 +31,7 @@ interface CheckoutInput {
   payment_method?: string // 'CASH' | 'TRANSFER' | 'CREDIT_CARD'
   coupon_code?: string
   special_discount_baht?: number
+  special_discount_percent?: number
   items?: CartItemInput[]
 }
 
@@ -440,9 +441,15 @@ export const MobilePosSalesController = {
         couponDiscountAmount = validatedCoupon.discount_amount || 0
       }
 
-      const specialDiscountBaht = Math.max(0, Number(payload.special_discount_baht) || 0)
-      const totalDiscount = Math.round((couponDiscountAmount + specialDiscountBaht) * 100) / 100
-      const finalTotalAmount = Math.max(0, Math.round((subtotal - totalDiscount) * 100) / 100)
+      const priceAfterCoupon = Math.max(0, subtotal - couponDiscountAmount)
+      const specialDiscountBaht = Number(payload.special_discount_baht) || 0
+      const specialDiscountPercent = Number(payload.special_discount_percent) || 0
+      const afterBaht = Math.max(0, priceAfterCoupon - specialDiscountBaht)
+      const discountPercentAmount = afterBaht * (specialDiscountPercent / 100)
+      const totalSpecialDiscount = specialDiscountBaht + discountPercentAmount
+
+      const totalDiscount = Math.round((couponDiscountAmount + totalSpecialDiscount) * 100) / 100
+      const finalTotalAmount = Math.max(0, Math.round(afterBaht - discountPercentAmount))
       const vatAmount = Math.round((finalTotalAmount - finalTotalAmount / 1.07) * 100) / 100
 
       const orderCode = `INV${Date.now()}`
@@ -458,6 +465,7 @@ export const MobilePosSalesController = {
             amount_per_piece: i.discountPerPiece,
           })),
         special_discount: {
+          percent: specialDiscountPercent,
           baht: specialDiscountBaht,
         },
         sale_mode: saleMode,
@@ -489,6 +497,7 @@ export const MobilePosSalesController = {
           shipping_address: payload.customer_address?.trim() || null,
           company_name_th: payload.company_name?.trim() || null,
           tax_id: payload.tax_id?.trim() || null,
+          special_discount_percent: specialDiscountPercent,
           special_discount_baht: specialDiscountBaht,
         })
         .select("id, order_code, total_amount, subtotal, discount_amount, vat_amount, status")
