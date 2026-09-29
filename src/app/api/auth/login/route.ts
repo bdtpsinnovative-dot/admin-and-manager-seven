@@ -63,16 +63,40 @@ export async function POST(request: Request) {
     let role = null
     let full_name = null
     let avatar_url = null
+    let first_allowed_page: string | null = null
 
     if (data?.user) {
-      const { data: profile } = await supabase
+      let profile: any = null
+      const pfRes = await supabase
         .from('profiles')
-        .select('role, full_name, avatar_url')
+        .select('role, full_name, avatar_url, member_tags, allowed_pages')
         .eq('user_id', data.user.id)
         .single()
 
+      if (pfRes.error && pfRes.error.message?.includes('allowed_pages')) {
+        const pfFallback = await supabase
+          .from('profiles')
+          .select('role, full_name, avatar_url, member_tags')
+          .eq('user_id', data.user.id)
+          .single()
+        profile = pfFallback.data
+      } else {
+        profile = pfRes.data
+      }
+
       role = profile?.role || null
       full_name = profile?.full_name || data.user.email
+
+      const rawMemberTags: string[] = Array.isArray(profile?.member_tags) ? profile.member_tags : []
+      const pageTags = rawMemberTags.filter((t) => t.startsWith('PAGE:')).map((t) => t.slice(5))
+      const pages: string[] =
+        Array.isArray(profile?.allowed_pages) && profile.allowed_pages.length > 0
+          ? profile.allowed_pages
+          : pageTags
+
+      if (pages.length > 0 && role !== 'manager' && role !== 'sale') {
+        first_allowed_page = pages[0]
+      }
 
       if (profile?.avatar_url) {
         const path = profile.avatar_url
@@ -92,6 +116,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       role,
+      first_allowed_page,
       user: {
         id: data?.user?.id,
         email: data?.user?.email,

@@ -19,6 +19,7 @@ export interface Employee {
   branch_id: number | null
   created_at: string
   allowed_inventory_tabs?: string[]
+  allowed_pages?: string[]
   member_tags?: string[]
   can_view_costs?: boolean
 }
@@ -122,6 +123,24 @@ export async function updateEmployee(formData: FormData) {
       }
     }
 
+    // จัดการสิทธิ์การเข้าถึงหน้าเมนู (Allowed Pages)
+    const rawPages = formData.get('allowed_pages') as string
+    let pageList: string[] = []
+    if (rawPages) {
+      try {
+        const parsed = JSON.parse(rawPages)
+        if (Array.isArray(parsed)) pageList = parsed.filter(Boolean)
+      } catch {
+        pageList = rawPages.split(',').map(s => s.trim()).filter(Boolean)
+      }
+    }
+
+    // รวมหมวดสินค้า + หน้าเมนูเข้า member_tags เพื่อเป็นแหล่งเก็บสำรองอัตโนมัติแม้ยังไม่ได้เพิ่มคอลัมน์ allowed_pages
+    const combinedMemberTags = [
+      ...categoryList.filter(c => !c.startsWith('PAGE:')),
+      ...pageList.map(p => p.startsWith('PAGE:') ? p : `PAGE:${p}`)
+    ]
+
     // จัดการสิทธิ์ดูต้นทุน (Cost Visibility)
     const rawCanViewCosts = formData.get('can_view_costs')
     const canViewCosts = rawCanViewCosts !== null
@@ -136,13 +155,25 @@ export async function updateEmployee(formData: FormData) {
         branch_id: (branchId && branchId !== "" && branchId !== "null") ? Number(branchId) : null,
         phone: phone,
         birth_date: birthDate,
-        member_tags: categoryList // สำรองใน member_tags ทันที
+        member_tags: combinedMemberTags // สำรองทั้งหมวดหมู่และหน้าเมนูใน member_tags ทันที
     }
 
-    // ลองอัปเดตพร้อม can_view_costs และ allowed_inventory_tabs ถ้ามีคอลัมน์ ถ้ายังไม่มีให้ fallback อัปเดตแบบปลอดภัย
+    // ลองอัปเดตพร้อม allowed_pages, can_view_costs และ allowed_inventory_tabs ถ้ามีคอลัมน์ ถ้ายังไม่มีให้ fallback อัปเดตแบบปลอดภัย
     let { error } = await supabaseAdmin
       .from(TABLE_PROFILES)
-      .upsert({ ...profileData, allowed_inventory_tabs: categoryList, can_view_costs: canViewCosts }, { onConflict: 'user_id' })
+      .upsert({
+        ...profileData,
+        allowed_inventory_tabs: categoryList,
+        allowed_pages: pageList,
+        can_view_costs: canViewCosts
+      }, { onConflict: 'user_id' })
+
+    if (error && error.message?.includes('allowed_pages')) {
+      const resNoPagesCol = await supabaseAdmin
+        .from(TABLE_PROFILES)
+        .upsert({ ...profileData, allowed_inventory_tabs: categoryList, can_view_costs: canViewCosts }, { onConflict: 'user_id' })
+      error = resNoPagesCol.error
+    }
 
     if (error && (error.message?.includes('can_view_costs') || error.message?.includes('allowed_inventory_tabs'))) {
       let res = await supabaseAdmin
@@ -168,6 +199,7 @@ export async function updateEmployee(formData: FormData) {
     
     revalidatePath('/employees') 
     revalidatePath('/manager/employees') 
+    revalidatePath('/', 'layout')
     return { success: true }
   } catch (err: any) {
     return { error: err.message || "เกิดข้อผิดพลาดในการอัปเดตข้อมูล" }
@@ -222,6 +254,23 @@ export async function createEmployee(formData: FormData) {
       }
     }
 
+    // จัดการสิทธิ์การเข้าถึงหน้าเมนู (Allowed Pages)
+    const rawPages = formData.get('allowed_pages') as string
+    let pageList: string[] = []
+    if (rawPages) {
+      try {
+        const parsed = JSON.parse(rawPages)
+        if (Array.isArray(parsed)) pageList = parsed.filter(Boolean)
+      } catch {
+        pageList = rawPages.split(',').map(s => s.trim()).filter(Boolean)
+      }
+    }
+
+    const combinedMemberTags = [
+      ...categoryList.filter(c => !c.startsWith('PAGE:')),
+      ...pageList.map(p => p.startsWith('PAGE:') ? p : `PAGE:${p}`)
+    ]
+
     // 1. สร้าง User ใน Auth
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email: email,
@@ -247,12 +296,24 @@ export async function createEmployee(formData: FormData) {
       branch_id: (branchId && branchId !== "" && branchId !== "null") ? Number(branchId) : null,
       phone: phone,
       birth_date: birthDate,
-      member_tags: categoryList
+      member_tags: combinedMemberTags
     }
 
     let { error: profileError } = await supabaseAdmin
       .from(TABLE_PROFILES)
-      .upsert({ ...profileData, allowed_inventory_tabs: categoryList, can_view_costs: canViewCosts }, { onConflict: 'user_id' })
+      .upsert({
+        ...profileData,
+        allowed_inventory_tabs: categoryList,
+        allowed_pages: pageList,
+        can_view_costs: canViewCosts
+      }, { onConflict: 'user_id' })
+
+    if (profileError && profileError.message?.includes('allowed_pages')) {
+      const resNoPagesCol = await supabaseAdmin
+        .from(TABLE_PROFILES)
+        .upsert({ ...profileData, allowed_inventory_tabs: categoryList, can_view_costs: canViewCosts }, { onConflict: 'user_id' })
+      profileError = resNoPagesCol.error
+    }
 
     if (profileError && (profileError.message?.includes('can_view_costs') || profileError.message?.includes('allowed_inventory_tabs'))) {
       let res = await supabaseAdmin
@@ -280,6 +341,7 @@ export async function createEmployee(formData: FormData) {
     
     revalidatePath('/employees') 
     revalidatePath('/manager/employees') 
+    revalidatePath('/', 'layout')
     return { success: true }
   } catch (err: any) {
     return { error: err.message || "เกิดข้อผิดพลาดในการสร้างบัญชี" }

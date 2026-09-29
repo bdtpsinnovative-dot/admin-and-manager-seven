@@ -15,14 +15,36 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   }
 
   // 2. ดึงข้อมูล Profile ผ่าน supabaseAdmin ป้องกัน RLS latency
-  const { data: profile } = await supabaseAdmin
+  let profile: any = null;
+  const initialPfRes = await supabaseAdmin
     .from('profiles')
-    .select('full_name, role, avatar_url')
+    .select('full_name, role, avatar_url, member_tags, allowed_pages')
     .eq('user_id', user.id)
     .maybeSingle();
 
+  if (initialPfRes.error && initialPfRes.error.message?.includes('allowed_pages')) {
+    const fallbackPf = await supabaseAdmin
+      .from('profiles')
+      .select('full_name, role, avatar_url, member_tags')
+      .eq('user_id', user.id)
+      .maybeSingle();
+    profile = fallbackPf.data;
+  } else {
+    profile = initialPfRes.data;
+  }
+
+  const rawMemberTags: string[] = Array.isArray(profile?.member_tags) ? profile.member_tags : [];
+  const pageMemberTags = rawMemberTags.filter((t) => t.startsWith('PAGE:')).map((t) => t.slice(5));
+  const customAllowedPages: string[] | undefined =
+    Array.isArray(profile?.allowed_pages) && profile.allowed_pages.length > 0
+      ? profile.allowed_pages
+      : pageMemberTags.length > 0
+      ? pageMemberTags
+      : undefined;
+
   const allowedRoles = ["admin", "data_entry", "data_analyst", "warehouse"];
-  if (profile && !allowedRoles.includes(profile.role)) {
+  const hasCustomAdminPages = customAllowedPages && customAllowedPages.length > 0;
+  if (profile && !allowedRoles.includes(profile.role) && !hasCustomAdminPages) {
     if (profile.role === "manager") {
       redirect("/manager/dashboard");
     } else if (profile.role === "sale") {
@@ -56,7 +78,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const userData = {
     name: name,
     role: profile?.role || "Admin",
-    avatar: avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=334155&color=fff`
+    avatar: avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=334155&color=fff`,
+    allowedPages: customAllowedPages
   };
 
   return (

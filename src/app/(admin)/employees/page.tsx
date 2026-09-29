@@ -15,11 +15,22 @@ export default async function EmployeesPage() {
 
   const initialRes = await supabaseAdmin
     .from('profiles')
-    .select('user_id, full_name, role, phone, citizen_id, birth_date, avatar_url, branch_id, member_tags, allowed_inventory_tabs, can_view_costs, branches(id, branch_name, branch_code)');
+    .select('user_id, full_name, role, phone, citizen_id, birth_date, avatar_url, branch_id, member_tags, allowed_inventory_tabs, allowed_pages, can_view_costs, branches(id, branch_name, branch_code)');
 
   let profiles: any[] | null = initialRes.data;
 
-  if (initialRes.error && initialRes.error.message?.includes('can_view_costs')) {
+  if (initialRes.error && initialRes.error.message?.includes('allowed_pages')) {
+    const resNoPages = await supabaseAdmin
+      .from('profiles')
+      .select('user_id, full_name, role, phone, citizen_id, birth_date, avatar_url, branch_id, member_tags, allowed_inventory_tabs, can_view_costs, branches(id, branch_name, branch_code)');
+    profiles = resNoPages.data;
+    if (resNoPages.error && resNoPages.error.message?.includes('can_view_costs')) {
+      const fallback = await supabaseAdmin
+        .from('profiles')
+        .select('user_id, full_name, role, phone, citizen_id, birth_date, avatar_url, branch_id, member_tags, allowed_inventory_tabs, branches(id, branch_name, branch_code)');
+      profiles = fallback.data;
+    }
+  } else if (initialRes.error && initialRes.error.message?.includes('can_view_costs')) {
     const fallback = await supabaseAdmin
       .from('profiles')
       .select('user_id, full_name, role, phone, citizen_id, birth_date, avatar_url, branch_id, member_tags, allowed_inventory_tabs, branches(id, branch_name, branch_code)');
@@ -30,6 +41,26 @@ export default async function EmployeesPage() {
     .from('branches')
     .select('id, branch_name, branch_code')
     .order('id', { ascending: true });
+
+  const ALL_ADMIN_PAGES = [
+    '/dashboard', '/sales-history', '/inventory', '/stock-in', '/propsfina', '/algorithm',
+    '/web-gallery', '/discounts', '/branches', '/employees', '/balance-check', '/rfid-mismatch',
+    '/stock-audit', '/manager/damage-history', '/filters', '/app-management', '/backup'
+  ];
+
+  const getDefaultPagesByRole = (role: string): string[] => {
+    if (role === 'admin') return ALL_ADMIN_PAGES;
+    if (role === 'data_analyst') {
+      return [
+        '/dashboard', '/sales-history', '/inventory', '/stock-in', '/algorithm',
+        '/balance-check', '/rfid-mismatch', '/stock-audit', '/manager/damage-history', '/filters'
+      ];
+    }
+    if (role === 'data_entry' || role === 'warehouse') {
+      return ['/inventory', '/stock-in', '/propsfina'];
+    }
+    return ['/inventory', '/sales-history'];
+  };
 
   // ✅ กรองเฉพาะพนักงานจริงในระบบ (ไม่แสดงลูกค้าหน้าเว็บที่ไม่มี Role หรือมี Role เป็น customer)
   const NON_STAFF_ROLES = ['customer', 'unassigned', ''];
@@ -43,11 +74,19 @@ export default async function EmployeesPage() {
         ? profile.branches[0] 
         : null;
 
+      const rawMemberTags: string[] = Array.isArray(profile?.member_tags) ? profile.member_tags : [];
+      const catMemberTags = rawMemberTags.filter((t) => !t.startsWith('PAGE:'));
+      const pageMemberTags = rawMemberTags.filter((t) => t.startsWith('PAGE:')).map((t) => t.slice(5));
+
       const allowedCategories = profile?.allowed_inventory_tabs?.length > 0 
         ? profile.allowed_inventory_tabs 
-        : (profile?.member_tags?.length > 0 ? profile.member_tags : ['SLABS', 'ROUGH', 'PROP', 'FURNITURE']);
+        : (catMemberTags.length > 0 ? catMemberTags : ['SLABS', 'ROUGH', 'PROP', 'FURNITURE']);
 
       const userRole = (profile?.role || "").toLowerCase().trim();
+
+      const allowedPages: string[] = profile?.allowed_pages?.length > 0
+        ? profile.allowed_pages
+        : (pageMemberTags.length > 0 ? pageMemberTags : getDefaultPagesByRole(userRole));
 
       let canViewCosts: boolean;
       if (profile?.can_view_costs !== undefined && profile?.can_view_costs !== null) {
@@ -67,6 +106,7 @@ export default async function EmployeesPage() {
         avatar_url: profile?.avatar_url || null, 
         branch_id: profile?.branch_id || null,
         allowed_inventory_tabs: allowedCategories,
+        allowed_pages: allowedPages,
         can_view_costs: canViewCosts,
         // ✅ ส่งเป็น Object อันเดียว (หรือ null) ตามที่ TypeScript ต้องการ
         branches: branchInfo 

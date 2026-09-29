@@ -47,9 +47,13 @@ export default async function InventoryPage({ searchParams }: Props) {
     canViewCosts = ['admin', 'manager', 'data_analyst'].includes(userRole)
   }
 
+  const rawMemberCats = Array.isArray((profile as any)?.member_tags)
+    ? (profile as any).member_tags.filter((t: string) => !t.startsWith('PAGE:'))
+    : []
+
   const rawAllowed = (profile as any)?.allowed_inventory_tabs?.length > 0
     ? (profile as any).allowed_inventory_tabs
-    : ((profile as any)?.member_tags?.length > 0 ? (profile as any).member_tags : ['SLABS', 'ROUGH', 'PROP', 'FURNITURE'])
+    : (rawMemberCats.length > 0 ? rawMemberCats : ['SLABS', 'ROUGH', 'PROP', 'FURNITURE'])
 
   const allowedTabs: string[] = isSuperAccess ? ['SLABS', 'ROUGH', 'PROP', 'FURNITURE'] : rawAllowed
 

@@ -49,6 +49,7 @@ interface UserData {
   name: string;
   role: string;
   avatar: string;
+  allowedPages?: string[];
 }
 
 export default function AdminSidebar({ user }: { user?: UserData }) {
@@ -61,11 +62,14 @@ export default function AdminSidebar({ user }: { user?: UserData }) {
     avatar: `https://ui-avatars.com/api/?name=User&background=cbd5e1&color=64748b`
   };
 
-  // กรองเมนูตามบทบาท (Role-based menu filtering)
+  // กรองเมนูตามสิทธิ์หน้าที่กำหนดรายบุคคล (allowedPages) หรือตามบทบาท (Role-based fallback)
   let visiblePrimary = primaryItems;
   let visibleSecondary = secondaryItems;
 
-  if (safeUser.role === 'data_entry' || safeUser.role === 'warehouse') {
+  if (safeUser.allowedPages && safeUser.allowedPages.length > 0) {
+    visiblePrimary = primaryItems.filter(item => safeUser.allowedPages!.includes(item.href));
+    visibleSecondary = secondaryItems.filter(item => safeUser.allowedPages!.includes(item.href));
+  } else if (safeUser.role === 'data_entry' || safeUser.role === 'warehouse') {
     visiblePrimary = primaryItems.filter(item => ['/inventory', '/propsfina', '/stock-in'].includes(item.href));
     visibleSecondary = [];
   } else if (safeUser.role === 'data_analyst') {

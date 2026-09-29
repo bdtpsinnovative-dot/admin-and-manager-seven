@@ -6,7 +6,11 @@ import {
   Edit, Trash2, User, Shield, Briefcase, MapPin, X, Save,
   AlertCircle, Calendar, Phone, Plus, Key, Mail, Search,
   CheckCircle, XCircle, Users, Building2, Filter, ChevronDown,
-  UserPlus, Eye, EyeOff
+  UserPlus, Eye, EyeOff, LayoutDashboard, History, Box,
+  PackagePlus, Frame, Activity, Images, Tag, Scale,
+  AlertTriangle, ShieldCheck, SlidersHorizontal, Settings,
+  Layers, Hammer, Armchair, Package, Monitor, DollarSign,
+  Lock, Store, BarChart3, FileText, Check
 } from "lucide-react"
 
 // --- Interface ---
@@ -21,36 +25,78 @@ interface Profile {
   avatar_url: string | null;
   branch_id: number | null;
   allowed_inventory_tabs?: string[];
+  allowed_pages?: string[];
   branches: Branch | null;
   can_view_costs?: boolean;
 }
 
 // --- Role config ---
-const ROLE_CONFIG: Record<string, { label: string; labelTh: string; color: string; bg: string; border: string; dot: string; icon: string }> = {
-  admin:        { label: "Admin",        labelTh: "ผู้ดูแลระบบ",           color: "text-rose-700",    bg: "bg-rose-50",     border: "border-rose-200",    dot: "bg-rose-500",    icon: "👑" },
-  manager:      { label: "Manager",      labelTh: "ผู้จัดการ",            color: "text-violet-700",  bg: "bg-violet-50",   border: "border-violet-200",  dot: "bg-violet-500",  icon: "💼" },
-  sale:         { label: "Sale",         labelTh: "พนักงานขาย",          color: "text-sky-700",     bg: "bg-sky-50",      border: "border-sky-200",     dot: "bg-sky-500",     icon: "🏷️" },
-  data_entry:   { label: "Data Entry",   labelTh: "เจ้าหน้าที่บันทึกข้อมูล", color: "text-amber-700",   bg: "bg-amber-50",    border: "border-amber-200",   dot: "bg-amber-500",   icon: "📝" },
-  data_analyst: { label: "Data Analyst", labelTh: "นักวิเคราะห์ข้อมูล",     color: "text-indigo-700",  bg: "bg-indigo-50",   border: "border-indigo-200",  dot: "bg-indigo-500",  icon: "📊" },
-  warehouse:    { label: "Warehouse",    labelTh: "คลังสินค้า",           color: "text-emerald-700", bg: "bg-emerald-50", border: "border-emerald-200", dot: "bg-emerald-500", icon: "📦" },
+const ROLE_CONFIG: Record<string, { label: string; labelTh: string; color: string; bg: string; border: string; dot: string; Icon: any }> = {
+  admin:        { label: "Admin",        labelTh: "ผู้ดูแลระบบ",           color: "text-rose-700",    bg: "bg-rose-50",     border: "border-rose-200",    dot: "bg-rose-500",    Icon: ShieldCheck },
+  manager:      { label: "Manager",      labelTh: "ผู้จัดการ",            color: "text-violet-700",  bg: "bg-violet-50",   border: "border-violet-200",  dot: "bg-violet-500",  Icon: Briefcase },
+  sale:         { label: "Sale",         labelTh: "พนักงานขาย",          color: "text-sky-700",     bg: "bg-sky-50",      border: "border-sky-200",     dot: "bg-sky-500",     Icon: Tag },
+  data_entry:   { label: "Data Entry",   labelTh: "เจ้าหน้าที่บันทึกข้อมูล", color: "text-amber-700",   bg: "bg-amber-50",    border: "border-amber-200",   dot: "bg-amber-500",   Icon: FileText },
+  data_analyst: { label: "Data Analyst", labelTh: "นักวิเคราะห์ข้อมูล",     color: "text-indigo-700",  bg: "bg-indigo-50",   border: "border-indigo-200",  dot: "bg-indigo-500",  Icon: BarChart3 },
+  warehouse:    { label: "Warehouse",    labelTh: "คลังสินค้า",           color: "text-emerald-700", bg: "bg-emerald-50", border: "border-emerald-200", dot: "bg-emerald-500", Icon: Package },
 }
 
 // --- หมวดหมู่สินค้าในคลัง ---
 const CATEGORY_ITEMS = [
-  { id: 'SLABS',     label: 'Wood Slabs', labelTh: 'แผ่นไม้',     color: 'border-blue-300 text-blue-700 bg-blue-50',    badgeBg: 'bg-blue-100 text-blue-800 border-blue-200',    icon: '🪵' },
-  { id: 'ROUGH',     label: 'Rough Wood', labelTh: 'ไม้ดิบ',     color: 'border-orange-300 text-orange-700 bg-orange-50',badgeBg: 'bg-orange-100 text-orange-800 border-orange-200',icon: '🌲' },
-  { id: 'PROP',      label: 'Props',      labelTh: 'พร็อพ',       color: 'border-purple-300 text-purple-700 bg-purple-50',badgeBg: 'bg-purple-100 text-purple-800 border-purple-200',icon: '📦' },
-  { id: 'FURNITURE', label: 'Furniture',  labelTh: 'เฟอร์นิเจอร์', color: 'border-emerald-300 text-emerald-700 bg-emerald-50',badgeBg: 'bg-emerald-100 text-emerald-800 border-emerald-200',icon: '🪑' },
+  { id: 'SLABS',     label: 'Wood Slabs', labelTh: 'แผ่นไม้',     color: 'border-blue-300 text-blue-700 bg-blue-50',    badgeBg: 'bg-blue-100 text-blue-800 border-blue-200',    Icon: Layers },
+  { id: 'ROUGH',     label: 'Rough Wood', labelTh: 'ไม้ดิบ',     color: 'border-orange-300 text-orange-700 bg-orange-50',badgeBg: 'bg-orange-100 text-orange-800 border-orange-200',Icon: Hammer },
+  { id: 'PROP',      label: 'Props',      labelTh: 'พร็อพ',       color: 'border-purple-300 text-purple-700 bg-purple-50',badgeBg: 'bg-purple-100 text-purple-800 border-purple-200',Icon: Box },
+  { id: 'FURNITURE', label: 'Furniture',  labelTh: 'เฟอร์นิเจอร์', color: 'border-emerald-300 text-emerald-700 bg-emerald-50',badgeBg: 'bg-emerald-100 text-emerald-800 border-emerald-200',Icon: Armchair },
 ]
+
+// --- รายการหน้าเมนูทั้งหมดในระบบ (ตรงกับ AdminSidebar) ---
+const PAGE_ITEMS = [
+  // 1. เมนูหลัก (งานประจำวัน)
+  { href: '/dashboard',              label: 'Dashboard',                 group: 'primary',   Icon: LayoutDashboard },
+  { href: '/sales-history',          label: 'ประวัติการขายหน้าร้าน',      group: 'primary',   Icon: History },
+  { href: '/inventory',              label: 'สินค้าทั้งหมด',              group: 'primary',   Icon: Box },
+  { href: '/stock-in',               label: 'รับสินค้าเข้า (Stock In)',   group: 'primary',   Icon: PackagePlus },
+  { href: '/propsfina',              label: 'Props / Decor',             group: 'primary',   Icon: Frame },
+  { href: '/algorithm',              label: 'Algorithm',                 group: 'primary',   Icon: Activity },
+  // 2. เมนูการจัดการและรายงาน (Management)
+  { href: '/web-gallery',            label: 'จัดการ แกลเลอลี่หน้าเว็ป',    group: 'secondary', Icon: Images },
+  { href: '/discounts',              label: 'ส่วนลด & โปรโมชัน',         group: 'secondary', Icon: Tag },
+  { href: '/branches',               label: 'จัดการสาขา',                group: 'secondary', Icon: MapPin },
+  { href: '/employees',              label: 'พนักงาน',                   group: 'secondary', Icon: Users },
+  { href: '/balance-check',          label: 'ตรวจสอบยอดรวมระบบ',         group: 'secondary', Icon: Scale },
+  { href: '/rfid-mismatch',          label: 'ตรวจสอบ RFID ยอดเกิน',      group: 'secondary', Icon: AlertTriangle },
+  { href: '/stock-audit',            label: 'อนุมัติตรวจนับสต็อก',         group: 'secondary', Icon: ShieldCheck },
+  { href: '/manager/damage-history', label: 'ประวัติสินค้าเสียหาย',       group: 'secondary', Icon: Trash2 },
+  { href: '/filters',                label: 'จัดการ Filters',            group: 'secondary', Icon: SlidersHorizontal },
+  { href: '/app-management',         label: 'จัดการแอป & เว็บ',           group: 'secondary', Icon: Settings },
+  { href: '/backup',                 label: 'Backup & Restore',          group: 'secondary', Icon: ShieldCheck },
+]
+
+const ALL_PAGE_HREFS = PAGE_ITEMS.map(p => p.href)
+
+function getDefaultPagesByRole(role: string): string[] {
+  if (role === 'admin') return ALL_PAGE_HREFS
+  if (role === 'data_analyst') {
+    return [
+      '/dashboard', '/sales-history', '/inventory', '/stock-in', '/algorithm',
+      '/balance-check', '/rfid-mismatch', '/stock-audit', '/manager/damage-history', '/filters'
+    ]
+  }
+  if (role === 'data_entry' || role === 'warehouse') {
+    return ['/inventory', '/stock-in', '/propsfina']
+  }
+  return ['/inventory', '/sales-history']
+}
 
 // --- Component หลัก ---
 export default function EmployeeClient({ initialData, branches, storageBaseUrl }: { initialData: Profile[], branches: Branch[], storageBaseUrl: string }) {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
-  const [isMatrixModalOpen, setIsMatrixModalOpen] = useState(false) // 💡 โมดอลแสดงผังสิทธิ์การกรอง
+  const [isMatrixModalOpen, setIsMatrixModalOpen] = useState(false)
   const [editingEmp, setEditingEmp] = useState<Profile | null>(null)
   const [editCategories, setEditCategories] = useState<string[]>(['SLABS', 'ROUGH', 'PROP', 'FURNITURE'])
   const [createCategories, setCreateCategories] = useState<string[]>(['SLABS', 'ROUGH', 'PROP', 'FURNITURE'])
+  const [editPages, setEditPages] = useState<string[]>(getDefaultPagesByRole('data_entry'))
+  const [createPages, setCreatePages] = useState<string[]>(getDefaultPagesByRole('data_entry'))
   const [editRole, setEditRole] = useState<string>('data_entry')
   const [createRole, setCreateRole] = useState<string>('data_entry')
   const [editCanViewCosts, setEditCanViewCosts] = useState<boolean>(true)
@@ -63,7 +109,6 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
   const [deletingEmp, setDeletingEmp] = useState<Profile | null>(null)
 
-  // ✅ State สำหรับ Custom Alert
   const [alertState, setAlertState] = useState<{
     isOpen: boolean;
     type: 'success' | 'error';
@@ -170,15 +215,20 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
 
   const openEditModal = (emp: Profile) => {
     setEditingEmp(emp)
-    setEditRole(emp.role || 'data_entry')
+    const r = emp.role || 'data_entry'
+    setEditRole(r)
     const cats = (emp.allowed_inventory_tabs && emp.allowed_inventory_tabs.length > 0)
       ? emp.allowed_inventory_tabs
       : ['SLABS', 'ROUGH', 'PROP', 'FURNITURE']
     setEditCategories(cats)
+    const pages = (emp.allowed_pages && emp.allowed_pages.length > 0)
+      ? emp.allowed_pages
+      : getDefaultPagesByRole(r)
+    setEditPages(pages)
     if (emp.can_view_costs !== undefined && emp.can_view_costs !== null) {
       setEditCanViewCosts(emp.can_view_costs)
     } else {
-      setEditCanViewCosts(['admin', 'manager', 'data_analyst'].includes(emp.role || ''))
+      setEditCanViewCosts(['admin', 'manager', 'data_analyst'].includes(r))
     }
     setIsModalOpen(true)
   }
@@ -186,6 +236,7 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
   const openCreateModal = () => {
     setCreateRole('data_entry')
     setCreateCategories(['SLABS', 'ROUGH', 'PROP', 'FURNITURE'])
+    setCreatePages(getDefaultPagesByRole('data_entry'))
     setCreateCanViewCosts(false)
     setShowPassword(false)
     setIsCreateModalOpen(true)
@@ -198,7 +249,7 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
     bg: "bg-slate-50",
     border: "border-slate-200",
     dot: "bg-slate-400",
-    icon: "👤"
+    Icon: User
   }
 
   // ==========================================
@@ -261,17 +312,24 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
         </div>
 
         {/* Role cards */}
-        {Object.entries(ROLE_CONFIG).filter(([key]) => key !== 'unassigned').map(([key, cfg]) => (
-          <div
-            key={key}
-            className={`${cfg.bg} ${cfg.border} border rounded-2xl p-4 relative overflow-hidden hover:shadow-md transition-all duration-300 cursor-default group`}
-          >
-            {cfg.icon && <div className="absolute top-2 right-3 text-2xl opacity-60 group-hover:scale-110 transition-transform">{cfg.icon}</div>}
-            <p className={`text-[10px] font-bold uppercase tracking-wider ${cfg.color} opacity-70`}>{cfg.label}</p>
-            <p className={`text-2xl font-black mt-1 ${cfg.color}`}>{stats.roleCounts[key] || 0}</p>
-            <p className="text-[10px] text-slate-400 mt-0.5">{cfg.labelTh}</p>
-          </div>
-        ))}
+        {Object.entries(ROLE_CONFIG).filter(([key]) => key !== 'unassigned').map(([key, cfg]) => {
+          const RoleIcon = cfg.Icon;
+          return (
+            <div
+              key={key}
+              className={`${cfg.bg} ${cfg.border} border rounded-2xl p-4 relative overflow-hidden hover:shadow-md transition-all duration-300 cursor-default group`}
+            >
+              {RoleIcon && (
+                <div className={`absolute top-3 right-3 ${cfg.color} opacity-40 group-hover:scale-110 transition-transform`}>
+                  <RoleIcon className="w-5 h-5" />
+                </div>
+              )}
+              <p className={`text-[10px] font-bold uppercase tracking-wider ${cfg.color} opacity-70`}>{cfg.label}</p>
+              <p className={`text-2xl font-black mt-1 ${cfg.color}`}>{stats.roleCounts[key] || 0}</p>
+              <p className="text-[10px] text-slate-400 mt-0.5">{cfg.labelTh}</p>
+            </div>
+          );
+        })}
       </div>
 
       {/* ====== Search & Filters ====== */}
@@ -349,6 +407,7 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
               <tr className="bg-gradient-to-r from-slate-50 to-slate-100/50 border-b border-slate-200">
                 <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">พนักงาน</th>
                 <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">ตำแหน่ง</th>
+                <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">หน้าเมนูที่เข้าถึงได้</th>
                 <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">หมวดสินค้าที่รับผิดชอบ</th>
                 <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">สิทธิ์ดูต้นทุน</th>
                 <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">สาขา</th>
@@ -361,9 +420,13 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
               {filteredData.map((emp, idx) => {
                 const avatarSrc = getAvatarUrl(emp.avatar_url);
                 const roleInfo = getRoleInfo(emp.role);
+                const RoleBadgeIcon = roleInfo.Icon;
                 const assignedCats = (emp.allowed_inventory_tabs && emp.allowed_inventory_tabs.length > 0)
                   ? emp.allowed_inventory_tabs
                   : ['SLABS', 'ROUGH', 'PROP', 'FURNITURE'];
+                const assignedPages = (emp.allowed_pages && emp.allowed_pages.length > 0)
+                  ? emp.allowed_pages
+                  : getDefaultPagesByRole(emp.role);
 
                 return (
                   <tr
@@ -402,29 +465,68 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
                     <td className="px-6 py-4">
                       <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold border ${roleInfo.bg} ${roleInfo.color} ${roleInfo.border}`}>
                         <span className={`w-1.5 h-1.5 rounded-full ${roleInfo.dot}`} />
-                        <span>{roleInfo.icon}</span>
+                        {RoleBadgeIcon && <RoleBadgeIcon className="w-3.5 h-3.5" />}
                         {roleInfo.label}
                       </div>
+                    </td>
+
+                    {/* Allowed Pages */}
+                    <td className="px-6 py-4">
+                      {emp.role === 'sale' || emp.role === 'manager' ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-violet-50 text-violet-700 border border-violet-200">
+                          <Store className="w-3.5 h-3.5" /> ระบบหน้าร้าน ({emp.role === 'manager' ? 'Manager POS' : 'Sale POS'})
+                        </span>
+                      ) : assignedPages.length >= ALL_PAGE_HREFS.length ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                          <ShieldCheck className="w-3.5 h-3.5" /> เข้าถึงได้ทุกหน้า ({ALL_PAGE_HREFS.length} หน้า)
+                        </span>
+                      ) : (
+                        <div className="flex flex-wrap gap-1 max-w-[250px]">
+                          {assignedPages.slice(0, 4).map((href) => {
+                            const pItem = PAGE_ITEMS.find(p => p.href === href);
+                            const PageIcon = pItem?.Icon || FileText;
+                            return (
+                              <span
+                                key={href}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200"
+                                title={`${pItem?.label || href} (${href})`}
+                              >
+                                <PageIcon className="w-3 h-3 shrink-0" />
+                                <span className="truncate max-w-[95px]">{pItem?.label || href}</span>
+                              </span>
+                            );
+                          })}
+                          {assignedPages.length > 4 && (
+                            <span
+                              className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200"
+                              title={assignedPages.map(h => PAGE_ITEMS.find(p => p.href === h)?.label || h).join(', ')}
+                            >
+                              +{assignedPages.length - 4} หน้า
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </td>
 
                     {/* Category permissions */}
                     <td className="px-6 py-4">
                       {emp.role === 'admin' || emp.role === 'data_analyst' ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
-                          ✨ ดูแลครบทุกหมวด (All)
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                          <CheckCircle className="w-3.5 h-3.5" /> ดูแลครบทุกหมวด (All)
                         </span>
                       ) : (
                         <div className="flex flex-wrap gap-1 max-w-[220px]">
                           {assignedCats.map((catId) => {
                             const cItem = CATEGORY_ITEMS.find(c => c.id === catId);
                             if (!cItem) return null;
+                            const CatIcon = cItem.Icon;
                             return (
                               <span
                                 key={catId}
                                 className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold border ${cItem.badgeBg}`}
                                 title={cItem.label}
                               >
-                                <span>{cItem.icon}</span>
+                                <CatIcon className="w-3 h-3 shrink-0" />
                                 <span>{cItem.labelTh}</span>
                               </span>
                             );
@@ -437,11 +539,11 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
                     <td className="px-6 py-4">
                       {emp.can_view_costs !== false ? (
                         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-sm" title="สามารถมองเห็นและจัดการต้นทุนสินค้าได้">
-                          <span>💰</span> ดูต้นทุนได้
+                          <DollarSign className="w-3.5 h-3.5" /> ดูต้นทุนได้
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-100 text-slate-500 border border-slate-200" title="ซ่อนข้อมูลต้นทุนและกำไรทั้งหมด">
-                          <span>🔒</span> ซ่อนต้นทุน
+                          <Lock className="w-3.5 h-3.5" /> ซ่อนต้นทุน
                         </span>
                       )}
                     </td>
@@ -505,7 +607,7 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
 
               {filteredData.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="text-center py-16">
+                  <td colSpan={9} className="text-center py-16">
                     <div className="flex flex-col items-center gap-3">
                       <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center">
                         <Users className="w-8 h-8 text-slate-300" />
@@ -601,7 +703,7 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
       {/* =================================================================================== */}
       {isModalOpen && editingEmp && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4" style={{ animation: 'fadeIn 0.2s ease-out' }}>
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]" style={{ animation: 'scaleIn 0.25s ease-out' }}>
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[92vh]" style={{ animation: 'scaleIn 0.25s ease-out' }}>
 
             {/* Header */}
             <div className="flex justify-between items-center px-6 py-5 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-blue-50/30">
@@ -610,7 +712,7 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
                   <Edit className="w-4.5 h-4.5 text-white" />
                 </div>
                 <div>
-                  <h2 className="text-lg font-extrabold text-slate-800">แก้ไขข้อมูล</h2>
+                  <h2 className="text-lg font-extrabold text-slate-800">แก้ไขข้อมูลและสิทธิ์พนักงาน</h2>
                   <p className="text-[11px] text-slate-500 font-mono">{editingEmp.email}</p>
                 </div>
               </div>
@@ -675,7 +777,11 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
                       <select 
                         name="role" 
                         value={editRole}
-                        onChange={(e) => setEditRole(e.target.value)}
+                        onChange={(e) => {
+                          const newR = e.target.value;
+                          setEditRole(newR);
+                          setEditPages(getDefaultPagesByRole(newR));
+                        }}
                         className="w-full border border-slate-200 rounded-xl p-2.5 text-sm bg-white focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400 outline-none appearance-none cursor-pointer"
                       >
                         <option value="data_entry">Data Entry (เจ้าหน้าที่บันทึกข้อมูล)</option>
@@ -697,11 +803,133 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
                     </div>
                   </div>
 
+                  {/* สิทธิ์การเข้าถึงหน้าเมนู (Allowed Pages) */}
+                  <div className="pt-3 border-t border-blue-200/60 space-y-2.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                          <Monitor className="w-3.5 h-3.5 text-indigo-600" /> หน้าที่อนุญาตให้เข้าใช้งาน (เมนู Sidebar)
+                          <span className="px-2 py-0.5 text-[10px] rounded-full bg-indigo-100 text-indigo-700 font-extrabold">
+                            เลือก {editPages.length}/{ALL_PAGE_HREFS.length} หน้า
+                          </span>
+                        </label>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setEditPages(ALL_PAGE_HREFS)}
+                          className="text-[10px] text-indigo-600 hover:text-indigo-800 font-semibold px-2 py-0.5 rounded bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition"
+                        >
+                          เลือกทุกหน้า
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditPages(getDefaultPagesByRole(editRole))}
+                          className="text-[10px] text-blue-600 hover:text-blue-800 font-semibold px-2 py-0.5 rounded bg-blue-50 hover:bg-blue-100 border border-blue-200 transition"
+                        >
+                          ค่าเริ่มต้นตามตำแหน่ง
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditPages(['/inventory', '/stock-in', '/propsfina'])}
+                          className="text-[10px] text-emerald-600 hover:text-emerald-800 font-semibold px-2 py-0.5 rounded bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition"
+                        >
+                          เฉพาะคลังสินค้า
+                        </button>
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-slate-500">
+                      ติ๊กเลือกหน้าเมนูที่ต้องการให้แสดงในแถบเมนูด้านซ้าย (Sidebar) ของพนักงานคนนี้
+                    </p>
+
+                    {/* กลุ่ม 1: เมนูหลัก */}
+                    <div className="space-y-1.5">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">เมนูหลัก (งานประจำวัน)</p>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                        {PAGE_ITEMS.filter(p => p.group === 'primary').map((page) => {
+                          const isChecked = editPages.includes(page.href);
+                          const PageIcon = page.Icon;
+                          return (
+                            <button
+                              key={page.href}
+                              type="button"
+                              onClick={() => {
+                                if (isChecked) {
+                                  if (editPages.length > 1) setEditPages(editPages.filter(h => h !== page.href));
+                                } else {
+                                  setEditPages([...editPages, page.href]);
+                                }
+                              }}
+                              className={`flex items-center gap-2 p-2 rounded-xl border text-left transition-all ${
+                                isChecked
+                                  ? 'border-indigo-300 bg-indigo-50/90 text-indigo-900 font-bold shadow-sm ring-1 ring-indigo-400/50'
+                                  : 'border-slate-200 bg-white/70 text-slate-400 hover:bg-white hover:text-slate-600'
+                              }`}
+                            >
+                              <PageIcon className="w-4 h-4 shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-[11px] leading-tight truncate">{page.label}</p>
+                                <p className="text-[9px] opacity-60 font-mono truncate">{page.href}</p>
+                              </div>
+                              <div className={`w-4 h-4 rounded flex items-center justify-center text-[10px] shrink-0 ${
+                                isChecked ? 'bg-indigo-600 text-white font-bold' : 'border border-slate-300'
+                              }`}>
+                                {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* กลุ่ม 2: เมนูการจัดการ (Management) */}
+                    <div className="space-y-1.5 pt-1">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">เมนูการจัดการและรายงาน (Management)</p>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                        {PAGE_ITEMS.filter(p => p.group === 'secondary').map((page) => {
+                          const isChecked = editPages.includes(page.href);
+                          const PageIcon = page.Icon;
+                          return (
+                            <button
+                              key={page.href}
+                              type="button"
+                              onClick={() => {
+                                if (isChecked) {
+                                  if (editPages.length > 1) setEditPages(editPages.filter(h => h !== page.href));
+                                } else {
+                                  setEditPages([...editPages, page.href]);
+                                }
+                              }}
+                              className={`flex items-center gap-2 p-2 rounded-xl border text-left transition-all ${
+                                isChecked
+                                  ? 'border-blue-300 bg-blue-50/90 text-blue-900 font-bold shadow-sm ring-1 ring-blue-400/50'
+                                  : 'border-slate-200 bg-white/70 text-slate-400 hover:bg-white hover:text-slate-600'
+                              }`}
+                            >
+                              <PageIcon className="w-4 h-4 shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-[11px] leading-tight truncate">{page.label}</p>
+                                <p className="text-[9px] opacity-60 font-mono truncate">{page.href}</p>
+                              </div>
+                              <div className={`w-4 h-4 rounded flex items-center justify-center text-[10px] shrink-0 ${
+                                isChecked ? 'bg-blue-600 text-white font-bold' : 'border border-slate-300'
+                              }`}>
+                                {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <input type="hidden" name="allowed_pages" value={JSON.stringify(editPages)} />
+                  </div>
+
                   {/* หมวดหมู่สินค้าที่รับผิดชอบในคลัง */}
                   <div className="pt-3 border-t border-blue-200/60 space-y-2">
                     <div className="flex items-center justify-between">
                       <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                        <span>📦</span> หมวดสินค้าที่รับผิดชอบ (/inventory)
+                        <Package className="w-3.5 h-3.5 text-blue-600" /> หมวดสินค้าที่รับผิดชอบ (/inventory)
                       </label>
                       <div className="flex items-center gap-1">
                         <button
@@ -740,6 +968,7 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
                     <div className="grid grid-cols-2 gap-2 pt-1">
                       {CATEGORY_ITEMS.map((cat) => {
                         const isChecked = editCategories.includes(cat.id);
+                        const CatIcon = cat.Icon;
                         return (
                           <button
                             key={cat.id}
@@ -759,7 +988,7 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
                                 : 'border-slate-200 bg-white/70 text-slate-400 hover:bg-white'
                             }`}
                           >
-                            <span className="text-base">{cat.icon}</span>
+                            <CatIcon className="w-4 h-4 shrink-0" />
                             <div className="flex-1 min-w-0">
                               <p className="text-xs">{cat.labelTh}</p>
                               <p className="text-[10px] opacity-70 font-mono">{cat.id}</p>
@@ -767,7 +996,7 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
                             <div className={`w-4 h-4 rounded-md flex items-center justify-center text-[10px] ${
                               isChecked ? 'bg-blue-600 text-white font-bold' : 'border border-slate-300'
                             }`}>
-                              {isChecked && '✓'}
+                              {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
                             </div>
                           </button>
                         );
@@ -781,7 +1010,7 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
                     <div className="flex items-center justify-between">
                       <div>
                         <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                          <span>💰</span> สิทธิ์การดูและจัดการต้นทุนสินค้า
+                          <DollarSign className="w-3.5 h-3.5 text-emerald-600" /> สิทธิ์การดูและจัดการต้นทุนสินค้า
                         </label>
                         <p className="text-[11px] text-slate-500 mt-0.5">
                           ต้นทุนดอลลาร์, ต้นทุนรวมค่าส่ง (บาท) และกำไรในหน้าคลังสินค้า
@@ -809,12 +1038,12 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
                     }`}>
                       {editCanViewCosts ? (
                         <>
-                          <span className="text-sm">👁️</span>
+                          <Eye className="w-4 h-4 shrink-0 text-emerald-600" />
                           <span><strong>อนุญาตให้ดูต้นทุนได้:</strong> สามารถมองเห็นต้นทุน, คำนวณกำไร และอัปโหลดไฟล์ที่มีต้นทุนได้</span>
                         </>
                       ) : (
                         <>
-                          <span className="text-sm">🔒</span>
+                          <Lock className="w-4 h-4 shrink-0 text-slate-500" />
                           <span><strong>ซ่อนต้นทุน:</strong> ระบบจะซ่อนคอลัมน์ต้นทุนและกำไร และป้องกันไม่ให้เขียนทับต้นทุนเดิมในระบบ</span>
                         </>
                       )}
@@ -847,11 +1076,11 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
       )}
 
       {/* =================================================================================== */}
-      {/* ➕ CREATE MODAL */}
+      {/* CREATE MODAL */}
       {/* =================================================================================== */}
       {isCreateModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4" style={{ animation: 'fadeIn 0.2s ease-out' }}>
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]" style={{ animation: 'scaleIn 0.25s ease-out' }}>
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[92vh]" style={{ animation: 'scaleIn 0.25s ease-out' }}>
 
             {/* Header */}
             <div className="flex justify-between items-center px-6 py-5 border-b border-slate-100 bg-gradient-to-r from-blue-50 to-indigo-50/50">
@@ -861,7 +1090,7 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
                 </div>
                 <div>
                   <h2 className="text-lg font-extrabold text-slate-800">เพิ่มพนักงานใหม่</h2>
-                  <p className="text-[11px] text-slate-500">สร้างบัญชีผู้ใช้และข้อมูลพนักงาน</p>
+                  <p className="text-[11px] text-slate-500">สร้างบัญชีผู้ใช้ กำหนดตำแหน่ง และเลือกหน้าเมนูที่อนุญาตให้เข้าใช้งาน</p>
                 </div>
               </div>
               <button onClick={() => setIsCreateModalOpen(false)} className="p-2 hover:bg-slate-200/50 rounded-xl transition active:scale-90">
@@ -957,6 +1186,7 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
                         onChange={(e) => {
                           const newR = e.target.value;
                           setCreateRole(newR);
+                          setCreatePages(getDefaultPagesByRole(newR));
                           setCreateCanViewCosts(['admin', 'manager', 'data_analyst'].includes(newR));
                         }}
                         className="w-full border border-slate-200 rounded-xl p-2.5 text-sm bg-white focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400 outline-none appearance-none cursor-pointer"
@@ -980,11 +1210,133 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
                     </div>
                   </div>
 
+                  {/* สิทธิ์การเข้าถึงหน้าเมนู (Allowed Pages) */}
+                  <div className="pt-3 border-t border-blue-200/60 space-y-2.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                          <Monitor className="w-3.5 h-3.5 text-indigo-600" /> หน้าที่อนุญาตให้เข้าใช้งาน (เมนู Sidebar)
+                          <span className="px-2 py-0.5 text-[10px] rounded-full bg-indigo-100 text-indigo-700 font-extrabold">
+                            เลือก {createPages.length}/{ALL_PAGE_HREFS.length} หน้า
+                          </span>
+                        </label>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setCreatePages(ALL_PAGE_HREFS)}
+                          className="text-[10px] text-indigo-600 hover:text-indigo-800 font-semibold px-2 py-0.5 rounded bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition"
+                        >
+                          เลือกทุกหน้า
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCreatePages(getDefaultPagesByRole(createRole))}
+                          className="text-[10px] text-blue-600 hover:text-blue-800 font-semibold px-2 py-0.5 rounded bg-blue-50 hover:bg-blue-100 border border-blue-200 transition"
+                        >
+                          ค่าเริ่มต้นตามตำแหน่ง
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCreatePages(['/inventory', '/stock-in', '/propsfina'])}
+                          className="text-[10px] text-emerald-600 hover:text-emerald-800 font-semibold px-2 py-0.5 rounded bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition"
+                        >
+                          เฉพาะคลังสินค้า
+                        </button>
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-slate-500">
+                      ติ๊กเลือกหน้าเมนูที่ต้องการให้แสดงในแถบเมนูด้านซ้าย (Sidebar) ของพนักงานคนนี้
+                    </p>
+
+                    {/* กลุ่ม 1: เมนูหลัก */}
+                    <div className="space-y-1.5">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">เมนูหลัก (งานประจำวัน)</p>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                        {PAGE_ITEMS.filter(p => p.group === 'primary').map((page) => {
+                          const isChecked = createPages.includes(page.href);
+                          const PageIcon = page.Icon;
+                          return (
+                            <button
+                              key={page.href}
+                              type="button"
+                              onClick={() => {
+                                if (isChecked) {
+                                  if (createPages.length > 1) setCreatePages(createPages.filter(h => h !== page.href));
+                                } else {
+                                  setCreatePages([...createPages, page.href]);
+                                }
+                              }}
+                              className={`flex items-center gap-2 p-2 rounded-xl border text-left transition-all ${
+                                isChecked
+                                  ? 'border-indigo-300 bg-indigo-50/90 text-indigo-900 font-bold shadow-sm ring-1 ring-indigo-400/50'
+                                  : 'border-slate-200 bg-white/70 text-slate-400 hover:bg-white hover:text-slate-600'
+                              }`}
+                            >
+                              <PageIcon className="w-4 h-4 shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-[11px] leading-tight truncate">{page.label}</p>
+                                <p className="text-[9px] opacity-60 font-mono truncate">{page.href}</p>
+                              </div>
+                              <div className={`w-4 h-4 rounded flex items-center justify-center text-[10px] shrink-0 ${
+                                isChecked ? 'bg-indigo-600 text-white font-bold' : 'border border-slate-300'
+                              }`}>
+                                {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* กลุ่ม 2: เมนูการจัดการ (Management) */}
+                    <div className="space-y-1.5 pt-1">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">เมนูการจัดการและรายงาน (Management)</p>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                        {PAGE_ITEMS.filter(p => p.group === 'secondary').map((page) => {
+                          const isChecked = createPages.includes(page.href);
+                          const PageIcon = page.Icon;
+                          return (
+                            <button
+                              key={page.href}
+                              type="button"
+                              onClick={() => {
+                                if (isChecked) {
+                                  if (createPages.length > 1) setCreatePages(createPages.filter(h => h !== page.href));
+                                } else {
+                                  setCreatePages([...createPages, page.href]);
+                                }
+                              }}
+                              className={`flex items-center gap-2 p-2 rounded-xl border text-left transition-all ${
+                                isChecked
+                                  ? 'border-blue-300 bg-blue-50/90 text-blue-900 font-bold shadow-sm ring-1 ring-blue-400/50'
+                                  : 'border-slate-200 bg-white/70 text-slate-400 hover:bg-white hover:text-slate-600'
+                              }`}
+                            >
+                              <PageIcon className="w-4 h-4 shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-[11px] leading-tight truncate">{page.label}</p>
+                                <p className="text-[9px] opacity-60 font-mono truncate">{page.href}</p>
+                              </div>
+                              <div className={`w-4 h-4 rounded flex items-center justify-center text-[10px] shrink-0 ${
+                                isChecked ? 'bg-blue-600 text-white font-bold' : 'border border-slate-300'
+                              }`}>
+                                {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <input type="hidden" name="allowed_pages" value={JSON.stringify(createPages)} />
+                  </div>
+
                   {/* หมวดหมู่สินค้าที่รับผิดชอบในคลัง */}
                   <div className="pt-3 border-t border-blue-200/60 space-y-2">
                     <div className="flex items-center justify-between">
                       <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                        <span>📦</span> หมวดสินค้าที่รับผิดชอบ (/inventory)
+                        <Package className="w-3.5 h-3.5 text-blue-600" /> หมวดสินค้าที่รับผิดชอบ (/inventory)
                       </label>
                       <div className="flex items-center gap-1">
                         <button
@@ -1023,6 +1375,7 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
                     <div className="grid grid-cols-2 gap-2 pt-1">
                       {CATEGORY_ITEMS.map((cat) => {
                         const isChecked = createCategories.includes(cat.id);
+                        const CatIcon = cat.Icon;
                         return (
                           <button
                             key={cat.id}
@@ -1042,7 +1395,7 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
                                 : 'border-slate-200 bg-white/70 text-slate-400 hover:bg-white'
                             }`}
                           >
-                            <span className="text-base">{cat.icon}</span>
+                            <CatIcon className="w-4 h-4 shrink-0" />
                             <div className="flex-1 min-w-0">
                               <p className="text-xs">{cat.labelTh}</p>
                               <p className="text-[10px] opacity-70 font-mono">{cat.id}</p>
@@ -1050,7 +1403,7 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
                             <div className={`w-4 h-4 rounded-md flex items-center justify-center text-[10px] ${
                               isChecked ? 'bg-blue-600 text-white font-bold' : 'border border-slate-300'
                             }`}>
-                              {isChecked && '✓'}
+                              {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
                             </div>
                           </button>
                         );
@@ -1064,7 +1417,7 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
                     <div className="flex items-center justify-between">
                       <div>
                         <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                          <span>💰</span> สิทธิ์การดูและจัดการต้นทุนสินค้า
+                          <DollarSign className="w-3.5 h-3.5 text-emerald-600" /> สิทธิ์การดูและจัดการต้นทุนสินค้า
                         </label>
                         <p className="text-[11px] text-slate-500 mt-0.5">
                           ต้นทุนดอลลาร์, ต้นทุนรวมค่าส่ง (บาท) และกำไรในหน้าคลังสินค้า
@@ -1092,12 +1445,12 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
                     }`}>
                       {createCanViewCosts ? (
                         <>
-                          <span className="text-sm">👁️</span>
+                          <Eye className="w-4 h-4 shrink-0 text-emerald-600" />
                           <span><strong>อนุญาตให้ดูต้นทุนได้:</strong> สามารถมองเห็นต้นทุน, คำนวณกำไร และอัปโหลดไฟล์ที่มีต้นทุนได้</span>
                         </>
                       ) : (
                         <>
-                          <span className="text-sm">🔒</span>
+                          <Lock className="w-4 h-4 shrink-0 text-slate-500" />
                           <span><strong>ซ่อนต้นทุน:</strong> ระบบจะซ่อนคอลัมน์ต้นทุนและกำไร และป้องกันไม่ให้เขียนทับต้นทุนเดิมในระบบ</span>
                         </>
                       )}
@@ -1130,7 +1483,7 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
       )}
 
       {/* =================================================================================== */}
-      {/* 🛡️ PERMISSION MATRIX MODAL */}
+      {/* PERMISSION MATRIX MODAL */}
       {/* =================================================================================== */}
       {isMatrixModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 overflow-y-auto" style={{ animation: 'fadeIn 0.2s ease-out' }}>
@@ -1169,7 +1522,7 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
                   {/* Data Entry */}
                   <div className="p-4 rounded-2xl border border-amber-200 bg-amber-50/40 space-y-2">
                     <div className="flex items-center gap-2">
-                      <span className="text-xl">📝</span>
+                      <FileText className="w-5 h-5 text-amber-700" />
                       <div>
                         <p className="font-extrabold text-sm text-amber-900">Data Entry</p>
                         <p className="text-[11px] text-amber-700">เจ้าหน้าที่บันทึกข้อมูลสินค้า</p>
@@ -1183,7 +1536,7 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
                   {/* Data Analyst */}
                   <div className="p-4 rounded-2xl border border-indigo-200 bg-indigo-50/40 space-y-2">
                     <div className="flex items-center gap-2">
-                      <span className="text-xl">📊</span>
+                      <BarChart3 className="w-5 h-5 text-indigo-700" />
                       <div>
                         <p className="font-extrabold text-sm text-indigo-900">Data Analyst</p>
                         <p className="text-[11px] text-indigo-700">นักวิเคราะห์ข้อมูล</p>
@@ -1197,7 +1550,7 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
                   {/* Admin */}
                   <div className="p-4 rounded-2xl border border-rose-200 bg-rose-50/40 space-y-2">
                     <div className="flex items-center gap-2">
-                      <span className="text-xl">👑</span>
+                      <ShieldCheck className="w-5 h-5 text-rose-700" />
                       <div>
                         <p className="font-extrabold text-sm text-rose-900">Admin</p>
                         <p className="text-[11px] text-rose-700">ผู้ดูแลระบบสูงสุด</p>
@@ -1211,7 +1564,7 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
                   {/* Manager */}
                   <div className="p-4 rounded-2xl border border-violet-200 bg-violet-50/40 space-y-2">
                     <div className="flex items-center gap-2">
-                      <span className="text-xl">💼</span>
+                      <Briefcase className="w-5 h-5 text-violet-700" />
                       <div>
                         <p className="font-extrabold text-sm text-violet-900">Manager</p>
                         <p className="text-[11px] text-violet-700">ผู้จัดการสาขา</p>
@@ -1225,7 +1578,7 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
                   {/* Sale */}
                   <div className="p-4 rounded-2xl border border-sky-200 bg-sky-50/40 space-y-2">
                     <div className="flex items-center gap-2">
-                      <span className="text-xl">🏷️</span>
+                      <Tag className="w-5 h-5 text-sky-700" />
                       <div>
                         <p className="font-extrabold text-sm text-sky-900">Sale</p>
                         <p className="text-[11px] text-sky-700">พนักงานขายหน้าร้าน</p>
@@ -1239,7 +1592,7 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
                   {/* Warehouse */}
                   <div className="p-4 rounded-2xl border border-emerald-200 bg-emerald-50/40 space-y-2">
                     <div className="flex items-center gap-2">
-                      <span className="text-xl">📦</span>
+                      <Package className="w-5 h-5 text-emerald-700" />
                       <div>
                         <p className="font-extrabold text-sm text-emerald-900">Warehouse</p>
                         <p className="text-[11px] text-emerald-700">คลังสินค้า</p>
@@ -1255,7 +1608,7 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
               {/* 2. ผังการกรองในหน้าคลังสินค้า */}
               <div>
                 <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-1.5">
-                  <span>🎯</span> ตัวอย่างการกรองสินค้าในหน้าคลัง (/inventory)
+                  <Filter className="w-3.5 h-3.5" /> ตัวอย่างการกรองสินค้าในหน้าคลัง (/inventory)
                 </h3>
                 <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
                   <table className="w-full text-left text-xs border-collapse">
@@ -1263,10 +1616,10 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
                       <tr className="bg-slate-50 border-b border-slate-200 text-slate-600">
                         <th className="p-3 font-bold">ตำแหน่งงาน</th>
                         <th className="p-3 font-bold">หมวดที่ติ๊กเลือก</th>
-                        <th className="p-3 font-bold text-center">🪵 แผ่นไม้</th>
-                        <th className="p-3 font-bold text-center">🌲 ไม้ดิบ</th>
-                        <th className="p-3 font-bold text-center">📦 พร็อพ</th>
-                        <th className="p-3 font-bold text-center">🪑 เฟอร์ฯ</th>
+                        <th className="p-3 font-bold text-center">แผ่นไม้</th>
+                        <th className="p-3 font-bold text-center">ไม้ดิบ</th>
+                        <th className="p-3 font-bold text-center">พร็อพ</th>
+                        <th className="p-3 font-bold text-center">เฟอร์ฯ</th>
                         <th className="p-3 font-bold">ผลลัพธ์ในหน้า /inventory</th>
                       </tr>
                     </thead>
@@ -1275,7 +1628,7 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
                         <td className="p-3 font-bold text-amber-800">Data Entry (คีย์ไม้ดิบ)</td>
                         <td className="p-3"><span className="px-2 py-0.5 rounded bg-orange-100 text-orange-800 font-bold border border-orange-200">ไม้ดิบ (ROUGH)</span></td>
                         <td className="p-3 text-center text-slate-300">ซ่อน</td>
-                        <td className="p-3 text-center text-emerald-600 font-bold">✓ แสดง</td>
+                        <td className="p-3 text-center text-emerald-600 font-bold">แสดง</td>
                         <td className="p-3 text-center text-slate-300">ซ่อน</td>
                         <td className="p-3 text-center text-slate-300">ซ่อน</td>
                         <td className="p-3 text-slate-600">เห็นและจัดการได้เฉพาะแท็บ Rough Wood เท่านั้น</td>
@@ -1283,7 +1636,7 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
                       <tr className="hover:bg-amber-50/30">
                         <td className="p-3 font-bold text-amber-800">Data Entry (คีย์แผ่นไม้)</td>
                         <td className="p-3"><span className="px-2 py-0.5 rounded bg-blue-100 text-blue-800 font-bold border border-blue-200">แผ่นไม้ (SLABS)</span></td>
-                        <td className="p-3 text-center text-emerald-600 font-bold">✓ แสดง</td>
+                        <td className="p-3 text-center text-emerald-600 font-bold">แสดง</td>
                         <td className="p-3 text-center text-slate-300">ซ่อน</td>
                         <td className="p-3 text-center text-slate-300">ซ่อน</td>
                         <td className="p-3 text-center text-slate-300">ซ่อน</td>
@@ -1297,26 +1650,26 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
                         </td>
                         <td className="p-3 text-center text-slate-300">ซ่อน</td>
                         <td className="p-3 text-center text-slate-300">ซ่อน</td>
-                        <td className="p-3 text-center text-emerald-600 font-bold">✓ แสดง</td>
-                        <td className="p-3 text-center text-emerald-600 font-bold">✓ แสดง</td>
+                        <td className="p-3 text-center text-emerald-600 font-bold">แสดง</td>
+                        <td className="p-3 text-center text-emerald-600 font-bold">แสดง</td>
                         <td className="p-3 text-slate-600">สลับดูได้ 2 แท็บ (Props & Furniture)</td>
                       </tr>
                       <tr className="hover:bg-indigo-50/30 bg-indigo-50/10">
                         <td className="p-3 font-bold text-indigo-800">Data Analyst</td>
                         <td className="p-3"><span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-bold border border-slate-200">อัตโนมัติครบทุกหมวด</span></td>
-                        <td className="p-3 text-center text-emerald-600 font-bold">✓ แสดง</td>
-                        <td className="p-3 text-center text-emerald-600 font-bold">✓ แสดง</td>
-                        <td className="p-3 text-center text-emerald-600 font-bold">✓ แสดง</td>
-                        <td className="p-3 text-center text-emerald-600 font-bold">✓ แสดง</td>
+                        <td className="p-3 text-center text-emerald-600 font-bold">แสดง</td>
+                        <td className="p-3 text-center text-emerald-600 font-bold">แสดง</td>
+                        <td className="p-3 text-center text-emerald-600 font-bold">แสดง</td>
+                        <td className="p-3 text-center text-emerald-600 font-bold">แสดง</td>
                         <td className="p-3 text-slate-600">เห็นครบทั้ง 4 หมวด เพื่อใช้วิเคราะห์และดูข้อมูล</td>
                       </tr>
                       <tr className="hover:bg-rose-50/30 bg-rose-50/10">
                         <td className="p-3 font-bold text-rose-800">Admin</td>
                         <td className="p-3"><span className="px-2 py-0.5 rounded bg-rose-100 text-rose-800 font-bold border border-rose-200">สิทธิ์เต็มทุกหมวด</span></td>
-                        <td className="p-3 text-center text-emerald-600 font-bold">✓ แสดง</td>
-                        <td className="p-3 text-center text-emerald-600 font-bold">✓ แสดง</td>
-                        <td className="p-3 text-center text-emerald-600 font-bold">✓ แสดง</td>
-                        <td className="p-3 text-center text-emerald-600 font-bold">✓ แสดง</td>
+                        <td className="p-3 text-center text-emerald-600 font-bold">แสดง</td>
+                        <td className="p-3 text-center text-emerald-600 font-bold">แสดง</td>
+                        <td className="p-3 text-center text-emerald-600 font-bold">แสดง</td>
+                        <td className="p-3 text-center text-emerald-600 font-bold">แสดง</td>
                         <td className="p-3 text-slate-600">เห็นและจัดการได้ครบทุกหมวดหมู่และทุกระบบ</td>
                       </tr>
                     </tbody>
@@ -1327,12 +1680,12 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
               {/* 3. การควบคุมสิทธิ์การมองเห็นต้นทุน (Cost Visibility Protection) */}
               <div>
                 <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-1.5">
-                  <span>💰</span> การควบคุมสิทธิ์การมองเห็นต้นทุน (Cost Visibility & Protection)
+                  <DollarSign className="w-3.5 h-3.5" /> การควบคุมสิทธิ์การมองเห็นต้นทุน (Cost Visibility & Protection)
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div className="p-4 rounded-2xl border border-emerald-200 bg-emerald-50/50 space-y-1.5">
                     <div className="flex items-center gap-2">
-                      <span className="text-lg">👁️</span>
+                      <Eye className="w-4 h-4 text-emerald-700" />
                       <p className="font-bold text-sm text-emerald-900">ดูต้นทุนได้ (เปิดสิทธิ์)</p>
                     </div>
                     <p className="text-xs text-slate-600 leading-relaxed">
@@ -1341,7 +1694,7 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
                   </div>
                   <div className="p-4 rounded-2xl border border-slate-200 bg-slate-50/80 space-y-1.5">
                     <div className="flex items-center gap-2">
-                      <span className="text-lg">🔒</span>
+                      <Lock className="w-4 h-4 text-slate-600" />
                       <p className="font-bold text-sm text-slate-800">ซ่อนต้นทุน (ปิดสิทธิ์ - Smart Protect)</p>
                     </div>
                     <p className="text-xs text-slate-600 leading-relaxed">

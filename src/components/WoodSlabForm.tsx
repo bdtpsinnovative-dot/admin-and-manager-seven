@@ -682,8 +682,8 @@ export default function WoodSlabForm({
                       <img src={URL.createObjectURL(mainFile)} className="w-full h-full object-contain" alt="New main preview" />
                       <div className="absolute inset-x-0 bottom-0 bg-emerald-600/95 text-white px-3 py-1.5 text-[11px] font-bold text-center">
                         {existingMainPath
-                          ? '✨ เตรียมเขียนทับไฟล์เดิม (URL เดิมไม่เปลี่ยน)'
-                          : '✨ รูปใหม่พร้อมอัปโหลดขึ้น Cloudflare R2'}
+                          ? 'เตรียมเขียนทับไฟล์เดิม (URL เดิมไม่เปลี่ยน)'
+                          : 'รูปใหม่พร้อมอัปโหลดขึ้น Cloudflare R2'}
                       </div>
                       <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-2 backdrop-blur-[2px]">
                         <span className="bg-white text-slate-800 px-3 py-1.5 rounded-lg text-xs font-bold shadow">คลิกเพื่อเลือกไฟล์อื่น</span>

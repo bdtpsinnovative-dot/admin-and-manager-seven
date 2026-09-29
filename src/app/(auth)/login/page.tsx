@@ -154,10 +154,10 @@ export default function LoginPage() {
           pass: savedPass
         })
         const role = result.role
-        let targetUrl = '/dashboard'
+        let targetUrl = result.first_allowed_page || '/dashboard'
         if (role === 'manager') targetUrl = '/manager/dashboard'
         else if (role === 'sale') targetUrl = '/sale/dashboard'
-        else if (role === 'data_entry' || role === 'warehouse') targetUrl = '/inventory'
+        else if (!result.first_allowed_page && (role === 'data_entry' || role === 'warehouse')) targetUrl = '/inventory'
         window.location.href = targetUrl
       }
     } catch {
@@ -208,10 +208,10 @@ export default function LoginPage() {
           })
         }
         const role = result.role
-        let targetUrl = '/dashboard'
+        let targetUrl = result.first_allowed_page || '/dashboard'
         if (role === 'manager') targetUrl = '/manager/dashboard'
         else if (role === 'sale') targetUrl = '/sale/dashboard'
-        else if (role === 'data_entry' || role === 'warehouse') targetUrl = '/inventory'
+        else if (!result.first_allowed_page && (role === 'data_entry' || role === 'warehouse')) targetUrl = '/inventory'
         window.location.href = targetUrl
       }
     } catch {
