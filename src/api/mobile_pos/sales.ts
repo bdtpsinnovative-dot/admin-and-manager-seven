@@ -254,6 +254,10 @@ export const MobilePosSalesController = {
           .reduce((sum, item) => sum + item.qty, 0)
         const totalStock = ownBranchQty + otherBranchQty
 
+        const rawCategory = (colGroup?.product_sup || "")
+          .replace(/\s*\([^)]*à[¸¹][^)]*\)/g, "")
+          .trim()
+
         return {
           id: product.id,
           name: product.name,
@@ -265,7 +269,7 @@ export const MobilePosSalesController = {
           discount_id: discountId,
           discount_name: discountName,
           image_url: resolvedImageUrl,
-          product_sup: colGroup?.product_sup || "อื่น ๆ",
+          product_sup: rawCategory || "อื่น ๆ",
           available_qty: ownBranchQty,
           own_branch_qty: ownBranchQty,
           other_branch_qty: otherBranchQty,
