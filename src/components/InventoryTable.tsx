@@ -470,23 +470,20 @@ export default function InventoryTable({
                     
                     {/* ปุ่มแก้ไข */}
                     <td className="p-4 text-right align-top">
-                      {item.category_id === 'rough_wood' ? (
-                         <button
-                           onClick={() => handleEdit(item)}
-                           className="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-orange-600 hover:text-white transition shadow-sm"
-                         >
-                           <Edit className="w-4 h-4" /> <span className="hidden sm:inline">แก้ไข</span>
-                         </button>
-                      ) : (
-                         <Link 
-                           href={`/inventory/${item.id}`} 
-                           className={`inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-700 transition shadow-sm
-                              ${item.category_id === 'prop' ? 'hover:bg-purple-600 hover:text-white' : item.category_id === 'furniture' ? 'hover:bg-emerald-600 hover:text-white' : 'hover:bg-blue-600 hover:text-white'}
-                            `}
-                         >
-                           <Edit className="w-4 h-4" /> <span className="hidden sm:inline">แก้ไข</span>
-                         </Link>
-                      )}
+                      <Link 
+                        href={`/inventory/${item.id}`} 
+                        className={`inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-700 transition shadow-sm
+                          ${item.category_id === 'prop'
+                            ? 'hover:bg-purple-600 hover:text-white'
+                            : item.category_id === 'furniture'
+                              ? 'hover:bg-emerald-600 hover:text-white'
+                              : item.category_id === 'rough_wood'
+                                ? 'hover:bg-orange-600 hover:text-white'
+                                : 'hover:bg-blue-600 hover:text-white'}
+                        `}
+                      >
+                        <Edit className="w-4 h-4" /> <span className="hidden sm:inline">แก้ไข</span>
+                      </Link>
                     </td>
                   </tr>
                 ))

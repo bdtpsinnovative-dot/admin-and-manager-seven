@@ -6,6 +6,7 @@ import { createClient } from "../lib/supabase/server"
 import { supabaseAdmin } from "../lib/supabase/admin"
 import { revalidatePath } from "next/cache"
 import { CATEGORY_MAP } from "@/lib/propFilterModel"
+import { requestR2Object } from "../lib/r2"
 
 const TABLE_NAME = "products"
 const STORAGE_BUCKET = "product-images"
@@ -70,10 +71,9 @@ async function checkAuth(supabase: any) {
   return user
 }
 
-// ✅ 1. ฟังก์ชันอัปโหลดไฟล์ (ใช้โดย Form)
+// ✅ 1. ฟังก์ชันอัปโหลดไฟล์ (ใช้โดย Form เดิม)
 export async function uploadFile(formData: FormData) {
   const supabase = await createClient()
-  // await checkAuth(supabase) // เปิดบรรทัดนี้ถ้าต้องการบังคับล็อกอินก่อนอัปโหลด
 
   const file = formData.get('file') as File
   const path = formData.get('path') as string
@@ -86,6 +86,150 @@ export async function uploadFile(formData: FormData) {
 
   if (error) return { error: error.message }
   return { success: true }
+}
+
+// ✅ 1.1 ฟังก์ชันอัปโหลด/เปลี่ยนรูปสินค้าอัจฉริยะ (เขียนทับไฟล์เดิมบน Cloudflare R2 หรือ Supabase Storage โดยใช้ URL เดิม)
+export async function uploadProductImage(formData: FormData): Promise<{
+  success?: boolean
+  url?: string
+  overwritten?: boolean
+  storage?: 'r2' | 'supabase'
+  error?: string
+}> {
+  try {
+    const supabase = await createClient()
+    await checkAuth(supabase)
+
+    const file = formData.get('file') as File | null
+    const existingUrl = ((formData.get('existingUrl') as string) || '').trim()
+    const productId = ((formData.get('productId') as string) || 'temp').trim()
+    const role = ((formData.get('role') as string) || 'main').trim()
+
+    if (!file) return { error: "ไม่พบไฟล์รูปภาพที่ต้องการอัปโหลด" }
+
+    const body = Buffer.from(await file.arrayBuffer())
+    const contentType = file.type || 'image/webp'
+    const r2PublicBase = (
+      process.env.NEXT_PUBLIC_R2_PUBLIC_URL ||
+      process.env.R2_PUBLIC_URL ||
+      'https://pub-258bd10e7e8c4a7690a74c54cfbdef93.r2.dev'
+    ).replace(/\/+$/, '')
+
+    // กรณีที่ 1: รูปเดิมอยู่บน Cloudflare R2 -> เขียนทับ Key เดิมบน R2 ทันที (URL เดิมไม่เปลี่ยน!)
+    if (existingUrl && (existingUrl.includes('.r2.dev/') || existingUrl.startsWith(r2PublicBase))) {
+      try {
+        const parsedUrl = new URL(existingUrl)
+        const r2Key = decodeURIComponent(parsedUrl.pathname.replace(/^\/+/, ''))
+        if (r2Key) {
+          let targetBucket = 'wallcraft'
+          const headWallcraft = await requestR2Object('HEAD', r2Key, { bucket: 'wallcraft' })
+          if (!headWallcraft.ok) {
+            const headHr = await requestR2Object('HEAD', r2Key, { bucket: 'hr-immage' })
+            if (headHr.ok) targetBucket = 'hr-immage'
+          }
+
+          const putRes = await requestR2Object('PUT', r2Key, {
+            body,
+            contentType,
+            bucket: targetBucket,
+          })
+
+          if (!putRes.ok) {
+            const errText = await putRes.text()
+            return { error: `อัปโหลดทับไฟล์ R2 ไม่สำเร็จ (${putRes.status}): ${errText}` }
+          }
+
+          return {
+            success: true,
+            url: existingUrl,
+            overwritten: true,
+            storage: 'r2',
+          }
+        }
+      } catch (r2Err: any) {
+        console.error("R2 overwrite error:", r2Err)
+        return { error: `เกิดข้อผิดพลาดในการเขียนทับไฟล์ R2: ${r2Err.message}` }
+      }
+    }
+
+    // กรณีที่ 2: รูปเดิมอยู่บน Supabase Storage -> เขียนทับ Path เดิมด้วย upsert: true (URL เดิมไม่เปลี่ยน!)
+    if (
+      existingUrl &&
+      (existingUrl.includes(`/storage/v1/object/public/${STORAGE_BUCKET}/`) || !existingUrl.startsWith('http'))
+    ) {
+      let storagePath = existingUrl
+      if (existingUrl.includes(`/storage/v1/object/public/${STORAGE_BUCKET}/`)) {
+        storagePath = decodeURIComponent(
+          existingUrl.split(`/storage/v1/object/public/${STORAGE_BUCKET}/`)[1].split('?')[0]
+        )
+      } else {
+        storagePath = existingUrl.split('?')[0].replace(/^\/+/, '')
+      }
+
+      const { error: upErr } = await supabase.storage
+        .from(STORAGE_BUCKET)
+        .upload(storagePath, body, { upsert: true, contentType })
+
+      if (upErr) return { error: upErr.message }
+
+      if (existingUrl.startsWith('http')) {
+        return {
+          success: true,
+          url: existingUrl,
+          overwritten: true,
+          storage: 'supabase',
+        }
+      } else {
+        const { data: pubData } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(storagePath)
+        return {
+          success: true,
+          url: pubData.publicUrl,
+          overwritten: true,
+          storage: 'supabase',
+        }
+      }
+    }
+
+    // กรณีที่ 3: ยังไม่มีรูปเดิม หรือเป็นรูปจากเว็บภายนอก -> อัปโหลดขึ้น Cloudflare R2 (wallcraft) เป็นมาตรฐานหลัก
+    if (process.env.R2_ACCOUNT_ID && process.env.R2_ACCESS_KEY_ID && process.env.R2_SECRET_ACCESS_KEY) {
+      const folder = role === 'extra' ? 'extra' : role === 'group' ? 'group' : 'original'
+      const rand = Math.floor(Math.random() * 900) + 100
+      const newKey = `${folder}/${Date.now()}-${rand}.webp`
+      const putRes = await requestR2Object('PUT', newKey, {
+        body,
+        contentType,
+        bucket: 'wallcraft',
+      })
+
+      if (putRes.ok) {
+        return {
+          success: true,
+          url: `${r2PublicBase}/${newKey}`,
+          overwritten: false,
+          storage: 'r2',
+        }
+      }
+    }
+
+    // Fallback กรณีไม่ได้ตั้งค่า R2 -> อัปโหลดเข้า Supabase Storage
+    const fallbackPath = `products/${productId}/${role}_${Date.now()}.webp`
+    const { error: fbErr } = await supabase.storage
+      .from(STORAGE_BUCKET)
+      .upload(fallbackPath, body, { upsert: true, contentType })
+
+    if (fbErr) return { error: fbErr.message }
+    const { data: pubData } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(fallbackPath)
+
+    return {
+      success: true,
+      url: pubData.publicUrl,
+      overwritten: false,
+      storage: 'supabase',
+    }
+  } catch (err: any) {
+    console.error("uploadProductImage error:", err)
+    return { error: err.message || "อัปโหลดรูปภาพไม่สำเร็จ" }
+  }
 }
 
 export interface ProductExtraFilters {
@@ -528,7 +672,11 @@ export async function getAllProductsForExport() {
 export async function getProductById(id: string) {
   const supabase = await createClient()
   const canViewCosts = await checkCanViewCosts()
-  const { data, error } = await supabase.from(TABLE_NAME).select('*').eq('id', id).single()
+  const { data, error } = await supabase
+    .from(TABLE_NAME)
+    .select('*, collection_groups(id, name, cover_image_url, image_url, product_sup, tag, description)')
+    .eq('id', id)
+    .single()
 
   if (error) return { data: null, error: error.message }
 
@@ -560,21 +708,61 @@ export async function getProductById(id: string) {
   return { data, error: null }
 }
 
+// Helper สำหรับซิงค์ข้อมูลกลุ่มสินค้า (collection_groups) เฉพาะหมวด prop และ furniture
+async function syncCollectionGroupIfNeeded(supabase: any, categoryId: string, groupId: string | null | undefined, groupMeta?: any) {
+  if (!groupId || (categoryId !== 'prop' && categoryId !== 'furniture')) return
+  const cleanId = groupId.trim()
+  if (!cleanId) return
+
+  const groupRow: Record<string, any> = {
+    id: cleanId,
+    tag: categoryId === 'furniture' ? 'Furniture' : 'Props',
+  }
+  if (groupMeta?.product_sup !== undefined && groupMeta.product_sup !== '') {
+    groupRow.product_sup = groupMeta.product_sup
+  }
+  if (groupMeta?.name !== undefined && groupMeta.name !== '') {
+    groupRow.name = groupMeta.name
+  }
+  if (groupMeta?.cover_image_url !== undefined && groupMeta.cover_image_url !== '') {
+    groupRow.cover_image_url = groupMeta.cover_image_url
+  }
+
+  const { error } = await supabase.from('collection_groups').upsert([groupRow], { onConflict: 'id' })
+  if (error) {
+    console.warn("syncCollectionGroupIfNeeded warning:", error.message)
+  } else {
+    colGroupsCache = null
+    delete filterOptionsCache[categoryId]
+  }
+}
+
 // ✅ 4. สร้างสินค้าใหม่
 export async function createInitialProduct(productData: any) {
   const supabase = await createClient()
   await checkAuth(supabase) 
   const canViewCosts = await checkCanViewCosts()
 
+  const { _group_meta, ...cleanProductData } = productData || {}
+
   if (!canViewCosts) {
-    productData.cost = null
-    if (productData.specs) {
-      delete productData.specs.cost_dollar
-      delete productData.specs.cost_th_shipping
+    cleanProductData.cost = null
+    if (cleanProductData.specs) {
+      delete cleanProductData.specs.cost_dollar
+      delete cleanProductData.specs.cost_th_shipping
     }
   }
 
-  const { data, error } = await supabase.from(TABLE_NAME).insert([productData]).select('id').single()
+  if (cleanProductData.collection_group_id) {
+    await syncCollectionGroupIfNeeded(
+      supabase,
+      cleanProductData.category_id,
+      cleanProductData.collection_group_id,
+      _group_meta
+    )
+  }
+
+  const { data, error } = await supabase.from(TABLE_NAME).insert([cleanProductData]).select('id').single()
   if (error) return { error: error.message }
   
   revalidatePath('/inventory')
@@ -587,24 +775,39 @@ export async function updateProduct(id: string | number, updateData: any) {
   await checkAuth(supabase)
   const canViewCosts = await checkCanViewCosts()
 
+  const { _group_meta, ...cleanUpdateData } = updateData || {}
+
+  if (cleanUpdateData.collection_group_id) {
+    await syncCollectionGroupIfNeeded(
+      supabase,
+      cleanUpdateData.category_id,
+      cleanUpdateData.collection_group_id,
+      _group_meta
+    )
+  }
+
   // 🛡️ Data Protection: ถ้าไม่มีสิทธิ์ดูต้นทุน ห้ามลบหรือเขียนทับต้นทุนในฐานข้อมูลเด็ดขาด!
   if (!canViewCosts) {
-    delete updateData.cost
-    if (updateData.specs) {
+    delete cleanUpdateData.cost
+    if (cleanUpdateData.specs) {
       const { data: existing } = await supabase.from(TABLE_NAME).select('specs').eq('id', id).single()
       if (existing?.specs) {
         if (existing.specs.cost_dollar !== undefined) {
-          updateData.specs.cost_dollar = existing.specs.cost_dollar
+          cleanUpdateData.specs.cost_dollar = existing.specs.cost_dollar
         }
         if (existing.specs.cost_th_shipping !== undefined) {
-          updateData.specs.cost_th_shipping = existing.specs.cost_th_shipping
+          cleanUpdateData.specs.cost_th_shipping = existing.specs.cost_th_shipping
         }
       }
     }
   }
 
-  const { error } = await supabase.from(TABLE_NAME).update(updateData).eq('id', id)
+  const { error } = await supabase.from(TABLE_NAME).update(cleanUpdateData).eq('id', id)
   if (error) return { error: error.message }
+
+  if (cleanUpdateData.category_id) {
+    delete filterOptionsCache[cleanUpdateData.category_id]
+  }
 
   revalidatePath('/inventory')
   revalidatePath(`/inventory/${id}`)

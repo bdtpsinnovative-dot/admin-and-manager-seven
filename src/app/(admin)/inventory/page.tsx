@@ -175,7 +175,7 @@ export default async function InventoryPage({ searchParams }: Props) {
               <FileUp className="w-4 h-4" />
               นำเข้า Excel
             </Link>
-            <InventoryActions allowedTabs={allowedTabs} />
+            <InventoryActions allowedTabs={allowedTabs} activeTab={activeTab} />
           </div>
         </div>
 
