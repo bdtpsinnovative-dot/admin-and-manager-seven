@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "powershell -NoProfile -Command \"Get-CimInstance Win32_Process -Filter \\\"Name='node.exe'\\\" | Where-Object { $_.CommandLine -like '*admin_and_manager*node_modules*next*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }; if (Test-Path '.next\\dev\\lock') { Remove-Item -Path '.next\\dev\\lock' -Force -ErrorAction SilentlyContinue }; exit 0\"",
     "dev": "cross-env NODE_OPTIONS=--max-old-space-size=8192 next dev",
     "build": "cross-env NODE_OPTIONS=--max-old-space-size=8192 next build",
     "start": "next start",

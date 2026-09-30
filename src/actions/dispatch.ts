@@ -434,15 +434,21 @@ export async function cancelOrder(orderId: number, orderCode: string, items: any
   const staffName = profile?.full_name || 'เจ้าหน้าที่'
 
   try {
-    // 1. ถ้าบิลไม่อยู่สถานะ PENDING แปลว่าเคยหักสต็อกไปแล้ว ต้องบวกกลับคืน
-    if (currentStatus !== 'PENDING') {
-      // 🎟️ คืนสิทธิ์คูปอง หากบิลที่ตัดเงินไปแล้วถูกยกเลิก (ลด used_count คืน 1)
-      const { data: orderToCancel } = await supabase
-        .from('orders')
-        .select('discount_snapshot')
-        .eq('id', orderId)
-        .single()
+    const { data: orderToCancel } = await supabase
+      .from('orders')
+      .select('status, discount_snapshot')
+      .eq('id', orderId)
+      .single()
 
+    if (orderToCancel?.status === 'CANCELLED') {
+      return { success: false, error: "บิลนี้ถูกยกเลิกและคืนสต็อกไปแล้ว" }
+    }
+
+    const actualStatus = orderToCancel?.status || currentStatus
+
+    // 1. ถ้าบิลไม่อยู่สถานะ PENDING แปลว่าเคยหักสต็อกไปแล้ว (PROCESSING หรือ COMPLETED) ต้องบวกกลับคืน
+    if (actualStatus !== 'PENDING') {
+      // 🎟️ คืนสิทธิ์คูปอง หากบิลที่ตัดเงินไปแล้วถูกยกเลิก (ลด used_count คืน 1)
       const couponData = orderToCancel?.discount_snapshot?.coupon
       if (couponData) {
         const promoId = couponData.id
@@ -520,14 +526,8 @@ export async function cancelOrder(orderId: number, orderCode: string, items: any
     }
 
     // 2. อัปเดตสถานะบิลและไอเทมเป็น CANCELLED พร้อมบันทึก Note ใน discount_snapshot
-    const { data: orderData } = await supabase
-      .from('orders')
-      .select('discount_snapshot')
-      .eq('id', orderId)
-      .maybeSingle()
-
     const updatedSnapshot = {
-      ...(orderData?.discount_snapshot || {}),
+      ...(orderToCancel?.discount_snapshot || {}),
       cancel_reason: cancelReason?.trim() || null,
       cancelled_at: new Date().toISOString(),
       cancelled_by_name: staffName,
@@ -544,7 +544,7 @@ export async function cancelOrder(orderId: number, orderCode: string, items: any
     await supabase.from('stock_transfers')
       .update({ status: 'CANCELLED' })
       .like('note', `%${orderCode}%`)
-      .in('status', ['PENDING', 'AWAITING_SHIPMENT'])
+      .in('status', ['PENDING', 'AWAITING_SHIPMENT', 'COMPLETED'])
 
     revalidatePath('/sale/sales-history')
     revalidatePath('/sale/vanguard-dispatch')

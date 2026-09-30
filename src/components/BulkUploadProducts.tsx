@@ -346,23 +346,28 @@ const downloadTemplate = () => {
         let detectedCostInFile = false;
         
         const processed = rawJson.map((row: any, idx: number) => {
+          // 🌟 ท่าไม้ตาย: ลบช่องว่างและขีดล่างทั้งหมดทิ้งก่อนเทียบหาคอลัมน์ (รองรับทั้งตัวพิมพ์เล็ก/ใหญ่ ช่องว่าง และขีดล่าง)
+          const getVal = (searchKey: string) => {
+            const cleanSearch = searchKey.replace(/[\s_]+/g, '').toLowerCase();
+            const actualKey = Object.keys(row).find(k => k.replace(/[\s_]+/g, '').toLowerCase() === cleanSearch);
+            return actualKey !== undefined ? row[actualKey] : null;
+          };
+
+          const toNumOrNull = (val: any): number | null => {
+            if (val === null || val === undefined || String(val).trim() === '') return null;
+            const n = Number(String(val).replace(/,/g, '').trim());
+            return Number.isFinite(n) ? n : null;
+          };
+
         // --- Props / Furniture mode ---
           if (selectedType === 'prop' || selectedType === 'furniture') {
-            
-            // 🌟 ท่าไม้ตาย: ลบช่องว่างและขีดล่างทั้งหมดทิ้งก่อนเทียบหาคอลัมน์ (รองรับทั้ง Cost_Dollar, Cost Dollar, Cost_TH_Shipping ฯลฯ)
-            const getVal = (searchKey: string) => {
-              const cleanSearch = searchKey.replace(/[\s_]+/g, '').toLowerCase();
-              const actualKey = Object.keys(row).find(k => k.replace(/[\s_]+/g, '').toLowerCase() === cleanSearch);
-              return actualKey ? row[actualKey] : null;
-            };
-
             const itemNo = getVal("Item NO")?.toString() || "";
             const sheetSku = getVal("SKU")?.toString() || `${selectedType === 'furniture' ? 'FUR' : 'PROP'}-${Date.now()}-${idx}`;
             const sheetBarcode = getVal("BARCODE")?.toString() || getVal("BARCOE")?.toString() || "";
             
-            const w = getVal("W") != null ? Number(getVal("W")) : null;
-            const d = getVal("D") != null ? Number(getVal("D")) : null;
-            const h = getVal("H") != null ? Number(getVal("H")) : null;
+            const w = toNumOrNull(getVal("W") ?? getVal("width") ?? getVal("width_cm"));
+            const d = toNumOrNull(getVal("D") ?? getVal("length") ?? getVal("length_cm"));
+            const h = toNumOrNull(getVal("H") ?? getVal("height") ?? getVal("thickness") ?? getVal("thickness_cm"));
             
             // จัดการตัวเลขต้นทุนดอลลาร์ และต้นทุนรวมค่าส่ง (บาท)
             const rawCostDollar = getVal("ต้นทุน ดอลลาร์ ไม่รวมค่าส่ง (Cost_Dollar)") || getVal("ต้นทุน ดอลลาร์ไม่รวมค่าส่ง") || getVal("ต้นทุนดอลลาร์") || getVal("Cost_Dollar") || getVal("Cost Dollar") || getVal("CostDollar") || getVal("Cost USD") || null;
@@ -403,7 +408,7 @@ const downloadTemplate = () => {
             const nameImageGroupValue = getVal("Name Group")?.toString() || getVal("NameGroup")?.toString() || getVal("Name Image Group")?.toString() || getVal("NameImageGroup")?.toString() || null;
             const imageGroupValue = getVal("Image Group")?.toString() || getVal("ImageGroup")?.toString() || null;
             const factoryName = getVal("Factory")?.toString() || null;
-            const productName = getVal("Name Product")?.toString() || `${selectedType === 'furniture' ? 'Furniture' : 'Prop'} - ${sheetSku}`;
+            const productName = getVal("Name Product")?.toString() || getVal("name")?.toString() || `${selectedType === 'furniture' ? 'Furniture' : 'Prop'} - ${sheetSku}`;
 
             return {
               name: productName, 
@@ -411,7 +416,7 @@ const downloadTemplate = () => {
               barcode: sheetBarcode,
               color: getVal("Color")?.toString() || null,
               category_id: selectedType === 'furniture' ? 'furniture' : 'prop',
-              image_url: getVal("Link Picture")?.toString() || null,
+              image_url: getVal("Link Picture")?.toString() || getVal("image_url")?.toString() || null,
               status: "active",
               cost: finalCostTh,
               price: priceRounded,
@@ -445,70 +450,117 @@ const downloadTemplate = () => {
           }
 
           // --- SLABS / Rough Wood mode ---
-          const resolvedSpecType = row.spec_type || (selectedType !== 'rough_wood' ? selectedType : undefined) || undefined
+          const rawSpecType = getVal("spec_type") || getVal("type");
+          const resolvedSpecType = (rawSpecType && String(rawSpecType).trim() !== '')
+            ? String(rawSpecType).trim()
+            : ((selectedType && selectedType !== 'rough_wood') ? selectedType : undefined);
+
+          const cleanStr = (v: any) => (v !== null && v !== undefined && String(v).trim() !== '') ? String(v).trim() : undefined;
+
           const specs: any = {
-            material: row.material,
-            finish: row.finish,
-            grade: row.grade,
+            material: cleanStr(getVal("material")),
+            finish: cleanStr(getVal("finish")),
+            grade: cleanStr(getVal("grade")),
             spec_type: resolvedSpecType,
             type: resolvedSpecType,
-            panel_design: row.panel_design,
-            edge_design: row.edge_design,
-            color_craft: row.color_craft,
-            panel_craft: row.panel_craft,
+            panel_design: cleanStr(getVal("panel_design")),
+            edge_design: cleanStr(getVal("edge_design")),
+            color_craft: cleanStr(getVal("color_craft")),
+            panel_craft: cleanStr(getVal("panel_craft")),
           }
 
-          if (row.size) {
-            const dims = parseDims(row.size.toString())
+          // อ่านค่าแต่ละคอลัมน์แบบแยกอิสระ (มีช่องไหนเก็บช่องนั้น ถ้าช่องไหนว่างก็ข้ามไป ไม่บล็อกกัน)
+          const rawSize = cleanStr(getVal("size") ?? getVal("size_raw") ?? getVal("size_text") ?? getVal("dimensions") ?? getVal("dimension"));
+          const colW = toNumOrNull(getVal("width") ?? getVal("width_cm") ?? getVal("width_mm") ?? getVal("w"));
+          const colL = toNumOrNull(getVal("length") ?? getVal("length_cm") ?? getVal("length_mm") ?? getVal("l"));
+          const colT = toNumOrNull(getVal("thickness") ?? getVal("thickness_cm") ?? getVal("thickness_mm") ?? getVal("t"));
+          const colH = toNumOrNull(getVal("height") ?? getVal("height_cm") ?? getVal("height_mm") ?? getVal("h"));
+
+          // 1. ถ้ามีช่อง size (เช่น "XS", "XXXL" หรือ "2000-800-50 MM")
+          if (rawSize) {
+            specs.size = rawSize;
+            const dims = parseDims(rawSize);
             if (dims) {
-              specs.size = row.size;
               specs.length_cm = dims.l;
               specs.width_cm = dims.w;
               specs.thickness_cm = dims.t;
+            } else {
+              // กรณีช่อง size เป็นรหัสไซส์ เช่น XS, S, M, L, XL, XXL, XXXL
+              specs.group_size = rawSize;
             }
-          } else if (row.length && row.width && row.thickness) {
-            specs.size = `${row.length}-${row.width}-${row.thickness} MM`;
-            specs.length_cm = Number(row.length);
-            specs.width_cm = Number(row.width);
-            specs.thickness_cm = Number(row.thickness);
+          }
+
+          // 2. บันทึกตัวเลขจากคอลัมน์ width, length, thickness, height แยกตามที่มีจริงในชีท
+          if (colW !== null) specs.width_cm = colW;
+          if (colL !== null) specs.length_cm = colL;
+          if (colT !== null) specs.thickness_cm = colT;
+          if (colH !== null) {
+            specs.height_cm = colH;
+            if (specs.thickness_cm === undefined || specs.thickness_cm === null) {
+              specs.thickness_cm = colH;
+            }
+          }
+
+          // 3. สร้างข้อความขนาดรวม (dimensions) จากตัวเลขที่มี เพื่อให้แสดงขนาดชัดเจนทั้งคู่
+          const dimParts = [colL ?? specs.length_cm, colW ?? specs.width_cm, colT ?? colH ?? specs.thickness_cm].filter(
+            v => v !== null && v !== undefined && Number.isFinite(Number(v)) && Number(v) > 0
+          );
+          if (dimParts.length > 0) {
+            const dimText = `${dimParts.join('-')} MM`;
+            if (!specs.size) {
+              specs.size = dimText;
+            } else if (specs.size !== dimText) {
+              specs.dimensions = dimText;
+            }
           }
 
           const extraImages: any[] = []
           Object.keys(row).forEach(key => {
-            if (key.startsWith('images_') && row[key]) {
-              extraImages.push({ path: row[key], role: "extra", sort: parseInt(key.split('_')[1] || "1") })
+            if (key.toLowerCase().startsWith('images_') && row[key] && String(row[key]).trim() !== '') {
+              extraImages.push({ path: String(row[key]).trim(), role: "extra", sort: parseInt(key.split('_')[1] || "1") })
             }
           })
           specs.images = extraImages
           specs.images_count = extraImages.length
 
           let finalCategory = defaultCategory;
-          if (row.category_id) {
-            finalCategory = row.category_id;
-          } else if (row.sku?.toString().toUpperCase().startsWith('ROUGH')) {
+          const rowCatId = cleanStr(getVal("category_id"));
+          const rowSku = cleanStr(getVal("sku"));
+          if (rowCatId) {
+            finalCategory = rowCatId as any;
+          } else if (rowSku?.toUpperCase().startsWith('ROUGH')) {
             finalCategory = 'rough_wood';
           }
 
-          if (row.cost != null && row.cost !== '') {
+          const rawCost = getVal("cost");
+          if (rawCost != null && String(rawCost).trim() !== '') {
             detectedCostInFile = true;
           }
-          const parsedSlabCost = Number(row.cost?.toString().replace(/[^0-9.]/g, '') || 0);
+          const parsedSlabCost = Number(rawCost?.toString().replace(/[^0-9.]/g, '') || 0);
           const finalSlabCost = canViewCosts ? parsedSlabCost : null;
+          const rawPrice = getVal("price");
+          const rawWeight = getVal("weight");
+          // รองรับน้ำหนักทั้งแบบตัวเลข (11) และแบบมีหน่วยติดมา (เช่น "41KG", "116KG")
+          const parsedWeight = rawWeight != null && String(rawWeight).trim() !== ''
+            ? (Number(String(rawWeight).replace(/[^0-9.]/g, '')) || 0)
+            : 0;
+          const rawName = cleanStr(getVal("name") || getVal("Name Product") || getVal("product_name"));
+          const rawBarcode = cleanStr(getVal("barcode") || getVal("barcoe"));
 
           return {
-            name: row.name || "Untitled Product",
-            barcode: row.Barcode?.toString() || row.barcode?.toString(),
-            sku: row.sku?.toString() || `WOODSLABS-${Date.now()}-${idx}-${Math.floor(Math.random() * 1000)}`,
-            image_url: row.image_url,
-            status: row.status || 'active',
+            name: rawName || "Untitled Product",
+            barcode: rawBarcode,
+            sku: rowSku || `WOODSLABS-${Date.now()}-${idx}-${Math.floor(Math.random() * 1000)}`,
+            image_url: cleanStr(getVal("image_url") || getVal("Link Picture")) || null,
+            status: cleanStr(getVal("status")) || 'active',
             cost: finalSlabCost,
-            price: Number(row.price?.toString().replace(/[^0-9.]/g, '') || 0),
-            weight: Number(row.weight || 0),
+            price: Number(rawPrice?.toString().replace(/[^0-9.]/g, '') || 0),
+            weight: parsedWeight,
             specs: specs,
             category_id: finalCategory,
-            color: row.color?.toString() || null,
-            unit: row.unit?.toString() || 'แผ่น',
-            description: row.description?.toString() || null
+            color: cleanStr(getVal("color")) || null,
+            unit: cleanStr(getVal("unit")) || 'แผ่น',
+            description: cleanStr(getVal("description")) || null
           }
         })
 
@@ -1023,7 +1075,9 @@ const downloadTemplate = () => {
                             </span>
                           </td>
                           <td className="p-3 font-medium text-slate-800">{item.name}</td>
-                          <td className="p-3 text-slate-500 text-xs">{item.specs?.size || '-'}</td>
+                          <td className="p-3 text-slate-500 text-xs">
+                            {[item.specs?.size, item.specs?.dimensions].filter(Boolean).join(' | ') || '-'}
+                          </td>
                           {canViewCosts && (
                             <td className="p-3 text-right text-xs font-mono text-slate-500 font-medium">
                               {item.cost ? `฿${Number(item.cost).toLocaleString()}` : '-'}

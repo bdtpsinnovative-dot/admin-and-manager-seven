@@ -593,13 +593,13 @@ export default function DispatchMonitorPage() {
                               </div>
                             )}
 
-                            {isMyTask && activeTab !== 'cancelled' && order.status !== 'CANCELLED' && order.status !== 'COMPLETED' && (
+                            {activeTab !== 'cancelled' && order.status !== 'CANCELLED' && (
                               <button
                                 onClick={() => handleCancelOrder(order.id, order.order_code, order.order_items, order.status)}
                                 disabled={cancellingId === order.id}
-                                className="w-full py-2.5 mt-4 bg-white border border-red-200 text-red-500 rounded-lg text-sm font-bold hover:bg-red-50 transition-colors flex items-center justify-center gap-2 shadow-sm"
+                                className="w-full py-2.5 mt-4 bg-white border border-red-200 text-red-500 rounded-lg text-sm font-bold hover:bg-red-50 transition-colors flex items-center justify-center gap-2 shadow-sm cursor-pointer"
                               >
-                                {cancellingId === order.id ? 'กำลังยกเลิก...' : <><XCircle className="w-4 h-4" /> ยกเลิกออเดอร์นี้</>}
+                                {cancellingId === order.id ? 'กำลังยกเลิกและคืนสต็อก...' : <><XCircle className="w-4 h-4" /> {order.status === 'COMPLETED' ? 'ยกเลิกบิลนี้ (คืนสต็อกเข้าคลัง)' : 'ยกเลิกออเดอร์นี้'}</>}
                               </button>
                             )}
                           </div>

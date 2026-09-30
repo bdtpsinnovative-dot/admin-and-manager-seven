@@ -293,7 +293,15 @@ export default function InventoryTable({
                       <>
                         <td className="p-4 align-top">
                           <div className="text-xs font-mono font-semibold text-slate-800">
-                            {item.specs?.size || (item.specs?.length_cm ? `${item.specs.length_cm}-${item.specs.width_cm}-${item.specs.thickness_cm} MM` : '-')}
+                            {(() => {
+                              if (item.specs?.size) return item.specs.size
+                              const parts = [
+                                item.specs?.length_cm ?? item.length_cm,
+                                item.specs?.width_cm ?? item.width_cm,
+                                item.specs?.thickness_cm ?? item.thickness_cm,
+                              ].filter(v => v !== null && v !== undefined && v !== '' && Number(v) > 0)
+                              return parts.length > 0 ? `${parts.join('-')} MM` : '-'
+                            })()}
                           </div>
                         </td>
                         <td className="p-4 align-top">
