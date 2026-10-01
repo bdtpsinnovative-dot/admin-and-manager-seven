@@ -48,13 +48,15 @@ const nextConfig: NextConfig = {
 
   serverExternalPackages: ["@xenova/transformers", "sharp", "onnxruntime-node"],
 
-  /* ✅ ป้องกัน Serverless Function เกินขนาด 250 MB บน Vercel โดยคัดกรองโมเดล AI / ONNX ออกจาก Bundle */
+  /* ✅ ป้องกัน Serverless Function เกินขนาด 250 MB บน Vercel โดยคัดกรองโมเดล AI / ONNX และไฟล์ Snapshot สำรองข้อมูล (318MB) ออกจาก Bundle */
   outputFileTracingExcludes: {
     '*': [
       'node_modules/@xenova/**',
       'node_modules/onnxruntime-node/**',
       'node_modules/onnxruntime-web/**',
       'node_modules/@thesvg/**',
+      'data/**',
+      'data/snapshots/**',
     ],
   },
 

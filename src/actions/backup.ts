@@ -4,9 +4,14 @@ import { supabaseAdmin } from "@/lib/supabase/admin"
 import fs from "fs"
 import path from "path"
 
-// ---- Constants ----
-
-const SNAPSHOT_DIR  = path.join(process.cwd(), "data", "snapshots")
+// Prevent bundlers / Vercel NFT from bundling 300MB+ JSON database dumps into serverless function
+const getSnapshotDir = () => {
+  if (process.env.VERCEL) {
+    return path.join("/tmp", "snapshots")
+  }
+  return path.join(/*turbopackIgnore: true*/ process.cwd(), "data", "snapshots")
+}
+const SNAPSHOT_DIR = getSnapshotDir()
 // Tables ที่ snapshot+restore ได้ (เรียงตาม FK order — parent ก่อน)
 const RESTORABLE_TABLES = [
   { key: "branches",                  label: "Branches",                  pk: "id",         orderCol: "id" },
