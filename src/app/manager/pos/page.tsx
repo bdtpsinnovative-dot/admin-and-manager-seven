@@ -1475,13 +1475,13 @@ export default function ManagerPOSPage() {
         <div 
           className={`
             ${isMobileCartOpen ? 'fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm lg:relative lg:bg-transparent lg:inset-auto lg:z-10 lg:flex-none lg:items-stretch lg:justify-start' : 'hidden lg:flex'}
-            w-full lg:w-[360px] shrink-0 lg:sticky lg:top-6 lg:max-h-[calc(100vh-48px)]
+            w-full lg:w-[380px] shrink-0 lg:sticky lg:top-6 lg:h-[calc(100vh-48px)]
           `}
           onClick={() => setIsMobileCartOpen(false)}
         >
           <div 
             id="mobile-cart-section" 
-            className="w-full max-h-[85vh] lg:max-h-full bg-white rounded-t-3xl lg:rounded-3xl shadow-2xl lg:shadow-sm border border-slate-100 flex flex-col overflow-hidden"
+            className="w-full h-[85vh] lg:h-full bg-white rounded-t-3xl lg:rounded-3xl shadow-2xl lg:shadow-sm border border-slate-100 flex flex-col overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
           
@@ -1565,9 +1565,9 @@ export default function ManagerPOSPage() {
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto px-4 py-2 min-h-[180px]">
+          <div className="flex-1 overflow-y-auto px-4 py-2 min-h-0 flex flex-col">
             {cart.length === 0 ? (
-              <div className="h-40 flex items-center justify-center text-slate-400 text-xs font-medium text-center">
+              <div className="flex-1 flex flex-col items-center justify-center py-16 text-slate-400 text-xs font-medium text-center">
                 ยังไม่มีรายการสินค้าในใบขาย
               </div>
             ) : (
@@ -1643,7 +1643,7 @@ export default function ManagerPOSPage() {
             )}
           </div>
 
-          <div className="p-4 bg-slate-50/60 border-t border-slate-100 flex flex-col justify-end">
+          <div className="p-4 bg-slate-50/60 border-t border-slate-100 flex flex-col justify-end shrink-0">
             
             {/* ✨ ข้อมูลลูกค้าแบบย่อ (ดีไซน์มินิมอล) */}
             <div className="flex items-center justify-between py-2 border-b border-slate-200/60 text-xs">
