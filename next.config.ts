@@ -48,6 +48,16 @@ const nextConfig: NextConfig = {
 
   serverExternalPackages: ["@xenova/transformers", "sharp", "onnxruntime-node"],
 
+  /* ✅ ป้องกัน Serverless Function เกินขนาด 250 MB บน Vercel โดยคัดกรองโมเดล AI / ONNX ออกจาก Bundle */
+  outputFileTracingExcludes: {
+    '*': [
+      'node_modules/@xenova/**',
+      'node_modules/onnxruntime-node/**',
+      'node_modules/onnxruntime-web/**',
+      'node_modules/@thesvg/**',
+    ],
+  },
+
   /* ✅ เพิ่มส่วนนี้เพื่อแก้ Error: Body exceeded 1 MB limit และ Server Actions CSRF */
   experimental: {
     serverActions: {

@@ -70,8 +70,28 @@ export async function embedProductsBySkus(skus: string[]): Promise<ClipEmbedResu
     return { total: 0, succeeded: 0, failed: 0, failedItems: [], success: true };
   }
 
-  const [model, processor] = await getClipModel();
-  const { RawImage } = await import("@xenova/transformers");
+  let model: any;
+  let processor: any;
+  let RawImage: any;
+
+  try {
+    [model, processor] = await getClipModel();
+    const xenova = await import("@xenova/transformers");
+    RawImage = xenova.RawImage;
+  } catch (err: any) {
+    console.warn(
+      "[CLIP Serverless Fallback] Native ONNX/Transformers is excluded or not available in serverless bundle. Products saved safely; vector generation skipped:",
+      err?.message
+    );
+    return {
+      total: products.length,
+      succeeded: 0,
+      failed: 0,
+      failedItems: [],
+      success: true,
+    };
+  }
+
   const failedItems: Array<{ sku: string; error: string }> = [];
   let succeeded = 0;
 
