@@ -133,6 +133,9 @@ export default function ManagerPOSPage() {
   const [waiveShippingFee, setWaiveShippingFee] = useState<boolean>(true) // 🚚 ยกเว้นค่าส่งเมื่อยอดครบ 20,000฿
   const [isCustomerFormOpen, setIsCustomerFormOpen] = useState(false) // ซ่อนฟอร์มไว้ก่อน ประหยัดที่!
   
+  // ✨ State สำหรับโมดอลส่วนลดและคูปอง
+  const [isDiscountModalOpen, setIsDiscountModalOpen] = useState(false)
+  
   // ✨ State สำหรับระบบช่วยปัดเศษ
   const [isRoundingModalOpen, setIsRoundingModalOpen] = useState(false)
   const [targetRoundingTotal, setTargetRoundingTotal] = useState<string>('')
@@ -1674,114 +1677,58 @@ export default function ManagerPOSPage() {
               </button>
             </div>
 
-            {/* 🎟️ ส่วนคูปองส่วนลด */}
-            <div className="py-2 border-b border-slate-200/60 space-y-1.5 mb-2">
-              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">
-                รหัสคูปองส่วนลด (Coupon Code)
-              </span>
-              {appliedCoupon ? (
-                <div className="flex items-center justify-between p-2 bg-emerald-50 border border-emerald-200 rounded-xl text-xs">
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <Ticket className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                    <span className="font-bold text-emerald-900 font-mono">{appliedCoupon.code}</span>
-                    <span className="text-[10px] text-emerald-700 font-medium truncate">({appliedCoupon.title})</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <span className="font-black text-emerald-700">-฿{appliedCoupon.discountAmount.toLocaleString()}</span>
-                    <button onClick={handleRemoveCoupon} className="text-slate-400 hover:text-red-500 transition-colors p-0.5 cursor-pointer" title="ยกเลิกคูปอง">
-                      <X className="w-3.5 h-3.5" />
-                    </button>
+            {/* 🎟️ แถบปุ่มส่วนลด & คูปอง (แตะเพื่อเปิด Modal ส่วนลด) */}
+            {Boolean(appliedCoupon) || totalSpecialDiscountAmount !== 0 ? (
+              <div 
+                onClick={() => setIsDiscountModalOpen(true)}
+                className="p-2.5 bg-emerald-50 hover:bg-emerald-100/70 border border-emerald-200 rounded-xl flex items-center justify-between cursor-pointer transition-colors mb-2 text-xs"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <Ticket className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <div className="flex items-center gap-1.5 truncate">
+                    {appliedCoupon && (
+                      <span className="font-bold text-emerald-900 font-mono text-[10px] bg-white px-1.5 py-0.5 rounded border border-emerald-200">
+                        {appliedCoupon.code}
+                      </span>
+                    )}
+                    <span className="font-black text-emerald-700">
+                      ส่วนลด -฿{(couponDiscountAmount + (totalSpecialDiscountAmount > 0 ? totalSpecialDiscountAmount : 0)).toLocaleString()}
+                    </span>
                   </div>
                 </div>
-              ) : (
-                <div className="flex gap-1.5">
-                  <input
-                    type="text"
-                    placeholder="กรอกโค้ดส่วนลด..."
-                    value={couponInput}
-                    onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
-                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleApplyCoupon(); } }}
-                    className="flex-1 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono font-bold uppercase outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600 transition-all placeholder:font-normal placeholder:normal-case"
-                  />
+                <div className="flex items-center gap-1 shrink-0">
                   <button
                     type="button"
-                    disabled={isValidatingCoupon || !couponInput.trim()}
-                    onClick={handleApplyCoupon}
-                    className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-40 text-white rounded-lg text-xs font-bold transition-all cursor-pointer shrink-0 flex items-center gap-1"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setAppliedCoupon(null)
+                      setCouponInput('')
+                      setSpecialDiscountBaht('0')
+                      setSpecialDiscountPercent('0')
+                      toast.success('ล้างส่วนลดทั้งหมดแล้ว')
+                    }}
+                    className="p-1 hover:bg-emerald-200/60 rounded-lg text-slate-400 hover:text-red-500 transition-colors"
+                    title="ล้างส่วนลดทั้งหมด"
                   >
-                    {isValidatingCoupon ? <RefreshCw className="w-3 h-3 animate-spin" /> : 'ใช้โค้ด'}
+                    <X className="w-3.5 h-3.5" />
                   </button>
                 </div>
-              )}
-              {cart.length > 0 && eligibleForCouponSubtotal < totalFinalPriceBeforeSpecial && (
-                <p className="text-[9px] text-amber-700 bg-amber-50/80 px-2 py-1 rounded-md border border-amber-200/60 font-medium leading-tight">
-                  ⚠️ มีสินค้าที่ลดรายชิ้นแล้ว โค้ดลดจะคิดเฉพาะยอดที่ไม่ลดรายชิ้น (฿{eligibleForCouponSubtotal.toLocaleString()})
-                </p>
-              )}
-            </div>
-
-            {/* ส่วนลดพิเศษแบบมินิมอล */}
-            <div className="py-2 border-b border-slate-200/60 space-y-1.5 mb-3">
-              <div className="flex justify-between items-center">
-                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">
-                  ส่วนลดพิเศษท้ายบิล (Special Discount)
-                </span>
-                {cart.length > 0 && (
-                  <button 
-                    onClick={() => {
-                      setTargetRoundingTotal(Math.floor(totalFinalPrice).toString())
-                      setCalculatedRoundingBaht(null)
-                      setIsRoundingModalOpen(true)
-                    }}
-                    className="text-[10px] bg-indigo-50 text-indigo-600 hover:bg-indigo-100 px-2 py-0.5 rounded flex items-center gap-1 font-semibold transition-colors animate-in fade-in zoom-in duration-200"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
-                    ผู้ช่วยปัดเศษ
-                  </button>
-                )}
               </div>
-              <div className="flex items-center gap-2">
-                <div className="flex-1 flex items-center bg-white border border-slate-200 rounded-lg px-2 py-1 shadow-2xs">
-                  <span className="text-[10px] text-slate-400 font-bold mr-1.5">฿</span>
-                  <input
-                    type="number"
-                    placeholder="0"
-                    value={specialDiscountBaht}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      if (val === '') {
-                        setSpecialDiscountBaht('');
-                      } else {
-                        // Strip leading zeros unless it's a decimal starting with 0.
-                        const cleanVal = val.length > 1 && val.startsWith('0') && !val.includes('.') ? val.replace(/^0+/, '') : val;
-                        setSpecialDiscountBaht(cleanVal || '0');
-                      }
-                    }}
-                    className="w-full text-xs outline-none bg-transparent font-semibold text-slate-700 p-0 border-none"
-                  />
+            ) : (
+              <div 
+                onClick={() => setIsDiscountModalOpen(true)}
+                className="p-2.5 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between cursor-pointer transition-colors mb-2 text-xs"
+              >
+                <div className="flex items-center gap-2 text-slate-600 font-bold">
+                  <Ticket className="w-4 h-4 text-slate-400" />
+                  <span>ใส่คูปอง / ส่วนลดพิเศษท้ายบิล</span>
                 </div>
-                <div className="flex-1 flex items-center bg-white border border-slate-200 rounded-lg px-2 py-1 shadow-2xs">
-                  <span className="text-[10px] text-slate-400 font-bold mr-1.5">%</span>
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    placeholder="0"
-                    value={specialDiscountPercent}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      if (val === '') {
-                        setSpecialDiscountPercent('');
-                      } else if (Number(val) >= 0 && Number(val) <= 100) {
-                        const cleanVal = val.length > 1 && val.startsWith('0') && !val.includes('.') ? val.replace(/^0+/, '') : val;
-                        setSpecialDiscountPercent(cleanVal || '0');
-                      }
-                    }}
-                    className="w-full text-xs outline-none bg-transparent font-semibold text-slate-700 p-0 border-none"
-                  />
+                <div className="flex items-center gap-1 text-indigo-600 font-bold text-[11px]">
+                  <span>เพิ่มส่วนลด</span>
+                  <span className="text-sm leading-none">›</span>
                 </div>
               </div>
-            </div>
+            )}
 
             <div className="space-y-1.5 text-xs font-semibold text-slate-500 mb-4">
               <div className="flex justify-between"><span>ยอดรวมสินค้า</span><span>{totalOriginalPrice.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span></div>
@@ -2296,6 +2243,193 @@ export default function ManagerPOSPage() {
           }}
           onClose={() => setShowMap(false)}
         />
+      )}
+
+      {/* 🎟️ Modal ส่วนลดและคูปองท้ายบิล */}
+      {isDiscountModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
+          <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="p-4 px-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/70">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-200 flex items-center justify-center">
+                  <Ticket className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-800 text-sm">ส่วนลดและโปรโมชั่นท้ายบิล</h3>
+                  <p className="text-[11px] text-slate-400">กรอกคูปอง หรือระบุส่วนลดพิเศษท้ายบิล</p>
+                </div>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setIsDiscountModalOpen(false)} 
+                className="p-1.5 hover:bg-slate-200 text-slate-400 hover:text-slate-600 rounded-full transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-6 overflow-y-auto space-y-5 flex-1">
+              {/* 1. คูปองส่วนลด */}
+              <div className="space-y-2">
+                <span className="text-xs font-bold text-slate-600 uppercase tracking-wider block">
+                  🎟️ คูปองส่วนลด (Coupon Code)
+                </span>
+                {appliedCoupon ? (
+                  <div className="flex items-center justify-between p-3 bg-emerald-50 border border-emerald-200 rounded-2xl text-xs">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Ticket className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <div>
+                        <div className="font-bold text-emerald-900 font-mono text-sm">{appliedCoupon.code}</div>
+                        <div className="text-[11px] text-emerald-700 font-medium">{appliedCoupon.title}</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="font-black text-emerald-700 text-sm">-฿{appliedCoupon.discountAmount.toLocaleString()}</span>
+                      <button type="button" onClick={handleRemoveCoupon} className="text-slate-400 hover:text-red-500 transition-colors p-1 cursor-pointer" title="ยกเลิกคูปอง">
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="กรอกโค้ดส่วนลด..."
+                      value={couponInput}
+                      onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleApplyCoupon(); } }}
+                      className="flex-1 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold uppercase outline-none focus:bg-white focus:border-purple-600 focus:ring-2 focus:ring-purple-600/20 transition-all placeholder:font-normal placeholder:normal-case"
+                    />
+                    <button
+                      type="button"
+                      disabled={isValidatingCoupon || !couponInput.trim()}
+                      onClick={handleApplyCoupon}
+                      className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-40 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 flex items-center gap-1.5"
+                    >
+                      {isValidatingCoupon ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : 'ใช้โค้ด'}
+                    </button>
+                  </div>
+                )}
+                {cart.length > 0 && eligibleForCouponSubtotal < totalFinalPriceBeforeSpecial && (
+                  <p className="text-[10px] text-amber-700 bg-amber-50/80 px-2.5 py-1.5 rounded-lg border border-amber-200/60 font-medium leading-tight">
+                    ⚠️ มีสินค้าที่ลดรายชิ้นแล้ว โค้ดลดจะคิดเฉพาะยอดที่ไม่ลดรายชิ้น (฿{eligibleForCouponSubtotal.toLocaleString()})
+                  </p>
+                )}
+              </div>
+
+              {/* 2. ส่วนลดพิเศษท้ายบิล */}
+              <div className="space-y-2 pt-2 border-t border-slate-100">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs font-bold text-slate-600 uppercase tracking-wider block">
+                    ✨ ส่วนลดพิเศษท้ายบิล (Special Discount)
+                  </span>
+                  {cart.length > 0 && (
+                    <button 
+                      type="button"
+                      onClick={() => {
+                        setTargetRoundingTotal(Math.floor(totalFinalPrice).toString())
+                        setCalculatedRoundingBaht(null)
+                        setIsRoundingModalOpen(true)
+                      }}
+                      className="text-[11px] bg-indigo-50 text-indigo-600 hover:bg-indigo-100 px-2.5 py-1 rounded-lg flex items-center gap-1.5 font-bold transition-colors cursor-pointer"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      ผู้ช่วยปัดเศษ
+                    </button>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <span className="text-[10px] text-slate-400 font-bold">ระบุเป็นจำนวนเงิน (฿)</span>
+                    <div className="flex items-center bg-slate-50 border border-slate-200 focus-within:bg-white focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-500/20 rounded-xl px-3 py-2 transition-all">
+                      <span className="text-xs text-slate-400 font-bold mr-2">฿</span>
+                      <input
+                        type="number"
+                        placeholder="0"
+                        value={specialDiscountBaht}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === '') {
+                            setSpecialDiscountBaht('');
+                          } else {
+                            const cleanVal = val.length > 1 && val.startsWith('0') && !val.includes('.') ? val.replace(/^0+/, '') : val;
+                            setSpecialDiscountBaht(cleanVal || '0');
+                          }
+                        }}
+                        className="w-full text-xs outline-none bg-transparent font-bold text-slate-800 p-0 border-none"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-[10px] text-slate-400 font-bold">ระบุเป็นเปอร์เซ็นต์ (%)</span>
+                    <div className="flex items-center bg-slate-50 border border-slate-200 focus-within:bg-white focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-500/20 rounded-xl px-3 py-2 transition-all">
+                      <span className="text-xs text-slate-400 font-bold mr-2">%</span>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        placeholder="0"
+                        value={specialDiscountPercent}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === '') {
+                            setSpecialDiscountPercent('');
+                          } else if (Number(val) >= 0 && Number(val) <= 100) {
+                            const cleanVal = val.length > 1 && val.startsWith('0') && !val.includes('.') ? val.replace(/^0+/, '') : val;
+                            setSpecialDiscountPercent(cleanVal || '0');
+                          }
+                        }}
+                        className="w-full text-xs outline-none bg-transparent font-bold text-slate-800 p-0 border-none"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 3. พรีวิวสรุปคำนวณยอด (Live Calculation Preview Card) */}
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-1.5 text-xs">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                  สรุปยอดคำนวณ
+                </span>
+                <div className="flex justify-between text-slate-500 font-medium">
+                  <span>ยอดรวมสินค้า</span>
+                  <span>{totalOriginalPrice.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span>
+                </div>
+                {couponDiscountAmount > 0 && (
+                  <div className="flex justify-between text-purple-600 font-bold">
+                    <span>ส่วนลดคูปอง ({appliedCoupon?.code})</span>
+                    <span>- {couponDiscountAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span>
+                  </div>
+                )}
+                {totalSpecialDiscountAmount !== 0 && (
+                  <div className={`flex justify-between font-bold ${totalSpecialDiscountAmount > 0 ? 'text-red-500' : 'text-emerald-600'}`}>
+                    <span>{totalSpecialDiscountAmount > 0 ? 'ส่วนลดพิเศษ' : 'ปัดเศษเพิ่ม'}</span>
+                    <span>{totalSpecialDiscountAmount > 0 ? '-' : '+'} {Math.abs(totalSpecialDiscountAmount).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-xs font-bold text-slate-800 pt-2 border-t border-dashed border-slate-200">
+                  <span>ยอดสุทธิใบขาย (Grand Total)</span>
+                  <span className="text-base text-amber-700 font-black">
+                    {grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 px-6 border-t border-slate-100 flex justify-end gap-2 bg-slate-50/50">
+              <button
+                type="button"
+                onClick={() => setIsDiscountModalOpen(false)}
+                className="w-full py-2.5 bg-[#1E293B] hover:bg-slate-800 text-white rounded-xl font-bold text-xs transition-colors shadow-sm cursor-pointer"
+              >
+                ตกลง / ปิดหน้าต่าง
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ✨ Modal ผู้ช่วยปัดเศษ */}
