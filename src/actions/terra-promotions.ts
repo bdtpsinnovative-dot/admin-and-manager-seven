@@ -8,10 +8,19 @@ import { revalidatePath } from "next/cache";
    TYPES
    ============================================================================= */
 
+export type PromoAttribution = {
+  lead_sales: string;      // เซลล์คนแรก / ทีมเรา เช่น "ยันได"
+  partner_company: string; // บอ / บริษัทคู่ค้า เช่น "บ. สถาปัตย์ AA"
+  partner_sales: string;   // เซลล์บอนั้น / ผู้ติดต่อ เช่น "คุณสมชาย"
+  note?: string;           // บันทึกเพิ่มเติม
+  batch_id?: string;       // รหัสกลุ่มที่สร้างพร้อมกัน
+};
+
 export type TerraPromotion = {
   id: string;
   title: string;
   description: string | null;
+  attribution?: PromoAttribution | null;
   promo_scope?: "set" | "global" | null;
   collection_group_id?: string | null; // references journal_images.id (sub-collection) when scope is 'set'
   collection_name?: string | null;      // ชื่อ category + alt_text ของรูป
@@ -152,10 +161,27 @@ export async function getTerraPromotions(): Promise<TerraPromotion[]> {
     }
 
     return promotions.map((p) => {
+      let attribution: PromoAttribution | null = null;
+      try {
+        if (p.description && p.description.trim().startsWith("{")) {
+          const parsed = JSON.parse(p.description);
+          if (parsed.lead_sales || parsed.partner_company || parsed.partner_sales) {
+            attribution = {
+              lead_sales: parsed.lead_sales || "",
+              partner_company: parsed.partner_company || "",
+              partner_sales: parsed.partner_sales || "",
+              note: parsed.note || "",
+              batch_id: parsed.batch_id || undefined,
+            };
+          }
+        }
+      } catch {}
+
       const isGlobal = p.promo_scope === "global" || !p.collection_group_id || p.collection_group_id === "global";
       if (isGlobal) {
         return {
           ...p,
+          attribution,
           promo_scope: "global",
           collection_name: "ทั้งร้านค้า (Global Coupon)",
           collection_image: null,
@@ -173,6 +199,7 @@ export async function getTerraPromotions(): Promise<TerraPromotion[]> {
 
       return {
         ...p,
+        attribution,
         promo_scope: p.promo_scope || "set",
         collection_name: collectionName,
         collection_image: img?.image_url || null,
@@ -347,6 +374,164 @@ export async function createTerraPromotion(data: {
     return { success: true, promotion: inserted };
   } catch (err: any) {
     return { success: false, error: err.message || "ไม่สามารถสร้างโปรโมชันได้" };
+  }
+}
+
+export interface BatchPartnerCouponParams {
+  lead_sales: string;      // เซลล์เรา (คนแรก) เช่น "ยันได"
+  partner_company: string; // บอ / บริษัทคู่ค้า เช่น "บ. สถาปัตย์ AA"
+  partner_sales: string;   // เซลล์บอนั้น เช่น "คุณสมชาย"
+  note?: string;           // บันทึกเพิ่มเติม
+
+  count: number;           // จำนวนที่ต้องการสร้าง (เช่น 10)
+  pattern: string;         // รูปแบบ เช่น "YD-AA-####" หรือ "YD-6351-####" หรือ prefix
+  title_prefix?: string;   // ชื่อโปรโมชัน ถ้าไม่ใส่จะตั้งอัตโนมัติ
+
+  discount_type: "percentage" | "fixed_amount";
+  discount_value: number;
+  min_spend?: number | null;
+  max_discount_amount?: number | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  usage_limit?: number | null;
+}
+
+function generateCodeFromPattern(pattern: string): string {
+  const cleanPattern = (pattern || "YD-####").trim().toUpperCase();
+  const digits = "0123456789";
+  const alphanumeric = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"; // exclude 0, 1, I, O to prevent confusion
+
+  if (cleanPattern.includes("#") || cleanPattern.includes("*")) {
+    return cleanPattern.replace(/[#*]/g, (ch) => {
+      if (ch === "#") {
+        return digits[Math.floor(Math.random() * digits.length)];
+      }
+      return alphanumeric[Math.floor(Math.random() * alphanumeric.length)];
+    });
+  }
+
+  // If user just provided a prefix like "YD-AA" or "YD-6351-"
+  const separator = cleanPattern.endsWith("-") ? "" : "-";
+  let randomSuffix = "";
+  for (let i = 0; i < 4; i++) {
+    randomSuffix += digits[Math.floor(Math.random() * digits.length)];
+  }
+  return `${cleanPattern}${separator}${randomSuffix}`;
+}
+
+/**
+ * 3.1 สร้างชุดรหัสคูปองจำนวนมากสำหรับเซลล์และพันธมิตร (Batch Generator)
+ * - กำหนด 3 ฟิลด์ Attribution: เซลล์เรา (ยันได), บริษัทคู่ค้า, เซลล์คู่ค้า
+ * - สุ่มรหัสตามแพทเทิร์น และตรวจสอบความซ้ำซ้อนกับ DB 100%
+ */
+export async function createBatchPartnerCoupons(params: BatchPartnerCouponParams) {
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error("Unauthorized: กรุณาเข้าสู่ระบบ");
+
+    const cleanLeadSales = params.lead_sales?.trim();
+    const cleanPartnerCompany = params.partner_company?.trim();
+    const cleanPartnerSales = params.partner_sales?.trim();
+
+    if (!cleanLeadSales) throw new Error("กรุณาระบุชื่อเซลล์คนแรก (เช่น ยันได)");
+    if (!cleanPartnerCompany) throw new Error("กรุณาระบุชื่อบริษัทคู่ค้า / โครงการ");
+    if (!cleanPartnerSales) throw new Error("กรุณาระบุชื่อเซลล์ของบริษัทคู่ค้า");
+    if (!params.discount_value || params.discount_value <= 0) {
+      throw new Error("มูลค่าส่วนลดต้องมากกว่า 0");
+    }
+
+    const targetCount = Math.max(1, Math.min(100, Math.floor(params.count || 10)));
+
+    // 1. ดึงโค้ดทั้งหมดที่มีอยู่ในระบบ เพื่อป้องกันการชนกัน (Zero Collisions Guarantee)
+    const { data: existingTerraCodes } = await supabaseAdmin
+      .from("terra_collection_promotions")
+      .select("coupon_code")
+      .not("coupon_code", "is", null);
+
+    const { data: existingPosCodes } = await supabaseAdmin
+      .from("discounts")
+      .select("code")
+      .not("code", "is", null);
+
+    const takenCodes = new Set<string>();
+    existingTerraCodes?.forEach((r) => {
+      if (r.coupon_code) takenCodes.add(r.coupon_code.trim().toUpperCase());
+    });
+    existingPosCodes?.forEach((r) => {
+      if (r.code) takenCodes.add(r.code.trim().toUpperCase());
+    });
+
+    // 2. สุ่มรหัสตามรูปแบบที่ไม่ซ้ำ
+    const generatedCodes = new Set<string>();
+    let attempts = 0;
+    const maxAttempts = targetCount * 200 + 1000;
+
+    while (generatedCodes.size < targetCount && attempts < maxAttempts) {
+      attempts++;
+      const candidate = generateCodeFromPattern(params.pattern);
+      if (!takenCodes.has(candidate) && !generatedCodes.has(candidate)) {
+        generatedCodes.add(candidate);
+      }
+    }
+
+    if (generatedCodes.size < targetCount) {
+      throw new Error(
+        `ไม่สามารถสุ่มรหัสที่ไม่ซ้ำได้ครบ ${targetCount} รหัส (สร้างได้ ${generatedCodes.size} รหัส) กรุณาเพิ่มจำนวนหลัก เช่น เพิ่ม # หรือ * ในรูปแบบโค้ด`
+      );
+    }
+
+    const batchId = `BATCH_${Date.now().toString(36).toUpperCase()}`;
+    const cleanNote = params.note?.trim() || "";
+
+    const attributionJson = JSON.stringify({
+      lead_sales: cleanLeadSales,
+      partner_company: cleanPartnerCompany,
+      partner_sales: cleanPartnerSales,
+      note: cleanNote,
+      batch_id: batchId,
+    });
+
+    const defaultTitle = params.title_prefix?.trim()
+      ? params.title_prefix.trim()
+      : `ส่วนลด ${cleanPartnerCompany} (เซลล์: ${cleanLeadSales})`;
+
+    const rowsToInsert = Array.from(generatedCodes).map((code) => ({
+      title: defaultTitle,
+      description: attributionJson,
+      promo_scope: "global",
+      collection_group_id: null,
+      trigger_type: "coupon",
+      coupon_code: code,
+      discount_type: params.discount_type || "percentage",
+      discount_value: Number(params.discount_value),
+      min_sets: 1,
+      min_spend: params.min_spend ? Number(params.min_spend) : 0,
+      max_discount_amount: params.max_discount_amount ? Number(params.max_discount_amount) : null,
+      start_date: params.start_date ? new Date(params.start_date).toISOString() : null,
+      end_date: params.end_date ? new Date(params.end_date).toISOString() : null,
+      usage_limit: params.usage_limit ? Number(params.usage_limit) : 1,
+      used_count: 0,
+      is_active: true,
+    }));
+
+    const { data: inserted, error: insertErr } = await supabaseAdmin
+      .from("terra_collection_promotions")
+      .insert(rowsToInsert)
+      .select();
+
+    if (insertErr) throw insertErr;
+
+    revalidatePath("/discounts");
+    return {
+      success: true,
+      batchId,
+      codes: Array.from(generatedCodes),
+      promotions: inserted,
+    };
+  } catch (err: any) {
+    console.error("[createBatchPartnerCoupons] error:", err.message);
+    return { success: false, error: err.message || "ไม่สามารถสร้างชุดรหัสส่วนลดได้" };
   }
 }
 

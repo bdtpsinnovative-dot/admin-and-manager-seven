@@ -158,6 +158,14 @@ export async function executeMaintenanceWorkflow(triggerType: "cron" | "manual" 
       if (result.repaired) {
         repairedDays.push(day)
       }
+
+      // Archive concurrent peak metrics for this day before any future session pruning
+      try {
+        const { calculateHourlyConcurrentForDate } = await import("./algorithm-concurrent")
+        await calculateHourlyConcurrentForDate(day)
+      } catch (concurrentErr) {
+        console.warn(`[maintenance] concurrent archiving warning for ${day}:`, concurrentErr)
+      }
     } else {
       failedDays.push(day)
     }

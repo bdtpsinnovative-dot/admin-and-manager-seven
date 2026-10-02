@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { Users, Radio, Monitor, Smartphone, ExternalLink, Activity } from "lucide-react"
+import ConcurrentTimelineChart from "./ConcurrentTimelineChart"
 
 type ViewerPresence = {
   key: string
@@ -143,6 +144,9 @@ export default function LiveAudienceWidget() {
           </div>
         </div>
       </div>
+
+      {/* Concurrent & Peak Viewers 24-Hour Timeline */}
+      <ConcurrentTimelineChart currentLiveCount={viewers.length} />
 
       {viewers.length > 0 ? (
         <div className="space-y-2 pt-2">

@@ -94,9 +94,15 @@ export default function ManagerPOSPage() {
     id: any;
     code: string;
     title: string;
-    discountType: 'percentage' | 'fixed_amount';
+    discountType: 'percentage' | 'fixed_amount' | string;
     discountValue: number;
     discountAmount: number;
+    attribution?: {
+      leadSales?: string;
+      partnerCompany?: string;
+      partnerSales?: string;
+      note?: string;
+    } | null;
   } | null>(null)
   const [isValidatingCoupon, setIsValidatingCoupon] = useState(false)
 
@@ -680,7 +686,10 @@ export default function ManagerPOSPage() {
     if (res.success && res.coupon) {
       setAppliedCoupon(res.coupon)
       setCouponInput('')
-      toast.success(`🎟️ ใช้คูปอง [${res.coupon.code}] สำเร็จ! ลดทันที ฿${res.coupon.discountAmount.toLocaleString()}`)
+      const attrInfo = res.coupon.attribution?.partnerCompany
+        ? ` (${res.coupon.attribution.partnerCompany} • เซลล์: ${res.coupon.attribution.leadSales || '-'})`
+        : ''
+      toast.success(`🎟️ ใช้คูปอง [${res.coupon.code}] สำเร็จ! ลดทันที ฿${res.coupon.discountAmount.toLocaleString()}${attrInfo}`)
     } else {
       toast.error(res.error || "รหัสคูปองไม่ถูกต้อง")
     }
@@ -794,6 +803,7 @@ export default function ManagerPOSPage() {
         specialDiscountBaht: Number(specialDiscountBaht || 0),
         couponCode: appliedCoupon?.code || null,
         couponDiscountAmount: couponDiscountAmount,
+        couponAttribution: appliedCoupon?.attribution || null,
         setDiscountAmount: totalSetDiscountAmount,
         appliedSetPromos: completedSetPromotions.map(sp => ({
           setId: sp.set.id,
@@ -2277,20 +2287,42 @@ export default function ManagerPOSPage() {
                   🎟️ คูปองส่วนลด (Coupon Code)
                 </span>
                 {appliedCoupon ? (
-                  <div className="flex items-center justify-between p-3 bg-emerald-50 border border-emerald-200 rounded-2xl text-xs">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <Ticket className="w-4 h-4 text-emerald-600 shrink-0" />
-                      <div>
-                        <div className="font-bold text-emerald-900 font-mono text-sm">{appliedCoupon.code}</div>
-                        <div className="text-[11px] text-emerald-700 font-medium">{appliedCoupon.title}</div>
+                  <div className="flex flex-col gap-2 p-3 bg-emerald-50 border border-emerald-200 rounded-2xl text-xs">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Ticket className="w-4 h-4 text-emerald-600 shrink-0" />
+                        <div className="min-w-0">
+                          <div className="font-bold text-emerald-900 font-mono text-sm truncate">{appliedCoupon.code}</div>
+                          <div className="text-[11px] text-emerald-700 font-medium truncate">{appliedCoupon.title}</div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="font-black text-emerald-700 text-sm">-฿{appliedCoupon.discountAmount.toLocaleString()}</span>
+                        <button type="button" onClick={handleRemoveCoupon} className="text-slate-400 hover:text-red-500 transition-colors p-1 cursor-pointer" title="ยกเลิกคูปอง">
+                          <X className="w-4 h-4" />
+                        </button>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="font-black text-emerald-700 text-sm">-฿{appliedCoupon.discountAmount.toLocaleString()}</span>
-                      <button type="button" onClick={handleRemoveCoupon} className="text-slate-400 hover:text-red-500 transition-colors p-1 cursor-pointer" title="ยกเลิกคูปอง">
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
+
+                    {appliedCoupon.attribution && (
+                      <div className="pt-2 border-t border-emerald-200/60 flex flex-wrap items-center gap-1.5 text-[10px]">
+                        {appliedCoupon.attribution.leadSales && (
+                          <span className="bg-purple-100/90 text-purple-800 font-bold px-2 py-0.5 rounded-md border border-purple-200">
+                            👤 เซลล์: {appliedCoupon.attribution.leadSales}
+                          </span>
+                        )}
+                        {appliedCoupon.attribution.partnerCompany && (
+                          <span className="bg-blue-100/90 text-blue-800 font-bold px-2 py-0.5 rounded-md border border-blue-200">
+                            🏢 บ.: {appliedCoupon.attribution.partnerCompany}
+                          </span>
+                        )}
+                        {appliedCoupon.attribution.partnerSales && (
+                          <span className="bg-amber-100/90 text-amber-800 font-bold px-2 py-0.5 rounded-md border border-amber-200">
+                            🤝 เซลล์คู่ค้า: {appliedCoupon.attribution.partnerSales}
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="flex gap-2">

@@ -318,16 +318,37 @@ export async function validatePosCoupon(code: string, currentSubtotal: number, e
       discountAmount = Math.min(calcBase, Number(promo.discount_value))
     }
 
+    let attribution: {
+      leadSales: string;
+      partnerCompany: string;
+      partnerSales: string;
+      note?: string;
+    } | null = null
+    try {
+      if (promo.description && promo.description.trim().startsWith('{')) {
+        const parsed = JSON.parse(promo.description)
+        if (parsed.lead_sales || parsed.partner_company || parsed.partner_sales) {
+          attribution = {
+            leadSales: parsed.lead_sales || '',
+            partnerCompany: parsed.partner_company || '',
+            partnerSales: parsed.partner_sales || '',
+            note: parsed.note || ''
+          }
+        }
+      }
+    } catch {}
+
     return {
       success: true,
       coupon: {
         id: promo.id,
         code: cleanCode,
         title: promo.title,
-        discountType: promo.discount_type,
+        discountType: (promo.discount_type === 'percentage' ? 'percentage' : 'fixed_amount') as 'percentage' | 'fixed_amount',
         discountValue: Number(promo.discount_value),
         discountAmount: Math.round(discountAmount),
-        source: 'terra'
+        source: 'terra',
+        attribution
       }
     }
   }
@@ -361,7 +382,7 @@ export async function validatePosCoupon(code: string, currentSubtotal: number, e
         id: disc.id,
         code: cleanCode,
         title: disc.name,
-        discountType: disc.discount_type === 'PERCENT' ? 'percentage' : 'fixed_amount',
+        discountType: (disc.discount_type === 'PERCENT' ? 'percentage' : 'fixed_amount') as 'percentage' | 'fixed_amount',
         discountValue: Number(disc.value),
         discountAmount: Math.round(discountAmount),
         source: 'pos'
@@ -396,6 +417,12 @@ export interface CheckoutPayload {
   specialDiscountBaht?: number;     // ✨ ส่วนลดพิเศษ บาท
   couponCode?: string | null;       // 🎟️ โค้ดคูปอง
   couponDiscountAmount?: number;    // 🎟️ มูลค่าส่วนลดคูปอง
+  couponAttribution?: {             // 🤝 ข้อมูลเซลล์ / คู่ค้าผู้ได้รับสิทธิ์
+    leadSales?: string;
+    partnerCompany?: string;
+    partnerSales?: string;
+    note?: string;
+  } | null;
   vatAmount?: number;               // ✨ ยอดภาษี VAT (7%)
   setDiscountAmount?: number;       // 📦 มูลค่าส่วนลดเซ็ต
   appliedSetPromos?: any[];         // 📦 ข้อมูลเซ็ตโปรโมชั่นที่ได้รับ
@@ -444,7 +471,11 @@ export async function processCheckout(payload: CheckoutPayload) {
     if (payload.couponCode) {
       discountSnapshot.coupon = {
         code: payload.couponCode,
-        discount_amount: payload.couponDiscountAmount || 0
+        discount_amount: payload.couponDiscountAmount || 0,
+        lead_sales: payload.couponAttribution?.leadSales || null,
+        partner_company: payload.couponAttribution?.partnerCompany || null,
+        partner_sales: payload.couponAttribution?.partnerSales || null,
+        note: payload.couponAttribution?.note || null
       }
     }
     if (payload.appliedSetPromos && payload.appliedSetPromos.length > 0) {
