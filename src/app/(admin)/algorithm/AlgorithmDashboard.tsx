@@ -23,6 +23,7 @@ import {
 } from "lucide-react"
 import type { AlgorithmOverview, AlgorithmRange, HotItem, TrendPoint } from "../../../actions/algorithm"
 import LiveAudienceWidget from "./LiveAudienceWidget"
+import AlgorithmDateFilter from "@/components/algorithm/AlgorithmDateFilter"
 
 function number(value: number) {
   return new Intl.NumberFormat("th-TH").format(value)
@@ -586,23 +587,15 @@ export default function AlgorithmDashboard({ data }: { data: AlgorithmOverview }
             >
               สินค้าทั้งหมด
             </Link>
+            <Link
+              href="/algorithm/health"
+              className="whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 transition-colors"
+            >
+              สถานะระบบ & ตรวจสอบบัก
+            </Link>
           </nav>
 
-          <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
-            {rangeLinks.map((range) => (
-              <Link
-                key={range.days}
-                href={`/algorithm?range=${range.days}&offset=0`}
-                className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-bold transition-colors ${
-                  data.rangeDays === range.days
-                    ? "bg-blue-600 text-white shadow-sm"
-                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                }`}
-              >
-                {range.label}
-              </Link>
-            ))}
-          </div>
+          <AlgorithmDateFilter />
 
           <div className="hidden items-center gap-1.5 text-xs font-medium text-slate-500 xl:flex">
             <span className="h-2 w-2 rounded-full bg-emerald-500" />

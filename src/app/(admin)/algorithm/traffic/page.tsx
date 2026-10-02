@@ -15,8 +15,11 @@ export default async function DailyTrafficPage({
   const initialType = typeof query?.type === "string" && ["sources", "devices", "browsers"].includes(query.type)
     ? (query.type as "sources" | "devices" | "browsers")
     : undefined
+  const month = typeof query?.month === "string" ? query.month : undefined
+  const from = typeof query?.from === "string" ? query.from : undefined
+  const to = typeof query?.to === "string" ? query.to : undefined
 
-  const data = await getDailyTrafficAnalytics(range, offset)
+  const data = await getDailyTrafficAnalytics(range, offset, month, from, to)
 
   return (
     <div className="min-h-screen bg-slate-50 p-4 md:p-6 font-sans text-slate-800">

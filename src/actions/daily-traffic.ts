@@ -5,6 +5,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin"
 import { normalizeLocation, sanitizeCategoryName } from "@/lib/algorithm-normalization"
 import type { AlgorithmRange } from "./algorithm"
 import type { AudienceBreakdownItem } from "./audience-analytics"
+import { resolveDateWindow, getThaiMonthLabel } from "@/lib/algorithm-date-window"
 
 export type DailyTopProduct = {
   id: number
@@ -47,7 +48,7 @@ export type DailyTrafficAnalytics = {
 const dayInMs = 24 * 60 * 60 * 1000
 
 function normalizeRange(value: number): AlgorithmRange {
-  return value === 1 || value === 7 ? value : 30
+  return [1, 7, 30, 60, 90].includes(value) ? value : 30
 }
 
 function formatThaiDate(dateStr: string, format: "short" | "full" = "full"): string {
@@ -149,6 +150,20 @@ function calculateBreakdownList(items: string[]): AudienceBreakdownItem[] {
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
 }
 
+function breakdownFromCountMap(counts: Map<string, number>): AudienceBreakdownItem[] {
+  let total = 0
+  for (const count of counts.values()) {
+    total += count
+  }
+  return Array.from(counts.entries())
+    .map(([name, count]) => ({
+      name,
+      count,
+      share: total > 0 ? Math.round((count / total) * 100) : 0,
+    }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+}
+
 async function requireAdmin() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -160,20 +175,172 @@ async function requireAdmin() {
 const cache = new Map<string, { data: DailyTrafficAnalytics; expiresAt: number }>()
 const CACHE_TTL_MS = 2 * 60 * 1000 // 2 minutes
 
+async function fetchDailyTrafficFromMetrics(
+  window: ReturnType<typeof resolveDateWindow>
+): Promise<DailyTrafficAnalytics> {
+  const startDateStr = window.startTime.slice(0, 10)
+  const endDateStr = window.endTime.slice(0, 10)
+
+  let allMetrics: Array<{
+    metric_date: string
+    product_id: number
+    product_name_snapshot: string | null
+    product_sku_snapshot: string | null
+    total_views: number
+    unique_views: number
+    top_device: string | null
+    top_source_platform: string | null
+  }> = []
+
+  let fromOffset = 0
+  const pageSize = 1000
+  while (true) {
+    const { data, error } = await supabaseAdmin
+      .from("algorithm_product_daily_metrics")
+      .select("metric_date, product_id, product_name_snapshot, product_sku_snapshot, total_views, unique_views, top_device, top_source_platform")
+      .gte("metric_date", startDateStr)
+      .lte("metric_date", endDateStr)
+      .range(fromOffset, fromOffset + pageSize - 1)
+
+    if (error || !data || data.length === 0) break
+    allMetrics.push(...(data as any))
+    if (data.length < pageSize) break
+    fromOffset += pageSize
+  }
+
+  const dateMap = new Map<string, typeof allMetrics>()
+  for (const m of allMetrics) {
+    const list = dateMap.get(m.metric_date) || []
+    list.push(m)
+    dateMap.set(m.metric_date, list)
+  }
+
+  const expectedDates: string[] = []
+  const cur = new Date(startDateStr)
+  const end = new Date(endDateStr)
+  while (cur <= end) {
+    expectedDates.push(cur.toISOString().slice(0, 10))
+    cur.setDate(cur.getDate() + 1)
+  }
+
+  let totalViewsCount = 0
+  let totalUniqueCount = 0
+  const allSources = new Map<string, number>()
+  const allDevices = new Map<string, number>()
+
+  const days: DayAnalytics[] = expectedDates.map((dateKey) => {
+    const rows = dateMap.get(dateKey) || []
+    let dayTotalViews = 0
+    let dayUniqueViews = 0
+    const daySources = new Map<string, number>()
+    const dayDevices = new Map<string, number>()
+    const productViews = new Map<number, { id: number; name: string; sku: string | null; views: number }>()
+
+    for (const r of rows) {
+      const tv = r.total_views || 0
+      const uv = r.unique_views || 0
+      dayTotalViews += tv
+      dayUniqueViews += uv
+      totalViewsCount += tv
+      totalUniqueCount += uv
+
+      const src = r.top_source_platform || "Direct"
+      daySources.set(src, (daySources.get(src) || 0) + tv)
+      allSources.set(src, (allSources.get(src) || 0) + tv)
+
+      const dev = r.top_device || "mobile"
+      dayDevices.set(dev, (dayDevices.get(dev) || 0) + tv)
+      allDevices.set(dev, (allDevices.get(dev) || 0) + tv)
+
+      const p = productViews.get(r.product_id) || {
+        id: r.product_id,
+        name: r.product_name_snapshot || `สินค้า #${r.product_id}`,
+        sku: r.product_sku_snapshot || null,
+        views: 0,
+      }
+      p.views += tv
+      productViews.set(r.product_id, p)
+    }
+
+    const topProducts: DailyTopProduct[] = Array.from(productViews.values())
+      .sort((a, b) => b.views - a.views)
+      .slice(0, 5)
+      .map((p) => ({
+        id: p.id,
+        name: p.name,
+        sku: p.sku,
+        imageUrl: null,
+        views: p.views,
+      }))
+
+    return {
+      dateKey,
+      dateLabel: formatThaiDate(dateKey + "T12:00:00Z", "full"),
+      shortDate: formatThaiDate(dateKey + "T12:00:00Z", "short"),
+      totalViews: dayTotalViews,
+      uniqueViews: dayUniqueViews,
+      sources: breakdownFromCountMap(daySources),
+      devices: breakdownFromCountMap(dayDevices),
+      browsers: [],
+      hourly: [],
+      topProducts,
+    }
+  })
+
+  const activeDays = days.filter((d) => d.totalViews > 0)
+  const peakDay = activeDays.length > 0
+    ? activeDays.reduce((best, cur) => (cur.totalViews > best.totalViews ? cur : best), activeDays[0])
+    : null
+
+  const averageViewsPerDay = days.length > 0 ? Math.round(totalViewsCount / days.length) : 0
+  const topSourceOverall = breakdownFromCountMap(allSources)[0] || null
+  const topDeviceOverall = breakdownFromCountMap(allDevices)[0] || null
+
+  return {
+    rangeDays: window.daysCount,
+    offset: window.offset,
+    startTime: window.startTime,
+    endTime: window.endTime,
+    generatedAt: new Date().toISOString(),
+    totalViews: totalViewsCount,
+    totalUniqueViews: totalUniqueCount,
+    peakDay: peakDay ? { date: peakDay.dateLabel, views: peakDay.totalViews } : null,
+    averageViewsPerDay,
+    topSourceOverall,
+    topDeviceOverall,
+    topBrowserOverall: null,
+    days,
+    error: null,
+  }
+}
+
 export async function getDailyTrafficAnalytics(
-  rangeValue: number,
-  offset: number = 0
+  rangeValue: number = 30,
+  offset: number = 0,
+  month?: string,
+  fromDate?: string,
+  toDate?: string
 ): Promise<DailyTrafficAnalytics> {
   await requireAdmin()
-  const rangeDays = normalizeRange(rangeValue)
-  const safeOffset = Math.max(0, Number(offset) || 0)
-
-  const cacheKey = `${rangeDays}:${safeOffset}`
+  const window = resolveDateWindow({ range: rangeValue, offset, month, from: fromDate, to: toDate })
+  const cacheKey = `${window.type}:${window.monthKey || ""}:${window.fromDate || ""}:${window.toDate || ""}:${window.rangeDays}:${window.offset}`
   const cached = cache.get(cacheKey)
   if (cached && Date.now() < cached.expiresAt) {
     return cached.data
   }
 
+  if (window.daysCount > 7 || window.type === "month" || window.type === "custom") {
+    try {
+      const data = await fetchDailyTrafficFromMetrics(window)
+      cache.set(cacheKey, { data, expiresAt: Date.now() + CACHE_TTL_MS })
+      return data
+    } catch (err: any) {
+      console.error("[getDailyTrafficAnalytics] fetchDailyTrafficFromMetrics error:", err)
+    }
+  }
+
+  const rangeDays = normalizeRange(rangeValue)
+  const safeOffset = Math.max(0, Number(offset) || 0)
   const windowMs = rangeDays === 1 ? 24 * 60 * 60 * 1000 : rangeDays * dayInMs
   const endTime = safeOffset > 0 ? new Date(Date.now() - safeOffset * windowMs).toISOString() : new Date().toISOString()
   const cutoff = new Date(new Date(endTime).getTime() - windowMs).toISOString()

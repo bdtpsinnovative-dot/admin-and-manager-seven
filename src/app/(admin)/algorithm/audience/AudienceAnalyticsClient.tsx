@@ -44,6 +44,7 @@ import type { DailyTrafficAnalytics, DayAnalytics } from "../../../../actions/da
 import SourceBadge from "../SourceBadge"
 import TechnologyBadge from "../TechnologyBadge"
 import DraggableScrollContainer from "../DraggableScrollContainer"
+import AlgorithmDateFilter from "@/components/algorithm/AlgorithmDateFilter"
 
 function number(value: number) { return new Intl.NumberFormat("th-TH").format(value) }
 function seconds(value: number) { return value < 60 ? `${number(value)} วิ` : `${Math.floor(value / 60)} นาที ${value % 60} วิ` }
@@ -898,21 +899,7 @@ export default function AudienceAnalyticsClient({
               <p className="text-xs text-slate-500 mt-0.5">วิเคราะห์พฤติกรรมผู้ชมและสถิติสินค้า (ย้อนหลัง {data.rangeDays} วัน)</p>
             </div>
           </div>
-          <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
-            {ranges.map((range) => (
-              <Link
-                key={range.days}
-                href={`/algorithm/audience?range=${range.days}`}
-                className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-bold transition-colors ${
-                  data.rangeDays === range.days
-                    ? "bg-blue-600 text-white shadow-sm"
-                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                }`}
-              >
-                {range.label}
-              </Link>
-            ))}
-          </div>
+          <AlgorithmDateFilter />
         </div>
       )}
 

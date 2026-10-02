@@ -22,6 +22,7 @@ import type {
 } from "../../../../actions/daily-traffic"
 import SourceBadge from "../SourceBadge"
 import TechnologyBadge from "../TechnologyBadge"
+import AlgorithmDateFilter from "@/components/algorithm/AlgorithmDateFilter"
 
 function number(value: number) {
   return new Intl.NumberFormat("th-TH").format(value)
@@ -290,22 +291,7 @@ export default function DailyTrafficClient({
           </nav>
         </div>
 
-        {/* Date Range Selector */}
-        <div className="flex items-center gap-1 self-start sm:self-auto rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
-          {rangeLinks.map((range) => (
-            <Link
-              key={range.days}
-              href={rangeQuery(range.days)}
-              className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
-                data.rangeDays === range.days
-                  ? "bg-blue-600 text-white shadow-sm font-bold"
-                  : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-              }`}
-            >
-              {range.label}
-            </Link>
-          ))}
-        </div>
+        <AlgorithmDateFilter />
       </div>
 
       {/* Hero Overview */}

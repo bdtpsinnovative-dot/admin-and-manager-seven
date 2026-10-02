@@ -341,6 +341,13 @@ export async function validatePosCoupon(code: string, currentSubtotal: number, e
 
   if (posDiscounts && posDiscounts.length > 0) {
     const disc = posDiscounts[0]
+    if (disc.start_date && disc.start_date > now) {
+      return { success: false, error: "ส่วนลดนี้ยังไม่เริ่มใช้งาน" }
+    }
+    if (disc.end_date && disc.end_date < now) {
+      return { success: false, error: "ส่วนลดนี้หมดอายุแล้ว" }
+    }
+
     let discountAmount = 0
     if (disc.discount_type === 'PERCENT') {
       discountAmount = (calcBase * Number(disc.value)) / 100

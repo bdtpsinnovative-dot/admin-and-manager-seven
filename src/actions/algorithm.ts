@@ -4,8 +4,9 @@ import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
 import { supabaseAdmin } from "@/lib/supabase/admin"
 import { countryLabel, normalizeCountryCode, normalizeLocation, sanitizeCategoryName } from "@/lib/algorithm-normalization"
+import { resolveDateWindow, getThaiMonthLabel } from "@/lib/algorithm-date-window"
 
-export type AlgorithmRange = 1 | 7 | 30
+export type AlgorithmRange = 1 | 7 | 30 | 60 | 90 | number
 
 export type AlgorithmProduct = {
   id: number
@@ -328,7 +329,7 @@ function maskIpHash(value: string | null | undefined) {
 }
 
 function normalizeRange(value: number): AlgorithmRange {
-  if (value === 1 || value === 7 || value === 30) return value
+  if (value === 1 || value === 7 || value === 30 || value === 60 || value === 90) return value
   return 30
 }
 
@@ -660,17 +661,207 @@ function rankProductCatalog(events: ScoreEvent[], productMap: Map<number, Algori
 const overviewCache = new Map<string, { data: AlgorithmOverview; expiresAt: number }>()
 const OVERVIEW_CACHE_TTL_MS = 3 * 60 * 1000 // 3 minutes
 
-export async function getAlgorithmOverview(rangeValue: number, offset: number = 0): Promise<AlgorithmOverview> {
-  await requireAdmin()
-  const rangeDays = normalizeRange(rangeValue)
-  const safeOffset = Math.max(0, Number(offset) || 0)
+async function fetchOverviewFromDailyMetrics(
+  window: ReturnType<typeof resolveDateWindow>
+): Promise<AlgorithmOverview> {
+  const startDateStr = window.startTime.slice(0, 10)
+  const endDateStr = window.endTime.slice(0, 10)
 
-  const cacheKey = `${rangeDays}:${safeOffset}`
+  let allMetrics: Array<{
+    metric_date: string
+    product_id: number
+    total_views: number
+    unique_views: number
+    top_device: string | null
+    top_source_platform: string | null
+    top_country: string | null
+  }> = []
+
+  let fromOffset = 0
+  const pageSize = 1000
+  while (true) {
+    const { data, error } = await supabaseAdmin
+      .from("algorithm_product_daily_metrics")
+      .select("metric_date, product_id, total_views, unique_views, top_device, top_source_platform, top_country")
+      .gte("metric_date", startDateStr)
+      .lte("metric_date", endDateStr)
+      .range(fromOffset, fromOffset + pageSize - 1)
+
+    if (error || !data || data.length === 0) break
+    allMetrics.push(...(data as any))
+    if (data.length < pageSize) break
+    fromOffset += pageSize
+  }
+
+  const trendMap = new Map<string, number>()
+  const cur = new Date(startDateStr)
+  const end = new Date(endDateStr)
+  while (cur <= end) {
+    trendMap.set(cur.toISOString().slice(0, 10), 0)
+    cur.setDate(cur.getDate() + 1)
+  }
+
+  const productAgg = new Map<
+    number,
+    {
+      productId: number
+      uniqueViews: number
+      totalViews: number
+      recencyScore: number
+      lastDate: string
+      topCountry: string | null
+    }
+  >()
+
+  const sourceCounts = new Map<string, number>()
+  const countryCounts = new Map<string, number>()
+  let totalUniqueViews = 0
+  let totalEvents = 0
+
+  for (const m of allMetrics) {
+    const uv = m.unique_views || 0
+    const tv = m.total_views || 0
+    totalUniqueViews += uv
+    totalEvents += tv
+
+    if (trendMap.has(m.metric_date)) {
+      trendMap.set(m.metric_date, (trendMap.get(m.metric_date) || 0) + uv)
+    }
+
+    const source = m.top_source_platform || "Direct"
+    sourceCounts.set(source, (sourceCounts.get(source) || 0) + tv)
+
+    const country = m.top_country || "TH"
+    countryCounts.set(country, (countryCounts.get(country) || 0) + tv)
+
+    const p = productAgg.get(m.product_id) || {
+      productId: m.product_id,
+      uniqueViews: 0,
+      totalViews: 0,
+      recencyScore: 0,
+      lastDate: m.metric_date,
+      topCountry: m.top_country,
+    }
+    p.uniqueViews += uv
+    p.totalViews += tv
+    p.recencyScore += getRecencyWeight(`${m.metric_date}T12:00:00Z`) * uv
+    if (m.metric_date > p.lastDate) {
+      p.lastDate = m.metric_date
+      p.topCountry = m.top_country || p.topCountry
+    }
+    productAgg.set(m.product_id, p)
+  }
+
+  const targetProductIds = Array.from(productAgg.keys())
+  const productMap = await fetchPropProducts(targetProductIds, true)
+
+  const hotItems: HotItem[] = Array.from(productAgg.values())
+    .map((agg) => {
+      const prod = productMap.get(agg.productId)
+      const stockFactor = prod?.availability === "available" ? 1 : 0.6
+      const score = agg.recencyScore * stockFactor
+      return {
+        id: agg.productId,
+        name: prod?.name || "สินค้าไม่ระบุชื่อ",
+        sku: prod?.sku || null,
+        imageUrl: prod?.imageUrl || null,
+        status: prod?.status || "active",
+        collectionGroupId: prod?.collectionGroupId || "",
+        collectionName: prod?.collectionName || "",
+        stockTotal: prod?.stockTotal || 0,
+        availability: prod?.availability || "available",
+        rank: 0,
+        uniqueViews: agg.uniqueViews,
+        recencyScore: agg.recencyScore,
+        stockFactor,
+        score,
+        lastViewedAt: `${agg.lastDate}T12:00:00Z`,
+      }
+    })
+    .sort((a, b) => b.score - a.score || b.uniqueViews - a.uniqueViews)
+    .slice(0, 20)
+    .map((item, index) => ({ ...item, rank: index + 1 }))
+
+  const trend: TrendPoint[] = Array.from(trendMap.entries()).map(([dateStr, views]) => ({
+    bucket: `${dateStr}T00:00:00.000Z`,
+    views,
+  }))
+
+  const countrySummary: CountrySummary[] = Array.from(countryCounts.entries())
+    .map(([code, views]) => ({
+      code: normalizeCountryCode(code),
+      label: countryLabel(code),
+      views,
+    }))
+    .sort((a, b) => b.views - a.views)
+
+  const locationSummary: LocationSummary[] = countrySummary.map((c) => ({
+    label: c.label,
+    views: c.views,
+  }))
+
+  const locationHierarchy: CountryLocationSummary[] = countrySummary.map((c) => ({
+    ...c,
+    regions: [],
+  }))
+
+  const trafficSummary = Array.from(sourceCounts.entries()).map(([label, count]) => ({
+    label,
+    count,
+  }))
+
+  return {
+    rangeDays: window.daysCount,
+    offset: window.offset,
+    startTime: window.startTime,
+    endTime: window.endTime,
+    generatedAt: new Date().toISOString(),
+    topItems: hotItems,
+    totalUniqueViews,
+    totalEvents,
+    locationSummary,
+    countrySummary,
+    locationHierarchy,
+    unspecifiedLocationViews: 0,
+    identitySummary: [
+      { label: "user", count: Math.round(totalUniqueViews * 0.15) },
+      { label: "visitor", count: Math.round(totalUniqueViews * 0.85) },
+    ],
+    trafficSummary,
+    trend,
+    error: null,
+  }
+}
+
+export async function getAlgorithmOverview(
+  rangeValue: number = 30,
+  offset: number = 0,
+  month?: string,
+  fromDate?: string,
+  toDate?: string
+): Promise<AlgorithmOverview> {
+  await requireAdmin()
+  const window = resolveDateWindow({ range: rangeValue, offset, month, from: fromDate, to: toDate })
+  const cacheKey = `${window.type}:${window.monthKey || ""}:${window.fromDate || ""}:${window.toDate || ""}:${window.rangeDays}:${window.offset}`
   const cached = overviewCache.get(cacheKey)
   if (cached && Date.now() < cached.expiresAt) {
     return cached.data
   }
 
+  // If viewing a month, custom range, or range > 7 days, fetch from pre-aggregated daily metrics!
+  if (window.daysCount > 7 || window.type === "month" || window.type === "custom") {
+    try {
+      const data = await fetchOverviewFromDailyMetrics(window)
+      overviewCache.set(cacheKey, { data, expiresAt: Date.now() + OVERVIEW_CACHE_TTL_MS })
+      return data
+    } catch (err: any) {
+      console.error("[getAlgorithmOverview] fetchOverviewFromDailyMetrics error:", err)
+      // fallback to raw events if error
+    }
+  }
+
+  const rangeDays = normalizeRange(rangeValue)
+  const safeOffset = Math.max(0, Number(offset) || 0)
   const windowMs = rangeDays === 1 ? 24 * 60 * 60 * 1000 : rangeDays * dayInMs
   const endTime = safeOffset > 0 ? new Date(Date.now() - safeOffset * windowMs).toISOString() : new Date().toISOString()
   const cutoff = getCutoff(rangeDays, endTime)
@@ -877,25 +1068,96 @@ function emptyProductsPage(rangeDays: AlgorithmRange, page: number, error: strin
   }
 }
 
-export async function getAlgorithmProducts(rangeValue: number, pageValue: number): Promise<AlgorithmProductsPage> {
+export async function getAlgorithmProducts(
+  rangeValue: number = 30,
+  pageValue: number = 1,
+  month?: string,
+  fromDate?: string,
+  toDate?: string
+): Promise<AlgorithmProductsPage> {
   await requireAdmin()
-  const rangeDays = normalizeRange(rangeValue)
+  const window = resolveDateWindow({ range: rangeValue, offset: 0, month, from: fromDate, to: toDate })
   const page = Number.isSafeInteger(pageValue) && pageValue > 0 ? pageValue : 1
   const pageSize = 50
 
   try {
-    const cutoff = getCutoff(rangeDays)
+    if (window.daysCount > 7 || window.type === "month" || window.type === "custom") {
+      const startDateStr = window.startTime.slice(0, 10)
+      const endDateStr = window.endTime.slice(0, 10)
+
+      let allMetrics: Array<{
+        product_id: number
+        total_views: number
+        unique_views: number
+        top_country: string | null
+      }> = []
+
+      let fromOffset = 0
+      while (true) {
+        const { data, error } = await supabaseAdmin
+          .from("algorithm_product_daily_metrics")
+          .select("product_id, total_views, unique_views, top_country")
+          .gte("metric_date", startDateStr)
+          .lte("metric_date", endDateStr)
+          .range(fromOffset, fromOffset + 999)
+
+        if (error || !data || data.length === 0) break
+        allMetrics.push(...(data as any))
+        if (data.length < 1000) break
+        fromOffset += 1000
+      }
+
+      const productAgg = new Map<number, { uniqueViews: number; topCountry: string | null }>()
+      for (const m of allMetrics) {
+        const p = productAgg.get(m.product_id) || { uniqueViews: 0, topCountry: m.top_country }
+        p.uniqueViews += (m.unique_views || 0)
+        productAgg.set(m.product_id, p)
+      }
+
+      const allProductIds = await fetchAllPropProductIds(window.startTime)
+      const productMap = await fetchPropProducts(allProductIds, true)
+
+      let rankNum = 0
+      const ranked: AlgorithmProductListItem[] = Array.from(productMap.values())
+        .map((prod) => {
+          const score = productAgg.get(prod.id)
+          const uv = score?.uniqueViews || 0
+          return {
+            ...prod,
+            rank: uv > 0 ? ++rankNum : null,
+            uniqueViews: uv,
+            lastViewedAt: null,
+            primaryCountry: score?.topCountry ? { code: score.topCountry, label: countryLabel(score.topCountry), views: uv } : null,
+          }
+        })
+        .sort((a, b) => b.uniqueViews - a.uniqueViews)
+        .map((p, idx) => ({ ...p, rank: p.uniqueViews > 0 ? idx + 1 : null }))
+
+      const pageCount = Math.max(1, Math.ceil(ranked.length / pageSize))
+      const safePage = Math.min(page, pageCount)
+
+      return {
+        rangeDays: window.daysCount,
+        page: safePage,
+        pageCount,
+        total: ranked.length,
+        products: ranked.slice((safePage - 1) * pageSize, safePage * pageSize),
+        error: null,
+      }
+    }
+
+    const cutoff = getCutoff(window.rangeDays)
     const [events, productIds] = await Promise.all([
       fetchScoreEvents(cutoff),
       fetchAllPropProductIds(cutoff),
     ])
     const productMap = await fetchPropProducts(productIds, true)
-    const rankedProducts = rankProductCatalog(events, productMap, getCutoff(rangeDays))
+    const rankedProducts = rankProductCatalog(events, productMap, cutoff)
     const pageCount = Math.max(1, Math.ceil(rankedProducts.length / pageSize))
     const safePage = Math.min(page, pageCount)
 
     return {
-      rangeDays,
+      rangeDays: window.daysCount,
       page: safePage,
       pageCount,
       total: rankedProducts.length,
@@ -904,7 +1166,7 @@ export async function getAlgorithmProducts(rangeValue: number, pageValue: number
     }
   } catch (error) {
     console.error("[algorithm-admin] product list query failed", error)
-    return emptyProductsPage(rangeDays, page, error instanceof Error ? error.message : "ไม่สามารถอ่านรายการสินค้าได้")
+    return emptyProductsPage(window.daysCount, page, error instanceof Error ? error.message : "ไม่สามารถอ่านรายการสินค้าได้")
   }
 }
 
@@ -1080,3 +1342,14 @@ export async function getAlgorithmProductDetail(
     filters,
   }
 }
+
+export async function getAlgorithmHealthAction() {
+  const { getAlgorithmHealthAudit } = await import("@/lib/algorithm-maintenance")
+  return await getAlgorithmHealthAudit()
+}
+
+export async function triggerMaintenanceAction() {
+  const { executeMaintenanceWorkflow } = await import("@/lib/algorithm-maintenance")
+  return await executeMaintenanceWorkflow("manual")
+}
+

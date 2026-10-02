@@ -7,11 +7,23 @@ import AudienceAnalyticsClient from "./audience/AudienceAnalyticsClient"
 
 export const dynamic = "force-dynamic"
 
-async function AudienceSection({ rangeValue, offsetValue }: { rangeValue: number; offsetValue: number }) {
+async function AudienceSection({
+  rangeValue,
+  offsetValue,
+  monthValue,
+  fromValue,
+  toValue,
+}: {
+  rangeValue: number
+  offsetValue: number
+  monthValue?: string
+  fromValue?: string
+  toValue?: string
+}) {
   try {
     const [audience, dailyTraffic] = await Promise.all([
-      getAudienceAnalytics(rangeValue, offsetValue),
-      getDailyTrafficAnalytics(rangeValue, offsetValue),
+      getAudienceAnalytics(rangeValue, offsetValue, monthValue, fromValue, toValue),
+      getDailyTrafficAnalytics(rangeValue, offsetValue, monthValue, fromValue, toValue),
     ])
     return <AudienceAnalyticsClient data={audience} dailyTraffic={dailyTraffic} embedded={true} />
   } catch (error) {
@@ -45,12 +57,22 @@ function AudienceSkeleton() {
 export default async function AlgorithmPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ range?: string | string[]; offset?: string | string[] }>
+  searchParams?: Promise<{
+    range?: string | string[]
+    offset?: string | string[]
+    month?: string | string[]
+    from?: string | string[]
+    to?: string | string[]
+  }>
 }) {
   const params = await searchParams
   const rangeValue = typeof params?.range === "string" ? Number(params.range) : 30
   const offsetValue = typeof params?.offset === "string" ? Math.max(0, parseInt(params.offset, 10) || 0) : 0
-  const data = await getAlgorithmOverview(rangeValue, offsetValue)
+  const monthValue = typeof params?.month === "string" ? params.month : undefined
+  const fromValue = typeof params?.from === "string" ? params.from : undefined
+  const toValue = typeof params?.to === "string" ? params.to : undefined
+
+  const data = await getAlgorithmOverview(rangeValue, offsetValue, monthValue, fromValue, toValue)
 
   return (
     <div className="min-h-screen bg-slate-50 p-4 md:p-6 font-sans text-slate-800">
@@ -58,7 +80,13 @@ export default async function AlgorithmPage({
         <AlgorithmDashboard data={data} />
         <div className="w-full">
           <Suspense fallback={<AudienceSkeleton />}>
-            <AudienceSection rangeValue={rangeValue} offsetValue={offsetValue} />
+            <AudienceSection
+              rangeValue={rangeValue}
+              offsetValue={offsetValue}
+              monthValue={monthValue}
+              fromValue={fromValue}
+              toValue={toValue}
+            />
           </Suspense>
         </div>
       </div>

@@ -1,6 +1,10 @@
+"use client"
+
 import Link from "next/link"
+import { useSearchParams } from "next/navigation"
 import { ArrowLeft, ArrowUpRight, ChevronLeft, ChevronRight, CircleAlert, Eye, Globe2, PackageCheck } from "lucide-react"
 import type { AlgorithmProductsPage, AlgorithmRange, AlgorithmProductListItem } from "../../../../actions/algorithm"
+import AlgorithmDateFilter from "@/components/algorithm/AlgorithmDateFilter"
 
 function number(value: number) {
   return new Intl.NumberFormat("th-TH").format(value)
@@ -115,12 +119,13 @@ function ProductRow({ item }: { item: AlgorithmProductListItem }) {
 }
 
 export default function AlgorithmProductsList({ data }: { data: AlgorithmProductsPage }) {
-  const query = (page: number, range = data.rangeDays) => `/algorithm/products?page=${page}&range=${range}`
-  const rangeLinks: Array<{ days: AlgorithmRange; label: string }> = [
-    { days: 1, label: "24 ชม." },
-    { days: 7, label: "7 วัน" },
-    { days: 30, label: "30 วัน" },
-  ]
+  const searchParams = useSearchParams()
+
+  const getPageUrl = (page: number) => {
+    const params = new URLSearchParams(searchParams.toString())
+    params.set("page", String(page))
+    return `/algorithm/products?${params.toString()}`
+  }
 
   return (
     <div className="w-full space-y-6">
@@ -156,22 +161,7 @@ export default function AlgorithmProductsList({ data }: { data: AlgorithmProduct
           </nav>
         </div>
 
-        {/* Date Range Selector */}
-        <div className="flex items-center gap-1 self-start sm:self-auto rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
-          {rangeLinks.map((range) => (
-            <Link
-              key={range.days}
-              href={query(1, range.days)}
-              className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
-                data.rangeDays === range.days
-                  ? "bg-blue-600 text-white shadow-sm"
-                  : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-              }`}
-            >
-              {range.label}
-            </Link>
-          ))}
-        </div>
+        <AlgorithmDateFilter />
       </div>
 
       {/* Hero / Summary Section */}
@@ -248,7 +238,7 @@ export default function AlgorithmProductsList({ data }: { data: AlgorithmProduct
           <div className="flex items-center gap-2">
             {data.page > 1 ? (
               <Link
-                href={query(data.page - 1)}
+                href={getPageUrl(data.page - 1)}
                 className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
               >
                 <ChevronLeft className="h-4 w-4" />
@@ -262,7 +252,7 @@ export default function AlgorithmProductsList({ data }: { data: AlgorithmProduct
             )}
             {data.page < data.pageCount ? (
               <Link
-                href={query(data.page + 1)}
+                href={getPageUrl(data.page + 1)}
                 className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
               >
                 ถัดไป

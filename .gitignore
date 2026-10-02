@@ -44,3 +44,5 @@ next-env.d.ts
 # scratch and local scripts
 scratch/
 scripts/*.local.*
+backups/
+data/snapshots/

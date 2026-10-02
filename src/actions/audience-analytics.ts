@@ -3,8 +3,9 @@
 import { createClient } from "@/lib/supabase/server"
 import { supabaseAdmin } from "@/lib/supabase/admin"
 import { isMainAnalyticsEvent, normalizeLocation, sanitizeCategoryName } from "@/lib/algorithm-normalization"
+import { resolveDateWindow, getThaiMonthLabel } from "@/lib/algorithm-date-window"
 
-type Range = 1 | 7 | 30
+type Range = 1 | 7 | 30 | 60 | 90 | number
 
 export type AudienceProduct = {
   id: number
@@ -198,7 +199,7 @@ type RawActivity = {
 const dayMs = 24 * 60 * 60 * 1000
 
 function normalizeRange(value: number): Range {
-  return value === 1 || value === 7 ? value : 30
+  return [1, 7, 30, 60, 90].includes(value) ? value : 30
 }
 
 function number(value: unknown) {
@@ -553,20 +554,26 @@ function mergedActiveSeconds(activities: RawActivity[]) {
 const audienceCache = new Map<string, { data: AudienceAnalytics; expiresAt: number }>()
 const AUDIENCE_CACHE_TTL_MS = 3 * 60 * 1000 // 3 minutes
 
-export async function getAudienceAnalytics(rangeValue: number, offset: number = 0): Promise<AudienceAnalytics> {
-  const rangeDays = normalizeRange(rangeValue)
-  const safeOffset = Math.max(0, Number(offset) || 0)
+export async function getAudienceAnalytics(
+  rangeValue: number = 30,
+  offset: number = 0,
+  month?: string,
+  fromDate?: string,
+  toDate?: string
+): Promise<AudienceAnalytics> {
+  const window = resolveDateWindow({ range: rangeValue, offset, month, from: fromDate, to: toDate })
+  const safeOffset = window.offset
+  const rangeDays = window.rangeDays
   const productStartedAt = "ข้อมูลชุดนี้เริ่มเก็บตั้งแต่วันที่ deploy Audience Analytics"
 
-  const cacheKey = `${rangeDays}:${safeOffset}`
+  const cacheKey = `${window.type}:${window.monthKey || ""}:${window.fromDate || ""}:${window.toDate || ""}:${window.rangeDays}:${window.offset}`
   const cached = audienceCache.get(cacheKey)
   if (cached && Date.now() < cached.expiresAt) {
     return cached.data
   }
 
-  const windowMs = rangeDays * dayMs
-  const endTime = safeOffset > 0 ? new Date(Date.now() - safeOffset * windowMs).toISOString() : new Date().toISOString()
-  const cutoff = new Date(new Date(endTime).getTime() - windowMs).toISOString()
+  const endTime = window.endTime
+  const cutoff = window.startTime
 
   try {
     await requireAdmin()
