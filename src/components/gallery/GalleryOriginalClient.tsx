@@ -32,11 +32,8 @@ interface GalleryOriginalClientProps {
   backLabel?: string;
 }
 
-export default function GalleryOriginalClient({ backHref, backLabel }: GalleryOriginalClientProps) {
-  const pathname = usePathname();
-  const isManagerRoute = pathname?.startsWith('/manager');
-  const resolvedBackHref = backHref || (isManagerRoute ? '/manager/dashboard' : '/dashboard');
-  const resolvedBackLabel = backLabel || (isManagerRoute ? 'กลับแดชบอร์ด Manager' : 'กลับแดชบอร์ด Admin');
+export default function GalleryOriginalClient(_props: GalleryOriginalClientProps = {}) {
+  const _pathname = usePathname();
 
   // --- Folder Management State ---
   const [folders, setFolders] = useState<FolderItem[]>([
@@ -754,12 +751,7 @@ export default function GalleryOriginalClient({ backHref, backLabel }: GalleryOr
               </button>
             )}
             
-            <Link 
-              href={resolvedBackHref} 
-              className="flex items-center justify-center gap-2 px-4 py-2 text-xs md:text-sm font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200/80 rounded-xl transition-colors border border-slate-200"
-            >
-              <ArrowLeft size={16} /> {resolvedBackLabel}
-            </Link>
+            {/* นำปุ่มกลับแดชบอร์ดออกตามคำสั่ง เพื่อป้องกันไม่ให้ผู้ใช้หรือน้องฝึกงานหลุดเข้าแดชบอร์ด */}
 
             {currentFolder ? (
               <button 
