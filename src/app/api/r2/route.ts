@@ -1,5 +1,4 @@
-// src/app/api/r2/route.ts
-import { S3Client, ListObjectsV2Command, PutObjectCommand, DeleteObjectsCommand, _Object } from "@aws-sdk/client-s3";
+import { S3Client, ListObjectsV2Command, PutObjectCommand, DeleteObjectsCommand, CopyObjectCommand, _Object } from "@aws-sdk/client-s3";
 import { NextResponse } from "next/server";
 
 export const dynamic = 'force-dynamic';
@@ -14,7 +13,8 @@ const s3Client = new S3Client({
   },
 });
 
-const BUCKET_NAME = process.env.R2_WALLCRAFT_BUCKET_NAME || process.env.R2_BUCKET_NAME || 'wallcraft';
+// ใช้ bucket 'wallcraft' เสมอสำหรับคลังรูปภาพหลัก (ไม่ดึง R2_BUCKET_NAME ซึ่งเป็น hr-immage ของระบบ HR)
+const BUCKET_NAME = process.env.R2_WALLCRAFT_BUCKET_NAME || 'wallcraft';
 const PUBLIC_URL = process.env.R2_PUBLIC_URL || process.env.NEXT_PUBLIC_R2_PUBLIC_URL!;
 
 export async function GET(request: Request) {
@@ -107,6 +107,44 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error("R2 DELETE Error:", error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const { oldName, newName, folder = 'original' } = await request.json();
+    if (!oldName || !newName) {
+      return NextResponse.json({ error: "Missing oldName or newName" }, { status: 400 });
+    }
+
+    const cleanNewName = newName.trim();
+    if (!cleanNewName) {
+      return NextResponse.json({ error: "Invalid newName" }, { status: 400 });
+    }
+
+    // 1. Copy object to new key
+    const copyCommand = new CopyObjectCommand({
+      Bucket: BUCKET_NAME,
+      CopySource: `${BUCKET_NAME}/${folder}/${oldName}`,
+      Key: `${folder}/${cleanNewName}`,
+    });
+    await s3Client.send(copyCommand);
+
+    // 2. Delete original object
+    const deleteCommand = new DeleteObjectsCommand({
+      Bucket: BUCKET_NAME,
+      Delete: { Objects: [{ Key: `${folder}/${oldName}` }] },
+    });
+    await s3Client.send(deleteCommand);
+
+    return NextResponse.json({ 
+      success: true, 
+      name: cleanNewName, 
+      url: `${PUBLIC_URL}/${folder}/${cleanNewName}` 
+    });
+  } catch (error: any) {
+    console.error("R2 RENAME Error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

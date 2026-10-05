@@ -14,7 +14,8 @@ const S3 = new S3Client({
   },
 });
 
-const BUCKET_NAME = process.env.R2_WALLCRAFT_BUCKET_NAME || process.env.R2_BUCKET_NAME || 'wallcraft';
+// ใช้ bucket 'wallcraft' เสมอสำหรับคลังรูปภาพหลัก (ไม่ดึง R2_BUCKET_NAME ซึ่งเป็น hr-immage ของระบบ HR)
+const BUCKET_NAME = process.env.R2_WALLCRAFT_BUCKET_NAME || 'wallcraft';
 const PUBLIC_URL = process.env.R2_PUBLIC_URL || process.env.NEXT_PUBLIC_R2_PUBLIC_URL!;
 
 export async function POST(request: NextRequest) {

@@ -7,7 +7,7 @@ import { usePathname } from 'next/navigation';
 import { 
   ImagePlus, UploadCloud, Copy, X, CheckCircle2, 
   Loader2, ArrowLeft, Image as ImageIcon, Trash2, 
-  CheckSquare, Square, RefreshCcw, Search, Sparkles
+  CheckSquare, Square, RefreshCcw, Search, Sparkles, Pencil
 } from 'lucide-react';
 
 const PAGE_SIZE = 40; 
@@ -59,8 +59,47 @@ export default function GalleryOriginalClient({ backHref, backLabel }: GalleryOr
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
   const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 });
 
+  const [renameModalData, setRenameModalData] = useState<{ oldName: string; newName: string } | null>(null);
+  const [isRenaming, setIsRenaming] = useState(false);
+
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleRenameSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!renameModalData || !renameModalData.newName.trim()) return;
+    if (renameModalData.oldName === renameModalData.newName.trim()) {
+      setRenameModalData(null);
+      return;
+    }
+    setIsRenaming(true);
+    try {
+      const res = await fetch('/api/r2', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          oldName: renameModalData.oldName,
+          newName: renameModalData.newName.trim(),
+          folder: TARGET_FOLDER
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to rename image');
+
+      setImages(prev => prev.map(img => img.name === renameModalData.oldName ? {
+        ...img,
+        name: data.name,
+        url: data.url,
+        updatedAt: Date.now()
+      } : img));
+      showToast(`✅ เปลี่ยนชื่อเป็น "${data.name}" เรียบร้อย!`);
+      setRenameModalData(null);
+    } catch (err: any) {
+      alert('เปลี่ยนชื่อรูปภาพไม่สำเร็จ: ' + err.message);
+    } finally {
+      setIsRenaming(false);
+    }
+  };
 
   useEffect(() => {
     fetchImages(false, false); 
@@ -422,13 +461,13 @@ export default function GalleryOriginalClient({ backHref, backLabel }: GalleryOr
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-xl md:text-2xl font-black text-slate-800 tracking-tight">คลังรูปภาพต้นฉบับ (Cloudflare R2)</h1>
+                <h1 className="text-xl md:text-2xl font-black text-slate-800 tracking-tight">รูปภาพต้นฉบับ R2</h1>
                 <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-md">
                   Original
                 </span>
               </div>
               <p className="text-xs md:text-sm text-slate-500 mt-1">
-                จัดการรูปอัตราส่วนเดิม แปลงเป็น WebP คุมขนาด &lt; 1MB ซิงค์กับระบบคลาวด์ R2 (โฟลเดอร์ original)
+                อัปโหลดรูปอัตราส่วนเดิม แปลงเป็น WebP คุมขนาด &lt; 1MB (โฟลเดอร์ original)
               </p>
             </div>
           </div>
@@ -593,6 +632,18 @@ export default function GalleryOriginalClient({ backHref, backLabel }: GalleryOr
                         title={isSelected ? 'ยกเลิกการเลือก' : 'เลือกรูปนี้'}
                       >
                         {isSelected ? <CheckSquare size={18} /> : <Square size={18} />}
+                      </button>
+
+                      {/* Rename button */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setRenameModalData({ oldName: img.name, newName: img.name });
+                        }}
+                        className="absolute top-2 right-16 z-10 p-1.5 bg-white/90 text-blue-600 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-blue-50 transition-all shadow-sm"
+                        title="แก้ไขชื่อไฟล์รูปภาพนี้"
+                      >
+                        <Pencil size={16} />
                       </button>
 
                       {/* Replace button */}
@@ -846,6 +897,71 @@ export default function GalleryOriginalClient({ backHref, backLabel }: GalleryOr
                 </button>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Rename File Modal */}
+      {renameModalData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="flex justify-between items-center p-5 border-b border-slate-100 bg-slate-50/80">
+              <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                <Pencil className="text-blue-600" size={18} />
+                แก้ไขชื่อไฟล์รูปภาพ
+              </h2>
+              <button 
+                onClick={() => setRenameModalData(null)}
+                disabled={isRenaming}
+                className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-1.5 rounded-xl transition-colors disabled:opacity-50"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleRenameSubmit} className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1">
+                  ชื่อเดิม
+                </label>
+                <p className="text-xs text-slate-400 font-mono bg-slate-50 p-2.5 rounded-xl border border-slate-200 truncate">
+                  {renameModalData.oldName}
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  ชื่อไฟล์ใหม่ (รวมนามสกุลไฟล์ เช่น .webp, .jpg)
+                </label>
+                <input
+                  type="text"
+                  autoFocus
+                  value={renameModalData.newName}
+                  onChange={(e) => setRenameModalData({ ...renameModalData, newName: e.target.value })}
+                  className="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-mono"
+                  placeholder="ตั้งชื่อไฟล์ใหม่..."
+                />
+              </div>
+
+              <div className="flex justify-end gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setRenameModalData(null)}
+                  disabled={isRenaming}
+                  className="px-4 py-2 text-xs md:text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  type="submit"
+                  disabled={isRenaming || !renameModalData.newName.trim()}
+                  className="px-5 py-2 text-xs md:text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 rounded-xl transition-all shadow-md shadow-blue-600/20 flex items-center gap-2"
+                >
+                  {isRenaming ? <Loader2 size={16} className="animate-spin" /> : null}
+                  บันทึกชื่อใหม่
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

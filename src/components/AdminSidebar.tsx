@@ -31,7 +31,7 @@ const primaryItems = [
 // 2. เมนูการจัดการและรายงาน
 const secondaryItems = [
   { name: "จัดการ แกลเลอลี่หน้าเว็ป", href: "/web-gallery", icon: Images },
-  { name: "คลังรูปภาพต้นฉบับ (R2)", href: "/gallery",     icon: Images },
+  { name: "รูปภาพต้นฉบับ R2",    href: "/gallery",     icon: Images },
   { name: "ส่วนลด & โปรโมชัน", href: "/discounts",    icon: Tag },
   { name: "จัดการสาขา",      href: "/branches",     icon: MapPin },
   { name: "พนักงาน",         href: "/employees",    icon: Users },

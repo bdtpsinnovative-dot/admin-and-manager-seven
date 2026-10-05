@@ -59,7 +59,7 @@ const PAGE_ITEMS = [
   { href: '/algorithm',              label: 'Algorithm',                 group: 'primary',   Icon: Activity },
   // 2. เมนูการจัดการและรายงาน (Management)
   { href: '/web-gallery',            label: 'จัดการ แกลเลอลี่หน้าเว็ป',    group: 'secondary', Icon: Images },
-  { href: '/gallery',                label: 'คลังรูปภาพต้นฉบับ (R2)',     group: 'secondary', Icon: Images },
+  { href: '/gallery',                label: 'รูปภาพต้นฉบับ R2',            group: 'secondary', Icon: Images },
   { href: '/discounts',              label: 'ส่วนลด & โปรโมชัน',         group: 'secondary', Icon: Tag },
   { href: '/branches',               label: 'จัดการสาขา',                group: 'secondary', Icon: MapPin },
   { href: '/employees',              label: 'พนักงาน',                   group: 'secondary', Icon: Users },

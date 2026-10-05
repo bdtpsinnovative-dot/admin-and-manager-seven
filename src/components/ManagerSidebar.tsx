@@ -100,7 +100,7 @@ export default function ManagerSidebar({ userName, branchName, userAvatar }: Man
       name: "ตรวจสอบและรายงาน",
       icon: ShieldCheck,
       subMenu: [
-        { name: "คลังรูปภาพต้นฉบับ (R2)", href: "/manager/gallery", icon: Images },
+        { name: "รูปภาพต้นฉบับ R2", href: "/manager/gallery", icon: Images },
         { name: "ประวัติสต็อก", href: "/manager/stocklog", icon: History },
         { name: "ประวัติสินค้าเสียหาย", href: "/manager/damage-history", icon: Trash2 },
         { name: "ตรวจนับสต็อก 2 ทาง", href: "/manager/stock-audit", icon: ClipboardCheck },
