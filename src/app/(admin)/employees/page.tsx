@@ -44,7 +44,7 @@ export default async function EmployeesPage() {
 
   const ALL_ADMIN_PAGES = [
     '/dashboard', '/sales-history', '/inventory', '/stock-in', '/propsfina', '/algorithm',
-    '/web-gallery', '/discounts', '/branches', '/employees', '/balance-check', '/rfid-mismatch',
+    '/web-gallery', '/gallery', '/manager/gallery', '/discounts', '/branches', '/employees', '/balance-check', '/rfid-mismatch',
     '/stock-audit', '/manager/damage-history', '/filters', '/app-management', '/backup'
   ];
 

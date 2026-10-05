@@ -31,6 +31,7 @@ const primaryItems = [
 // 2. เมนูการจัดการและรายงาน
 const secondaryItems = [
   { name: "จัดการ แกลเลอลี่หน้าเว็ป", href: "/web-gallery", icon: Images },
+  { name: "คลังรูปภาพต้นฉบับ (R2)", href: "/gallery",     icon: Images },
   { name: "ส่วนลด & โปรโมชัน", href: "/discounts",    icon: Tag },
   { name: "จัดการสาขา",      href: "/branches",     icon: MapPin },
   { name: "พนักงาน",         href: "/employees",    icon: Users },
@@ -62,13 +63,21 @@ export default function AdminSidebar({ user }: { user?: UserData }) {
     avatar: `https://ui-avatars.com/api/?name=User&background=cbd5e1&color=64748b`
   };
 
+  const isPageAllowed = (href: string) => {
+    if (!safeUser.allowedPages || safeUser.allowedPages.length === 0) return true;
+    if (safeUser.allowedPages.includes(href)) return true;
+    if (href === '/gallery' && safeUser.allowedPages.includes('/manager/gallery')) return true;
+    if (href === '/manager/gallery' && safeUser.allowedPages.includes('/gallery')) return true;
+    return false;
+  };
+
   // กรองเมนูตามสิทธิ์หน้าที่กำหนดรายบุคคล (allowedPages) หรือตามบทบาท (Role-based fallback)
   let visiblePrimary = primaryItems;
   let visibleSecondary = secondaryItems;
 
   if (safeUser.allowedPages && safeUser.allowedPages.length > 0) {
-    visiblePrimary = primaryItems.filter(item => safeUser.allowedPages!.includes(item.href));
-    visibleSecondary = secondaryItems.filter(item => safeUser.allowedPages!.includes(item.href));
+    visiblePrimary = primaryItems.filter(item => isPageAllowed(item.href));
+    visibleSecondary = secondaryItems.filter(item => isPageAllowed(item.href));
   } else if (safeUser.role === 'data_entry' || safeUser.role === 'warehouse') {
     visiblePrimary = primaryItems.filter(item => ['/inventory', '/propsfina', '/stock-in'].includes(item.href));
     visibleSecondary = [];

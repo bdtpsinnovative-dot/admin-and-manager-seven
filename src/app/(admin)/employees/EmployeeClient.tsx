@@ -59,6 +59,7 @@ const PAGE_ITEMS = [
   { href: '/algorithm',              label: 'Algorithm',                 group: 'primary',   Icon: Activity },
   // 2. เมนูการจัดการและรายงาน (Management)
   { href: '/web-gallery',            label: 'จัดการ แกลเลอลี่หน้าเว็ป',    group: 'secondary', Icon: Images },
+  { href: '/gallery',                label: 'คลังรูปภาพต้นฉบับ (R2)',     group: 'secondary', Icon: Images },
   { href: '/discounts',              label: 'ส่วนลด & โปรโมชัน',         group: 'secondary', Icon: Tag },
   { href: '/branches',               label: 'จัดการสาขา',                group: 'secondary', Icon: MapPin },
   { href: '/employees',              label: 'พนักงาน',                   group: 'secondary', Icon: Users },
@@ -221,9 +222,10 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
       ? emp.allowed_inventory_tabs
       : ['SLABS', 'ROUGH', 'PROP', 'FURNITURE']
     setEditCategories(cats)
-    const pages = (emp.allowed_pages && emp.allowed_pages.length > 0)
+    const rawPages = (emp.allowed_pages && emp.allowed_pages.length > 0)
       ? emp.allowed_pages
       : getDefaultPagesByRole(r)
+    const pages = rawPages.map(p => p === '/manager/gallery' ? '/gallery' : p)
     setEditPages(pages)
     if (emp.can_view_costs !== undefined && emp.can_view_costs !== null) {
       setEditCanViewCosts(emp.can_view_costs)
@@ -424,9 +426,10 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
                 const assignedCats = (emp.allowed_inventory_tabs && emp.allowed_inventory_tabs.length > 0)
                   ? emp.allowed_inventory_tabs
                   : ['SLABS', 'ROUGH', 'PROP', 'FURNITURE'];
-                const assignedPages = (emp.allowed_pages && emp.allowed_pages.length > 0)
+                const rawAssignedPages = (emp.allowed_pages && emp.allowed_pages.length > 0)
                   ? emp.allowed_pages
                   : getDefaultPagesByRole(emp.role);
+                const assignedPages = rawAssignedPages.map(p => p === '/manager/gallery' ? '/gallery' : p);
 
                 return (
                   <tr
@@ -922,7 +925,15 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
                       </div>
                     </div>
 
-                    <input type="hidden" name="allowed_pages" value={JSON.stringify(editPages)} />
+                    <input 
+                      type="hidden" 
+                      name="allowed_pages" 
+                      value={JSON.stringify(
+                        editPages.includes('/gallery') && !editPages.includes('/manager/gallery')
+                          ? [...editPages, '/manager/gallery']
+                          : editPages
+                      )} 
+                    />
                   </div>
 
                   {/* หมวดหมู่สินค้าที่รับผิดชอบในคลัง */}
@@ -1329,7 +1340,15 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
                       </div>
                     </div>
 
-                    <input type="hidden" name="allowed_pages" value={JSON.stringify(createPages)} />
+                    <input 
+                      type="hidden" 
+                      name="allowed_pages" 
+                      value={JSON.stringify(
+                        createPages.includes('/gallery') && !createPages.includes('/manager/gallery')
+                          ? [...createPages, '/manager/gallery']
+                          : createPages
+                      )} 
+                    />
                   </div>
 
                   {/* หมวดหมู่สินค้าที่รับผิดชอบในคลัง */}

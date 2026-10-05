@@ -8,7 +8,7 @@ import {
   Truck, LogOut, User, Menu, X, Settings,
   ClipboardList, Layers, ClipboardCheck, BarChart4, 
   Search, SlidersHorizontal, UserCheck, ChevronDown,
-  Package, ShieldCheck, Loader2, Trash2
+  Package, ShieldCheck, Loader2, Trash2, Images
 } from "lucide-react"
 import { logoutAction } from "../actions/auth" 
 
@@ -100,9 +100,7 @@ export default function ManagerSidebar({ userName, branchName, userAvatar }: Man
       name: "ตรวจสอบและรายงาน",
       icon: ShieldCheck,
       subMenu: [
-      
-        // { name: "รายงานยอดขาย (sales-report)", href: "/manager/sales-report", icon: BarChart4 },
-        
+        { name: "คลังรูปภาพต้นฉบับ (R2)", href: "/manager/gallery", icon: Images },
         { name: "ประวัติสต็อก", href: "/manager/stocklog", icon: History },
         { name: "ประวัติสินค้าเสียหาย", href: "/manager/damage-history", icon: Trash2 },
         { name: "ตรวจนับสต็อก 2 ทาง", href: "/manager/stock-audit", icon: ClipboardCheck },
