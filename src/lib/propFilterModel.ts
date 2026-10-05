@@ -481,55 +481,100 @@ export function resolveCategoryInfo(product: any): ResolvedCategory {
   const lowerSup = rawSup.toLowerCase()
 
   // 1. ตรวจสอบการจับคู่กับหมวดหมู่พร็อพ (PRODUCT_FILTER_ITEMS / CATEGORY_MAP)
-  for (const item of PRODUCT_FILTER_ITEMS) {
-    if (item.isSpecial || item.label === "ALL") continue
-
-    // ตรวจสอบหมวดหมู่ย่อย (Subcategories) ก่อนเพื่อให้ระบุได้อย่างแม่นยำ
-    if (item.items && item.items.length > 0) {
-      for (const sub of item.items) {
-        const subKey = sub.fullValue
-        const allowed = CATEGORY_MAP[subKey] || CATEGORY_MAP[subKey.toUpperCase()] || [subKey.toLowerCase()]
-        if (
-          lowerSup === subKey.toLowerCase() ||
-          lowerSup === (sub.displayLabel || "").toLowerCase() ||
-          allowed.some(a => {
-            const al = a.toLowerCase()
-            return al === lowerSup || (lowerSup.length >= 3 && al.includes(lowerSup)) || (al.length >= 3 && lowerSup.includes(al))
-          })
-        ) {
-          return {
-            mainKey: item.label,
-            mainLabel: item.displayLabel || item.label,
-            mainThaiLabel: item.thaiLabel || item.label,
-            subKey: sub.fullValue,
-            subLabel: sub.displayLabel || sub.fullValue,
-            subThaiLabel: sub.thaiLabel,
-            groupType: 'prop',
+  if (lowerSup) {
+    // 🌟 รอบที่ 1: ตรวจสอบ Exact Match กับหมวดหมู่ย่อยก่อนเสมอ
+    for (const item of PRODUCT_FILTER_ITEMS) {
+      if (item.isSpecial || item.label === "ALL") continue
+      if (item.items && item.items.length > 0) {
+        for (const sub of item.items) {
+          const subKey = sub.fullValue
+          const allowed = CATEGORY_MAP[subKey] || CATEGORY_MAP[subKey.toUpperCase()] || [subKey.toLowerCase()]
+          if (
+            lowerSup === subKey.toLowerCase() ||
+            lowerSup === (sub.displayLabel || "").toLowerCase() ||
+            allowed.some((a) => a.toLowerCase() === lowerSup)
+          ) {
+            return {
+              mainKey: item.label,
+              mainLabel: item.displayLabel || item.label,
+              mainThaiLabel: item.thaiLabel || item.label,
+              subKey: sub.fullValue,
+              subLabel: sub.displayLabel || sub.fullValue,
+              subThaiLabel: sub.thaiLabel,
+              groupType: 'prop',
+            }
           }
         }
       }
     }
 
-    // ตรวจสอบหมวดหมู่หลัก (Main Category)
-    const mainKey = item.label
-    const mainAllowed = CATEGORY_MAP[mainKey] || CATEGORY_MAP[item.fullValue || ""] || [mainKey.toLowerCase()]
-    if (
-      lowerSup === mainKey.toLowerCase() ||
-      lowerSup === (item.displayLabel || "").toLowerCase() ||
-      (item.fullValue && lowerSup === item.fullValue.toLowerCase()) ||
-      mainAllowed.some(a => {
-        const al = a.toLowerCase()
-        return al === lowerSup || (lowerSup.length >= 3 && al.includes(lowerSup)) || (al.length >= 3 && lowerSup.includes(al))
-      })
-    ) {
-      return {
-        mainKey: item.label,
-        mainLabel: item.displayLabel || item.label,
-        mainThaiLabel: item.thaiLabel || item.label,
-        subKey: rawSup || item.label,
-        subLabel: rawSup || item.displayLabel || item.label,
-        subThaiLabel: item.thaiLabel,
-        groupType: 'prop',
+    // 🌟 รอบที่ 2: ตรวจสอบ Exact Match กับหมวดหมู่หลัก
+    for (const item of PRODUCT_FILTER_ITEMS) {
+      if (item.isSpecial || item.label === "ALL") continue
+      const mainKey = item.label
+      const mainAllowed = CATEGORY_MAP[mainKey] || CATEGORY_MAP[item.fullValue || ""] || [mainKey.toLowerCase()]
+      if (
+        lowerSup === mainKey.toLowerCase() ||
+        lowerSup === (item.displayLabel || "").toLowerCase() ||
+        (item.fullValue && lowerSup === item.fullValue.toLowerCase()) ||
+        mainAllowed.some((a) => a.toLowerCase() === lowerSup)
+      ) {
+        return {
+          mainKey: item.label,
+          mainLabel: item.displayLabel || item.label,
+          mainThaiLabel: item.thaiLabel || item.label,
+          subKey: rawSup || item.label,
+          subLabel: rawSup || item.displayLabel || item.label,
+          subThaiLabel: item.thaiLabel,
+          groupType: 'prop',
+        }
+      }
+    }
+
+    // 🌟 รอบที่ 3: ตรวจสอบ Partial Match (เฉพาะกรณีที่ lowerSup มีความยาวและมีคำที่ระบุชัดเจน)
+    for (const item of PRODUCT_FILTER_ITEMS) {
+      if (item.isSpecial || item.label === "ALL") continue
+
+      if (item.items && item.items.length > 0) {
+        for (const sub of item.items) {
+          const subKey = sub.fullValue
+          const allowed = CATEGORY_MAP[subKey] || CATEGORY_MAP[subKey.toUpperCase()] || [subKey.toLowerCase()]
+          if (
+            allowed.some((a) => {
+              const al = a.toLowerCase()
+              return lowerSup.length >= 3 && lowerSup.includes(al)
+            })
+          ) {
+            return {
+              mainKey: item.label,
+              mainLabel: item.displayLabel || item.label,
+              mainThaiLabel: item.thaiLabel || item.label,
+              subKey: sub.fullValue,
+              subLabel: sub.displayLabel || sub.fullValue,
+              subThaiLabel: sub.thaiLabel,
+              groupType: 'prop',
+            }
+          }
+        }
+      }
+
+      const mainKey = item.label
+      const mainAllowed = CATEGORY_MAP[mainKey] || CATEGORY_MAP[item.fullValue || ""] || [mainKey.toLowerCase()]
+      if (
+        mainAllowed.some((a) => {
+          const al = a.toLowerCase()
+          return lowerSup.length >= 3 && lowerSup.includes(al)
+        })
+      ) {
+        return {
+          mainKey: item.label,
+          mainLabel: item.displayLabel || item.label,
+          mainThaiLabel: item.thaiLabel || item.label,
+          subKey: rawSup || item.label,
+          subLabel: rawSup || item.displayLabel || item.label,
+          subThaiLabel: item.thaiLabel,
+          groupType: 'prop',
+        }
       }
     }
   }
