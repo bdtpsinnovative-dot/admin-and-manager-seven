@@ -113,9 +113,11 @@ export default function GalleryOriginalClient({ backHref, backLabel }: GalleryOr
     const isOver1MB = over1MBValue !== undefined ? over1MBValue : showOver1MBOnly;
 
     try {
-      // เติม &t=${Date.now()} ป้องกันแคช เพื่อให้ดึงรูปใหม่ล่าสุดเสมอ
       const response = await fetch(`/api/r2?folder=${TARGET_FOLDER}&limit=${PAGE_SIZE}&offset=${currentOffset}&over1MB=${isOver1MB}&t=${Date.now()}`);
-      if (!response.ok) throw new Error('Failed to fetch images');
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || `HTTP ${response.status}`);
+      }
       
       const data = await response.json();
       const imageList: GalleryImage[] = data.images || [];

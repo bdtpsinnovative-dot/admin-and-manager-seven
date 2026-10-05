@@ -4,18 +4,23 @@ import { NextResponse } from "next/server";
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
+const accountId = process.env.R2_ACCOUNT_ID || 'b2d8a39465363e6ce28ce8a0d9da0288';
+const endpoint = process.env.R2_ENDPOINT || `https://${accountId}.r2.cloudflarestorage.com`;
+const accessKeyId = process.env.R2_ACCESS_KEY_ID || '925d8cdf8398089cdc80b8c657295751';
+const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY || '33545ba66dcaf6d4c6c9e1888b79fc257d8ef81aca9149e243eba06ae57ee227';
+
 const s3Client = new S3Client({
   region: "auto",
-  endpoint: process.env.R2_ENDPOINT!,
+  endpoint,
   credentials: {
-    accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+    accessKeyId,
+    secretAccessKey,
   },
 });
 
 // ใช้ bucket 'wallcraft' เสมอสำหรับคลังรูปภาพหลัก (ไม่ดึง R2_BUCKET_NAME ซึ่งเป็น hr-immage ของระบบ HR)
 const BUCKET_NAME = process.env.R2_WALLCRAFT_BUCKET_NAME || 'wallcraft';
-const PUBLIC_URL = process.env.R2_PUBLIC_URL || process.env.NEXT_PUBLIC_R2_PUBLIC_URL!;
+const PUBLIC_URL = process.env.R2_PUBLIC_URL || process.env.NEXT_PUBLIC_R2_PUBLIC_URL || 'https://pub-258bd10e7e8c4a7690a74c54cfbdef93.r2.dev';
 
 export async function GET(request: Request) {
   try {
