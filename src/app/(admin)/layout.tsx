@@ -1,6 +1,7 @@
 import { createClient } from "../../lib/supabase/server";
 import { supabaseAdmin } from "../../lib/supabase/admin";
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import AdminSidebar from "../../components/AdminSidebar";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -51,6 +52,38 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       redirect("/sale/dashboard");
     } else {
       redirect("/login");
+    }
+  }
+
+  // 🔒 Route Authorization Guard: ดักจับ URL ที่พิมพ์ตรงๆ ทาง Address Bar
+  const headersList = await headers();
+  const currentPath = headersList.get('x-pathname') || '';
+
+  if (customAllowedPages && customAllowedPages.length > 0) {
+    const isAllowed = (path: string) => {
+      if (!path || path === '/') return true;
+      return customAllowedPages.some(allowed => 
+        path === allowed || 
+        path.startsWith(`${allowed}/`) ||
+        (allowed === '/gallery' && path.startsWith('/manager/gallery')) ||
+        (allowed === '/manager/gallery' && path.startsWith('/gallery'))
+      );
+    };
+
+    if (currentPath && !isAllowed(currentPath)) {
+      // ผู้ใช้ไม่มีสิทธิ์เข้าหน้านี้ -> redirect ไปยังหน้าที่ตนมีสิทธิ์
+      const targetPage = customAllowedPages[0] || '/login';
+      redirect(targetPage);
+    }
+  } else if (profile?.role === 'data_entry' || profile?.role === 'warehouse') {
+    const defaultAllowed = ['/inventory', '/propsfina', '/stock-in', '/gallery', '/manager/gallery'];
+    const isAllowed = (path: string) => {
+      if (!path || path === '/') return true;
+      return defaultAllowed.some(p => path === p || path.startsWith(`${p}/`));
+    };
+
+    if (currentPath && !isAllowed(currentPath)) {
+      redirect('/inventory');
     }
   }
 

@@ -21,6 +21,7 @@ const s3Client = new S3Client({
 // ใช้ bucket 'wallcraft' เสมอสำหรับคลังรูปภาพหลัก (ไม่ดึง R2_BUCKET_NAME ซึ่งเป็น hr-immage ของระบบ HR)
 const BUCKET_NAME = process.env.R2_WALLCRAFT_BUCKET_NAME || 'wallcraft';
 const PUBLIC_URL = process.env.R2_PUBLIC_URL || process.env.NEXT_PUBLIC_R2_PUBLIC_URL || 'https://pub-258bd10e7e8c4a7690a74c54cfbdef93.r2.dev';
+const MASTER_PIN = process.env.R2_MASTER_PIN || 'oom1234';
 
 export async function GET(request: Request) {
   try {
@@ -29,6 +30,17 @@ export async function GET(request: Request) {
     const offset = parseInt(searchParams.get('offset') || '0');
     const folder = searchParams.get('folder') || 'original'; 
     const over1MB = searchParams.get('over1MB') === 'true';
+
+    // ตรวจสอบรหัสผ่านเฉพาะโฟลเดอร์หลัก original
+    if (folder === 'original') {
+      const clientPin = request.headers.get('x-folder-pin');
+      if (clientPin !== MASTER_PIN) {
+        return NextResponse.json({ 
+          error: 'PIN_REQUIRED', 
+          message: 'โฟลเดอร์หลักถูกล็อค กรุณากรอกรหัสผ่านเพื่อเข้าใช้งาน' 
+        }, { status: 401 });
+      }
+    }
 
     let allFiles: _Object[] = []; 
     let isTruncated: boolean = true;
@@ -51,7 +63,11 @@ export async function GET(request: Request) {
       continuationToken = response.NextContinuationToken;
     }
 
-    let files = allFiles.filter(file => file.Key !== `${folder}/`);
+    // กรองโฟลเดอร์ตัวเองและไฟล์ placeholder .keep ออก
+    let files = allFiles.filter(file => 
+      file.Key !== `${folder}/` && 
+      !file.Key?.endsWith('/.keep')
+    );
     
     if (over1MB) {
       files = files.filter(file => (file.Size ?? 0) > 1024 * 1024);
@@ -84,6 +100,14 @@ export async function POST(request: Request) {
     const file = formData.get('file') as File;
     const fileName = formData.get('fileName') as string;
     const folder = (formData.get('folder') as string) || 'original'; 
+
+    if (folder === 'original') {
+      const clientPin = request.headers.get('x-folder-pin');
+      if (clientPin !== MASTER_PIN) {
+        return NextResponse.json({ error: 'PIN_REQUIRED', message: 'ไม่อนุญาตให้อัปโหลดในโฟลเดอร์หลักโดยไม่มีรหัสผ่าน' }, { status: 401 });
+      }
+    }
+
     if (!file || !fileName) return NextResponse.json({ error: "Missing file or filename" }, { status: 400 });
     const buffer = Buffer.from(await file.arrayBuffer());
     const command = new PutObjectCommand({
@@ -103,6 +127,14 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
   try {
     const { fileNames, folder = 'original' } = await request.json(); 
+
+    if (folder === 'original') {
+      const clientPin = request.headers.get('x-folder-pin');
+      if (clientPin !== MASTER_PIN) {
+        return NextResponse.json({ error: 'PIN_REQUIRED', message: 'ไม่อนุญาตให้ลบไฟล์ในโฟลเดอร์หลักโดยไม่มีรหัสผ่าน' }, { status: 401 });
+      }
+    }
+
     if (!fileNames || !Array.isArray(fileNames)) return NextResponse.json({ error: "Invalid request" }, { status: 400 });
     const command = new DeleteObjectsCommand({
       Bucket: BUCKET_NAME,
@@ -119,6 +151,14 @@ export async function DELETE(request: Request) {
 export async function PATCH(request: Request) {
   try {
     const { oldName, newName, folder = 'original' } = await request.json();
+
+    if (folder === 'original') {
+      const clientPin = request.headers.get('x-folder-pin');
+      if (clientPin !== MASTER_PIN) {
+        return NextResponse.json({ error: 'PIN_REQUIRED', message: 'ไม่อนุญาตให้เปลี่ยนชื่อไฟล์ในโฟลเดอร์หลักโดยไม่มีรหัสผ่าน' }, { status: 401 });
+      }
+    }
+
     if (!oldName || !newName) {
       return NextResponse.json({ error: "Missing oldName or newName" }, { status: 400 });
     }

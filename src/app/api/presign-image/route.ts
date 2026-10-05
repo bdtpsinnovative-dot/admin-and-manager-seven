@@ -19,14 +19,21 @@ const S3 = new S3Client({
   },
 });
 
-// ใช้ bucket 'wallcraft' เสมอสำหรับคลังรูปภาพหลัก (ไม่ดึง R2_BUCKET_NAME ซึ่งเป็น hr-immage ของระบบ HR)
 const BUCKET_NAME = process.env.R2_WALLCRAFT_BUCKET_NAME || 'wallcraft';
 const PUBLIC_URL = process.env.R2_PUBLIC_URL || process.env.NEXT_PUBLIC_R2_PUBLIC_URL || 'https://pub-258bd10e7e8c4a7690a74c54cfbdef93.r2.dev';
+const MASTER_PIN = process.env.R2_MASTER_PIN || 'oom1234';
 
 export async function POST(request: NextRequest) {
   try {
     const { fileName, folder = 'original' } = await request.json();
     if (!fileName) return NextResponse.json({ error: 'ไม่พบชื่อไฟล์' }, { status: 400 });
+
+    if (folder === 'original') {
+      const pin = request.headers.get('x-folder-pin');
+      if (pin !== MASTER_PIN) {
+        return NextResponse.json({ error: 'PIN_REQUIRED', message: 'ไม่อนุญาตให้อัปโหลดในโฟลเดอร์หลักโดยไม่มีรหัสผ่าน' }, { status: 401 });
+      }
+    }
 
     const key = `${folder}/${fileName}`;
     const command = new PutObjectCommand({

@@ -11,7 +11,14 @@ export async function middleware(request: NextRequest) {
   const isPublicApi = path.startsWith('/api/auth') || path.startsWith('/api/mobile_rfid') || path.startsWith('/api/mobile_pos') || path.startsWith('/_next')
   const isPublicPath = isLoginPage || isPublicApi
 
-  let response = NextResponse.next()
+  const requestHeaders = new Headers(request.headers)
+  requestHeaders.set('x-pathname', path)
+
+  let response = NextResponse.next({
+    request: {
+      headers: requestHeaders,
+    },
+  })
 
   // สร้าง Supabase SSR Client เพื่อต่ออายุ Session
   const supabase = createServerClient(
@@ -29,7 +36,11 @@ export async function middleware(request: NextRequest) {
         },
         setAll(cookiesToSet) {
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-          response = NextResponse.next()
+          response = NextResponse.next({
+            request: {
+              headers: requestHeaders,
+            },
+          })
           cookiesToSet.forEach(({ name, value, options }) =>
             response.cookies.set(name, value, {
               ...options,
