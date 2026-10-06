@@ -29,8 +29,17 @@ interface PosCache {
 let posCache: PosCache | null = null;
 const CACHE_TTL = 3 * 60 * 1000; // แคชไว้ 3 นาที
 
+interface FurnitureCache {
+  timestamp: number;
+  products: any[];
+  subcategories: string[];
+}
+let furnitureCache: FurnitureCache | null = null;
+const FURNITURE_CACHE_TTL = 5 * 60 * 1000; // แคชเฟอร์นิเจอร์ไว้ 5 นาที
+
 export async function clearPosCache() {
   posCache = null;
+  furnitureCache = null;
 }
 
 export async function getPosData(forceRefresh: boolean = false) {
@@ -264,6 +273,165 @@ export async function getPosData(forceRefresh: boolean = false) {
   }
 }
 
+export async function getFurnitureProducts(forceRefresh: boolean = false) {
+  const cookieStore = await cookies()
+  const supabase = createServerClient(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!, {
+    cookies: { getAll() { return cookieStore.getAll() } }
+  })
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { success: false, error: "Unauthorized" }
+
+  const now = Date.now();
+  if (!forceRefresh && furnitureCache && (now - furnitureCache.timestamp < FURNITURE_CACHE_TTL)) {
+    return {
+      success: true,
+      products: furnitureCache.products,
+      subcategories: furnitureCache.subcategories,
+      fromCache: true
+    }
+  }
+
+  const { data: furnitureData, error: furnError } = await supabase
+    .from('products')
+    .select(`
+      id, name, sku, price, image_url, barcode, specs, category_id,
+      collection_groups ( product_sup, tag ),
+      stock ( branch_id, qty )
+    `)
+    .eq('category_id', 'furniture')
+    .order('name', { ascending: true })
+
+  if (furnError) {
+    return { success: false, error: "เกิดข้อผิดพลาดในการโหลดข้อมูลเฟอร์นิเจอร์: " + furnError.message }
+  }
+
+  const subcatSet = new Set<string>()
+  const formattedFurniture = (furnitureData || []).map(p => {
+    const rawCol = Array.isArray(p.collection_groups) ? p.collection_groups[0] : p.collection_groups
+    const subcat = rawCol?.product_sup || 'ทั่วไป'
+    subcatSet.add(subcat)
+
+    return {
+      id: p.id,
+      name: p.name,
+      sku: p.sku,
+      original_price: Number(p.price) || 0,
+      price: Number(p.price) || 0,
+      discount_label: '',
+      image_url: p.image_url || null,
+      barcode: p.barcode || null,
+      product_sup: subcat,
+      category_id: 'furniture',
+      isFurniture: true,
+      stocks: Array.isArray(p.stock) ? p.stock : [],
+      specs: p.specs || {}
+    }
+  })
+
+  const subcategories = Array.from(subcatSet).sort()
+
+  furnitureCache = {
+    timestamp: now,
+    products: formattedFurniture,
+    subcategories
+  }
+
+  return {
+    success: true,
+    products: formattedFurniture,
+    subcategories
+  }
+}
+
+export async function createOrGetCustomProduct(payload: {
+  name: string;
+  price: number;
+  sku?: string;
+  categoryLabel?: string;
+  unit?: string;
+  note?: string;
+  branchId?: number;
+}) {
+  const cookieStore = await cookies()
+  const supabase = createServerClient(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!, {
+    cookies: { getAll() { return cookieStore.getAll() } }
+  })
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { success: false, error: "Unauthorized" }
+
+  const cleanName = payload.name.trim()
+  if (!cleanName) return { success: false, error: "กรุณาระบุชื่อสินค้า" }
+  const cleanPrice = Math.max(0, Number(payload.price) || 0)
+  const cleanSku = payload.sku?.trim() || `EXT-${Date.now().toString().slice(-6)}`
+  const branchId = payload.branchId || 1
+
+  // 1. ตรวจสอบว่ามี SKU นี้อยู่แล้วหรือไม่
+  const { data: existing } = await supabase
+    .from('products')
+    .select('id, name, sku, price, image_url, barcode, specs, category_id')
+    .eq('sku', cleanSku)
+    .limit(1)
+
+  let product: any = null
+  if (existing && existing.length > 0) {
+    product = existing[0]
+  } else {
+    // 2. สร้างสินค้าใหม่ลงในตาราง products
+    const { data: created, error: insertError } = await supabase
+      .from('products')
+      .insert({
+        name: cleanName,
+        sku: cleanSku,
+        price: cleanPrice,
+        unit: payload.unit || 'ชิ้น',
+        category_id: 'furniture',
+        status: 'active',
+        specs: {
+          is_custom: true,
+          note: payload.note || '',
+          category_label: payload.categoryLabel || 'เฟอร์นิเจอร์'
+        }
+      })
+      .select('id, name, sku, price, image_url, barcode, specs, category_id')
+      .single()
+
+    if (insertError) {
+      return { success: false, error: "ไม่สามารถสร้างสินค้านอกระบบได้: " + insertError.message }
+    }
+    product = created
+  }
+
+  // 3. ใส่สต็อกเริ่มต้นสำหรับสาขา เพื่อให้ระบบไม่ติดขัด
+  try {
+    await supabase.from('stock').upsert({
+      product_id: product.id,
+      branch_id: branchId,
+      qty: 999
+    }, { onConflict: 'product_id,branch_id' })
+  } catch {}
+
+  const formattedProduct = {
+    id: product.id,
+    name: product.name,
+    sku: product.sku,
+    original_price: Number(product.price) || cleanPrice,
+    price: Number(product.price) || cleanPrice,
+    discount_label: '',
+    image_url: product.image_url || null,
+    barcode: product.barcode || null,
+    product_sup: payload.categoryLabel || 'สินค้านอกรายการ',
+    category_id: 'furniture',
+    isExternal: true,
+    isFurniture: true,
+    stocks: [{ branch_id: branchId, qty: 999 }],
+    specs: product.specs || {}
+  }
+
+  return { success: true, product: formattedProduct }
+}
+
 export async function validatePosCoupon(code: string, currentSubtotal: number, eligibleSubtotal?: number) {
   if (!code || !code.trim()) {
     return { success: false, error: "กรุณากรอกรหัสคูปอง" }
@@ -435,6 +603,8 @@ export interface CheckoutPayload {
     discountId?: number | null;
     discountName?: string | null;
     discountAmountPerPiece: number;
+    isExternal?: boolean;
+    isFurniture?: boolean;
   }[];
 }
 
@@ -486,28 +656,32 @@ export async function processCheckout(payload: CheckoutPayload) {
       discountSnapshot.shipping_cost = Number(payload.shippingCost) || 0
       discountSnapshot.shipping_waived = Boolean(payload.shippingWaived)
     }
-    // ✨ 0. เช็คสต็อกล่วงหน้ากันเหนียว
+    // ✨ 0. เช็คสต็อกล่วงหน้ากันเหนียว (ยกเว้นสินค้านอก / เฟอร์นิเจอร์)
     const outOfStockItems: string[] = []
     
-    // ดึงสต็อกทั้งหมดของสินค้าที่อยู่ในตะกร้าในครั้งเดียว (ลดเวลาการทำงาน)
-    const productIds = payload.items.map(item => item.productId)
-    const { data: allStocks } = await supabase
-      .from('stock')
-      .select('product_id, branch_id, qty')
-      .in('product_id', productIds)
+    // ดึงสต็อกเฉพาะสินค้าที่ต้องตรวจสต็อก (ไม่รวมสินค้านอกหรือเฟอร์นิเจอร์)
+    const stockCheckedItems = payload.items.filter(item => !item.isExternal && !item.isFurniture)
+    const productIds = stockCheckedItems.map(item => item.productId)
+    
+    if (productIds.length > 0) {
+      const { data: allStocks } = await supabase
+        .from('stock')
+        .select('product_id, branch_id, qty')
+        .in('product_id', productIds)
 
-    for (const item of payload.items) {
-      const stockCheck = allStocks?.find(s => s.product_id === item.productId && s.branch_id === item.fulfillBranchId)
-      if (!stockCheck || stockCheck.qty < item.qty) {
-        outOfStockItems.push(item.productId.toString())
+      for (const item of stockCheckedItems) {
+        const stockCheck = allStocks?.find(s => s.product_id === item.productId && s.branch_id === item.fulfillBranchId)
+        if (!stockCheck || stockCheck.qty < item.qty) {
+          outOfStockItems.push(item.productId.toString())
+        }
       }
-    }
 
-    if (outOfStockItems.length > 0) {
-      return { 
-        success: false, 
-        error: "สินค้าบางรายการสต็อกไม่พอ (อาจถูกซื้อตัดหน้า) ระบบได้อัปเดตสถานะในตะกร้าแล้ว", 
-        outOfStockProductIds: outOfStockItems 
+      if (outOfStockItems.length > 0) {
+        return { 
+          success: false, 
+          error: "สินค้าบางรายการสต็อกไม่พอ (อาจถูกซื้อตัดหน้า) ระบบได้อัปเดตสถานะในตะกร้าแล้ว", 
+          outOfStockProductIds: outOfStockItems 
+        }
       }
     }
     
@@ -646,7 +820,7 @@ export async function processCheckout(payload: CheckoutPayload) {
 
     // 4. แยกกลุ่มตัดสต็อก
     const localItems = payload.items.filter(item => item.fulfillBranchId === payload.branchId)
-    const remoteItems = payload.items.filter(item => item.fulfillBranchId !== payload.branchId)
+    const remoteItems = payload.items.filter(item => item.fulfillBranchId !== payload.branchId && !item.isExternal)
 
     // 4.1 สต็อกในสาขาตัวเอง (ปิดการตัดสต็อกอัตโนมัติชั่วคราว)
     // สำหรับ localItems ยังคอมเมนต์ไว้อยู่ ไม่ต้องทำอะไร

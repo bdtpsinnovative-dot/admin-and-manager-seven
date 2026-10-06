@@ -3,10 +3,11 @@
 import { useState, useEffect, useMemo } from 'react'
 import dynamic from 'next/dynamic'
 import { getPosData, processCheckout, CheckoutPayload, getNearbyStock, getOrderForEdit, PosSetBundle, validatePosCoupon } from '@/actions/pos'
-import { FolderOpen, Store, Truck, Receipt, MapPin, Save, AlertTriangle, X, Plus, Minus, FileText, Trash2, Printer, RefreshCw, Clock, Menu, Sparkles, Ticket, SlidersHorizontal } from 'lucide-react'
+import { FolderOpen, Store, Truck, Receipt, MapPin, Save, AlertTriangle, X, Plus, Minus, FileText, Trash2, Printer, RefreshCw, Clock, Menu, Sparkles, Ticket, SlidersHorizontal, Armchair } from 'lucide-react'
 import { toast } from 'sonner'
 import StorefrontFilterDrawer from '@/components/pos/StorefrontFilterDrawer'
 import StorefrontFilterBar from '@/components/pos/StorefrontFilterBar'
+import ExternalProductModal from '@/components/pos/ExternalProductModal'
 import {
   matchesStorefrontCategory,
   productColorValues,
@@ -31,6 +32,9 @@ interface Product {
   discount_id?: number | null;
   discount_name?: string | null;
   specs?: any;
+  category_id?: string;
+  isExternal?: boolean;
+  isFurniture?: boolean;
 }
 
 interface CartItem extends Product {
@@ -39,6 +43,8 @@ interface CartItem extends Product {
   fulfill_branch_id: number;
   fulfill_branch_name: string;
   isOutOfStockError?: boolean;
+  isExternal?: boolean;
+  isFurniture?: boolean;
 }
 
 interface NestedCategory {
@@ -59,6 +65,9 @@ export default function ManagerPOSPage() {
     'DOLL': true,
     'WALL ART': true,
   })
+
+  // 🛋️ State สำหรับโมดอลเพิ่มสินค้านอก & เฟอร์นิเจอร์
+  const [isExternalModalOpen, setIsExternalModalOpen] = useState(false)
 
   // 🧭 State สำหรับลิ้นชักเมนูเดิม (ห้ามแตะต้อง)
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
@@ -383,19 +392,24 @@ export default function ManagerPOSPage() {
     addToCart(product)
   }
 
-  const addToCart = async (product: Product) => {
-    const targetBranchId = selectedLocation === 'ALL' ? myBranchId : selectedLocation
+  const addToCart = async (product: Product, customQty = 1, customFulfillBranchId?: number) => {
+    const targetBranchId = customFulfillBranchId !== undefined
+      ? customFulfillBranchId
+      : (selectedLocation === 'ALL' ? myBranchId : selectedLocation)
 
-    const branchStock = product.stocks.find(s => s.branch_id === targetBranchId)
+    const branchStock = product.stocks?.find(s => s.branch_id === targetBranchId)
     const availableQty = branchStock ? Number(branchStock.qty) : 0
-    const totalStock = product.stocks.reduce((sum, s) => sum + Number(s.qty), 0)
+    const totalStock = product.stocks ? product.stocks.reduce((sum, s) => sum + Number(s.qty), 0) : 0
 
     const cartItemId = `${product.id}-${targetBranchId}`
     const existing = cart.find((item) => item.cartItemId === cartItemId)
     const currentInCart = existing ? existing.quantity : 0
 
-    // ถ้าสต็อกในสาขาหมด หรือหยิบจนเกินสต็อกที่มี
-    if (availableQty <= 0 || currentInCart >= availableQty) {
+    // ถ้าเป็นสินค้านอก หรือ เฟอร์นิเจอร์ ไม่ต้องบล็อกสต็อกหน้าร้าน
+    const isExemptStock = Boolean(product.isExternal || product.isFurniture || product.category_id === 'furniture')
+
+    // ถ้าสต็อกในสาขาหมด หรือหยิบจนเกินสต็อกที่มี (เฉพาะสินค้าทั่วไป)
+    if (!isExemptStock && (availableQty <= 0 || currentInCart >= availableQty)) {
       if (totalStock > 0 && totalStock > currentInCart) {
         setNearbyModal({ isOpen: true, product, nearbyStocks: [], isLoading: true })
         const res = await getNearbyStock(product.id, targetBranchId)
@@ -416,15 +430,17 @@ export default function ManagerPOSPage() {
     setCart((prevCart) => {
       if (existing) {
         return prevCart.map((item) =>
-          item.cartItemId === cartItemId ? { ...item, quantity: item.quantity + 1 } : item
+          item.cartItemId === cartItemId ? { ...item, quantity: item.quantity + customQty } : item
         )
       }
       return [...prevCart, {
         ...product,
         cartItemId,
-        quantity: 1,
+        quantity: customQty,
         fulfill_branch_id: targetBranchId,
-        fulfill_branch_name: branchName
+        fulfill_branch_name: branchName,
+        isExternal: Boolean(product.isExternal),
+        isFurniture: Boolean(product.isFurniture || product.category_id === 'furniture')
       }]
     })
   }
@@ -477,9 +493,10 @@ export default function ManagerPOSPage() {
       prevCart.map((item) => {
         if (item.cartItemId === cartItemId) {
           const newQty = item.quantity + delta
-          const branchStock = item.stocks.find(s => s.branch_id === item.fulfill_branch_id)
-          const displayQty = branchStock ? Number(branchStock.qty) : 999
-          if (newQty > displayQty) {
+          const isExemptStock = Boolean(item.isExternal || item.isFurniture || item.category_id === 'furniture')
+          const branchStock = item.stocks?.find(s => s.branch_id === item.fulfill_branch_id)
+          const displayQty = isExemptStock ? 9999 : (branchStock ? Number(branchStock.qty) : 999)
+          if (!isExemptStock && newQty > displayQty) {
             toast.warning(`มีสินค้าในสต็อกเพียง ${displayQty} ชิ้นครับ`)
             return item
           }
@@ -830,7 +847,9 @@ export default function ManagerPOSPage() {
           fulfillBranchId: item.fulfill_branch_id,
           discountId: item.discount_id || null,
           discountName: item.discount_name || null,
-          discountAmountPerPiece: item.original_price - item.price
+          discountAmountPerPiece: item.original_price - item.price,
+          isExternal: Boolean(item.isExternal),
+          isFurniture: Boolean(item.isFurniture || item.category_id === 'furniture')
         }))
       }
 
@@ -1142,6 +1161,17 @@ export default function ManagerPOSPage() {
               </div>
               
               <div className="flex items-center gap-2 w-full xl:w-auto">
+                {/* 🛋️ ปุ่มใหม่: เพิ่มสินค้านอก & เฟอร์นิเจอร์ */}
+                <button
+                  type="button"
+                  onClick={() => setIsExternalModalOpen(true)}
+                  className="px-3.5 py-2 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 bg-slate-900 hover:bg-slate-800 text-white shadow-xs hover:shadow-md active:scale-95"
+                  title="เพิ่มสินค้านอกแคตตาล็อก หรือเลือกสินค้าเฟอร์นิเจอร์"
+                >
+                  <Armchair className="w-3.5 h-3.5 text-amber-300" />
+                  <span>+ สินค้านอก / เฟอร์</span>
+                </button>
+
                 {sets.length > 0 && (
                   <button
                     type="button"
@@ -1631,13 +1661,23 @@ export default function ManagerPOSPage() {
                           <Trash2 className="w-3 h-3" />
                         </button>
                       </div>
-                      {(Boolean(item.discount_id) || Boolean(item.discount_label) || item.price < item.original_price) && (
-                        <div className="flex items-center gap-1 mt-0.5">
+                      <div className="flex flex-wrap items-center gap-1 mt-0.5">
+                        {item.isExternal && (
+                          <span className="text-[8px] bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded-md font-bold border border-indigo-200">
+                            ✍️ สินค้านอก
+                          </span>
+                        )}
+                        {(item.isFurniture || item.category_id === 'furniture') && !item.isExternal && (
+                          <span className="text-[8px] bg-amber-50 text-amber-800 px-1.5 py-0.5 rounded-md font-bold border border-amber-200">
+                            🛋️ เฟอร์นิเจอร์
+                          </span>
+                        )}
+                        {(Boolean(item.discount_id) || Boolean(item.discount_label) || item.price < item.original_price) && (
                           <span className="text-[8px] bg-orange-50 text-orange-600 px-1.5 py-0.5 rounded-md font-bold border border-orange-100">
                             {item.discount_label || 'ลดรายชิ้น'} (ไม่ร่วมโค้ดลด)
                           </span>
-                        </div>
-                      )}
+                        )}
+                      </div>
                       <div className="flex items-center justify-between mt-1">
                         <p className="text-[11px] text-amber-700 font-extrabold">{(item.price * item.quantity).toLocaleString()} ฿</p>
                         <div className="flex items-center bg-white border border-slate-200 rounded-lg shadow-2xs overflow-hidden h-6">
@@ -2604,6 +2644,17 @@ export default function ManagerPOSPage() {
           )}
         </button>
       </div>
+
+      {/* 🛋️ โมดอลเพิ่มสินค้านอก & เฟอร์นิเจอร์ */}
+      <ExternalProductModal
+        isOpen={isExternalModalOpen}
+        onClose={() => setIsExternalModalOpen(false)}
+        branches={branches}
+        currentBranchId={selectedLocation === 'ALL' ? myBranchId : selectedLocation}
+        onAddToCart={(product, qty, fulfillBranchId) => {
+          addToCart(product, qty, fulfillBranchId)
+        }}
+      />
 
     </div>
   )

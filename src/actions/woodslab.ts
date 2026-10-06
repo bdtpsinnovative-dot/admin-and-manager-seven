@@ -334,7 +334,7 @@ export async function getProducts(
     query = query.ilike('color', `%${extraFilters.color.trim()}%`)
   }
   if (extraFilters?.brand) {
-    query = query.ilike('specs->>brand', `%${extraFilters.brand.trim()}%`)
+    query = query.ilike('specs->>brand', extraFilters.brand.trim())
   }
   if (extraFilters?.size) {
     const s = extraFilters.size.trim()
