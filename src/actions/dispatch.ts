@@ -190,6 +190,8 @@ export async function markOrderItemsShipped(orderId: number, itemIds: number[], 
     cookies: { getAll() { return cookieStore.getAll() } } 
   })
   
+  const { data: { user } } = await supabase.auth.getUser()
+  
   const { error: itemsError } = await supabase
     .from('order_items')
     .update({ item_status: 'DELIVERED' })
@@ -210,7 +212,16 @@ export async function markOrderItemsShipped(orderId: number, itemIds: number[], 
     .in('item_status', ['PENDING_SHIPMENT', 'SHIPPED'])
     
   if (remainingItems && remainingItems.length === 0) {
-    await supabase.from('orders').update({ status: 'COMPLETED' }).eq('id', orderId)
+    const { data: currOrder } = await supabase.from('orders').select('discount_snapshot').eq('id', orderId).single()
+    const updatedSnap = {
+      ...(currOrder?.discount_snapshot || {}),
+      completed_at: new Date().toISOString(),
+      completed_by_id: user?.id || null
+    }
+    await supabase.from('orders').update({ 
+      status: 'COMPLETED',
+      discount_snapshot: updatedSnap
+    }).eq('id', orderId)
   }
 
   revalidatePath('/sale/sales-history')
@@ -357,7 +368,15 @@ export async function approveAndCutStock(orderId: number, orderCode: string, ite
     const isStorefrontTakeaway = order.shipping_address?.startsWith('[รับหน้าร้าน]')
 
     if (isStorefrontTakeaway) {
-      await supabase.from('orders').update({ status: 'COMPLETED' }).eq('id', orderId)
+      const updatedSnap = {
+        ...(order.discount_snapshot || {}),
+        completed_at: new Date().toISOString(),
+        completed_by_id: user.id
+      }
+      await supabase.from('orders').update({ 
+        status: 'COMPLETED',
+        discount_snapshot: updatedSnap
+      }).eq('id', orderId)
       await supabase.from('order_items').update({ item_status: 'DELIVERED' }).eq('order_id', orderId)
     } else {
       await supabase.from('orders').update({ status: 'PROCESSING' }).eq('id', orderId)

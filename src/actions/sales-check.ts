@@ -106,6 +106,28 @@ export async function getSalesHistory(showHidden = false, targetBranchId?: numbe
 
   // 3. ปรับตัวแปรตอนวนลูป map ส่งค่าออกไปหน้าบ้าน
   const orderRows = (orders || []) as unknown as SalesOrderRow[]
+
+  // ดึงเวลาตัดสต็อก/ชำระเงินจริงจาก stock_movements เพื่อความแม่นยำ 100%
+  const completedOrderIds = orderRows.filter(o => o.status === 'COMPLETED').map(o => o.id)
+  const movementMap: Record<number, string> = {}
+  if (completedOrderIds.length > 0) {
+    const { data: movements } = await supabase
+      .from('stock_movements')
+      .select('ref_id_bigint, created_at_ts')
+      .in('ref_id_bigint', completedOrderIds)
+      .eq('ref_type', 'ORDER')
+
+    if (movements) {
+      movements.forEach(m => {
+        if (m.ref_id_bigint && m.created_at_ts) {
+          if (!movementMap[m.ref_id_bigint] || new Date(m.created_at_ts) > new Date(movementMap[m.ref_id_bigint])) {
+            movementMap[m.ref_id_bigint] = m.created_at_ts
+          }
+        }
+      })
+    }
+  }
+
   const formattedSales = orderRows
   .filter(order => showHidden ? hiddenOrderIds.has(order.id) : !hiddenOrderIds.has(order.id))
   .map(order => {
@@ -148,10 +170,23 @@ export async function getSalesHistory(showHidden = false, targetBranchId?: numbe
       : Math.round((totalAmount - (totalAmount / 1.07)) * 100) / 100
     const netBeforeVat = Math.max(0, Math.round((totalAmount - vatAmount) * 100) / 100)
 
+    let snapCompletedAt: string | null = null
+    if (order.discount_snapshot) {
+      const snap = typeof order.discount_snapshot === 'string'
+        ? (() => { try { return JSON.parse(order.discount_snapshot) } catch { return {} } })()
+        : order.discount_snapshot
+      snapCompletedAt = snap?.completed_at || null
+    }
+
+    const completedAt = snapCompletedAt || movementMap[order.id] || (order.status === 'COMPLETED' ? order.created_at : null)
+    const effectiveDate = order.status === 'COMPLETED' && completedAt ? completedAt : order.created_at
+
     return {
       id: order.id,
       orderCode: order.order_code,
       createdAt: order.created_at,
+      completedAt,
+      effectiveDate,
       saleName: order.profiles?.full_name || 'ไม่ระบุชื่อ',
       branchId: order.branch_id,
       branchName,
@@ -170,6 +205,14 @@ export async function getSalesHistory(showHidden = false, targetBranchId?: numbe
       items
     }
   })
+
+  // เรียงลำดับตามวันที่ทำรายการจริง (หากปิดบิลแล้วเรียงตามวันที่ปิดบิล บิลที่พึ่งปิดจะไม่หลุดไปอยู่ต้นเดือน)
+  formattedSales.sort((a, b) => {
+    const timeA = new Date(a.effectiveDate).getTime()
+    const timeB = new Date(b.effectiveDate).getTime()
+    return timeB - timeA
+  })
+
   return { success: true, data: formattedSales, hiddenCount: hiddenOrderIds.size }
 }
 
