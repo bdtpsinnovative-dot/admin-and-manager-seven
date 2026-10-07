@@ -756,7 +756,7 @@ export default function DiscountHubClient({
         partner_company: batchPartnerCompany,
         partner_sales: batchPartnerSales,
         note: batchNote,
-        count: batchCount,
+        count: Math.max(1, Math.min(100, Number(batchCount) || 1)),
         pattern: batchPattern,
         title_prefix: batchTitlePrefix.trim() || undefined,
         discount_type: batchDiscountType,
@@ -930,9 +930,9 @@ export default function DiscountHubClient({
                     setBatchInlineError(null);
                     setIsBatchModalOpen(true);
                   }}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-purple-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-purple-700 active:scale-95 transition shadow-xs"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-white border border-slate-300 px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-slate-900 active:scale-95 transition shadow-2xs cursor-pointer"
                 >
-                  <Sparkles className="w-4 h-4 stroke-[2.5]" />
+                  <Users className="w-4 h-4 text-slate-500" />
                   <span>สร้างโค้ดเซลล์ / พันธมิตร (Batch)</span>
                 </button>
                 <button
@@ -2335,17 +2335,17 @@ export default function DiscountHubClient({
         <div className="fixed inset-0 z-[99980] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
           <div className="relative w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden rounded-2xl bg-white shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-150">
             {/* Header */}
-            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4 bg-gradient-to-r from-purple-50/60 to-white">
+            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4 bg-white">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-600 text-white shadow-xs">
-                  <Sparkles className="h-5 w-5" />
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-700 border border-slate-200">
+                  <Ticket className="h-4.5 w-4.5 text-slate-700" />
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-slate-900">
-                    สร้างโค้ดเซลล์และพันธมิตร (Batch Generator)
+                    สร้างโค้ดส่วนลดเซลล์และพันธมิตร (Batch)
                   </h3>
                   <p className="text-[11px] text-slate-500">
-                    แท็กสิทธิ์ 3 ช่อง • สุ่มรหัสชุดไม่ซ้ำในระบบ 100% • รองรับการแชร์ส่ง LINE
+                    กำหนดข้อมูลผู้รับสิทธิ์ รูปแบบรหัส และเงื่อนไขส่วนลด
                   </p>
                 </div>
               </div>
@@ -2355,7 +2355,7 @@ export default function DiscountHubClient({
                   setIsBatchModalOpen(false);
                   setBatchCreatedResult(null);
                 }}
-                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition"
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition cursor-pointer"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -2373,51 +2373,51 @@ export default function DiscountHubClient({
               {batchCreatedResult ? (
                 /* ── RESULTS PHASE (SHARING & CODE LIST) ──────────────────── */
                 <div className="space-y-4">
-                  <div className="rounded-2xl bg-emerald-50 border border-emerald-200 p-4 text-emerald-900 flex items-start gap-3">
-                    <CheckCircle2 className="w-6 h-6 text-emerald-600 shrink-0 mt-0.5" />
+                  <div className="rounded-xl bg-slate-50 border border-slate-200 p-4 text-slate-800 flex items-start gap-3">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
                     <div>
-                      <h4 className="text-sm font-bold text-emerald-950">
-                        สร้างชุดรหัสส่วนลดสำเร็จ {batchCreatedResult.codes.length} โค้ด!
+                      <h4 className="text-sm font-bold text-slate-900">
+                        สร้างชุดรหัสส่วนลดสำเร็จ {batchCreatedResult.codes.length} โค้ด
                       </h4>
-                      <p className="text-xs text-emerald-800 mt-0.5">
-                        ระบบได้ลงทะเบียนคูปองทั้งหมดลงในฐานข้อมูลเรียบร้อยแล้ว รหัสทุกตัวพร้อมใช้งานที่ POS และทางเว็บได้ทันที
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        ระบบได้บันทึกคูปองทั้งหมดลงในฐานข้อมูลเรียบร้อยแล้ว รหัสทุกตัวพร้อมใช้งานที่ POS และทางเว็บได้ทันที
                       </p>
                     </div>
                   </div>
 
                   {/* Summary Card */}
-                  <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-2 text-xs">
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pb-2 border-b border-slate-200/70">
+                  <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-2 text-xs">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pb-2 border-b border-slate-100">
                       <div>
-                        <span className="text-[10px] text-slate-400 font-semibold block uppercase">👤 เซลล์ผู้ดูแล:</span>
+                        <span className="text-[10px] text-slate-400 font-semibold block uppercase">เซลล์ผู้ดูแล:</span>
                         <span className="font-bold text-slate-800">{batchCreatedResult.leadSales}</span>
                       </div>
                       <div>
-                        <span className="text-[10px] text-slate-400 font-semibold block uppercase">🏢 บริษัทคู่ค้า / โครงการ:</span>
+                        <span className="text-[10px] text-slate-400 font-semibold block uppercase">บริษัทคู่ค้า / โครงการ:</span>
                         <span className="font-bold text-slate-800">{batchCreatedResult.partnerCompany}</span>
                       </div>
                       <div>
-                        <span className="text-[10px] text-slate-400 font-semibold block uppercase">🤝 เซลล์คู่ค้า / ผู้ติดต่อ:</span>
+                        <span className="text-[10px] text-slate-400 font-semibold block uppercase">เซลล์คู่ค้า / ผู้ติดต่อ:</span>
                         <span className="font-bold text-slate-800">{batchCreatedResult.partnerSales}</span>
                       </div>
                     </div>
                     <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-[11px] text-slate-600">
-                      <span>💰 ส่วนลด: <strong>{batchCreatedResult.discountSummary}</strong></span>
-                      <span>📅 หมดอายุ: <strong>{batchCreatedResult.expiresSummary}</strong></span>
+                      <span>ส่วนลด: <strong className="text-slate-900">{batchCreatedResult.discountSummary}</strong></span>
+                      <span>หมดอายุ: <strong className="text-slate-900">{batchCreatedResult.expiresSummary}</strong></span>
                       {batchCreatedResult.note && (
-                        <span className="w-full text-slate-500 italic">📝 {batchCreatedResult.note}</span>
+                        <span className="w-full text-slate-500">หมายเหตุ: {batchCreatedResult.note}</span>
                       )}
                     </div>
                   </div>
 
-                  {/* Big Copy for LINE Button */}
+                  {/* Copy for LINE Button */}
                   <button
                     type="button"
                     onClick={handleCopyAllBatchCodes}
-                    className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-xs font-bold text-white hover:bg-emerald-700 active:scale-98 transition shadow-xs cursor-pointer"
+                    className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-bold text-white hover:bg-slate-800 active:scale-98 transition shadow-xs cursor-pointer"
                   >
                     <Share2 className="w-4 h-4" />
-                    <span>📋 คัดลอกข้อความทั้งหมดสำหรับส่ง LINE (One-Click Copy)</span>
+                    <span>คัดลอกข้อความทั้งหมดสำหรับส่ง LINE</span>
                   </button>
 
                   {/* Individual Codes Box */}
@@ -2443,7 +2443,7 @@ export default function DiscountHubClient({
                               setTimeout(() => setBatchCopiedIndex(null), 2000);
                               triggerToast("success", "คัดลอกแล้ว", `คัดลอกโค้ด ${code}`);
                             }}
-                            className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-200 transition"
+                            className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-200 transition cursor-pointer"
                           >
                             {batchCopiedIndex === idx ? (
                               <>
@@ -2464,74 +2464,74 @@ export default function DiscountHubClient({
                 </div>
               ) : (
                 /* ── FORM INPUT PHASE ─────────────────────────────────────── */
-                <div className="space-y-5">
+                <div className="space-y-4">
                   {/* Section 1: 3 Attribution Fields */}
-                  <div className="space-y-3 rounded-2xl bg-purple-50/40 border border-purple-100 p-4">
-                    <div className="flex items-center gap-2 text-xs font-bold text-purple-900">
-                      <Users className="w-4 h-4 text-purple-600" />
-                      <span>1. ข้อมูลผู้ได้รับสิทธิ์และการแท็ก (3 ช่องหลัก)</span>
+                  <div className="space-y-3 rounded-xl bg-slate-50/70 border border-slate-200 p-4">
+                    <div className="flex items-center gap-2 text-xs font-bold text-slate-900">
+                      <Users className="w-4 h-4 text-slate-600" />
+                      <span>1. ข้อมูลผู้รับสิทธิ์และพันธมิตร</span>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <div>
                         <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                          👤 เซลล์ของเรา (คนแรก) <span className="text-rose-500">*</span>
+                          เซลล์ของเรา (คนแรก) <span className="text-rose-500">*</span>
                         </label>
                         <input
                           type="text"
                           value={batchLeadSales}
                           onChange={(e) => setBatchLeadSales(e.target.value)}
                           placeholder="เช่น ยันได"
-                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-900 outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600 transition"
+                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-900 outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition"
                         />
                       </div>
 
                       <div>
                         <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                          🏢 บ. คู่ค้า / โครงการ <span className="text-rose-500">*</span>
+                          บริษัทคู่ค้า / โครงการ <span className="text-rose-500">*</span>
                         </label>
                         <input
                           type="text"
                           value={batchPartnerCompany}
                           onChange={(e) => setBatchPartnerCompany(e.target.value)}
                           placeholder="เช่น บ. สถาปัตย์ AA"
-                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-900 outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600 transition"
+                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-900 outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition"
                         />
                       </div>
 
                       <div>
                         <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                          🤝 เซลล์คู่ค้า / ผู้ติดต่อ <span className="text-rose-500">*</span>
+                          เซลล์คู่ค้า / ผู้ติดต่อ <span className="text-rose-500">*</span>
                         </label>
                         <input
                           type="text"
                           value={batchPartnerSales}
                           onChange={(e) => setBatchPartnerSales(e.target.value)}
                           placeholder="เช่น คุณสมชาย"
-                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-900 outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600 transition"
+                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-900 outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition"
                         />
                       </div>
                     </div>
 
                     <div>
                       <label className="text-[11px] font-medium text-slate-600 block mb-1">
-                        📝 โน้ตเพิ่มเติม / แคมเปญ (ถ้ามี)
+                        หมายเหตุ / แคมเปญ (ถ้ามี)
                       </label>
                       <input
                         type="text"
                         value={batchNote}
                         onChange={(e) => setBatchNote(e.target.value)}
                         placeholder="เช่น โครงการคอนโดสาทร ล็อตพิเศษ Q4"
-                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700 outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600 transition"
+                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700 outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition"
                       />
                     </div>
                   </div>
 
                   {/* Section 2: Pattern & Batch Count */}
-                  <div className="space-y-3 rounded-2xl bg-slate-50 border border-slate-200 p-4">
+                  <div className="space-y-3 rounded-xl bg-slate-50/70 border border-slate-200 p-4">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2 text-xs font-bold text-slate-900">
-                        <Zap className="w-4 h-4 text-amber-500" />
+                        <Tag className="w-4 h-4 text-slate-600" />
                         <span>2. กำหนดรูปแบบรหัสและจำนวนที่ต้องการสร้าง</span>
                       </div>
                       <span className="text-[10px] text-slate-500">
@@ -2549,7 +2549,7 @@ export default function DiscountHubClient({
                           value={batchPattern}
                           onChange={(e) => setBatchPattern(e.target.value.toUpperCase())}
                           placeholder="เช่น YD-AA-#### หรือ YD-6351-####"
-                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-mono font-bold uppercase text-slate-900 outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900 transition"
+                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-mono font-bold uppercase text-slate-900 outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition"
                         />
                         {/* Quick Presets */}
                         <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
@@ -2559,7 +2559,7 @@ export default function DiscountHubClient({
                               key={preset}
                               type="button"
                               onClick={() => setBatchPattern(preset)}
-                              className={`text-[10px] font-mono px-2 py-0.5 rounded-md border transition ${
+                              className={`text-[10px] font-mono px-2 py-0.5 rounded-md border transition cursor-pointer ${
                                 batchPattern === preset
                                   ? "bg-slate-900 text-white border-slate-900 font-bold"
                                   : "bg-white text-slate-600 border-slate-200 hover:bg-slate-100"
@@ -2573,31 +2573,60 @@ export default function DiscountHubClient({
 
                       <div className="flex flex-col justify-between">
                         <div>
-                          <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                            จำนวนโค้ดที่ต้องการสร้าง (ชุดละ)
-                          </label>
-                          <div className="flex items-center gap-1.5">
-                            {[5, 10, 20, 50].map((num) => (
+                          <div className="flex items-center justify-between mb-1">
+                            <label className="text-[11px] font-bold text-slate-700 block">
+                              จำนวนโค้ดที่ต้องการสร้าง (ชุดละ)
+                            </label>
+                            <span className="text-[10px] text-slate-400 font-medium">
+                              (1 - 100 โค้ด)
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5 flex-wrap sm:flex-nowrap">
+                            {[1, 2, 5, 10, 20].map((num) => (
                               <button
                                 key={num}
                                 type="button"
                                 onClick={() => setBatchCount(num)}
-                                className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition border ${
+                                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition border cursor-pointer ${
                                   batchCount === num
-                                    ? "bg-purple-600 text-white border-purple-600 shadow-2xs"
+                                    ? "bg-slate-900 text-white border-slate-900 shadow-2xs"
                                     : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
                                 }`}
                               >
-                                {num} โค้ด
+                                {num}
                               </button>
                             ))}
+                            <div className="relative flex-1 min-w-[75px] flex items-center">
+                              <input
+                                type="number"
+                                min={1}
+                                max={100}
+                                value={batchCount || ""}
+                                onChange={(e) => {
+                                  const val = parseInt(e.target.value, 10);
+                                  if (isNaN(val)) {
+                                    setBatchCount(0);
+                                  } else {
+                                    setBatchCount(Math.min(100, Math.max(1, val)));
+                                  }
+                                }}
+                                onBlur={() => {
+                                  if (!batchCount || batchCount < 1) {
+                                    setBatchCount(1);
+                                  }
+                                }}
+                                placeholder="ระบุเอง..."
+                                className="w-full text-center py-1.5 px-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 shadow-2xs"
+                              />
+                            </div>
+                            <span className="text-[11px] font-bold text-slate-500 shrink-0">โค้ด</span>
                           </div>
                         </div>
 
                         {/* Live Sample Preview Badge */}
-                        <div className="mt-2 flex items-center justify-between rounded-xl bg-emerald-50 border border-emerald-200 px-3 py-1.5">
-                          <span className="text-[10px] text-emerald-800 font-semibold">ตัวอย่างรหัสจริง:</span>
-                          <span className="font-mono text-xs font-black text-emerald-950 tracking-wider">
+                        <div className="mt-2 flex items-center justify-between rounded-lg bg-slate-100 border border-slate-200 px-3 py-1.5">
+                          <span className="text-[10px] text-slate-500 font-semibold">ตัวอย่างรหัสจริง:</span>
+                          <span className="font-mono text-xs font-bold text-slate-900 tracking-wider">
                             {samplePreviewCode}
                           </span>
                         </div>
@@ -2606,10 +2635,10 @@ export default function DiscountHubClient({
                   </div>
 
                   {/* Section 3: Discount Terms */}
-                  <div className="space-y-3 rounded-2xl bg-white border border-slate-200 p-4">
+                  <div className="space-y-3 rounded-xl bg-slate-50/70 border border-slate-200 p-4">
                     <div className="flex items-center gap-2 text-xs font-bold text-slate-900">
-                      <Percent className="w-4 h-4 text-blue-600" />
-                      <span>3. เงื่อนไขส่วนลด (Discount Terms)</span>
+                      <Percent className="w-4 h-4 text-slate-600" />
+                      <span>3. เงื่อนไขส่วนลด</span>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -2617,13 +2646,13 @@ export default function DiscountHubClient({
                         <label className="text-[11px] font-bold text-slate-700 block mb-1">
                           ประเภทส่วนลด
                         </label>
-                        <div className="flex rounded-lg bg-slate-100 p-1">
+                        <div className="flex rounded-lg bg-slate-200/70 p-1 border border-slate-200">
                           <button
                             type="button"
                             onClick={() => setBatchDiscountType("percentage")}
-                            className={`flex-1 py-1 text-xs font-bold rounded-md transition ${
+                            className={`flex-1 py-1 text-xs font-bold rounded-md transition cursor-pointer ${
                               batchDiscountType === "percentage"
-                                ? "bg-white text-blue-700 shadow-2xs"
+                                ? "bg-white text-slate-900 shadow-2xs"
                                 : "text-slate-600 hover:text-slate-900"
                             }`}
                           >
@@ -2632,9 +2661,9 @@ export default function DiscountHubClient({
                           <button
                             type="button"
                             onClick={() => setBatchDiscountType("fixed_amount")}
-                            className={`flex-1 py-1 text-xs font-bold rounded-md transition ${
+                            className={`flex-1 py-1 text-xs font-bold rounded-md transition cursor-pointer ${
                               batchDiscountType === "fixed_amount"
-                                ? "bg-white text-blue-700 shadow-2xs"
+                                ? "bg-white text-slate-900 shadow-2xs"
                                 : "text-slate-600 hover:text-slate-900"
                             }`}
                           >
@@ -2653,7 +2682,7 @@ export default function DiscountHubClient({
                             min="1"
                             value={batchDiscountValue}
                             onChange={(e) => setBatchDiscountValue(Number(e.target.value))}
-                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900 transition"
+                            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition"
                           />
                           <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
                             {batchDiscountType === "percentage" ? "%" : "฿"}
@@ -2670,7 +2699,7 @@ export default function DiscountHubClient({
                           placeholder="0 (ไม่มีขั้นต่ำ)"
                           value={batchMinSpend}
                           onChange={(e) => setBatchMinSpend(e.target.value)}
-                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-900 outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900 transition"
+                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-900 outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition"
                         />
                       </div>
                     </div>
@@ -2686,7 +2715,7 @@ export default function DiscountHubClient({
                           disabled={batchDiscountType !== "percentage"}
                           value={batchMaxDiscount}
                           onChange={(e) => setBatchMaxDiscount(e.target.value)}
-                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-900 outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900 transition disabled:bg-slate-100 disabled:text-slate-400"
+                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-900 outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition disabled:bg-slate-100 disabled:text-slate-400"
                         />
                       </div>
 
@@ -2698,7 +2727,7 @@ export default function DiscountHubClient({
                           type="datetime-local"
                           value={batchEndDate}
                           onChange={(e) => setBatchEndDate(e.target.value)}
-                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900 transition"
+                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition"
                         />
                       </div>
 
@@ -2709,7 +2738,7 @@ export default function DiscountHubClient({
                         <select
                           value={batchUsageLimit}
                           onChange={(e) => setBatchUsageLimit(Number(e.target.value))}
-                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900 transition"
+                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition cursor-pointer"
                         >
                           <option value={1}>1 ครั้งต่อโค้ด (Single-Use)</option>
                           <option value={5}>5 ครั้งต่อโค้ด</option>
@@ -2732,7 +2761,7 @@ export default function DiscountHubClient({
                       setBatchCreatedResult(null);
                       setBatchInlineError(null);
                     }}
-                    className="rounded-xl px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-200 transition"
+                    className="rounded-lg px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-200 transition cursor-pointer"
                   >
                     สร้างชุดอื่นเพิ่ม
                   </button>
@@ -2742,7 +2771,7 @@ export default function DiscountHubClient({
                       setIsBatchModalOpen(false);
                       setBatchCreatedResult(null);
                     }}
-                    className="rounded-xl bg-slate-900 px-5 py-2 text-xs font-bold text-white hover:bg-slate-800 transition"
+                    className="rounded-lg bg-slate-900 px-5 py-2 text-xs font-bold text-white hover:bg-slate-800 transition cursor-pointer"
                   >
                     เสร็จสิ้น / ปิดหน้าต่าง
                   </button>
@@ -2753,7 +2782,7 @@ export default function DiscountHubClient({
                     type="button"
                     onClick={() => setIsBatchModalOpen(false)}
                     disabled={isPending}
-                    className="rounded-xl px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-200 transition"
+                    className="rounded-lg px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-200 transition cursor-pointer"
                   >
                     ยกเลิก
                   </button>
@@ -2761,10 +2790,10 @@ export default function DiscountHubClient({
                     type="button"
                     disabled={isPending}
                     onClick={handleExecuteCreateBatch}
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-purple-600 px-6 py-2.5 text-xs font-bold text-white hover:bg-purple-700 active:scale-95 transition shadow-xs disabled:opacity-50 cursor-pointer"
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-5 py-2 text-xs font-bold text-white hover:bg-slate-800 active:scale-95 transition shadow-xs disabled:opacity-50 cursor-pointer"
                   >
-                    {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-                    <span>สร้าง {batchCount} รหัสทันที</span>
+                    {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                    <span>สร้าง {batchCount || 1} โค้ด</span>
                   </button>
                 </>
               )}

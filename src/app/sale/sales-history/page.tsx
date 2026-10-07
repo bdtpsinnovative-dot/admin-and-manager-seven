@@ -46,7 +46,7 @@ export default function SaleSalesHistoryPage() {
   const [sales, setSales] = useState<SaleOrder[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
-  const [statusFilter, setStatusFilter] = useState<'ALL' | 'COMPLETED' | 'CANCELLED'>('ALL')
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'COMPLETED' | 'PENDING' | 'CANCELLED'>('ALL')
   const [expandedOrders, setExpandedOrders] = useState<number[]>([])
   const [printOrderCode, setPrintOrderCode] = useState<string | null>(null)
   const [showHidden, setShowHidden] = useState(false)
@@ -99,12 +99,13 @@ export default function SaleSalesHistoryPage() {
     return matchesSearch && matchesStatus
   })
 
-  // คำนวณยอดสรุปรวมทั้งหมดในหน้าจอ (ไม่รวมออเดอร์ที่ถูกยกเลิก โดยอ้างอิงตามคำค้นหา)
+  // คำนวณยอดสรุปรวมทั้งหมดในหน้าจอ (อ้างอิงตามคำค้นหา)
   const baseSalesForTotals = sales.filter(s => 
     s.orderCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (s.shippingName && s.shippingName.toLowerCase().includes(searchTerm.toLowerCase()))
   )
-  const totalInvoiced = baseSalesForTotals.filter(s => s.status !== 'CANCELLED').reduce((sum, s) => sum + s.totalAmount, 0)
+  const totalCompleted = baseSalesForTotals.filter(s => s.status === 'COMPLETED').reduce((sum, s) => sum + s.totalAmount, 0)
+  const totalPending = baseSalesForTotals.filter(s => s.status === 'PENDING').reduce((sum, s) => sum + s.totalAmount, 0)
   const totalDropShip = baseSalesForTotals.filter(s => s.status !== 'CANCELLED').reduce((sum, s) => sum + s.otherBranchRevenue, 0)
   const totalCancelled = baseSalesForTotals.filter(s => s.status === 'CANCELLED').reduce((sum, s) => sum + s.totalAmount, 0)
 
@@ -135,21 +136,21 @@ export default function SaleSalesHistoryPage() {
         </div>
 
         {/* Stat Cards */}
-        {!showHidden && <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {!showHidden && <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
-            <span className="text-[11px] font-black text-slate-400 uppercase tracking-wider flex items-center gap-1">
-              <DollarSign className="w-3.5 h-3.5 text-slate-400" /> ยอดสุทธิใบขายรวม
+            <span className="text-[11px] font-black text-emerald-600 uppercase tracking-wider flex items-center gap-1">
+              <DollarSign className="w-3.5 h-3.5 text-emerald-500" /> ยอดขายสำเร็จ (ชำระแล้ว)
             </span>
-            <div className="text-2xl font-black text-emerald-600 mt-2">{totalInvoiced.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</div>
-            <span className="text-[10px] text-slate-400 block mt-1 font-medium">รวมเม็ดเงินทั้งหมดที่เรียกเก็บจากออเดอร์</span>
+            <div className="text-2xl font-black text-emerald-600 mt-2">{totalCompleted.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</div>
+            <span className="text-[10px] text-slate-400 block mt-1 font-medium">รวมยอดเงินที่จัดส่งและตัดสต็อกสำเร็จแล้ว</span>
           </div>
 
           <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
-            <span className="text-[11px] font-black text-red-600 uppercase tracking-wider flex items-center gap-1">
-              <XCircle className="w-3.5 h-3.5 text-red-500" /> ยอดเงินบิลยกเลิก
+            <span className="text-[11px] font-black text-amber-600 uppercase tracking-wider flex items-center gap-1">
+              <Clock className="w-3.5 h-3.5 text-amber-500" /> ยอดรอชำระ / รอจัดส่ง
             </span>
-            <div className="text-2xl font-black text-red-600 mt-2">{totalCancelled.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</div>
-            <span className="text-[10px] text-slate-400 block mt-1 font-medium">รวมมูลค่าบิลทั้งหมดที่ทำการยกเลิก</span>
+            <div className="text-2xl font-black text-amber-600 mt-2">{totalPending.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</div>
+            <span className="text-[10px] text-slate-400 block mt-1 font-medium">ออเดอร์เปิดบิลแล้ว รอตัดสต็อกหรือคิดเงิน</span>
           </div>
 
           <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
@@ -159,14 +160,22 @@ export default function SaleSalesHistoryPage() {
             <div className="text-2xl font-black text-orange-600 mt-2">{totalDropShip.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</div>
             <span className="text-[10px] text-slate-400 block mt-1 font-medium">ยอดเงินของสินค้าที่ต้องให้สาขาอื่นแพ็คส่ง</span>
           </div>
+
+          <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
+            <span className="text-[11px] font-black text-red-600 uppercase tracking-wider flex items-center gap-1">
+              <XCircle className="w-3.5 h-3.5 text-red-500" /> ยอดเงินบิลยกเลิก
+            </span>
+            <div className="text-2xl font-black text-red-600 mt-2">{totalCancelled.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</div>
+            <span className="text-[10px] text-slate-400 block mt-1 font-medium">รวมมูลค่าบิลทั้งหมดที่ทำการยกเลิก</span>
+          </div>
         </div>}
 
         {/* แท็บกรองสถานะ */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-        {!showHidden ? <div className="flex gap-2 p-1 bg-white rounded-2xl w-full md:max-w-md border border-slate-100 shadow-3xs">
+        {!showHidden ? <div className="flex gap-2 p-1 bg-white rounded-2xl w-full md:max-w-2xl border border-slate-100 shadow-3xs overflow-x-auto">
           <button
             onClick={() => setStatusFilter('ALL')}
-            className={`flex-1 py-2 px-4 text-xs font-black rounded-xl transition-all cursor-pointer ${
+            className={`py-2 px-4 text-xs font-black rounded-xl transition-all cursor-pointer whitespace-nowrap ${
               statusFilter === 'ALL'
                 ? 'bg-slate-800 text-white shadow-xs'
                 : 'text-slate-500 hover:bg-slate-50'
@@ -176,7 +185,7 @@ export default function SaleSalesHistoryPage() {
           </button>
           <button
             onClick={() => setStatusFilter('COMPLETED')}
-            className={`flex-1 py-2 px-4 text-xs font-black rounded-xl transition-all cursor-pointer ${
+            className={`py-2 px-4 text-xs font-black rounded-xl transition-all cursor-pointer whitespace-nowrap ${
               statusFilter === 'COMPLETED'
                 ? 'bg-emerald-600 text-white shadow-xs'
                 : 'text-slate-500 hover:bg-slate-50'
@@ -185,8 +194,18 @@ export default function SaleSalesHistoryPage() {
             ขายสำเร็จ ({sales.filter(s => s.status === 'COMPLETED').length})
           </button>
           <button
+            onClick={() => setStatusFilter('PENDING')}
+            className={`py-2 px-4 text-xs font-black rounded-xl transition-all cursor-pointer whitespace-nowrap ${
+              statusFilter === 'PENDING'
+                ? 'bg-amber-600 text-white shadow-xs'
+                : 'text-slate-500 hover:bg-slate-50'
+            }`}
+          >
+            ยังไม่คิดเงิน / รอจัดส่ง ({sales.filter(s => s.status === 'PENDING').length})
+          </button>
+          <button
             onClick={() => setStatusFilter('CANCELLED')}
-            className={`flex-1 py-2 px-4 text-xs font-black rounded-xl transition-all cursor-pointer ${
+            className={`py-2 px-4 text-xs font-black rounded-xl transition-all cursor-pointer whitespace-nowrap ${
               statusFilter === 'CANCELLED'
                 ? 'bg-red-600 text-white shadow-xs'
                 : 'text-slate-500 hover:bg-slate-50'
@@ -257,6 +276,8 @@ export default function SaleSalesHistoryPage() {
                           className={`group transition-all cursor-pointer border-l-4 ${
                             order.status === 'CANCELLED'
                               ? 'bg-red-50/90 text-red-900 border-l-red-500 hover:bg-red-100/60'
+                              : order.status === 'PENDING'
+                              ? 'bg-amber-50/40 text-slate-800 border-l-amber-400 hover:bg-amber-50/70'
                               : 'hover:bg-slate-50/50 border-l-transparent'
                           }`}
                           onClick={() => toggleExpand(order.id)}
@@ -367,18 +388,19 @@ export default function SaleSalesHistoryPage() {
 
                           {/* สถานะบิล */}
                           <td className="p-4 text-center">
-                            <span className={`inline-block px-3 py-1.5 rounded-full text-[10px] font-black shadow-sm ${order.status === 'COMPLETED'
-                              ? 'bg-emerald-50 text-emerald-600 border border-emerald-200'
-                              : order.status === 'CANCELLED'
-                              ? 'bg-red-50 text-red-600 border border-red-200'
-                              : 'bg-amber-50 text-amber-600 border border-amber-200 animate-pulse'
+                            <span className={`inline-block px-3 py-1.5 rounded-full text-[10px] font-black shadow-sm ${
+                              order.status === 'COMPLETED'
+                                ? 'bg-emerald-50 text-emerald-600 border border-emerald-200'
+                                : order.status === 'CANCELLED'
+                                ? 'bg-red-50 text-red-600 border border-red-200'
+                                : 'bg-amber-50 text-amber-700 border border-amber-300'
                               }`}>
                               {order.status === 'COMPLETED' ? (
                                 <span className="flex items-center justify-center gap-1"><Check className="w-3 h-3" /> สำเร็จแล้ว</span>
                               ) : order.status === 'CANCELLED' ? (
                                 <span className="flex items-center justify-center gap-1"><XCircle className="w-3 h-3" /> ยกเลิกแล้ว</span>
                               ) : (
-                                <span className="flex items-center justify-center gap-1"><Clock className="w-3 h-3" /> รอสาขาแพ็ค</span>
+                                <span className="flex items-center justify-center gap-1"><Clock className="w-3 h-3 text-amber-600" /> ยังไม่คิดเงิน</span>
                               )}
                             </span>
                             {order.status === 'CANCELLED' && order.discountSnapshot?.cancel_reason && (

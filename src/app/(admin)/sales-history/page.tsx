@@ -58,7 +58,7 @@ export default function AdminSalesHistoryPage() {
   const [selectedBranch, setSelectedBranch] = useState<'ALL' | number>('ALL')
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
-  const [statusFilter, setStatusFilter] = useState<'ALL' | 'COMPLETED' | 'CANCELLED'>('ALL')
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'COMPLETED' | 'PENDING' | 'CANCELLED'>('ALL')
   const [expandedOrders, setExpandedOrders] = useState<number[]>([])
   const [printOrderCode, setPrintOrderCode] = useState<string | null>(null)
   const [showHidden, setShowHidden] = useState(false)
@@ -138,7 +138,8 @@ export default function AdminSalesHistoryPage() {
     )
   })
 
-  const totalInvoiced = baseSalesForTotals.filter(s => s.status !== 'CANCELLED').reduce((sum, s) => sum + s.totalAmount, 0)
+  const totalInvoiced = baseSalesForTotals.filter(s => s.status === 'COMPLETED').reduce((sum, s) => sum + s.totalAmount, 0)
+  const totalPending = baseSalesForTotals.filter(s => s.status === 'PENDING').reduce((sum, s) => sum + s.totalAmount, 0)
   const totalDropShip = baseSalesForTotals.filter(s => s.status !== 'CANCELLED').reduce((sum, s) => sum + s.otherBranchRevenue, 0)
   const totalCancelled = baseSalesForTotals.filter(s => s.status === 'CANCELLED').reduce((sum, s) => sum + s.totalAmount, 0)
 
@@ -203,10 +204,10 @@ export default function AdminSalesHistoryPage() {
 
         {/* --- Stat Cards --- */}
         {!showHidden && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
-              <span className="text-[11px] font-black text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                <DollarSign className="w-3.5 h-3.5 text-blue-500" /> ยอดสุทธิใบขายรวม
+              <span className="text-[11px] font-black text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                <DollarSign className="w-3.5 h-3.5 text-blue-500" /> ยอดขายสำเร็จ (Completed)
               </span>
               <div className="text-2xl font-black text-blue-600 mt-2">
                 {totalInvoiced.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿
@@ -217,13 +218,15 @@ export default function AdminSalesHistoryPage() {
             </div>
 
             <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
-              <span className="text-[11px] font-black text-red-600 uppercase tracking-wider flex items-center gap-1.5">
-                <XCircle className="w-3.5 h-3.5 text-red-500" /> ยอดเงินบิลยกเลิก
+              <span className="text-[11px] font-black text-amber-600 uppercase tracking-wider flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-amber-500" /> ยอดยังไม่คิดเงิน / รอจัดส่ง
               </span>
-              <div className="text-2xl font-black text-red-600 mt-2">
-                {totalCancelled.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿
+              <div className="text-2xl font-black text-amber-600 mt-2">
+                {totalPending.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿
               </div>
-              <span className="text-[10px] text-slate-400 block mt-1 font-medium">รวมมูลค่าบิลทั้งหมดที่ทำการยกเลิก</span>
+              <span className="text-[10px] text-slate-400 block mt-1 font-medium">
+                บิลที่ยังไม่ตัดสต็อก/คิดเงิน ({baseSalesForTotals.filter(s => s.status === 'PENDING').length} รายการ)
+              </span>
             </div>
 
             <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
@@ -235,17 +238,27 @@ export default function AdminSalesHistoryPage() {
               </div>
               <span className="text-[10px] text-slate-400 block mt-1 font-medium">ยอดเงินของสินค้าที่ให้สาขาอื่นแพ็คส่ง</span>
             </div>
+
+            <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
+              <span className="text-[11px] font-black text-red-600 uppercase tracking-wider flex items-center gap-1.5">
+                <XCircle className="w-3.5 h-3.5 text-red-500" /> ยอดเงินบิลยกเลิก
+              </span>
+              <div className="text-2xl font-black text-red-600 mt-2">
+                {totalCancelled.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿
+              </div>
+              <span className="text-[10px] text-slate-400 block mt-1 font-medium">รวมมูลค่าบิลทั้งหมดที่ทำการยกเลิก</span>
+            </div>
           </div>
         )}
 
         {/* --- Filter Tabs & Hidden Toggle --- */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           {!showHidden ? (
-            <div className="flex gap-2 p-1 bg-white rounded-2xl w-full md:max-w-md border border-slate-100 shadow-3xs">
+            <div className="flex gap-1.5 p-1 bg-white rounded-2xl w-full md:max-w-2xl border border-slate-100 shadow-3xs overflow-x-auto">
               <button
                 type="button"
                 onClick={() => setStatusFilter('ALL')}
-                className={`flex-1 py-2 px-4 text-xs font-black rounded-xl transition-all cursor-pointer ${
+                className={`py-2 px-3.5 text-xs font-black rounded-xl transition-all cursor-pointer whitespace-nowrap shrink-0 ${
                   statusFilter === 'ALL'
                     ? 'bg-slate-800 text-white shadow-xs'
                     : 'text-slate-500 hover:bg-slate-50'
@@ -256,7 +269,7 @@ export default function AdminSalesHistoryPage() {
               <button
                 type="button"
                 onClick={() => setStatusFilter('COMPLETED')}
-                className={`flex-1 py-2 px-4 text-xs font-black rounded-xl transition-all cursor-pointer ${
+                className={`py-2 px-3.5 text-xs font-black rounded-xl transition-all cursor-pointer whitespace-nowrap shrink-0 ${
                   statusFilter === 'COMPLETED'
                     ? 'bg-emerald-600 text-white shadow-xs'
                     : 'text-slate-500 hover:bg-slate-50'
@@ -266,8 +279,19 @@ export default function AdminSalesHistoryPage() {
               </button>
               <button
                 type="button"
+                onClick={() => setStatusFilter('PENDING')}
+                className={`py-2 px-3.5 text-xs font-black rounded-xl transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+                  statusFilter === 'PENDING'
+                    ? 'bg-amber-500 text-white shadow-xs'
+                    : 'text-slate-500 hover:bg-slate-50'
+                }`}
+              >
+                ยังไม่คิดเงิน / รอจัดส่ง ({sales.filter(s => s.status === 'PENDING').length})
+              </button>
+              <button
+                type="button"
                 onClick={() => setStatusFilter('CANCELLED')}
-                className={`flex-1 py-2 px-4 text-xs font-black rounded-xl transition-all cursor-pointer ${
+                className={`py-2 px-3.5 text-xs font-black rounded-xl transition-all cursor-pointer whitespace-nowrap shrink-0 ${
                   statusFilter === 'CANCELLED'
                     ? 'bg-red-600 text-white shadow-xs'
                     : 'text-slate-500 hover:bg-slate-50'
@@ -354,6 +378,8 @@ export default function AdminSalesHistoryPage() {
                           className={`group transition-all cursor-pointer border-l-4 ${
                             order.status === 'CANCELLED'
                               ? 'bg-red-50/90 text-red-900 border-l-red-500 hover:bg-red-100/60'
+                              : order.status === 'PENDING'
+                              ? 'bg-amber-50/40 text-slate-800 border-l-amber-400 hover:bg-amber-50/70'
                               : 'hover:bg-slate-50/50 border-l-transparent'
                           }`}
                           onClick={() => toggleExpand(order.id)}
@@ -478,19 +504,19 @@ export default function AdminSalesHistoryPage() {
 
                           {/* สถานะบิล */}
                           <td className="p-4 text-center">
-                            <span className={`inline-block px-3 py-1.5 rounded-full text-[10px] font-black shadow-sm ${
+                            <span className={`inline-block px-3 py-1.5 rounded-full text-[10px] font-black shadow-2xs whitespace-nowrap ${
                               order.status === 'COMPLETED'
-                                ? 'bg-emerald-50 text-emerald-600 border border-emerald-200'
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                                 : order.status === 'CANCELLED'
                                 ? 'bg-red-50 text-red-600 border border-red-200'
-                                : 'bg-amber-50 text-amber-600 border border-amber-200 animate-pulse'
+                                : 'bg-amber-50 text-amber-700 border border-amber-300'
                             }`}>
                               {order.status === 'COMPLETED' ? (
-                                <span className="flex items-center justify-center gap-1"><Check className="w-3 h-3" /> สำเร็จแล้ว</span>
+                                <span className="flex items-center justify-center gap-1"><Check className="w-3 h-3 text-emerald-600" /> สำเร็จแล้ว</span>
                               ) : order.status === 'CANCELLED' ? (
-                                <span className="flex items-center justify-center gap-1"><XCircle className="w-3 h-3" /> ยกเลิกแล้ว</span>
+                                <span className="flex items-center justify-center gap-1"><XCircle className="w-3 h-3 text-red-600" /> ยกเลิกแล้ว</span>
                               ) : (
-                                <span className="flex items-center justify-center gap-1"><Clock className="w-3 h-3" /> รอสาขาแพ็ค</span>
+                                <span className="flex items-center justify-center gap-1"><Clock className="w-3 h-3 text-amber-600" /> ยังไม่คิดเงิน</span>
                               )}
                             </span>
                             {order.status === 'CANCELLED' && order.discountSnapshot?.cancel_reason && (

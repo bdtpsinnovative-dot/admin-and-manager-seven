@@ -90,7 +90,6 @@ export async function getSalesHistory(showHidden = false, targetBranchId?: numbe
         branches:fulfill_branch_id ( branch_name )
       )
     `)
-    .neq('status', 'PENDING')
     .order('created_at', { ascending: false })
 
   if (userRole === 'admin') {
