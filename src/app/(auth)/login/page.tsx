@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { 
   Eye, 
   EyeOff, 
@@ -57,6 +57,18 @@ export default function LoginPage() {
   const [savedAccounts, setSavedAccounts] = useState<SavedAccount[]>([makeDefaultJan()])
   const [showAddModal, setShowAddModal] = useState(false)
   const [activeLoggingEmail, setActiveLoggingEmail] = useState<string | null>(null)
+  const isMouseDownOnBackdrop = useRef(false)
+
+  // ─── ปิด modal ด้วยปุ่ม Escape ────────────
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && showAddModal) {
+        setShowAddModal(false)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [showAddModal])
 
   // โหลด accounts จาก localStorage เมื่อ component mount บน client
   useEffect(() => {
@@ -389,10 +401,24 @@ export default function LoginPage() {
       {showAddModal && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
-          onClick={() => setShowAddModal(false)}
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) {
+              isMouseDownOnBackdrop.current = true
+            }
+          }}
+          onClick={(e) => {
+            if (isMouseDownOnBackdrop.current && e.target === e.currentTarget) {
+              setShowAddModal(false)
+            }
+            isMouseDownOnBackdrop.current = false
+          }}
         >
           <div
             className="w-full max-w-[400px] bg-white rounded-2xl shadow-2xl p-6 relative border border-gray-200"
+            onMouseDown={(e) => {
+              isMouseDownOnBackdrop.current = false
+              e.stopPropagation()
+            }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Close */}
