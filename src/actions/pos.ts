@@ -1,6 +1,7 @@
 "use server"
 
 import { createServerClient } from '@supabase/ssr'
+import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 
 export interface PosSetBundle {
@@ -386,7 +387,7 @@ export async function createOrGetCustomProduct(payload: {
         sku: cleanSku,
         price: cleanPrice,
         unit: payload.unit || 'ชิ้น',
-        category_id: 'furniture',
+        category_id: payload.categoryLabel?.includes('Prop') ? 'prop' : 'furniture',
         status: 'active',
         specs: {
           is_custom: true,
@@ -422,9 +423,9 @@ export async function createOrGetCustomProduct(payload: {
     image_url: product.image_url || null,
     barcode: product.barcode || null,
     product_sup: payload.categoryLabel || 'สินค้านอกรายการ',
-    category_id: 'furniture',
+    category_id: payload.categoryLabel?.includes('Prop') ? 'prop' : 'furniture',
     isExternal: true,
-    isFurniture: true,
+    isFurniture: !payload.categoryLabel?.includes('Prop'),
     stocks: [{ branch_id: branchId, qty: 999 }],
     specs: product.specs || {}
   }
@@ -608,7 +609,14 @@ export interface CheckoutPayload {
   }[];
 }
 
-export async function processCheckout(payload: CheckoutPayload) {
+export interface CheckoutResult {
+  success: boolean;
+  orderCode?: string;
+  error?: string;
+  outOfStockProductIds?: string[];
+}
+
+export async function processCheckout(payload: CheckoutPayload): Promise<CheckoutResult> {
   const cookieStore = await cookies()
   const supabase = createServerClient(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!, {
     cookies: { 
@@ -622,6 +630,26 @@ export async function processCheckout(payload: CheckoutPayload) {
   try {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) throw new Error("Unauthorized")
+
+    // 🏷️ กฎเหล็ก: บล็อกการสร้างใบเสนอราคาหากมีสินค้าที่ราคาเป็น 0 ฿ หรือยอดรวม <= 0 ฿
+    if (!payload.items || payload.items.length === 0) {
+      return { success: false, error: "ไม่สามารถสร้างใบเสนอราคาได้: ไม่มีรายการสินค้าในตะกร้า" }
+    }
+
+    const zeroPriceItem = payload.items.find(item => !item.priceAtSale || Number(item.priceAtSale) <= 0)
+    if (zeroPriceItem) {
+      return {
+        success: false,
+        error: "ไม่สามารถสร้างใบเสนอราคาได้: มีสินค้าที่ยังไม่ได้ระบุราคา (0 ฿) กรุณาตั้งราคาขายให้ครบทุกรายการก่อนออกใบเสนอราคาครับ"
+      }
+    }
+
+    if (!payload.totalAmount || Number(payload.totalAmount) <= 0) {
+      return {
+        success: false,
+        error: "ไม่สามารถสร้างใบเสนอราคาได้: ยอดสุทธิของใบเสนอราคาต้องมากกว่า 0 บาท"
+      }
+    }
 
     const previousOrderCode = payload.orderCode?.trim()
     const requestedOrderCode = payload.customOrderCode?.trim()
@@ -656,7 +684,7 @@ export async function processCheckout(payload: CheckoutPayload) {
       discountSnapshot.shipping_cost = Number(payload.shippingCost) || 0
       discountSnapshot.shipping_waived = Boolean(payload.shippingWaived)
     }
-    // ✨ 0. เช็คสต็อกล่วงหน้ากันเหนียว (ยกเว้นสินค้านอก / เฟอร์นิเจอร์)
+    // ✨ 0. เช็คสต็อก (บันทึกข้อมูลสินค้าที่สต็อกไม่พอลง Snapshot แต่ไม่บล็อกการสร้างใบเสนอราคา)
     const outOfStockItems: string[] = []
     
     // ดึงสต็อกเฉพาะสินค้าที่ต้องตรวจสต็อก (ไม่รวมสินค้านอกหรือเฟอร์นิเจอร์)
@@ -677,11 +705,8 @@ export async function processCheckout(payload: CheckoutPayload) {
       }
 
       if (outOfStockItems.length > 0) {
-        return { 
-          success: false, 
-          error: "สินค้าบางรายการสต็อกไม่พอ (อาจถูกซื้อตัดหน้า) ระบบได้อัปเดตสถานะในตะกร้าแล้ว", 
-          outOfStockProductIds: outOfStockItems 
-        }
+        discountSnapshot.out_of_stock_products = outOfStockItems
+        discountSnapshot.is_preorder = true
       }
     }
     
@@ -907,4 +932,56 @@ export async function getOrderForEdit(orderCode: string) {
   if (order.status !== 'PENDING') return { success: false, error: "บิลนี้ชำระเงินหรือประมวลผลไปแล้ว ไม่สามารถแก้ไขได้" }
 
   return { success: true, order }
+}
+
+export async function updateProductPrice(productId: number, newPrice: number) {
+  try {
+    const cookieStore = await cookies()
+    const supabase = createServerClient(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!, { 
+      cookies: { getAll() { return cookieStore.getAll() } } 
+    })
+
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { success: false, error: "กรุณาเข้าสู่ระบบก่อนทำรายการ" }
+
+    const cleanId = Number(productId)
+    const cleanPrice = Math.round(Number(newPrice) * 100) / 100
+
+    if (!cleanId || isNaN(cleanId)) {
+      return { success: false, error: "รหัสสินค้าไม่ถูกต้อง" }
+    }
+
+    if (isNaN(cleanPrice) || cleanPrice <= 0) {
+      return { success: false, error: "กรุณาระบุราคาขายที่มากกว่า 0 บาท" }
+    }
+
+    // 💡 ใช้ Supabase Service Role เพื่อบันทึกราคาลงตาราง products ในฐานข้อมูลจริง
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY!
+    const adminClient = createClient(process.env.SUPABASE_URL!, supabaseKey)
+
+    const { data, error } = await adminClient
+      .from('products')
+      .update({ price: cleanPrice })
+      .eq('id', cleanId)
+      .select('id, name, sku, price')
+      .single()
+
+    if (error) {
+      console.error("updateProductPrice error:", error)
+      return { success: false, error: "ไม่สามารถบันทึกราคาลงฐานข้อมูลได้: " + error.message }
+    }
+
+    // ล้าง In-memory cache เพื่อให้การโหลดครั้งต่อไปดึงราคาใหม่ทันที
+    await clearPosCache()
+
+    return { 
+      success: true, 
+      product: data, 
+      price: cleanPrice,
+      message: `บันทึกราคา ฿${cleanPrice.toLocaleString()} ลงฐานข้อมูลเรียบร้อยแล้ว` 
+    }
+  } catch (err: any) {
+    console.error("updateProductPrice unexpected error:", err)
+    return { success: false, error: "เกิดข้อผิดพลาด: " + (err.message || String(err)) }
+  }
 }

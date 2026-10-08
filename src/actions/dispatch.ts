@@ -50,7 +50,7 @@ export async function getGroupedDispatches() {
         price_at_sale, 
         fulfill_branch_id,
         products!order_items_product_fk ( 
-          id, name, sku, image_url, price, specs, width_cm, length_cm, thickness_cm,
+          id, name, sku, image_url, price, specs, width_cm, length_cm, thickness_cm, category_id,
           collection_groups ( product_sup ),
           stock ( branch_id, qty ) 
         ),
@@ -85,7 +85,7 @@ export async function getGroupedDispatches() {
         price_at_sale, 
         fulfill_branch_id,
         products!order_items_product_fk ( 
-          id, name, sku, image_url, price, specs, width_cm, length_cm, thickness_cm,
+          id, name, sku, image_url, price, specs, width_cm, length_cm, thickness_cm, category_id,
           collection_groups ( product_sup ),
           stock ( branch_id, qty ) 
         ),
@@ -121,7 +121,7 @@ export async function getGroupedDispatches() {
         price_at_sale, 
         fulfill_branch_id,
         products!order_items_product_fk ( 
-          id, name, sku, image_url, price, specs, width_cm, length_cm, thickness_cm,
+          id, name, sku, image_url, price, specs, width_cm, length_cm, thickness_cm, category_id,
           collection_groups ( product_sup ),
           stock ( branch_id, qty ) 
         ),
@@ -156,7 +156,7 @@ export async function getGroupedDispatches() {
         price_at_sale, 
         fulfill_branch_id,
         products!order_items_product_fk ( 
-          id, name, sku, image_url, price, specs, width_cm, length_cm, thickness_cm,
+          id, name, sku, image_url, price, specs, width_cm, length_cm, thickness_cm, category_id,
           collection_groups ( product_sup ),
           stock ( branch_id, qty ) 
         ),
@@ -274,7 +274,7 @@ export async function getPrintDispatchData(orderCode: string) {
         price_at_sale,
         fulfill_branch_id,
         products!order_items_product_fk ( 
-          name, sku, image_url, price, specs, width_cm, length_cm, thickness_cm,
+          name, sku, image_url, price, specs, width_cm, length_cm, thickness_cm, category_id,
           collection_groups ( product_sup ),
           stock ( branch_id, qty ) 
         ),
@@ -294,7 +294,13 @@ export async function getPrintDispatchData(orderCode: string) {
   return { success: true, data: order }
 }
 
-export async function approveAndCutStock(orderId: number, orderCode: string, items: any[], customOrderCode?: string) {
+export async function approveAndCutStock(
+  orderId: number, 
+  orderCode: string, 
+  items: any[], 
+  customOrderCode?: string,
+  forcePreOrderApproval?: boolean
+) {
   const cookieStore = await cookies()
   const supabase = createServerClient(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!, { 
     cookies: { getAll() { return cookieStore.getAll() } } 
@@ -314,6 +320,78 @@ export async function approveAndCutStock(orderId: number, orderCode: string, ite
       return { success: false, error: "ออเดอร์นี้ถูกอนุมัติไปแล้ว ไม่สามารถตัดสต็อกซ้ำได้" }
     }
 
+    const outOfStockSnapshot = (order?.discount_snapshot?.out_of_stock_products || []).map(String)
+    const isPreOrderBill = Boolean(order?.discount_snapshot?.is_preorder)
+
+    // 🔍 1. ตรวจสอบสต็อกสดของทุกรายการก่อนทำการตัด เพื่อป้องกันการขายตัดหน้า และบล็อกไม้แผ่น
+    const frontRunItems: Array<{ id: string; name: string; sku: string; requestedQty: number; currentStock: number }> = []
+    const blockedWoodSlabs: Array<{ name: string; sku: string }> = []
+
+    for (const item of items) {
+      const productId = item.products?.id || item.product_id;
+      const branchId = item.fulfill_branch_id;
+      const qty = item.qty;
+      const categoryId = item.products?.category_id;
+      const isWoodSlab = categoryId === 'woodslab' || (!categoryId && item.products?.specs?.wood_type);
+
+      if (!productId) continue;
+
+      const { data: currentStock } = await supabase
+        .from('stock')
+        .select('id, qty')
+        .eq('product_id', productId)
+        .eq('branch_id', branchId)
+        .maybeSingle()
+
+      const currentStockQty = Number(currentStock?.qty) || 0;
+
+      if (currentStockQty < qty) {
+        // 1.1 ไม้แผ่น (Wood Slab): มีชิ้นเดียวในโลก ห้ามสต็อกติดลบเด็ดขาด 100%
+        if (isWoodSlab) {
+          blockedWoodSlabs.push({
+            name: item.products?.name || item.name || 'ไม้แผ่น',
+            sku: item.products?.sku || item.sku || '-'
+          })
+          continue;
+        }
+
+        // 1.2 สินค้าทั่วไป/Prop: ตรวจสอบว่าเป็นพรีออเดอร์ตั้งแต่วันเปิดบิลหรือไม่?
+        const wasPreOrderAtStart = isPreOrderBill || outOfStockSnapshot.includes(String(productId))
+        
+        // ถ้าตอนเปิดบิลสต็อกเคยมีของ (ไม่ได้ตั้งใจพรีออเดอร์) แต่ตอนนี้ของดันหมด = โดนตัดหน้าสดๆ!
+        if (!wasPreOrderAtStart && !forcePreOrderApproval) {
+          frontRunItems.push({
+            id: String(productId),
+            name: item.products?.name || item.name || 'สินค้า',
+            sku: item.products?.sku || item.sku || '-',
+            requestedQty: qty,
+            currentStock: currentStockQty
+          })
+        }
+      }
+    }
+
+    // 🛑 1.3 ถ้ามีไม้แผ่นที่สต็อกไม่พอ -> บล็อกทันที 100% ห้ามขายเด็ดขาด
+    if (blockedWoodSlabs.length > 0) {
+      const slabList = blockedWoodSlabs.map(s => `• ${s.name} (SKU: ${s.sku})`).join('\n')
+      return {
+        success: false,
+        isWoodSlabBlocked: true,
+        error: `ไม่สามารถอนุมัติได้! สินค้าไม้แผ่นเป็นสินค้าชิ้นเดียวและสต็อกไม่พอ (ถูกตัดหน้าหรือขายไปแล้ว):\n${slabList}`
+      }
+    }
+
+    // 🚨 1.4 ถ้ามีสินค้าที่เพิ่งโดนตัดหน้าสดๆ -> เด้งเตือนทันที ห้ามปล่อยผ่านเงียบๆ!
+    if (frontRunItems.length > 0) {
+      const itemList = frontRunItems.map(f => `• ${f.name} (สั่ง ${f.requestedQty} ชิ้น / ในคลังเหลือ ${f.currentStock} ชิ้น)`).join('\n')
+      return {
+        success: false,
+        isFrontRun: true,
+        frontRunItems,
+        error: `⚠️ สินค้าเพิ่งถูกสาขาอื่นตัดสต็อกตัดหน้าไปเมื่อสักครู่!\n${itemList}\n\nของหน้าร้านชิ้นจริงหมดแล้ว ต้องการเปลี่ยนเป็นสั่งพรีออเดอร์ (สต็อกติดลบ) หรือไม่?`
+      }
+    }
+
     let finalOrderCode = orderCode
     if (customOrderCode && customOrderCode.trim() !== '') {
       finalOrderCode = customOrderCode.trim()
@@ -326,6 +404,17 @@ export async function approveAndCutStock(orderId: number, orderCode: string, ite
       await supabase.from('stock_transfers')
         .update({ note: `โอนสินค้าสำหรับออเดอร์ ${finalOrderCode}` })
         .like('note', `%${orderCode}%`)
+    }
+
+    // หากมีการยืนยันเปลี่ยนเป็นพรีออเดอร์ ให้บันทึกประวัติลง discount_snapshot
+    if (forcePreOrderApproval) {
+      const updatedSnap = {
+        ...(order.discount_snapshot || {}),
+        converted_to_preorder: true,
+        converted_at: new Date().toISOString(),
+        converted_by_id: user.id
+      }
+      await supabase.from('orders').update({ discount_snapshot: updatedSnap }).eq('id', orderId)
     }
 
     for (const item of items) {
@@ -342,23 +431,48 @@ export async function approveAndCutStock(orderId: number, orderCode: string, ite
         .select('id, qty')
         .eq('product_id', productId)
         .eq('branch_id', branchId)
-        .single()
+        .maybeSingle()
 
-      if (!currentStock || currentStock.qty < qty) {
-        throw new Error(`สต็อกสินค้า "${item.products?.name || productId}" ไม่เพียงพอในสาขานี้`)
+      const currentStockQty = Number(currentStock?.qty) || 0;
+      const newStockQty = currentStockQty - qty;
+      const isPreOrderCut = currentStockQty < qty;
+
+      if (!currentStock?.id) {
+        // หากยังไม่มีแถวสต็อกในสาขานี้ ให้สร้างขึ้นมาใหม่พร้อมยอดตัดสต็อก
+        const { error: insertStockErr } = await supabase
+          .from('stock')
+          .insert({
+            product_id: productId,
+            branch_id: branchId,
+            qty: newStockQty,
+            updated_at: new Date().toISOString()
+          })
+
+        if (insertStockErr) {
+          await supabase.from('stock').upsert({
+            product_id: productId,
+            branch_id: branchId,
+            qty: newStockQty,
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'product_id,branch_id' })
+        }
+      } else {
+        await supabase
+          .from('stock')
+          .update({ qty: newStockQty, updated_at: new Date().toISOString() })
+          .eq('id', currentStock.id)
       }
 
-      await supabase
-        .from('stock')
-        .update({ qty: currentStock.qty - qty, updated_at: new Date().toISOString() })
-        .eq('id', currentStock.id)
+      const movementNote = isPreOrderCut
+        ? `ชำระเงินใบขาย (พรีออเดอร์/สต็อกติดลบ บิล: ${finalOrderCode})`
+        : `ชำระเงินและอนุมัติใบขาย (บิล: ${finalOrderCode})`;
 
       await supabase.from('stock_movements').insert({
         product_id_bigint: productId, 
         branch_id: branchId, 
         type: 'SALE', 
         qty: -Math.abs(qty), 
-        note: `ชำระเงินและอนุมัติใบขาย (บิล: ${finalOrderCode})`, 
+        note: movementNote, 
         ref_type: 'ORDER', 
         ref_id_bigint: orderId, 
         created_by: user.id

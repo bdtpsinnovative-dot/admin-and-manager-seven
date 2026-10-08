@@ -52,7 +52,7 @@ export default function SaleDispatchMonitorPage() {
     title: string;
     description: string;
     confirmText?: string;
-    confirmVariant?: 'emerald' | 'blue' | 'red';
+    confirmVariant?: 'emerald' | 'blue' | 'red' | 'amber';
     showOrderCodeInput?: boolean;
     defaultOrderCode?: string;
     showCancelReasonInput?: boolean;
@@ -107,11 +107,28 @@ export default function SaleDispatchMonitorPage() {
 
   const handleApproveStock = async (orderId: number, orderCode: string, items: any[]) => {
     setModalCustomOrderCode(orderCode) // ดึงรหัสเดิมมาแสดงให้แก้
+
+    // ตรวจสอบสินค้าที่สต็อกไม่พอ (พรีออเดอร์)
+    const outOfStockItems = items.filter((item: any) => {
+      const branchStock = item.products?.stock?.find((s: any) => Number(s.branch_id) === Number(item.fulfill_branch_id))
+      const currentLiveQty = branchStock ? Number(branchStock.qty) : 0
+      return currentLiveQty < item.qty
+    })
+
+    const isPreOrder = outOfStockItems.length > 0
+    const outOfStockDetails = outOfStockItems.map((item: any) => {
+      const branchStock = item.products?.stock?.find((s: any) => Number(s.branch_id) === Number(item.fulfill_branch_id))
+      const currentLiveQty = branchStock ? Number(branchStock.qty) : 0
+      return `• ${item.products?.name || item.products?.sku || 'สินค้า'} (สั่ง ${item.qty} ชิ้น / ในคลังมี ${currentLiveQty} ชิ้น)`
+    }).join('\n')
+
     setConfirmModal({
       isOpen: true,
-      title: 'ยืนยันรับชำระเงินและตัดสต็อก?',
-      description: 'กรุณาตรวจสอบรายการสินค้าและยอดเงินให้ถูกต้องก่อนกดยืนยัน\nระบบจะทำการบันทึกรับเงินและตัดสต็อกทันที',
-      confirmText: 'ยืนยันรับชำระเงิน',
+      title: isPreOrder ? '⚠️ ยืนยันรับชำระเงิน (มีรายการพรีออเดอร์)?' : 'ยืนยันรับชำระเงินและตัดสต็อก?',
+      description: isPreOrder
+        ? `⚠️ แจ้งเตือน: บิลนี้มีสินค้าพรีออเดอร์ (สต็อกในคลังไม่พอ):\n${outOfStockDetails}\n\nเมื่อกดยืนยัน ระบบจะบันทึกรับชำระเงิน และ "ตัดสต็อกให้เป็นค่าติดลบ" เพื่อรอการรับสินค้าเข้าคลัง (Stock-in) ในภายหลัง\n\nต้องการยืนยันรับชำระเงินใช่หรือไม่?`
+        : 'กรุณาตรวจสอบรายการสินค้าและยอดเงินให้ถูกต้องก่อนกดยืนยัน\nระบบจะทำการบันทึกรับเงินและตัดสต็อกทันที',
+      confirmText: isPreOrder ? 'ยืนยันรับเงิน (พรีออเดอร์/สต็อกติดลบ)' : 'ยืนยันรับชำระเงิน',
       confirmVariant: 'emerald',
       showOrderCodeInput: true,
       defaultOrderCode: orderCode,
@@ -120,8 +137,46 @@ export default function SaleDispatchMonitorPage() {
         const res = await approveAndCutStock(orderId, orderCode, items, customCode)
 
         if (res.success) {
-          toast.success("อนุมัติรับชำระเงิน และ หักสต็อกออกจากคลังเรียบร้อยแล้ว!")
+          toast.success(isPreOrder ? "อนุมัติรับชำระเงินพรีออเดอร์ และตัดสต็อกเรียบร้อยแล้ว!" : "อนุมัติรับชำระเงิน และ หักสต็อกออกจากคลังเรียบร้อยแล้ว!")
           await loadData()
+        } else if (res.isWoodSlabBlocked) {
+          // 🚫 ไม้แผ่นถูกขายตัดหน้าไปแล้ว บล็อก 100%
+          setConfirmModal({
+            isOpen: true,
+            title: '🚫 สินค้าไม้แผ่นถูกขายไปแล้ว!',
+            description: res.error,
+            confirmText: 'รับทราบ (ปิดหน้าต่าง)',
+            confirmVariant: 'red',
+            onConfirm: async () => {
+              await loadData()
+            }
+          })
+        } else if (res.isFrontRun) {
+          // 🚨 ดีด Modal แจ้งเตือนการโดนตัดหน้าสดๆ ทันที!
+          const frontRunDetails = (res.frontRunItems || []).map((f: any) => 
+            `• ${f.name} (สั่ง ${f.requestedQty} ชิ้น / ในคลังเหลือ ${f.currentStock} ชิ้น)`
+          ).join('\n')
+
+          setConfirmModal({
+            isOpen: true,
+            title: '🚨 สินค้าเพิ่งถูกสาขาอื่นตัดสต็อกตัดหน้า!',
+            description: `⚠️ แจ้งเตือนด่วน: สินค้าต่อไปนี้เพิ่งถูกสาขาอื่นตัดสต็อกไปเมื่อสักครู่:\n${frontRunDetails}\n\nของหน้าร้านชิ้นจริงหมดแล้ว!\nกรุณาแจ้งลูกค้าก่อนว่าต้องการ "เปลี่ยนเป็นสั่งพรีออเดอร์/รอของเข้าคลัง" ใช่หรือไม่?`,
+            confirmText: '📦 ลูกค้ารอได้ - ยืนยันพรีออเดอร์ (สต็อกติดลบ)',
+            confirmVariant: 'amber',
+            showOrderCodeInput: true,
+            defaultOrderCode: customCode || orderCode,
+            onConfirm: async (newCode?: string) => {
+              setApprovingId(orderId)
+              const forceRes = await approveAndCutStock(orderId, orderCode, items, newCode, true)
+              if (forceRes.success) {
+                toast.success("บันทึกรับเงิน และเปลี่ยนเป็นพรีออเดอร์เรียบร้อยแล้ว!")
+                await loadData()
+              } else {
+                toast.error("เกิดข้อผิดพลาด: " + forceRes.error)
+              }
+              setApprovingId(null)
+            }
+          })
         } else {
           toast.error("เกิดข้อผิดพลาด: " + res.error)
         }
@@ -293,14 +348,25 @@ export default function SaleDispatchMonitorPage() {
               const isStorefrontTakeaway = (!order.shipping_address && !hasCoordinates) || (order.shipping_address?.includes('[รับหน้าร้าน]') && !hasCoordinates);
               const isMyTask = tasks.myTasks.some(t => t.id === order.id)
 
+              const outOfStockSnapshot = (order.discount_snapshot?.out_of_stock_products || []).map(String)
+              const isOrderPreOrderFromStart = Boolean(order.discount_snapshot?.is_preorder)
+
               const isAnyItemOutOfStock = order.order_items.some((item: any) => {
                 const branchStock = item.products?.stock?.find((s: any) => Number(s.branch_id) === Number(item.fulfill_branch_id))
                 const currentLiveQty = branchStock ? Number(branchStock.qty) : 0
                 return currentLiveQty < item.qty
               })
 
+              const hasFrontRunItem = order.order_items.some((item: any) => {
+                const branchStock = item.products?.stock?.find((s: any) => Number(s.branch_id) === Number(item.fulfill_branch_id))
+                const currentLiveQty = branchStock ? Number(branchStock.qty) : 0
+                const isOut = currentLiveQty < item.qty && order.status === 'PENDING'
+                const isKnown = isOut && (isOrderPreOrderFromStart || outOfStockSnapshot.includes(String(item.products?.id)))
+                return isOut && !isKnown
+              })
+
               return (
-                <div key={`${order.id}-${index}`} className={`bg-white border rounded-xl shadow-sm overflow-hidden transition-all ${isAnyItemOutOfStock && order.status === 'PENDING' ? 'border-red-300' : 'border-slate-200'}`}>
+                <div key={`${order.id}-${index}`} className={`bg-white border rounded-xl shadow-sm overflow-hidden transition-all ${hasFrontRunItem && order.status === 'PENDING' ? 'border-rose-400' : isAnyItemOutOfStock && order.status === 'PENDING' ? 'border-amber-300' : 'border-slate-200'}`}>
                   {/* Order Header */}
                   <div
                     onClick={() => toggleExpand(order.id)}
@@ -341,11 +407,15 @@ export default function SaleDispatchMonitorPage() {
                     </div>
 
                     <div className="flex items-center gap-4 mt-3 md:mt-0 ml-14 md:ml-0">
-                      {isAnyItemOutOfStock && order.status === 'PENDING' && (
-                        <span className="flex items-center gap-1 text-[10px] font-bold bg-red-100 text-red-600 border border-red-200 px-2 py-1 rounded-full animate-pulse">
-                          <AlertTriangle className="w-3 h-3" /> สต็อกไม่พอ!
+                      {hasFrontRunItem && order.status === 'PENDING' ? (
+                        <span className="flex items-center gap-1 text-[10px] font-bold bg-rose-100 text-rose-700 border border-rose-300 px-2.5 py-0.5 rounded-full shadow-2xs animate-pulse">
+                          <AlertTriangle className="w-3 h-3 text-rose-600" /> 🚨 โดนซื้อตัดหน้า!
                         </span>
-                      )}
+                      ) : isAnyItemOutOfStock && order.status === 'PENDING' ? (
+                        <span className="flex items-center gap-1 text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300 px-2.5 py-0.5 rounded-full shadow-2xs">
+                          <AlertTriangle className="w-3 h-3 text-amber-600" /> มีรายการพรีออเดอร์
+                        </span>
+                      ) : null}
                       <span className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1 rounded-full border ${order.status === 'PENDING' ? 'text-rose-600 bg-rose-50 border-rose-200' : isStorefrontTakeaway ? 'text-indigo-600 bg-indigo-50 border-indigo-200' : order.status === 'CANCELLED' ? 'text-red-600 bg-red-50 border-red-200' : 'text-amber-600 bg-amber-50 border-amber-200'} ${order.status === 'COMPLETED' ? '!text-emerald-600 !bg-emerald-50 !border-emerald-200' : ''}`}>
                         {order.status === 'PENDING' ? (
                           <><Banknote className="w-3.5 h-3.5" /> รอชำระเงิน {order.order_items.length} รายการ</>
@@ -394,10 +464,12 @@ export default function SaleDispatchMonitorPage() {
                               const branchStock = item.products?.stock?.find((s: any) => Number(s.branch_id) === Number(item.fulfill_branch_id))
                               const currentLiveQty = branchStock ? Number(branchStock.qty) : 0
                               const isOutOfStock = currentLiveQty < item.qty && order.status === 'PENDING'
+                              const isKnownPreOrder = isOutOfStock && (isOrderPreOrderFromStart || outOfStockSnapshot.includes(String(item.products?.id)))
+                              const isFrontRun = isOutOfStock && !isKnownPreOrder
 
                               return (
-                                <div key={`${item.id}-${itemIndex}`} className={`flex items-center gap-3 p-3 rounded-lg border shadow-sm ${isOutOfStock ? 'bg-red-50/40 border-red-200' : 'bg-white border-slate-200'}`}>
-                                  <div className={`w-12 h-12 rounded-md border flex items-center justify-center shrink-0 ${isOutOfStock ? 'opacity-50 grayscale bg-slate-100 border-slate-200' : 'bg-slate-50 border-slate-100'}`}>
+                                <div key={`${item.id}-${itemIndex}`} className={`flex items-center gap-3 p-3 rounded-lg border shadow-sm ${isFrontRun ? 'bg-rose-50/50 border-rose-200' : isKnownPreOrder ? 'bg-amber-50/40 border-amber-200' : 'bg-white border-slate-200'}`}>
+                                  <div className="w-12 h-12 rounded-md border flex items-center justify-center shrink-0 bg-slate-50 border-slate-100">
                                     {item.products?.image_url ? (
                                       <img src={item.products?.image_url} alt={item.products?.name} className="w-full h-full object-contain p-1" />
                                     ) : (
@@ -405,7 +477,7 @@ export default function SaleDispatchMonitorPage() {
                                     )}
                                   </div>
                                   <div className="flex-1 min-w-0">
-                                    <span className={`text-sm font-semibold block truncate ${isOutOfStock ? 'text-slate-400 line-through' : 'text-slate-800'}`}>
+                                    <span className={`text-sm font-semibold block truncate ${isFrontRun ? 'text-rose-900' : isKnownPreOrder ? 'text-amber-900' : 'text-slate-800'}`}>
                                       {item.products?.name}
                                     </span>
                                     <div className="flex items-center gap-2 mt-0.5">
@@ -413,16 +485,21 @@ export default function SaleDispatchMonitorPage() {
                                         <Store className="w-2.5 h-2.5" /> คลัง: {item.branches?.branch_name || `สาขา ${item.fulfill_branch_id}`}
                                       </span>
                                       <span className="text-xs text-slate-500 block">SKU: {item.products?.sku}</span>
-                                      {isOutOfStock && (
-                                        <span className="flex items-center gap-1 text-[9px] text-red-600 font-bold bg-white border border-red-200 px-1.5 py-0.5 rounded shadow-sm">
-                                          <AlertTriangle className="w-2.5 h-2.5" /> โดนซื้อตัดหน้า (เหลือ {currentLiveQty})
+                                      {isFrontRun && (
+                                        <span className="flex items-center gap-1 text-[9px] text-rose-700 font-bold bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded shadow-xs animate-pulse">
+                                          <AlertTriangle className="w-2.5 h-2.5 text-rose-600" /> โดนตัดหน้า! (เหลือ {currentLiveQty})
+                                        </span>
+                                      )}
+                                      {isKnownPreOrder && (
+                                        <span className="flex items-center gap-1 text-[9px] text-amber-800 font-bold bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded shadow-xs">
+                                          <AlertTriangle className="w-2.5 h-2.5 text-amber-600" /> พรีออเดอร์ (มีในคลัง {currentLiveQty})
                                         </span>
                                       )}
                                     </div>
                                   </div>
                                   <div className="text-right">
-                                    <span className={`text-sm font-bold block ${isOutOfStock ? 'text-slate-400' : 'text-slate-800'}`}>x{item.qty}</span>
-                                    <span className={`text-[11px] font-bold block ${isOutOfStock ? 'text-slate-400' : 'text-emerald-600'}`}>{Number(item.price_at_sale).toLocaleString()} ฿</span>
+                                    <span className="text-sm font-bold block text-slate-800">x{item.qty}</span>
+                                    <span className="text-[11px] font-bold block text-emerald-600">{Number(item.price_at_sale).toLocaleString()} ฿</span>
                                   </div>
                                 </div>
                               )
@@ -556,14 +633,18 @@ export default function SaleDispatchMonitorPage() {
                                   {order.status === 'PENDING' && (
                                     <button
                                       onClick={() => handleApproveStock(order.id, order.order_code, order.order_items)}
-                                      disabled={approvingId === order.id || isAnyItemOutOfStock}
-                                      className={`w-full py-2.5 text-white rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2 shadow-sm
-                                        ${isAnyItemOutOfStock ? 'bg-red-400 cursor-not-allowed' : 'bg-emerald-500 hover:bg-emerald-600'}`}
+                                      disabled={approvingId === order.id}
+                                      className={`w-full py-2.5 text-white rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2 shadow-sm cursor-pointer
+                                        ${hasFrontRunItem ? 'bg-rose-600 hover:bg-rose-700' : isAnyItemOutOfStock ? 'bg-amber-600 hover:bg-amber-700' : 'bg-emerald-500 hover:bg-emerald-600'}`}
                                     >
-                                      {isAnyItemOutOfStock ? (
-                                        <><AlertTriangle className="w-4 h-4" /> ไม่สามารถอนุมัติได้ (สินค้าหมด)</>
+                                      {approvingId === order.id ? (
+                                        'กำลังดำเนินการ...'
+                                      ) : hasFrontRunItem ? (
+                                        <><AlertTriangle className="w-4 h-4" /> ตรวจพบสินค้าโดนตัดหน้า (คลิกดูทางเลือก)</>
+                                      ) : isAnyItemOutOfStock ? (
+                                        <><AlertTriangle className="w-4 h-4" /> ยืนยันรับชำระเงิน (มีรายการพรีออเดอร์)</>
                                       ) : (
-                                        <>{approvingId === order.id ? 'กำลังตัดสต็อก...' : <><Banknote className="w-4 h-4" /> ยืนยันรับชำระเงิน & ตัดสต็อก</>}</>
+                                        <><Banknote className="w-4 h-4" /> ยืนยันรับชำระเงิน & ตัดสต็อก</>
                                       )}
                                     </button>
                                   )}
@@ -716,7 +797,8 @@ export default function SaleDispatchMonitorPage() {
                 className={`flex-1 py-3 text-white rounded-xl font-bold text-xs transition-all cursor-pointer shadow-md flex items-center justify-center gap-1.5 ${confirmModal.confirmVariant === 'emerald' ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200' :
                     confirmModal.confirmVariant === 'blue' ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-200' :
                       confirmModal.confirmVariant === 'red' ? 'bg-red-600 hover:bg-red-700 shadow-red-200' :
-                        'bg-slate-800 hover:bg-slate-900 shadow-slate-200'
+                        confirmModal.confirmVariant === 'amber' ? 'bg-amber-600 hover:bg-amber-700 shadow-amber-200' :
+                          'bg-slate-800 hover:bg-slate-900 shadow-slate-200'
                   }`}
               >
                 <Save className="w-4 h-4" /> {confirmModal.confirmText || 'ยืนยัน'}

@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import dynamic from 'next/dynamic'
-import { getPosData, processCheckout, CheckoutPayload, getNearbyStock, getOrderForEdit, PosSetBundle, validatePosCoupon } from '@/actions/pos'
-import { FolderOpen, Store, Truck, Receipt, MapPin, Save, AlertTriangle, X, Plus, Minus, FileText, Trash2, Printer, RefreshCw, Clock, Menu, Sparkles, Ticket, SlidersHorizontal, Armchair } from 'lucide-react'
+import { getPosData, processCheckout, CheckoutPayload, getNearbyStock, getOrderForEdit, PosSetBundle, validatePosCoupon, updateProductPrice } from '@/actions/pos'
+import { FolderOpen, Store, Truck, Receipt, MapPin, Save, AlertTriangle, X, Plus, Minus, FileText, Trash2, Printer, RefreshCw, Clock, Menu, Sparkles, Ticket, SlidersHorizontal, Armchair, Tag, Edit3 } from 'lucide-react'
 import { toast } from 'sonner'
 import StorefrontFilterDrawer from '@/components/pos/StorefrontFilterDrawer'
 import StorefrontFilterBar from '@/components/pos/StorefrontFilterBar'
@@ -190,6 +190,90 @@ export default function ManagerPOSPage() {
     nearbyStocks: any[];
     isLoading: boolean;
   }>({ isOpen: false, product: null, nearbyStocks: [], isLoading: false })
+
+  // 🏷️ State สำหรับ Modal กำหนดราคาขายสินค้าลงฐานข้อมูลจริง
+  const [priceModal, setPriceModal] = useState<{
+    isOpen: boolean;
+    product: Product | null;
+    initialPrice: string;
+    fulfillBranchId?: number;
+    customQty?: number;
+    cartItemId?: string | null;
+  }>({
+    isOpen: false,
+    product: null,
+    initialPrice: '',
+    cartItemId: null
+  })
+  const [modalInputPrice, setModalInputPrice] = useState<string>('')
+  const [isSavingPrice, setIsSavingPrice] = useState(false)
+
+  const openSetPriceModal = (product: Product, cartItemId: string | null = null, fulfillBranchId?: number, qty = 1) => {
+    const rawPrice = product.price > 0 ? String(product.price) : ''
+    setPriceModal({
+      isOpen: true,
+      product,
+      initialPrice: rawPrice,
+      fulfillBranchId,
+      customQty: qty,
+      cartItemId
+    })
+    setModalInputPrice(rawPrice)
+  }
+
+  const handleSaveProductPrice = async () => {
+    if (!priceModal.product) return
+    const numPrice = Number(modalInputPrice)
+    if (isNaN(numPrice) || numPrice <= 0) {
+      toast.error('กรุณาระบุราคาขายที่มากกว่า 0 บาทครับ')
+      return
+    }
+
+    setIsSavingPrice(true)
+    try {
+      const res = await updateProductPrice(priceModal.product.id, numPrice)
+      if (!res.success) {
+        toast.error(res.error || 'บันทึกราคาไม่สำเร็จ')
+        setIsSavingPrice(false)
+        return
+      }
+
+      toast.success(res.message || `บันทึกราคา ฿${numPrice.toLocaleString()} สำเร็จ`)
+
+      const targetId = priceModal.product.id
+      const updatedProduct = {
+        ...priceModal.product,
+        price: numPrice,
+        original_price: numPrice
+      }
+
+      // 1. อัปเดตรายการสินค้าหน้าร้าน (products)
+      setProducts(prev => prev.map(p => p.id === targetId ? { ...p, price: numPrice, original_price: numPrice } : p))
+
+      // 2. ถ้ามีอยู่ในตะกร้าแล้ว (cartItemId) -> อัปเดตราคาในตะกร้าทันที
+      if (priceModal.cartItemId) {
+        setCart(prev => prev.map(item => {
+          if (item.cartItemId === priceModal.cartItemId || item.id === targetId) {
+            return {
+              ...item,
+              price: numPrice,
+              original_price: numPrice
+            }
+          }
+          return item
+        }))
+      } else {
+        // 3. ถ้ายังไม่เคยอยู่ในตะกร้า -> ดึงลงตะกร้าด้วยราคาใหม่ทันที
+        await addToCart(updatedProduct, priceModal.customQty || 1, priceModal.fulfillBranchId, false)
+      }
+
+      setPriceModal({ isOpen: false, product: null, initialPrice: '', cartItemId: null })
+    } catch (err: any) {
+      toast.error('เกิดข้อผิดพลาด: ' + (err.message || String(err)))
+    } finally {
+      setIsSavingPrice(false)
+    }
+  }
 
   useEffect(() => { loadData(true) }, [])
 
@@ -392,10 +476,16 @@ export default function ManagerPOSPage() {
     addToCart(product)
   }
 
-  const addToCart = async (product: Product, customQty = 1, customFulfillBranchId?: number) => {
+  const addToCart = async (product: Product, customQty = 1, customFulfillBranchId?: number, forceAdd = false) => {
     const targetBranchId = customFulfillBranchId !== undefined
       ? customFulfillBranchId
       : (selectedLocation === 'ALL' ? myBranchId : selectedLocation)
+
+    // 🏷️ กฎบังคับ: ถ้าสินค้ามีราคา 0 ฿ หรือยังไม่ได้ตั้งราคา ต้องให้เซลตั้งราคาก่อนเสมอ และบันทึกลงฐานข้อมูลจริง!
+    if (!product.price || Number(product.price) <= 0) {
+      openSetPriceModal(product, null, targetBranchId, customQty)
+      return
+    }
 
     const branchStock = product.stocks?.find(s => s.branch_id === targetBranchId)
     const availableQty = branchStock ? Number(branchStock.qty) : 0
@@ -409,7 +499,7 @@ export default function ManagerPOSPage() {
     const isExemptStock = Boolean(product.isExternal || product.isFurniture || product.category_id === 'furniture')
 
     // ถ้าสต็อกในสาขาหมด หรือหยิบจนเกินสต็อกที่มี (เฉพาะสินค้าทั่วไป)
-    if (!isExemptStock && (availableQty <= 0 || currentInCart >= availableQty)) {
+    if (!forceAdd && !isExemptStock && (availableQty <= 0 || currentInCart >= availableQty)) {
       if (totalStock > 0 && totalStock > currentInCart) {
         setNearbyModal({ isOpen: true, product, nearbyStocks: [], isLoading: true })
         const res = await getNearbyStock(product.id, targetBranchId)
@@ -418,11 +508,11 @@ export default function ManagerPOSPage() {
           return
         }
       }
-      toast.error('สินค้าในสาขานี้หมดแล้วครับ!')
-      return
+      // หากไม่มีสต็อกในสาขาอื่น หรือสต็อกเป็น 0 ทุกสาขา อนุญาตให้ดึงลงตะกร้าสำหรับทำใบเสนอราคา
+      toast.info('เพิ่มสินค้าลงตะกร้าแล้ว (สต็อก 0 สำหรับออกใบเสนอราคา)')
     }
 
-    // 🚀 สต็อกพอ ดึงลงตะกร้าปกติ พร้อมเล่นแอนิเมชัน
+    // 🚀 สต็อกพอ หรือออกใบเสนอราคา ดึงลงตะกร้าปกติ พร้อมเล่นแอนิเมชัน
     triggerCartAnimation(product.id)
 
     const branchName = branches.find(b => b.id === targetBranchId)?.branch_name || 'สาขาหลัก'
@@ -453,6 +543,13 @@ export default function ManagerPOSPage() {
     const maxQty = stockData.available_qty ?? stockData.qty ?? stockData.quantity ?? 0
 
     const product = nearbyModal.product
+
+    // 🏷️ ตรวจสอบราคา 0 ก่อนดึงข้ามสาขา
+    if (!product.price || Number(product.price) <= 0) {
+      setNearbyModal({ isOpen: false, product: null, nearbyStocks: [], isLoading: false })
+      openSetPriceModal(product, null, fulfillBranchId, 1)
+      return
+    }
     const cartItemId = `${product.id}-${fulfillBranchId}`
 
     setCart((prevCart) => {
@@ -495,12 +592,14 @@ export default function ManagerPOSPage() {
           const newQty = item.quantity + delta
           const isExemptStock = Boolean(item.isExternal || item.isFurniture || item.category_id === 'furniture')
           const branchStock = item.stocks?.find(s => s.branch_id === item.fulfill_branch_id)
-          const displayQty = isExemptStock ? 9999 : (branchStock ? Number(branchStock.qty) : 999)
-          if (!isExemptStock && newQty > displayQty) {
-            toast.warning(`มีสินค้าในสต็อกเพียง ${displayQty} ชิ้นครับ`)
-            return item
+          const actualQty = branchStock ? Number(branchStock.qty) : 0
+          if (newQty > 0) {
+            if (!isExemptStock && actualQty > 0 && newQty > actualQty && delta > 0) {
+              toast.info(`มีสต็อกพร้อมส่ง ${actualQty} ชิ้น (จำนวนที่เกินจะออกเป็นใบเสนอราคา)`)
+            }
+            return { ...item, quantity: newQty }
           }
-          return newQty > 0 ? { ...item, quantity: newQty } : null
+          return null
         }
         return item
       }).filter(Boolean) as CartItem[]
@@ -757,6 +856,19 @@ export default function ManagerPOSPage() {
   const handlePreCheckout = () => {
     if (cart.length === 0) return
 
+    // 🏷️ กฎเหล็ก: บล็อกการสร้างใบเสนอราคาหากมีสินค้าที่ราคาเป็น 0 ฿
+    const zeroPriceItem = cart.find(item => !item.price || Number(item.price) <= 0)
+    if (zeroPriceItem) {
+      toast.error(`ไม่สามารถสร้างใบเสนอราคาได้: สินค้า "${zeroPriceItem.name}" มีราคาเป็น 0 ฿ กรุณาตั้งราคาก่อนครับ`)
+      openSetPriceModal(zeroPriceItem, zeroPriceItem.cartItemId, zeroPriceItem.fulfill_branch_id, zeroPriceItem.quantity)
+      return
+    }
+
+    if (grandTotal <= 0) {
+      toast.error("ไม่สามารถสร้างใบเสนอราคาได้: ยอดสุทธิของใบเสนอราคาต้องมากกว่า 0 บาทครับ")
+      return
+    }
+
     const finalName = shippingName.trim()
     const finalPhone = shippingPhone.trim()
     const finalAddressText = shippingAddress.trim()
@@ -789,6 +901,19 @@ export default function ManagerPOSPage() {
 
   const handleCheckout = async () => {
     if (cart.length === 0) return
+
+    // 🏷️ กฎเหล็ก: ตรวจสอบซ้ำตอนกดยืนยันชำระ/ออกบิล
+    const zeroPriceItem = cart.find(item => !item.price || Number(item.price) <= 0)
+    if (zeroPriceItem) {
+      toast.error(`ไม่สามารถสร้างใบเสนอราคาได้: สินค้า "${zeroPriceItem.name}" มีราคาเป็น 0 ฿ กรุณาตั้งราคาก่อนครับ`)
+      openSetPriceModal(zeroPriceItem, zeroPriceItem.cartItemId, zeroPriceItem.fulfill_branch_id, zeroPriceItem.quantity)
+      return
+    }
+
+    if (grandTotal <= 0) {
+      toast.error("ไม่สามารถสร้างใบเสนอราคาได้: ยอดสุทธิของใบเสนอราคาต้องมากกว่า 0 บาทครับ")
+      return
+    }
 
     const finalName = shippingName.trim()
     const finalPhone = shippingPhone.trim()
@@ -897,10 +1022,11 @@ export default function ManagerPOSPage() {
       } else {
         toast.error(`เกิดข้อผิดพลาด: ${result.error}`)
         if (result.outOfStockProductIds && result.outOfStockProductIds.length > 0) {
+          const outOfStockIds = result.outOfStockProductIds
           loadData() // Re-fetch products to reflect actual stock
           setCart(prev => prev.map(item => ({
             ...item,
-            isOutOfStockError: result.outOfStockProductIds.includes(item.id.toString())
+            isOutOfStockError: outOfStockIds.includes(item.id.toString())
           })))
         }
       }
@@ -941,41 +1067,43 @@ export default function ManagerPOSPage() {
         if (!productMatchesDimensions(p, dimensionFilter)) return false
       }
       
-      // 🏢 กรองสต็อกตามสาขาที่เลือก (Location Filter)
-      if (selectedLocation !== 'ALL') {
-        const locStock = p.stocks.find(s => s.branch_id === selectedLocation)?.qty || 0
-        const hasSearch = searchQuery.trim().length > 0
-        
-        if (storefrontCategory === 'PRE_ORDER') {
-          if (!hasSearch && Number(locStock) > 0) return false
-        } else {
-          // ถ้าไม่ได้พิมพ์ค้นหา ให้แสดงเฉพาะสินค้าที่มีสต็อกในสาขานี้
-          if (!hasSearch && Number(locStock) <= 0) return false
-        }
-      } else {
-        // กรองสต็อกรวมทุกสาขา (ALL STOCKS)
-        const totalStock = p.stocks.reduce((sum, s) => sum + Number(s.qty), 0)
-        if (storefrontCategory === 'PRE_ORDER') {
-          return totalStock <= 0
-        }
-        return totalStock > 0
+      // 🏢 กรองสต็อก: หากเลือกดูพรีออเดอร์ (PRE_ORDER) ให้แสดงเฉพาะสินค้าที่สต็อก 0
+      if (storefrontCategory === 'PRE_ORDER') {
+        const checkStock = selectedLocation !== 'ALL'
+          ? (p.stocks.find(s => s.branch_id === selectedLocation)?.qty || 0)
+          : p.stocks.reduce((sum, s) => sum + Number(s.qty), 0)
+        if (Number(checkStock) > 0) return false
       }
+
       return true
     })
     .sort((a, b) => {
       // 🎨 อัลกอริทึมจัดลำดับแบบหน้าเว็บหน้าร้าน (Storefront Algorithm):
-      // 🏆 อันดับ 1: เรียงตามลำดับหมวดหมู่หน้าบ้าน (Storefront Category Hierarchy 1..9)
+      // 🏬 อันดับ 1: สินค้าที่มีสต็อกขึ้นก่อนเสมอ ตัวที่สต็อก 0 ให้ต่อท้าย
+      const targetBranch = selectedLocation === 'ALL' ? myBranchId : selectedLocation
+      const aLocStock = a.stocks.find(s => s.branch_id === targetBranch)?.qty || 0
+      const bLocStock = b.stocks.find(s => s.branch_id === targetBranch)?.qty || 0
+      const aTotalStock = a.stocks.reduce((sum, s) => sum + Number(s.qty), 0)
+      const bTotalStock = b.stocks.reduce((sum, s) => sum + Number(s.qty), 0)
+
+      const getStockTier = (locStock: number, totalStock: number) => {
+        if (selectedLocation === 'ALL') {
+          return totalStock > 0 ? 0 : 1
+        }
+        if (locStock > 0) return 0 // มีของในสาขาเรา (พร้อมขายทันที)
+        if (totalStock > 0) return 1 // มีของสาขาอื่น (ดึงสาขา)
+        return 2 // สต็อกเป็น 0 ทุกสาขา (เสนอราคา)
+      }
+
+      const aTier = getStockTier(Number(aLocStock), Number(aTotalStock))
+      const bTier = getStockTier(Number(bLocStock), Number(bTotalStock))
+
+      if (aTier !== bTier) return aTier - bTier
+
+      // 🏆 อันดับ 2: เรียงตามลำดับหมวดหมู่หน้าบ้าน (Storefront Category Hierarchy 1..9)
       const aCatOrder = getStorefrontCategoryOrder(a.product_sup)
       const bCatOrder = getStorefrontCategoryOrder(b.product_sup)
       if (aCatOrder !== bCatOrder) return aCatOrder - bCatOrder
-
-      // 🏬 อันดับ 2: สินค้าที่มีสต็อกในสาขาที่เลือกดู พร้อมหยิบขึ้นก่อน
-      const activeBranchForSort = selectedLocation === 'ALL' ? myBranchId : selectedLocation
-      const aLocStock = a.stocks.find(s => s.branch_id === activeBranchForSort)?.qty || 0
-      const bLocStock = b.stocks.find(s => s.branch_id === activeBranchForSort)?.qty || 0
-      const aHasLocal = Number(aLocStock) > 0 ? 0 : 1
-      const bHasLocal = Number(bLocStock) > 0 ? 0 : 1
-      if (aHasLocal !== bHasLocal) return aHasLocal - bHasLocal
 
       // 🏷️ อันดับ 3: สินค้าที่มีโปรโมชั่น/ส่วนลด ดันขึ้นมาก่อนในหมวด
       const aHasDiscount = a.discount_label ? 0 : 1
@@ -983,10 +1111,8 @@ export default function ManagerPOSPage() {
       if (aHasDiscount !== bHasDiscount) return aHasDiscount - bHasDiscount
 
       // 📦 อันดับ 4: ชิ้นที่มีสต็อกเยอะกว่าขึ้นก่อน
-      const aTotal = a.stocks.reduce((sum, s) => sum + Number(s.qty), 0)
-      const bTotal = b.stocks.reduce((sum, s) => sum + Number(s.qty), 0)
-      if (aTotal !== bTotal) {
-        return bTotal - aTotal
+      if (aTotalStock !== bTotalStock) {
+        return bTotalStock - aTotalStock
       }
 
       // 🆕 อันดับ 5: สินค้าใหม่กว่า (ID มากกว่า) ขึ้นก่อน
@@ -1458,9 +1584,13 @@ export default function ManagerPOSPage() {
                           <div className="absolute top-2 right-2 bg-slate-900/80 text-white text-[9px] px-1.5 py-0.5 rounded-md backdrop-blur-xs font-bold">
                             เหลือ {currentBranchQty}
                           </div>
-                        ) : (
+                        ) : totalStock > 0 ? (
                           <div className="absolute top-2 right-2 bg-amber-600 text-white text-[9px] px-1.5 py-0.5 rounded-md backdrop-blur-xs font-bold shadow-xs flex items-center gap-0.5">
                             <MapPin className="w-2.5 h-2.5" /> ดึงสาขา ({totalStock})
+                          </div>
+                        ) : (
+                          <div className="absolute top-2 right-2 bg-slate-700/80 text-white text-[9px] px-1.5 py-0.5 rounded-md backdrop-blur-xs font-bold shadow-xs">
+                            เสนอราคา (0)
                           </div>
                         )}
                       </div>
@@ -1481,7 +1611,13 @@ export default function ManagerPOSPage() {
                                 <span className="text-[8px] bg-orange-50 text-orange-600 px-1 rounded font-black">{product.discount_label}</span>
                               </div>
                             )}
-                            <div className="text-amber-700 font-black text-xs sm:text-sm">฿{product.price.toLocaleString()}</div>
+                            {Number(product.price) <= 0 ? (
+                              <div className="text-rose-600 font-bold text-[10px] bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200 w-fit">
+                                ยังไม่ตั้งราคา (0 ฿)
+                              </div>
+                            ) : (
+                              <div className="text-amber-700 font-black text-xs sm:text-sm">฿{product.price.toLocaleString()}</div>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -1672,6 +1808,18 @@ export default function ManagerPOSPage() {
                             🛋️ เฟอร์นิเจอร์
                           </span>
                         )}
+                        {(() => {
+                          const branchStock = item.stocks?.find(s => s.branch_id === item.fulfill_branch_id)
+                          const actualQty = branchStock ? Number(branchStock.qty) : 0
+                          if (!item.isExternal && !item.isFurniture && item.category_id !== 'furniture' && actualQty <= 0) {
+                            return (
+                              <span className="text-[8px] bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded-md font-bold border border-amber-200">
+                                📋 เสนอราคา (สต็อก 0)
+                              </span>
+                            )
+                          }
+                          return null
+                        })()}
                         {(Boolean(item.discount_id) || Boolean(item.discount_label) || item.price < item.original_price) && (
                           <span className="text-[8px] bg-orange-50 text-orange-600 px-1.5 py-0.5 rounded-md font-bold border border-orange-100">
                             {item.discount_label || 'ลดรายชิ้น'} (ไม่ร่วมโค้ดลด)
@@ -1679,7 +1827,28 @@ export default function ManagerPOSPage() {
                         )}
                       </div>
                       <div className="flex items-center justify-between mt-1">
-                        <p className="text-[11px] text-amber-700 font-extrabold">{(item.price * item.quantity).toLocaleString()} ฿</p>
+                        {Number(item.price) <= 0 ? (
+                          <button
+                            type="button"
+                            onClick={() => openSetPriceModal(item, item.cartItemId, item.fulfill_branch_id, item.quantity)}
+                            className="px-2 py-0.5 rounded-lg bg-rose-500 hover:bg-rose-600 text-white font-black text-[10px] animate-pulse flex items-center gap-1 shadow-xs cursor-pointer"
+                            title="สินค้านี้ยังไม่มีราคา คลิกเพื่อตั้งราคาขายและบันทึกลงฐานข้อมูล"
+                          >
+                            <Tag className="w-2.5 h-2.5" /> ตั้งราคาขาย (0 ฿)
+                          </button>
+                        ) : (
+                          <div className="flex items-center gap-1">
+                            <p className="text-[11px] text-amber-700 font-extrabold">{(item.price * item.quantity).toLocaleString()} ฿</p>
+                            <button
+                              type="button"
+                              onClick={() => openSetPriceModal(item, item.cartItemId, item.fulfill_branch_id, item.quantity)}
+                              className="text-slate-300 hover:text-amber-600 transition-colors p-0.5 cursor-pointer"
+                              title="แก้ไขราคาขายสินค้าและบันทึกลงฐานข้อมูล"
+                            >
+                              <Edit3 className="w-2.5 h-2.5" />
+                            </button>
+                          </div>
+                        )}
                         <div className="flex items-center bg-white border border-slate-200 rounded-lg shadow-2xs overflow-hidden h-6">
                           <button onClick={() => updateQuantity(item.cartItemId, -1)} className="w-6 h-full flex items-center justify-center text-slate-500 font-bold hover:bg-slate-50 text-xs">-</button>
                           <span className="px-1 text-[11px] font-bold text-slate-800 min-w-[16px] text-center">{item.quantity}</span>
@@ -1814,13 +1983,37 @@ export default function ManagerPOSPage() {
 
             {/* ✨ เพิ่มปุ่มเสนอราคามาไว้ตรงนี้ */}
             <div className="flex flex-col gap-2">
+              {cart.some(item => !item.price || Number(item.price) <= 0) && (
+                <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-[11px] font-bold flex items-center gap-1.5 animate-pulse">
+                  <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600" />
+                  <span>ไม่สามารถสร้างใบเสนอราคาได้: มีสินค้าที่ยังไม่ได้ตั้งราคา (0 ฿) กรุณาตั้งราคาก่อน</span>
+                </div>
+              )}
+              {cart.length > 0 && !cart.some(item => !item.price || Number(item.price) <= 0) && grandTotal <= 0 && (
+                <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-700 text-[11px] font-bold flex items-center gap-1.5">
+                  <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600" />
+                  <span>ยอดสุทธิของใบเสนอราคาต้องมากกว่า 0 บาท</span>
+                </div>
+              )}
               <button
                 onClick={handlePreCheckout}
                 disabled={submitting || cart.length === 0}
-                className={`w-full py-3.5 text-white rounded-xl font-bold text-xs transition-all shadow-md shadow-slate-200 disabled:opacity-40 disabled:shadow-none cursor-pointer flex items-center justify-center gap-1.5 ${editOrderId ? 'bg-orange-600 hover:bg-orange-700' : 'bg-[#1E293B] hover:bg-slate-800'}`}
+                className={`w-full py-3.5 text-white rounded-xl font-bold text-xs transition-all shadow-md shadow-slate-200 disabled:opacity-40 disabled:shadow-none cursor-pointer flex items-center justify-center gap-1.5 ${
+                  cart.some(item => !item.price || Number(item.price) <= 0)
+                    ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-200'
+                    : editOrderId 
+                      ? 'bg-orange-600 hover:bg-orange-700' 
+                      : 'bg-[#1E293B] hover:bg-slate-800'
+                }`}
               >
                 {submitting ? 'กำลังบันทึกข้อมูลออเดอร์...' : (
-                  editOrderId ? <><Save className="w-4 h-4" /> บันทึกการแก้ไขบิล</> : <><Save className="w-4 h-4" /> สร้างใบเสนอราคา</>
+                  cart.some(item => !item.price || Number(item.price) <= 0) ? (
+                    <><AlertTriangle className="w-4 h-4" /> มีสินค้า 0 ฿ (ต้องตั้งราคาก่อนสร้างใบเสนอราคา)</>
+                  ) : editOrderId ? (
+                    <><Save className="w-4 h-4" /> บันทึกการแก้ไขบิล</>
+                  ) : (
+                    <><Save className="w-4 h-4" /> สร้างใบเสนอราคา</>
+                  )
                 )}
               </button>
             </div>
@@ -2160,9 +2353,20 @@ export default function ManagerPOSPage() {
                 )}
               </div>
             </div>
-            <div className="p-4 bg-slate-50 border-t border-slate-100 flex gap-2">
-              <button onClick={() => setNearbyModal({ isOpen: false, product: null, nearbyStocks: [], isLoading: false })} className="flex-1 py-2.5 bg-white border border-slate-200 text-slate-600 rounded-xl font-bold text-xs hover:bg-slate-100 transition-all cursor-pointer">
-                ปิดหน้าต่าง
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex flex-col gap-2">
+              <button
+                onClick={() => {
+                  if (nearbyModal.product) {
+                    addToCart(nearbyModal.product, 1, undefined, true)
+                    setNearbyModal({ isOpen: false, product: null, nearbyStocks: [], isLoading: false })
+                  }
+                }}
+                className="w-full py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold text-xs transition-all cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
+              >
+                <FileText className="w-3.5 h-3.5" /> เพิ่มลงตะกร้าสาขาเรา (สต็อก 0 เพื่อออกใบเสนอราคา)
+              </button>
+              <button onClick={() => setNearbyModal({ isOpen: false, product: null, nearbyStocks: [], isLoading: false })} className="w-full py-2 bg-white border border-slate-200 text-slate-600 rounded-xl font-bold text-xs hover:bg-slate-100 transition-all cursor-pointer">
+                ยกเลิก / ปิดหน้าต่าง
               </button>
             </div>
           </div>
@@ -2655,6 +2859,146 @@ export default function ManagerPOSPage() {
           addToCart(product, qty, fulfillBranchId)
         }}
       />
+
+      {/* 🏷️ โมดอลกำหนดราคาขายสินค้าลงฐานข้อมูลจริง */}
+      {priceModal.isOpen && priceModal.product && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
+          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-gradient-to-r from-amber-50 to-orange-50">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-xs">
+                  <Tag className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-800 text-sm">
+                    {Number(priceModal.product.price) <= 0 ? 'ระบุราคาขายสินค้า (ยังไม่มีราคา)' : 'แก้ไขราคาขายสินค้า'}
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    บันทึกราคาลงฐานข้อมูล Supabase ทันที
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPriceModal({ isOpen: false, product: null, initialPrice: '', cartItemId: null })}
+                className="text-slate-400 hover:text-slate-700 font-bold p-1 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-5 space-y-4">
+              {/* Product Info Preview */}
+              <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-100">
+                <div className="w-14 h-14 bg-white rounded-xl overflow-hidden border border-slate-200 shrink-0 flex items-center justify-center">
+                  {priceModal.product.image_url ? (
+                    <img src={priceModal.product.image_url} alt={priceModal.product.name} className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-[9px] text-slate-300 font-medium">ไม่มีรูป</span>
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="font-bold text-slate-800 text-xs truncate" title={priceModal.product.name}>
+                    {priceModal.product.name}
+                  </p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    SKU: <span className="font-mono text-slate-600 font-semibold">{priceModal.product.sku || '-'}</span>
+                  </p>
+                  <div className="flex items-center gap-1.5 mt-1">
+                    {Number(priceModal.product.price) <= 0 ? (
+                      <span className="text-[10px] bg-rose-50 text-rose-700 px-2 py-0.5 rounded-md font-bold border border-rose-200">
+                        ⚠️ ราคาเดิม: 0 ฿
+                      </span>
+                    ) : (
+                      <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md font-semibold">
+                        ราคาเดิม: ฿{Number(priceModal.product.price).toLocaleString()}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Price Input */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  ระบุราคาขายจริง (บาท) <span className="text-rose-500">*</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="1"
+                    step="any"
+                    autoFocus
+                    placeholder="0.00"
+                    value={modalInputPrice}
+                    onChange={(e) => setModalInputPrice(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        handleSaveProductPrice()
+                      }
+                    }}
+                    className="w-full pl-4 pr-14 py-3 bg-white border-2 border-amber-300 focus:border-amber-500 focus:ring-4 focus:ring-amber-100 rounded-2xl outline-none text-base font-black text-slate-800 transition-all shadow-2xs"
+                  />
+                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                    ฿ บาท
+                  </span>
+                </div>
+                <p className="text-[10px] text-amber-700 mt-1.5 flex items-center gap-1">
+                  <span>💡</span> ราคานี้จะถูกบันทึกลงฐานข้อมูลสินค้าส่วนกลาง และใช้สำหรับออกบิลนี้ทันที
+                </p>
+              </div>
+
+              {/* Quick price presets */}
+              <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                <span className="text-[11px] text-slate-400 font-medium mr-1">ปุ่มลัด:</span>
+                {[100, 250, 350, 500, 800, 1000, 1500, 2000].map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => setModalInputPrice(String(preset))}
+                    className="text-[11px] px-2.5 py-1 bg-slate-100 hover:bg-amber-100 hover:text-amber-800 text-slate-600 rounded-lg font-semibold transition-colors cursor-pointer"
+                  >
+                    +{preset}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setPriceModal({ isOpen: false, product: null, initialPrice: '', cartItemId: null })}
+                className="px-4 py-2.5 bg-white border border-slate-200 text-slate-600 rounded-xl font-bold text-xs hover:bg-slate-100 transition-colors cursor-pointer"
+                disabled={isSavingPrice}
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveProductPrice}
+                disabled={isSavingPrice || !modalInputPrice || Number(modalInputPrice) <= 0}
+                className="px-5 py-2.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-bold text-xs transition-all shadow-md shadow-amber-200 flex items-center gap-1.5 cursor-pointer"
+              >
+                {isSavingPrice ? (
+                  <>
+                    <span className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-white border-t-transparent" />
+                    กำลังบันทึก...
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-3.5 h-3.5" />
+                    {priceModal.cartItemId ? 'บันทึกราคาลงฐานข้อมูล & อัปเดตบิล' : 'บันทึกราคาลงฐานข้อมูล & เพิ่มลงตะกร้า'}
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   )

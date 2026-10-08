@@ -14,12 +14,6 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
   const calculateTotal = () => {
     if (!data?.order_items) return 0;
     return data.order_items.reduce((sum: number, item: any) => {
-      const branchStock = item.products?.stock?.find((s: any) => Number(s.branch_id) === Number(item.fulfill_branch_id));
-      const currentLiveQty = branchStock ? Number(branchStock.qty) : 0;
-      const isOutOfStock = currentLiveQty < item.qty && data.status === 'PENDING';
-
-      if (isOutOfStock) return sum;
-
       const price = item.price_at_sale ?? item.products?.price ?? 0;
       return sum + (price * item.qty);
     }, 0);
@@ -190,11 +184,11 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
               const p = item.products || {};
               const branchStock = p.stock?.find((s: any) => Number(s.branch_id) === Number(item.fulfill_branch_id));
               const currentLiveQty = branchStock ? Number(branchStock.qty) : 0;
-              const isOutOfStock = currentLiveQty < item.qty && data.status === 'PENDING';
+              const isPreOrder = currentLiveQty < item.qty;
 
               const price = item.price_at_sale ?? p.price ?? 0;
               const total = price * item.qty;
-              const rowVat = isOutOfStock ? 0 : (total - (total / 1.07));
+              const rowVat = total - (total / 1.07);
               const totalWithVat = total;
               const imageUrl = p.image_url || 'https://placehold.co/150x150?text=No+Image';
 
@@ -208,7 +202,7 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
               const sizeStr = (w || d || h) ? `W${w || '-'} x D${d || '-'} x H${h || '-'} cm` : null;
 
               return (
-                <tr key={item.id} className={`group ${isOutOfStock ? 'opacity-50 grayscale' : ''}`}>
+                <tr key={item.id} className="group">
                   <td className="py-1.5 text-center text-neutral-300 text-[9px] align-middle">{index + 1}</td>
                   <td className="py-1.5 text-center align-middle w-20">
                     <div className="w-13 h-13 bg-[#F8F8F8] border border-neutral-200 rounded-lg overflow-hidden mx-auto relative flex items-center justify-center p-0.5">
@@ -220,7 +214,7 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
                     </div>
                   </td>
                   <td className="py-1.5 px-2 align-middle">
-                    <p className={`text-[11.5px] font-semibold leading-tight ${isOutOfStock ? 'text-neutral-400 line-through' : 'text-neutral-900'}`}>
+                    <p className="text-[11.5px] font-semibold leading-tight text-neutral-900">
                       {p.name || item.name}
                     </p>
                     <div className="text-[8px] text-neutral-500 mt-0.5 leading-normal font-normal">
@@ -245,33 +239,28 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
                           </>
                         )}
                       </p>
-                      {item.branches?.branch_name && !isOutOfStock && (
+                      {isPreOrder ? (
+                        <p className="text-[7.5px] font-medium text-amber-700 mt-0.5">
+                          พรีออเดอร์ (Pre-order){item.branches?.branch_name ? ` • คลัง: ${item.branches.branch_name}` : ''}
+                        </p>
+                      ) : item.branches?.branch_name ? (
                         <p className="text-[7.5px] text-neutral-400 mt-0.5">
                           Fulfill by: {item.branches.branch_name}
                         </p>
-                      )}
-                      {isOutOfStock && (
-                        <p className="text-[7.5px] font-bold text-red-500 uppercase tracking-wide mt-0.5">
-                          Out of Stock
-                        </p>
-                      )}
+                      ) : null}
                     </div>
                   </td>
                   <td className="py-1.5 text-center align-middle text-[10px] text-neutral-600">
-                    {isOutOfStock ? <span className="line-through">{item.qty}</span> : item.qty}
+                    {item.qty}
                   </td>
                   <td className="py-1.5 text-right align-middle text-[10px] text-neutral-600">
-                    {isOutOfStock ? '-' : (price / 1.07).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {(price / 1.07).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </td>
                   <td className="py-1.5 text-right align-middle text-[10px] text-neutral-600">
-                    {isOutOfStock ? '-' : rowVat.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {rowVat.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </td>
                   <td className="py-2 text-right align-middle text-[11px] font-semibold text-neutral-800">
-                    {isOutOfStock ? (
-                      <span className="text-red-500 font-bold">0.00</span>
-                    ) : (
-                      totalWithVat.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                    )}
+                    {totalWithVat.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </td>
                 </tr>
               )

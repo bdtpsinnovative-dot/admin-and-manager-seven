@@ -139,7 +139,8 @@ export default function ExternalProductModal({
   const generateRandomSku = () => {
     const randomCode = Math.floor(1000 + Math.random() * 9000)
     const dateStr = new Date().toISOString().slice(2, 10).replace(/-/g, '')
-    setCustomSku(`EXT-FURN-${dateStr}-${randomCode}`)
+    const prefix = customCategory?.includes('Prop') ? 'EXT-PROP' : 'EXT-FURN'
+    setCustomSku(`${prefix}-${dateStr}-${randomCode}`)
   }
 
   // กดหยิบจากแคตตาล็อก
@@ -512,7 +513,7 @@ export default function ExternalProductModal({
                     <Tag className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                     <input
                       type="text"
-                      placeholder="เช่น EXT-FURN-001 (หรือปล่อยว่าง)"
+                      placeholder="เช่น EXT-PROP-001, EXT-FURN-001 (หรือปล่อยว่าง)"
                       value={customSku}
                       onChange={(e) => setCustomSku(e.target.value)}
                       className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-slate-300 transition-all font-mono text-slate-800"
@@ -527,6 +528,7 @@ export default function ExternalProductModal({
                     onChange={(e) => setCustomCategory(e.target.value)}
                     className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-slate-300 transition-all font-bold text-slate-700"
                   >
+                    <option value="ของตกแต่ง / Prop">🏺 ของตกแต่ง / Prop (สั่งทำพิเศษ/นอกรายการ)</option>
                     <option value="เฟอร์นิเจอร์">🛋️ เฟอร์นิเจอร์</option>
                     <option value="สั่งทำพิเศษ">🔨 สั่งทำพิเศษ (Custom Order)</option>
                     <option value="แผ่นไม้ธรรมชาติ">🪵 แผ่นไม้ธรรมชาติ (Slab)</option>

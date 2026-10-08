@@ -627,10 +627,16 @@ export const MobilePosSalesController = {
           throw Object.assign(new Error(`สินค้า ${product.name} มีสต็อกไม่เพียงพอ`), { status: 409 })
         }
         const price = Number(product.price) || 0
+        if (price <= 0) {
+          throw Object.assign(new Error(`สินค้า ${product.name} ยังไม่ได้ตั้งราคา (0 บาท) ไม่สามารถสร้างใบเสนอราคาได้`), { status: 422 })
+        }
         return { product, quantity, price, total: price * quantity }
       })
 
       const subtotal = lineItems.reduce((sum, item) => sum + item.total, 0)
+      if (subtotal <= 0) {
+        throw Object.assign(new Error("ยอดรวมใบเสนอราคาต้องมากกว่า 0 บาท"), { status: 422 })
+      }
       const orderCode = `QT-${Date.now()}`
       const { data: order, error: orderError } = await supabaseAdmin
         .from("orders")
