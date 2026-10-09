@@ -9,8 +9,9 @@ import {
   Loader2, ArrowLeft, Image as ImageIcon, Trash2, 
   CheckSquare, Square, RefreshCcw, Search, Sparkles, Pencil,
   Folder, FolderPlus, Lock, Unlock, KeyRound, Eye, EyeOff, FolderOpen,
-  ChevronRight
+  ChevronRight, Crop
 } from 'lucide-react';
+import ImageCropperModal, { CropResult } from './ImageCropperModal';
 
 const PAGE_SIZE = 40; 
 
@@ -89,6 +90,23 @@ export default function GalleryOriginalClient(_props: GalleryOriginalClientProps
 
   const [renameModalData, setRenameModalData] = useState<{ oldName: string; newName: string } | null>(null);
   const [isRenaming, setIsRenaming] = useState(false);
+
+  // --- Image Cropper Modal State ---
+  const [cropModalData, setCropModalData] = useState<{
+    isOpen: boolean;
+    imageSrc: string;
+    fileName: string;
+    title: string;
+    isReplacingExisting: boolean;
+    targetIndexInUpload?: number;
+    saveButtonText?: string;
+  }>({
+    isOpen: false,
+    imageSrc: '',
+    fileName: '',
+    title: '',
+    isReplacingExisting: false,
+  });
 
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -482,27 +500,134 @@ export default function GalleryOriginalClient(_props: GalleryOriginalClientProps
     setIsModalOpen(true);
   };
 
+  const handleOpenCropExisting = (img: GalleryImage) => {
+    setCropModalData({
+      isOpen: true,
+      imageSrc: img.url,
+      fileName: img.name,
+      title: `ครอปและปรับแต่งรูปภาพ: ${img.name}`,
+      isReplacingExisting: true,
+      saveButtonText: 'บันทึกทับรูปเดิม (คง URL เดิม)',
+    });
+  };
+
+  const handleSaveCroppedImage = async (result: CropResult) => {
+    if (cropModalData.isReplacingExisting) {
+      const targetName = cropModalData.fileName;
+      if (!targetName) return;
+
+      const targetFolder = currentFolder || 'original';
+      const presignRes = await fetch('/api/presign-image', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders(targetFolder),
+        },
+        body: JSON.stringify({ fileName: targetName, folder: targetFolder }),
+      });
+
+      if (!presignRes.ok) {
+        const errData = await presignRes.json().catch(() => ({}));
+        throw new Error(errData.message || errData.error || 'ขอ presigned URL ไม่สำเร็จ');
+      }
+
+      const { presignedUrl } = await presignRes.json();
+
+      const uploadRes = await fetch(presignedUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'image/webp' },
+        body: result.blob,
+      });
+
+      if (!uploadRes.ok) throw new Error('บันทึกรูปภาพไม่สำเร็จ');
+
+      // อัปเดต timestamp ใน local state เพื่อให้แคชในเบราว์เซอร์รีเฟรชทันที
+      const now = Date.now();
+      setImages((prev) =>
+        prev.map((img) =>
+          img.name === targetName
+            ? { ...img, updatedAt: now, size: result.blob.size }
+            : img
+        )
+      );
+
+      if (replaceFileName) {
+        closeModal();
+      }
+
+      showToast('✅ ครอปและบันทึกรูปภาพเรียบร้อย (คง URL เดิม)');
+      setCropModalData((prev) => ({ ...prev, isOpen: false }));
+    } else if (cropModalData.targetIndexInUpload !== undefined) {
+      const idx = cropModalData.targetIndexInUpload;
+      setSelectedFiles((prev) => {
+        const next = [...prev];
+        next[idx] = result.file;
+        return next;
+      });
+      setPreviewUrls((prev) => {
+        const next = [...prev];
+        if (next[idx]) URL.revokeObjectURL(next[idx]);
+        next[idx] = result.previewUrl;
+        return next;
+      });
+      showToast('✅ ปรับสัดส่วนและตัดรูปภาพเรียบร้อย');
+      setCropModalData((prev) => ({ ...prev, isOpen: false }));
+    }
+  };
+
   const onFilesSelect = useCallback((files: FileList | File[]) => {
     if (!files || files.length === 0) return;
     const fileArray = Array.from(files);
     
     if (replaceFileName) {
        if (fileArray.length > 1) alert('การแทนที่รูปภาพ สามารถเลือกได้เพียง 1 ไฟล์เท่านั้น');
-       setSelectedFiles([fileArray[0]]);
-       const url = URL.createObjectURL(fileArray[0]);
+       const targetFile = fileArray[0];
+       setSelectedFiles([targetFile]);
+       const url = URL.createObjectURL(targetFile);
        setPreviewUrls((previousUrls) => {
          previousUrls.forEach((previousUrl) => URL.revokeObjectURL(previousUrl));
          return [url];
        });
        setUploadStatus('preview');
+
+       // เปิด Cropper อัตโนมัติสำหรับไฟล์ที่จะแทนที่
+       setCropModalData({
+         isOpen: true,
+         imageSrc: url,
+         fileName: replaceFileName,
+         title: `ครอปรูปภาพใหม่เพื่อแทนที่: ${replaceFileName}`,
+         isReplacingExisting: true,
+         targetIndexInUpload: 0,
+         saveButtonText: 'บันทึกและแทนที่ (คง URL เดิม)',
+       });
        return;
+    }
+
+    if (fileArray.length === 1 && selectedFiles.length === 0) {
+      const targetFile = fileArray[0];
+      setSelectedFiles([targetFile]);
+      const url = URL.createObjectURL(targetFile);
+      setPreviewUrls([url]);
+      setUploadStatus('preview');
+
+      // เปิด Cropper ทันทีสำหรับไฟล์เดี่ยวที่เลือกก่อนอัปโหลด
+      setCropModalData({
+        isOpen: true,
+        imageSrc: url,
+        fileName: targetFile.name,
+        title: 'ครอปและปรับแต่งรูปภาพก่อนอัปโหลด',
+        isReplacingExisting: false,
+        targetIndexInUpload: 0,
+        saveButtonText: 'ยืนยันการตัดรูป',
+      });
+      return;
     }
 
     setSelectedFiles((previousFiles) => [...previousFiles, ...fileArray]);
     const urls = fileArray.map(f => URL.createObjectURL(f));
     setPreviewUrls((previousUrls) => [...previousUrls, ...urls]);
     setUploadStatus('preview');
-  }, [replaceFileName]);
+  }, [replaceFileName, selectedFiles.length]);
 
   // รับรูปจากคลิปบอร์ด (Ctrl+V)
   useEffect(() => {
@@ -647,6 +772,7 @@ export default function GalleryOriginalClient(_props: GalleryOriginalClientProps
     setSelectedFiles([]);
     setReplaceFileName(null); 
     setUploadProgress({ current: 0, total: 0 });
+    setCropModalData((prev) => ({ ...prev, isOpen: false }));
   };
 
   const copyToClipboard = (text: string) => {
@@ -1104,36 +1230,57 @@ export default function GalleryOriginalClient(_props: GalleryOriginalClientProps
                         {isSelected ? <CheckSquare size={18} /> : <Square size={18} />}
                       </button>
 
-                      {/* Rename button */}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setRenameModalData({ oldName: img.name, newName: img.name });
-                        }}
-                        className="absolute top-2 right-16 z-10 p-1.5 bg-white/90 text-blue-600 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-blue-50 transition-all shadow-sm"
-                        title="แก้ไขชื่อไฟล์รูปภาพนี้"
-                      >
-                        <Pencil size={16} />
-                      </button>
+                      {/* Action buttons toolbar (Crop, Rename, Replace, Delete) */}
+                      <div className="absolute top-2 right-2 z-10 flex items-center gap-1 bg-white/95 backdrop-blur-xs p-1 rounded-xl shadow-md border border-slate-200/80 opacity-0 group-hover:opacity-100 transition-all">
+                        {/* Crop / Edit Existing Image */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenCropExisting(img);
+                          }}
+                          className="p-1.5 text-purple-600 hover:bg-purple-100/80 rounded-lg transition-colors cursor-pointer"
+                          title="ครอป / แต่งรูปภาพนี้ (คง URL เดิม)"
+                        >
+                          <Crop size={15} />
+                        </button>
 
-                      {/* Replace button */}
-                      <button
-                        onClick={() => handleReplaceClick(img.name)}
-                        className="absolute top-2 right-9 z-10 p-1.5 bg-white/90 text-emerald-600 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-emerald-50 transition-all shadow-sm"
-                        title="อัปโหลดรูปทับไฟล์นี้ (คง URL เดิม)"
-                      >
-                        <RefreshCcw size={16} />
-                      </button>
+                        {/* Rename button */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setRenameModalData({ oldName: img.name, newName: img.name });
+                          }}
+                          className="p-1.5 text-blue-600 hover:bg-blue-100/80 rounded-lg transition-colors cursor-pointer"
+                          title="แก้ไขชื่อไฟล์รูปภาพนี้"
+                        >
+                          <Pencil size={15} />
+                        </button>
 
-                      {/* Delete button */}
-                      <button
-                        onClick={() => handleDeleteImages([img.name])}
-                        disabled={isDeleting}
-                        className="absolute top-2 right-2 z-10 p-1.5 bg-white/90 text-red-500 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-50 hover:text-red-600 transition-all shadow-sm"
-                        title="ลบรูปนี้"
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                        {/* Replace button */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleReplaceClick(img.name);
+                          }}
+                          className="p-1.5 text-emerald-600 hover:bg-emerald-100/80 rounded-lg transition-colors cursor-pointer"
+                          title="อัปโหลดรูปใหม่มาแทนที่ (คง URL เดิม)"
+                        >
+                          <RefreshCcw size={15} />
+                        </button>
+
+                        {/* Delete button */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteImages([img.name]);
+                          }}
+                          disabled={isDeleting}
+                          className="p-1.5 text-red-500 hover:bg-red-100/80 hover:text-red-600 rounded-lg transition-colors cursor-pointer"
+                          title="ลบรูปนี้"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
 
                       {/* Image Thumbnail Container */}
                       <div 
@@ -1380,7 +1527,7 @@ export default function GalleryOriginalClient(_props: GalleryOriginalClientProps
                 <div className="flex flex-col gap-4">
                   <div className={`grid gap-3 overflow-y-auto max-h-[50vh] ${previewUrls.length > 1 ? 'grid-cols-2 md:grid-cols-3' : 'grid-cols-1'}`}>
                     {previewUrls.map((url, idx) => (
-                      <div key={idx} className={`relative w-full ${previewUrls.length === 1 ? 'h-72' : 'h-32'} bg-slate-100 rounded-2xl overflow-hidden flex items-center justify-center p-2 border border-slate-200`}>
+                      <div key={idx} className={`relative w-full ${previewUrls.length === 1 ? 'h-72' : 'h-36'} bg-slate-100 rounded-2xl overflow-hidden flex items-center justify-center p-2 border border-slate-200 group`}>
                         <img 
                           src={url} 
                           alt={`Preview ${idx + 1}`} 
@@ -1391,6 +1538,26 @@ export default function GalleryOriginalClient(_props: GalleryOriginalClientProps
                             {idx + 1}
                           </span>
                         )}
+                        {/* Crop button on preview */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const file = selectedFiles[idx];
+                            setCropModalData({
+                              isOpen: true,
+                              imageSrc: url,
+                              fileName: file ? file.name : (replaceFileName || `image-${idx + 1}.webp`),
+                              title: replaceFileName ? `ครอปรูปเพื่อแทนที่: ${replaceFileName}` : `ครอปและปรับแต่งรูปภาพ (${idx + 1}/${previewUrls.length})`,
+                              isReplacingExisting: Boolean(replaceFileName),
+                              targetIndexInUpload: idx,
+                              saveButtonText: replaceFileName ? 'บันทึกและแทนที่ (คง URL เดิม)' : 'ยืนยันการตัดรูป',
+                            });
+                          }}
+                          className="absolute bottom-2 left-2 z-10 flex items-center gap-1.5 px-2.5 py-1.5 bg-purple-600/90 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow-md backdrop-blur-xs transition-all cursor-pointer"
+                        >
+                          <Crop size={13} />
+                          <span>ครอปรูปภาพ</span>
+                        </button>
                       </div>
                     ))}
                   </div>
@@ -1401,19 +1568,41 @@ export default function GalleryOriginalClient(_props: GalleryOriginalClientProps
                     </div>
                   )}
 
-                  <div className="flex justify-end gap-3 mt-2">
+                  <div className="flex justify-between items-center gap-3 mt-2">
                     <button 
                       onClick={() => { setUploadStatus('idle'); previewUrls.forEach(u => URL.revokeObjectURL(u)); setPreviewUrls([]); setSelectedFiles([]); }}
-                      className="px-4 py-2 text-xs md:text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
+                      className="px-4 py-2 text-xs md:text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
                     >
                       ยกเลิก
                     </button>
-                    <button 
-                      onClick={handleUploadClick}
-                      className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs md:text-sm font-bold rounded-xl transition-all shadow-md shadow-emerald-600/20"
-                    >
-                      ยืนยันและอัปโหลด {previewUrls.length > 1 ? `(${previewUrls.length})` : ''}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      {previewUrls.length === 1 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCropModalData({
+                              isOpen: true,
+                              imageSrc: previewUrls[0],
+                              fileName: selectedFiles[0]?.name || (replaceFileName || 'image.webp'),
+                              title: replaceFileName ? `ครอปรูปเพื่อแทนที่: ${replaceFileName}` : 'ครอปและปรับแต่งรูปภาพก่อนอัปโหลด',
+                              isReplacingExisting: Boolean(replaceFileName),
+                              targetIndexInUpload: 0,
+                              saveButtonText: replaceFileName ? 'บันทึกและแทนที่ (คง URL เดิม)' : 'ยืนยันการตัดรูป',
+                            });
+                          }}
+                          className="px-4 py-2.5 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 text-xs md:text-sm font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                        >
+                          <Crop size={16} />
+                          <span>ครอปรูปภาพ</span>
+                        </button>
+                      )}
+                      <button 
+                        onClick={handleUploadClick}
+                        className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs md:text-sm font-bold rounded-xl transition-all shadow-md shadow-emerald-600/20 cursor-pointer"
+                      >
+                        ยืนยันและอัปโหลด {previewUrls.length > 1 ? `(${previewUrls.length})` : ''}
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
@@ -1569,6 +1758,18 @@ export default function GalleryOriginalClient(_props: GalleryOriginalClientProps
           </div>
         </div>
       )}
+
+      {/* ✂️ Image Cropper Modal */}
+      <ImageCropperModal
+        isOpen={cropModalData.isOpen}
+        onClose={() => setCropModalData((prev) => ({ ...prev, isOpen: false }))}
+        imageSrc={cropModalData.imageSrc}
+        fileName={cropModalData.fileName}
+        title={cropModalData.title}
+        isReplacingExisting={cropModalData.isReplacingExisting}
+        saveButtonText={cropModalData.saveButtonText}
+        onSave={handleSaveCroppedImage}
+      />
 
       {/* Toast Notification */}
       <div className={`fixed bottom-6 right-6 flex items-center gap-2.5 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-2xl transition-all duration-300 z-50 ${
