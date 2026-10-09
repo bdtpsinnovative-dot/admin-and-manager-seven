@@ -94,12 +94,13 @@ const downloadTemplate = () => {
     const wb = XLSX.utils.book_new();
 
     if (selectedType === 'prop' || selectedType === 'furniture') {
-      const templateName = selectedType === 'furniture' ? "Furniture Template" : "Props Template";
-      const fileName = selectedType === 'furniture' ? "furniture_import_template.xlsx" : "props_import_template.xlsx";
+      const isFurniture = selectedType === 'furniture';
+      const templateName = isFurniture ? "Furniture Template" : "Props Template";
+      const fileName = isFurniture ? "furniture_import_template.xlsx" : "props_import_template.xlsx";
       const propRow: Record<string, any> = {
         "Item NO.": "3D102672W06",
         "Factory": "Merlin",
-        "Name Product": selectedType === 'furniture' ? "Oak Dining Table" : "Ceramic Handmade vase",
+        "Name Product": isFurniture ? "Oak Dining Table" : "Ceramic Handmade vase",
         "Group Sisz": "L",
         "Picture": "",
         "Link Picture": "https://pub-258bd10e7e8c4a7690a74c54cfbdef93.r2.dev/original/...",
@@ -107,14 +108,15 @@ const downloadTemplate = () => {
         "Name Group": "Natural Travertine",
         "Image Group": "https://pub-258bd10e7e8c4a7690a74c54cfbdef93.r2.dev/group/...",
         "Collection Group": "3D1026",
-        "Product Sup": selectedType === 'furniture' ? "Table" : "Vase Normal",
-        "Material": selectedType === 'furniture' ? "Solid Wood" : "Ceramic",
+        "Product Sup": isFurniture ? "Table" : "Vase Normal",
+        "Material": isFurniture ? "Solid Wood" : "Ceramic",
         "Color": "White",
-        "SKU": selectedType === 'furniture' ? "FUR-TB-ML3D1026" : "TR-VA-ML3D102672W06",
+        "SKU": isFurniture ? "FUR-TB-ML3D1026" : "TR-VA-ML3D102672W06",
         "BARCODE": "ML-VA-CR-3D102672W06",
-        "W": 21.5,
-        "D": 21.5,
-        "H": 30,
+        "W": isFurniture ? 120 : 21.5,
+        "L": isFurniture ? 200 : 21.5,
+        "D": isFurniture ? 80 : 21.5,
+        "H": isFurniture ? 75 : 30,
       };
       if (canViewCosts) {
         propRow["ต้นทุน ดอลลาร์ ไม่รวมค่าส่ง (Cost_Dollar)"] = 12.5;
@@ -288,7 +290,8 @@ const downloadTemplate = () => {
           "SKU": p.sku || "",
           "BARCODE": p.barcode || "",
           "W": p.specs?.width_cm || "",
-          "D": p.specs?.length_cm || "",
+          "L": p.specs?.length_cm || "",
+          "D": p.specs?.depth_cm || p.specs?.length_cm || "",
           "H": p.specs?.thickness_cm || "",
         };
         if (canViewCosts) {
@@ -366,8 +369,10 @@ const downloadTemplate = () => {
             const sheetBarcode = getVal("BARCODE")?.toString() || getVal("BARCOE")?.toString() || "";
             
             const w = toNumOrNull(getVal("W") ?? getVal("width") ?? getVal("width_cm"));
-            const d = toNumOrNull(getVal("D") ?? getVal("length") ?? getVal("length_cm"));
+            const l = toNumOrNull(getVal("L") ?? getVal("length") ?? getVal("length_cm") ?? getVal("length_mm"));
+            const d = toNumOrNull(getVal("D") ?? getVal("depth") ?? getVal("depth_cm"));
             const h = toNumOrNull(getVal("H") ?? getVal("height") ?? getVal("thickness") ?? getVal("thickness_cm"));
+            const finalLength = l !== null ? l : d;
             
             // จัดการตัวเลขต้นทุนดอลลาร์ และต้นทุนรวมค่าส่ง (บาท)
             const rawCostDollar = getVal("ต้นทุน ดอลลาร์ ไม่รวมค่าส่ง (Cost_Dollar)") || getVal("ต้นทุน ดอลลาร์ไม่รวมค่าส่ง") || getVal("ต้นทุนดอลลาร์") || getVal("Cost_Dollar") || getVal("Cost Dollar") || getVal("CostDollar") || getVal("Cost USD") || null;
@@ -432,7 +437,8 @@ const downloadTemplate = () => {
               
               specs: {
                 width_cm: w,
-                length_cm: d,
+                length_cm: finalLength,
+                depth_cm: d,
                 thickness_cm: h,
                 brand: factoryName,
                 group_size: getVal("Group Sisz")?.toString() || getVal("Group Size")?.toString() || null,
@@ -1013,7 +1019,7 @@ const downloadTemplate = () => {
                       <th className="p-3 border-b">Barcode</th>
                       <th className="p-3 border-b">Color</th>
                       <th className="p-3 border-b">Material</th>
-                      <th className="p-3 border-b text-center">W x D x H</th>
+                      <th className="p-3 border-b text-center">W x L x D x H</th>
                       {canViewCosts && (
                         <>
                           <th className="p-3 border-b text-right">ต้นทุน ดอลลาร์ ไม่รวมค่าส่ง</th>
@@ -1053,7 +1059,12 @@ const downloadTemplate = () => {
                           <td className="p-3 text-xs">{item.color || '-'}</td>
                           <td className="p-3 text-xs">{item.specs?.material || '-'}</td>
                           <td className="p-3 text-center text-xs font-medium text-slate-600">
-                            {item.specs?.width_cm || '-'} x {item.specs?.length_cm || '-'} x {item.specs?.thickness_cm || '-'}
+                            {[
+                              item.specs?.width_cm ? `W:${item.specs.width_cm}` : null,
+                              item.specs?.length_cm ? `L:${item.specs.length_cm}` : null,
+                              item.specs?.depth_cm && item.specs?.depth_cm !== item.specs?.length_cm ? `D:${item.specs.depth_cm}` : null,
+                              item.specs?.thickness_cm ? `H:${item.specs.thickness_cm}` : null,
+                            ].filter(Boolean).join(' x ') || '-'}
                           </td>
                           {canViewCosts && (
                             <>
