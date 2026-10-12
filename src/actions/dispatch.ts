@@ -269,11 +269,13 @@ export async function getPrintDispatchData(orderCode: string) {
       profiles ( full_name ),
       order_items (
         id, 
+        product_id,
         qty, 
         item_status,
         price_at_sale,
         fulfill_branch_id,
         products!order_items_product_fk ( 
+          id,
           name, sku, image_url, price, specs, width_cm, length_cm, thickness_cm, category_id,
           collection_groups ( product_sup ),
           stock ( branch_id, qty ) 

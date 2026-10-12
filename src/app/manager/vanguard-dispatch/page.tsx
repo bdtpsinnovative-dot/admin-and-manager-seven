@@ -334,6 +334,13 @@ export default function DispatchMonitorPage() {
                 return currentLiveQty < item.qty
               })
 
+              const hasPreOrderItems = order.status === 'PENDING'
+                ? isAnyItemOutOfStock
+                : (isOrderPreOrderFromStart || outOfStockSnapshot.length > 0 || order.order_items.some((it: any) => {
+                    const bs = it.products?.stock?.find((s: any) => Number(s.branch_id) === Number(it.fulfill_branch_id));
+                    return (Number(bs?.qty) || 0) < 0;
+                  }))
+
               const hasFrontRunItem = order.order_items.some((item: any) => {
                 const branchStock = item.products?.stock?.find((s: any) => Number(s.branch_id) === Number(item.fulfill_branch_id))
                 const currentLiveQty = branchStock ? Number(branchStock.qty) : 0
@@ -388,7 +395,7 @@ export default function DispatchMonitorPage() {
                         <span className="flex items-center gap-1 text-[10px] font-bold bg-rose-100 text-rose-700 border border-rose-300 px-2.5 py-0.5 rounded-full shadow-2xs animate-pulse">
                           <AlertTriangle className="w-3 h-3 text-rose-600" /> 🚨 โดนซื้อตัดหน้า!
                         </span>
-                      ) : isAnyItemOutOfStock && order.status === 'PENDING' ? (
+                      ) : hasPreOrderItems && (order.status === 'PENDING' || order.status === 'PROCESSING') ? (
                         <span className="flex items-center gap-1 text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300 px-2.5 py-0.5 rounded-full shadow-2xs">
                           <AlertTriangle className="w-3 h-3 text-amber-600" /> มีรายการพรีออเดอร์
                         </span>
@@ -441,7 +448,9 @@ export default function DispatchMonitorPage() {
                               const branchStock = item.products?.stock?.find((s: any) => Number(s.branch_id) === Number(item.fulfill_branch_id))
                               const currentLiveQty = branchStock ? Number(branchStock.qty) : 0
                               const isOutOfStock = currentLiveQty < item.qty && order.status === 'PENDING'
-                              const isKnownPreOrder = isOutOfStock && (isOrderPreOrderFromStart || outOfStockSnapshot.includes(String(item.products?.id)))
+                              const isKnownPreOrder = order.status === 'PENDING'
+                                ? (isOutOfStock && (isOrderPreOrderFromStart || outOfStockSnapshot.includes(String(item.products?.id || item.product_id))))
+                                : (outOfStockSnapshot.includes(String(item.products?.id || item.product_id)) || currentLiveQty < 0)
                               const isFrontRun = isOutOfStock && !isKnownPreOrder
 
                               return (

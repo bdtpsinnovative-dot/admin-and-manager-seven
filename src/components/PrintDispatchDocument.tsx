@@ -180,11 +180,25 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
             </tr>
           </thead>
           <tbody className="divide-y divide-neutral-100">
-            {data.order_items.map((item: any, index: number) => {
-              const p = item.products || {};
-              const branchStock = p.stock?.find((s: any) => Number(s.branch_id) === Number(item.fulfill_branch_id));
-              const currentLiveQty = branchStock ? Number(branchStock.qty) : 0;
-              const isPreOrder = currentLiveQty < item.qty;
+            {(() => {
+              const outOfStockSnapshot = (data?.discount_snapshot?.out_of_stock_products || []).map(String);
+              const isWholeOrderPreOrder = Boolean(data?.discount_snapshot?.is_preorder);
+
+              return data.order_items.map((item: any, index: number) => {
+                const p = item.products || {};
+                const branchStock = p.stock?.find((s: any) => Number(s.branch_id) === Number(item.fulfill_branch_id));
+                const currentLiveQty = branchStock ? Number(branchStock.qty) : 0;
+                const prodId = String(item.product_id || p.id || '');
+                const isRecordedPreOrder = prodId ? outOfStockSnapshot.includes(prodId) : false;
+
+                // ตรวจสอบสถานะพรีออเดอร์:
+                // 1) หากบิลยังรอชำระ (PENDING): เช็คจาก snapshot ที่ระบบบันทึกไว้ หรือหากสต็อกสดไม่พอขาย
+                // 2) หากบิลชำระเงิน/ตัดสต็อกไปแล้ว (PROCESSING / COMPLETED): เช็คจาก snapshot ที่บันทึกไว้ตอนเปิดบิล
+                //    หรือเช็คว่าสต็อกติดลบ (< 0) เท่านั้น (ถ้าสต็อกเหลือ 0 จากการขายชิ้นสุดท้าย จะไม่ถือเป็นพรีออเดอร์)
+                const isPreOrder = data.status === 'PENDING'
+                  ? (isRecordedPreOrder || (isWholeOrderPreOrder && outOfStockSnapshot.length === 0) || currentLiveQty < item.qty)
+                  : (isRecordedPreOrder || (isWholeOrderPreOrder && outOfStockSnapshot.length === 0) || currentLiveQty < 0);
+
 
               const price = item.price_at_sale ?? p.price ?? 0;
               const total = price * item.qty;
@@ -264,7 +278,8 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
                   </td>
                 </tr>
               )
-            })}
+            })
+          })()}
           </tbody>
         </table>
       </div>
