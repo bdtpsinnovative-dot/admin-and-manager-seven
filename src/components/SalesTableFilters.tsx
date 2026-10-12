@@ -260,7 +260,13 @@ export function filterSalesOrder(order: any, filters: SalesFilters): boolean {
   if (filters.shippingType === 'PICKUP' && order.shippingName) return false
 
   // Status
-  if (filters.status !== 'ALL' && order.status !== filters.status) return false
+  if (filters.status !== 'ALL') {
+    if (filters.status === 'COMPLETED') {
+      if (order.status !== 'COMPLETED' && order.status !== 'PROCESSING') return false
+    } else if (order.status !== filters.status) {
+      return false
+    }
+  }
 
   // Sale Name
   if (filters.saleName !== 'ALL' && order.saleName !== filters.saleName) return false
@@ -275,7 +281,7 @@ export function filterSalesOrder(order: any, filters: SalesFilters): boolean {
 
   // Date filters
   // 1) Completed Date
-  const closedAt = order.completedAt || order.discountSnapshot?.completed_at || (order.status === 'COMPLETED' ? order.createdAt : null)
+  const closedAt = order.completedAt || order.discountSnapshot?.completed_at || ((order.status === 'COMPLETED' || order.status === 'PROCESSING') ? order.createdAt : null)
   if (!matchDate(closedAt, filters.completedDate)) return false
 
   // 2) Created Date

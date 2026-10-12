@@ -108,7 +108,7 @@ export async function getSalesHistory(showHidden = false, targetBranchId?: numbe
   const orderRows = (orders || []) as unknown as SalesOrderRow[]
 
   // ดึงเวลาตัดสต็อก/ชำระเงินจริงจาก stock_movements เพื่อความแม่นยำ 100%
-  const completedOrderIds = orderRows.filter(o => o.status === 'COMPLETED').map(o => o.id)
+  const completedOrderIds = orderRows.filter(o => o.status === 'COMPLETED' || o.status === 'PROCESSING').map(o => o.id)
   const movementMap: Record<number, string> = {}
   if (completedOrderIds.length > 0) {
     const { data: movements } = await supabase
@@ -178,8 +178,9 @@ export async function getSalesHistory(showHidden = false, targetBranchId?: numbe
       snapCompletedAt = snap?.completed_at || null
     }
 
-    const completedAt = snapCompletedAt || movementMap[order.id] || (order.status === 'COMPLETED' ? order.created_at : null)
-    const effectiveDate = order.status === 'COMPLETED' && completedAt ? completedAt : order.created_at
+    const isPaid = order.status === 'COMPLETED' || order.status === 'PROCESSING'
+    const completedAt = snapCompletedAt || movementMap[order.id] || (isPaid ? order.created_at : null)
+    const effectiveDate = isPaid && completedAt ? completedAt : order.created_at
 
     return {
       id: order.id,
@@ -246,6 +247,9 @@ export async function hideCancelledOrder(orderId: number) {
   revalidatePath('/sales-history')
   revalidatePath('/sale/vanguard-dispatch')
   revalidatePath('/manager/vanguard-dispatch')
+  revalidatePath('/dashboard')
+  revalidatePath('/manager/dashboard')
+  revalidatePath('/sale/dashboard')
   return { success: true }
 }
 
@@ -269,5 +273,8 @@ export async function restoreHiddenOrder(orderId: number) {
   revalidatePath('/sales-history')
   revalidatePath('/sale/vanguard-dispatch')
   revalidatePath('/manager/vanguard-dispatch')
+  revalidatePath('/dashboard')
+  revalidatePath('/manager/dashboard')
+  revalidatePath('/sale/dashboard')
   return { success: true }
 }

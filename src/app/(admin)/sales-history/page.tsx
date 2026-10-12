@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react'
 import { getSalesHistory, getAllBranches, hideCancelledOrder, restoreHiddenOrder } from '@/actions/sales-check'
 import {
   History, DollarSign, Truck, User, Check, Clock, ChevronDown, ChevronUp,
-  Printer, XCircle, EyeOff, Eye, Loader2, ArrowLeft, Building2, Search, Tag
+  Printer, XCircle, EyeOff, Eye, Loader2, ArrowLeft, Building2, Search, Tag, Package
 } from 'lucide-react'
 import { toast } from 'sonner'
 import PrintDispatchModal from '@/components/PrintDispatchModal'
@@ -76,7 +76,7 @@ function getCompletedDate(order: SaleOrder) {
       } catch (_) {}
     }
   }
-  return null
+  return (order.status === 'COMPLETED' || order.status === 'PROCESSING') ? order.createdAt : null
 }
 
 export default function AdminSalesHistoryPage() {
@@ -177,7 +177,7 @@ export default function AdminSalesHistoryPage() {
     return sales.filter(s => filterSalesOrder(s, filtersWithoutStatus))
   }, [sales, filters])
 
-  const totalInvoiced = baseSalesForTotals.filter(s => s.status === 'COMPLETED').reduce((sum, s) => sum + s.totalAmount, 0)
+  const totalInvoiced = baseSalesForTotals.filter(s => s.status === 'COMPLETED' || s.status === 'PROCESSING').reduce((sum, s) => sum + s.totalAmount, 0)
   const totalPending = baseSalesForTotals.filter(s => s.status === 'PENDING').reduce((sum, s) => sum + s.totalAmount, 0)
   const totalDropShip = baseSalesForTotals.filter(s => s.status !== 'CANCELLED').reduce((sum, s) => sum + s.otherBranchRevenue, 0)
   const totalCancelled = baseSalesForTotals.filter(s => s.status === 'CANCELLED').reduce((sum, s) => sum + s.totalAmount, 0)
@@ -345,7 +345,7 @@ export default function AdminSalesHistoryPage() {
                     : 'text-slate-500 hover:bg-slate-50'
                 }`}
               >
-                ขายสำเร็จ ({baseSalesForTotals.filter(s => s.status === 'COMPLETED').length})
+                ขายสำเร็จ ({baseSalesForTotals.filter(s => s.status === 'COMPLETED' || s.status === 'PROCESSING').length})
               </button>
               <button
                 type="button"
@@ -356,7 +356,7 @@ export default function AdminSalesHistoryPage() {
                     : 'text-slate-500 hover:bg-slate-50'
                 }`}
               >
-                ยังไม่คิดเงิน / รอจัดส่ง ({baseSalesForTotals.filter(s => s.status === 'PENDING').length})
+                ยังไม่คิดเงิน ({baseSalesForTotals.filter(s => s.status === 'PENDING').length})
               </button>
               <button
                 type="button"
@@ -760,7 +760,7 @@ export default function AdminSalesHistoryPage() {
 
                           {/* วันที่ขายจริง (ปิดบิล) */}
                           <td className="p-4 whitespace-nowrap bg-emerald-50/20">
-                            {order.status === 'COMPLETED' ? (() => {
+                            {order.status === 'COMPLETED' || order.status === 'PROCESSING' ? (() => {
                               const closedAt = getCompletedDate(order)
                               const isCrossDay = closedAt && new Date(closedAt).toDateString() !== new Date(order.createdAt).toDateString()
                               const diffDays = closedAt ? Math.max(1, Math.round((new Date(closedAt).getTime() - new Date(order.createdAt).getTime()) / (1000 * 60 * 60 * 24))) : 0
@@ -778,16 +778,23 @@ export default function AdminSalesHistoryPage() {
                                       (เปิดค้างไว้ {diffDays} วัน)
                                     </span>
                                   )}
+                                  {order.status === 'PROCESSING' && (
+                                    <span className="text-[9px] text-blue-600 font-semibold block mt-0.5">
+                                      (รอแพ็คจัดส่ง)
+                                    </span>
+                                  )}
                                 </div>
                               )
                             })() : order.status === 'PENDING' ? (
                               <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
                                 <Clock className="w-3 h-3 text-amber-600" /> รอคิดเงิน
                               </span>
-                            ) : (
+                            ) : order.status === 'CANCELLED' ? (
                               <span className="inline-flex items-center gap-1 text-[11px] font-bold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full">
                                 <XCircle className="w-3 h-3 text-red-500" /> ยกเลิกแล้ว
                               </span>
+                            ) : (
+                              <span className="text-slate-400 text-xs">-</span>
                             )}
                           </td>
 
@@ -863,12 +870,16 @@ export default function AdminSalesHistoryPage() {
                             <span className={`inline-block px-3 py-1.5 rounded-full text-[10px] font-black shadow-2xs whitespace-nowrap ${
                               order.status === 'COMPLETED'
                                 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                : order.status === 'PROCESSING'
+                                ? 'bg-blue-50 text-blue-700 border border-blue-200'
                                 : order.status === 'CANCELLED'
                                 ? 'bg-red-50 text-red-600 border border-red-200'
                                 : 'bg-amber-50 text-amber-700 border border-amber-300'
                             }`}>
                               {order.status === 'COMPLETED' ? (
                                 <span className="flex items-center justify-center gap-1"><Check className="w-3 h-3 text-emerald-600" /> สำเร็จแล้ว</span>
+                              ) : order.status === 'PROCESSING' ? (
+                                <span className="flex items-center justify-center gap-1"><Package className="w-3 h-3 text-blue-600" /> รอแพ็คจัดส่ง</span>
                               ) : order.status === 'CANCELLED' ? (
                                 <span className="flex items-center justify-center gap-1"><XCircle className="w-3 h-3 text-red-600" /> ยกเลิกแล้ว</span>
                               ) : (

@@ -39,16 +39,20 @@ const dateTime = (value: string) =>
     minute: "2-digit",
   })
 
+export const dynamic = "force-dynamic"
+export const revalidate = 0
+
 const statusClass = (status: string) => {
   if (status === "COMPLETED") return "bg-emerald-50 text-emerald-700 border-emerald-200"
+  if (status === "PROCESSING") return "bg-blue-50 text-blue-700 border-blue-200"
   if (status === "CANCELLED") return "bg-red-50 text-red-700 border-red-200"
   return "bg-amber-50 text-amber-700 border-amber-200"
 }
 
 const statusLabel = (status: string) => {
   if (status === "COMPLETED") return "สำเร็จแล้ว"
+  if (status === "PROCESSING") return "รอแพ็คจัดส่ง"
   if (status === "CANCELLED") return "ยกเลิกแล้ว"
-  if (status === "PROCESSING") return "กำลังดำเนินการ"
   return status || "ไม่ระบุสถานะ"
 }
 
