@@ -8,12 +8,20 @@ import { revalidatePath } from "next/cache";
    TYPES
    ============================================================================= */
 
+export type DiscountTier = {
+  min_spend: number;
+  discount_type: "percentage" | "fixed_amount";
+  discount_value: number;
+};
+
 export type PromoAttribution = {
   lead_sales: string;      // เซลล์คนแรก / ทีมเรา เช่น "ยันได"
   partner_company: string; // บอ / บริษัทคู่ค้า เช่น "บ. สถาปัตย์ AA"
   partner_sales: string;   // เซลล์บอนั้น / ผู้ติดต่อ เช่น "คุณสมชาย"
   note?: string;           // บันทึกเพิ่มเติม
   batch_id?: string;       // รหัสกลุ่มที่สร้างพร้อมกัน
+  is_tiered?: boolean;     // โค้ดส่วนลดแบบขั้นบันไดหรือไม่
+  tiers?: DiscountTier[];  // รายการขั้นบันได
 };
 
 export type TerraPromotion = {
@@ -41,6 +49,8 @@ export type TerraPromotion = {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  is_tiered?: boolean;
+  tiers?: DiscountTier[];
 };
 
 export type TerraCartItem = {
@@ -162,9 +172,16 @@ export async function getTerraPromotions(): Promise<TerraPromotion[]> {
 
     return promotions.map((p) => {
       let attribution: PromoAttribution | null = null;
+      let isTiered = false;
+      let tiers: DiscountTier[] | undefined = undefined;
+
       try {
         if (p.description && p.description.trim().startsWith("{")) {
           const parsed = JSON.parse(p.description);
+          if (parsed.is_tiered && Array.isArray(parsed.tiers) && parsed.tiers.length > 0) {
+            isTiered = true;
+            tiers = parsed.tiers;
+          }
           if (parsed.lead_sales || parsed.partner_company || parsed.partner_sales) {
             attribution = {
               lead_sales: parsed.lead_sales || "",
@@ -172,6 +189,8 @@ export async function getTerraPromotions(): Promise<TerraPromotion[]> {
               partner_sales: parsed.partner_sales || "",
               note: parsed.note || "",
               batch_id: parsed.batch_id || undefined,
+              is_tiered: isTiered,
+              tiers,
             };
           }
         }
@@ -182,6 +201,8 @@ export async function getTerraPromotions(): Promise<TerraPromotion[]> {
         return {
           ...p,
           attribution,
+          is_tiered: isTiered,
+          tiers,
           promo_scope: "global",
           collection_name: "ทั้งร้านค้า (Global Coupon)",
           collection_image: null,
@@ -200,6 +221,8 @@ export async function getTerraPromotions(): Promise<TerraPromotion[]> {
       return {
         ...p,
         attribution,
+        is_tiered: isTiered,
+        tiers,
         promo_scope: p.promo_scope || "set",
         collection_name: collectionName,
         collection_image: img?.image_url || null,
@@ -394,6 +417,9 @@ export interface BatchPartnerCouponParams {
   start_date?: string | null;
   end_date?: string | null;
   usage_limit?: number | null;
+
+  is_tiered?: boolean;     // โค้ดส่วนลดแบบขั้นบันได
+  tiers?: DiscountTier[];  // รายการขั้นบันได
 }
 
 function generateCodeFromPattern(pattern: string): string {
@@ -423,6 +449,7 @@ function generateCodeFromPattern(pattern: string): string {
  * 3.1 สร้างชุดรหัสคูปองจำนวนมากสำหรับเซลล์และพันธมิตร (Batch Generator)
  * - กำหนด 3 ฟิลด์ Attribution: เซลล์เรา (ยันได), บริษัทคู่ค้า, เซลล์คู่ค้า
  * - สุ่มรหัสตามแพทเทิร์น และตรวจสอบความซ้ำซ้อนกับ DB 100%
+ * - รองรับส่วนลดแบบขั้นบันได (Tiered Step Discount)
  */
 export async function createBatchPartnerCoupons(params: BatchPartnerCouponParams) {
   try {
@@ -437,8 +464,34 @@ export async function createBatchPartnerCoupons(params: BatchPartnerCouponParams
     if (!cleanLeadSales) throw new Error("กรุณาระบุชื่อเซลล์คนแรก (เช่น ยันได)");
     if (!cleanPartnerCompany) throw new Error("กรุณาระบุชื่อบริษัทคู่ค้า / โครงการ");
     if (!cleanPartnerSales) throw new Error("กรุณาระบุชื่อเซลล์ของบริษัทคู่ค้า");
-    if (!params.discount_value || params.discount_value <= 0) {
-      throw new Error("มูลค่าส่วนลดต้องมากกว่า 0");
+
+    const isTiered = Boolean(params.is_tiered && params.tiers && params.tiers.length > 0);
+    let validTiers: DiscountTier[] = [];
+    let baseDiscountType = params.discount_type || "percentage";
+    let baseDiscountValue = Number(params.discount_value) || 0;
+    let baseMinSpend = params.min_spend ? Number(params.min_spend) : 0;
+
+    if (isTiered) {
+      validTiers = (params.tiers || [])
+        .map(t => ({
+          min_spend: Number(t.min_spend) || 0,
+          discount_type: (t.discount_type || "percentage") as "percentage" | "fixed_amount",
+          discount_value: Number(t.discount_value) || 0,
+        }))
+        .filter(t => t.min_spend > 0 && t.discount_value > 0)
+        .sort((a, b) => a.min_spend - b.min_spend);
+
+      if (validTiers.length === 0) {
+        throw new Error("กรุณาระบุขั้นบันไดอย่างน้อย 1 ขั้นที่มี ยอดซื้อขั้นต่ำ และ มูลค่าส่วนลด มากกว่า 0");
+      }
+
+      baseDiscountType = validTiers[0].discount_type;
+      baseDiscountValue = validTiers[0].discount_value;
+      baseMinSpend = validTiers[0].min_spend;
+    } else {
+      if (!params.discount_value || params.discount_value <= 0) {
+        throw new Error("มูลค่าส่วนลดต้องมากกว่า 0");
+      }
     }
 
     const targetCount = Math.max(1, Math.min(100, Math.floor(params.count || 10)));
@@ -490,11 +543,15 @@ export async function createBatchPartnerCoupons(params: BatchPartnerCouponParams
       partner_sales: cleanPartnerSales,
       note: cleanNote,
       batch_id: batchId,
+      is_tiered: isTiered,
+      tiers: isTiered ? validTiers : undefined,
     });
 
     const defaultTitle = params.title_prefix?.trim()
       ? params.title_prefix.trim()
-      : `ส่วนลด ${cleanPartnerCompany} (เซลล์: ${cleanLeadSales})`;
+      : isTiered
+        ? `ส่วนลดขั้นบันได ${cleanPartnerCompany} (เซลล์: ${cleanLeadSales})`
+        : `ส่วนลด ${cleanPartnerCompany} (เซลล์: ${cleanLeadSales})`;
 
     const rowsToInsert = Array.from(generatedCodes).map((code) => ({
       title: defaultTitle,
@@ -503,10 +560,10 @@ export async function createBatchPartnerCoupons(params: BatchPartnerCouponParams
       collection_group_id: null,
       trigger_type: "coupon",
       coupon_code: code,
-      discount_type: params.discount_type || "percentage",
-      discount_value: Number(params.discount_value),
+      discount_type: baseDiscountType,
+      discount_value: baseDiscountValue,
       min_sets: 1,
-      min_spend: params.min_spend ? Number(params.min_spend) : 0,
+      min_spend: baseMinSpend,
       max_discount_amount: params.max_discount_amount ? Number(params.max_discount_amount) : null,
       start_date: params.start_date ? new Date(params.start_date).toISOString() : null,
       end_date: params.end_date ? new Date(params.end_date).toISOString() : null,
@@ -839,25 +896,85 @@ export async function calculateTerraCartDiscounts(
         code: normalizedCouponCode,
       };
     } else {
-      const minSpend = Number(matchedCoupon.min_spend || 0);
-      if (subtotal < minSpend) {
-        couponStatus = {
-          isValid: false,
-          message: `ยอดสั่งซื้อขั้นต่ำสำหรับโค้ดนี้คือ ฿${minSpend.toLocaleString()} (ยอดปัจจุบัน ฿${subtotal.toLocaleString()})`,
-          code: normalizedCouponCode,
-        };
-      } else {
-        let discAmt = 0;
-        if (matchedCoupon.discount_type === "percentage") {
-          discAmt = (subtotal * Number(matchedCoupon.discount_value)) / 100;
-          if (matchedCoupon.max_discount_amount) {
-            discAmt = Math.min(discAmt, Number(matchedCoupon.max_discount_amount));
-          }
-        } else {
-          discAmt = Number(matchedCoupon.discount_value);
-          discAmt = Math.min(discAmt, subtotal);
-        }
+      let isTiered = false;
+      let tierList: DiscountTier[] = [];
 
+      try {
+        if (matchedCoupon.description && matchedCoupon.description.trim().startsWith("{")) {
+          const parsed = JSON.parse(matchedCoupon.description);
+          if (parsed.is_tiered && Array.isArray(parsed.tiers) && parsed.tiers.length > 0) {
+            isTiered = true;
+            tierList = parsed.tiers;
+          }
+        }
+      } catch {}
+
+      if (!isTiered && matchedCoupon.is_tiered && Array.isArray(matchedCoupon.tiers) && matchedCoupon.tiers.length > 0) {
+        isTiered = true;
+        tierList = matchedCoupon.tiers;
+      }
+
+      let discAmt = 0;
+      let promoDesc = "";
+      let canApply = false;
+
+      if (isTiered && tierList.length > 0) {
+        const sortedTiers = [...tierList].sort((a, b) => Number(b.min_spend) - Number(a.min_spend));
+        const lowestMinSpend = Number(sortedTiers[sortedTiers.length - 1].min_spend || 0);
+
+        if (subtotal < lowestMinSpend) {
+          couponStatus = {
+            isValid: false,
+            message: `ยอดสั่งซื้อขั้นต่ำสำหรับโค้ดนี้คือ ฿${lowestMinSpend.toLocaleString()} ขึ้นไป (ยอดปัจจุบัน ฿${subtotal.toLocaleString()})`,
+            code: normalizedCouponCode,
+          };
+        } else {
+          canApply = true;
+          const matchedTier = sortedTiers.find((t) => subtotal >= Number(t.min_spend)) || sortedTiers[sortedTiers.length - 1];
+          const tType = matchedTier.discount_type || "percentage";
+          const tVal = Number(matchedTier.discount_value);
+
+          if (tType === "percentage") {
+            discAmt = (subtotal * tVal) / 100;
+            if (matchedCoupon.max_discount_amount) {
+              discAmt = Math.min(discAmt, Number(matchedCoupon.max_discount_amount));
+            }
+          } else {
+            discAmt = Number(tVal);
+            discAmt = Math.min(discAmt, subtotal);
+          }
+
+          promoDesc = tType === "percentage"
+            ? `คูปองขั้นบันได: ช้อปครบ ฿${Number(matchedTier.min_spend).toLocaleString()} ลด ${tVal}%`
+            : `คูปองขั้นบันได: ช้อปครบ ฿${Number(matchedTier.min_spend).toLocaleString()} ลด ฿${tVal.toLocaleString()}`;
+        }
+      } else {
+        const minSpend = Number(matchedCoupon.min_spend || 0);
+        if (subtotal < minSpend) {
+          couponStatus = {
+            isValid: false,
+            message: `ยอดสั่งซื้อขั้นต่ำสำหรับโค้ดนี้คือ ฿${minSpend.toLocaleString()} (ยอดปัจจุบัน ฿${subtotal.toLocaleString()})`,
+            code: normalizedCouponCode,
+          };
+        } else {
+          canApply = true;
+          if (matchedCoupon.discount_type === "percentage") {
+            discAmt = (subtotal * Number(matchedCoupon.discount_value)) / 100;
+            if (matchedCoupon.max_discount_amount) {
+              discAmt = Math.min(discAmt, Number(matchedCoupon.max_discount_amount));
+            }
+          } else {
+            discAmt = Number(matchedCoupon.discount_value);
+            discAmt = Math.min(discAmt, subtotal);
+          }
+
+          promoDesc = matchedCoupon.discount_type === "percentage"
+            ? `คูปองลด ${matchedCoupon.discount_value}%`
+            : `คูปองลด ฿${Number(matchedCoupon.discount_value).toLocaleString()}`;
+        }
+      }
+
+      if (canApply) {
         discAmt = Math.round(discAmt * 100) / 100;
 
         couponAppliedDiscount = {
@@ -870,15 +987,13 @@ export async function calculateTerraCartDiscounts(
           collectionName: "ทั้งร้านค้า (Global)",
           eligibleAmount: subtotal,
           discountAmount: discAmt,
-          description: matchedCoupon.discount_type === "percentage"
-            ? `คูปองลด ${matchedCoupon.discount_value}%`
-            : `คูปองลด ฿${Number(matchedCoupon.discount_value).toLocaleString()}`,
+          description: promoDesc,
         };
 
         couponDiscountTotal = discAmt;
         couponStatus = {
           isValid: true,
-          message: `ใช้โค้ดส่วนลด "${matchedCoupon.coupon_code}" สำเร็จ: ${couponAppliedDiscount.description}`,
+          message: `ใช้โค้ดส่วนลด "${matchedCoupon.coupon_code}" สำเร็จ: ${promoDesc}`,
           code: normalizedCouponCode,
         };
       }

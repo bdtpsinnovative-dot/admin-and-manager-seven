@@ -469,43 +469,82 @@ export async function validatePosCoupon(code: string, currentSubtotal: number, e
     if (promo.usage_limit && promo.used_count >= promo.usage_limit) {
       return { success: false, error: "คูปองนี้ถูกใช้งานครบจำนวนสิทธิ์แล้ว" }
     }
-    const minSpend = Number(promo.min_spend || 0)
-    if (minSpend > 0 && currentSubtotal < minSpend) {
-      return { 
-        success: false, 
-        error: `ยอดซื้อต้องครบ ฿${minSpend.toLocaleString()} ขึ้นไป (ยอดปัจจุบัน ฿${currentSubtotal.toLocaleString()})` 
-      }
-    }
-
-    let discountAmount = 0
-    if (promo.discount_type === 'percentage') {
-      discountAmount = (calcBase * Number(promo.discount_value)) / 100
-      if (promo.max_discount_amount && discountAmount > Number(promo.max_discount_amount)) {
-        discountAmount = Number(promo.max_discount_amount)
-      }
-    } else {
-      discountAmount = Math.min(calcBase, Number(promo.discount_value))
-    }
-
+    let isTiered = false;
+    let tiers: any[] = [];
     let attribution: {
       leadSales: string;
       partnerCompany: string;
       partnerSales: string;
       note?: string;
-    } | null = null
+      isTiered?: boolean;
+      tiers?: any[];
+    } | null = null;
+
     try {
       if (promo.description && promo.description.trim().startsWith('{')) {
-        const parsed = JSON.parse(promo.description)
+        const parsed = JSON.parse(promo.description);
+        if (parsed.is_tiered && Array.isArray(parsed.tiers) && parsed.tiers.length > 0) {
+          isTiered = true;
+          tiers = parsed.tiers;
+        }
         if (parsed.lead_sales || parsed.partner_company || parsed.partner_sales) {
           attribution = {
             leadSales: parsed.lead_sales || '',
             partnerCompany: parsed.partner_company || '',
             partnerSales: parsed.partner_sales || '',
-            note: parsed.note || ''
-          }
+            note: parsed.note || '',
+            isTiered,
+            tiers,
+          };
         }
       }
     } catch {}
+
+    let discountAmount = 0;
+    let effectiveDiscountType = promo.discount_type;
+    let effectiveDiscountValue = Number(promo.discount_value);
+
+    if (isTiered && tiers.length > 0) {
+      const sortedTiers = [...tiers].sort((a, b) => Number(b.min_spend) - Number(a.min_spend));
+      const lowestMinSpend = Number(sortedTiers[sortedTiers.length - 1].min_spend || 0);
+
+      if (calcBase < lowestMinSpend) {
+        return {
+          success: false,
+          error: `ยอดซื้อสินค้าที่ร่วมรายการต้องครบ ฿${lowestMinSpend.toLocaleString()} ขึ้นไป สำหรับโค้ดขั้นบันไดนี้ (ยอดร่วมรายการปัจจุบัน ฿${calcBase.toLocaleString()})`
+        };
+      }
+
+      const matchedTier = sortedTiers.find((t) => calcBase >= Number(t.min_spend)) || sortedTiers[sortedTiers.length - 1];
+      effectiveDiscountType = matchedTier.discount_type || 'percentage';
+      effectiveDiscountValue = Number(matchedTier.discount_value);
+
+      if (effectiveDiscountType === 'percentage') {
+        discountAmount = (calcBase * effectiveDiscountValue) / 100;
+        if (promo.max_discount_amount && discountAmount > Number(promo.max_discount_amount)) {
+          discountAmount = Number(promo.max_discount_amount);
+        }
+      } else {
+        discountAmount = Math.min(calcBase, effectiveDiscountValue);
+      }
+    } else {
+      const minSpend = Number(promo.min_spend || 0);
+      if (minSpend > 0 && calcBase < minSpend) {
+        return { 
+          success: false, 
+          error: `ยอดซื้อสินค้าที่ร่วมรายการต้องครบ ฿${minSpend.toLocaleString()} ขึ้นไป (ยอดร่วมรายการปัจจุบัน ฿${calcBase.toLocaleString()})` 
+        };
+      }
+
+      if (promo.discount_type === 'percentage') {
+        discountAmount = (calcBase * Number(promo.discount_value)) / 100;
+        if (promo.max_discount_amount && discountAmount > Number(promo.max_discount_amount)) {
+          discountAmount = Number(promo.max_discount_amount);
+        }
+      } else {
+        discountAmount = Math.min(calcBase, Number(promo.discount_value));
+      }
+    }
 
     return {
       success: true,
@@ -513,10 +552,14 @@ export async function validatePosCoupon(code: string, currentSubtotal: number, e
         id: promo.id,
         code: cleanCode,
         title: promo.title,
-        discountType: (promo.discount_type === 'percentage' ? 'percentage' : 'fixed_amount') as 'percentage' | 'fixed_amount',
-        discountValue: Number(promo.discount_value),
+        discountType: (effectiveDiscountType === 'percentage' ? 'percentage' : 'fixed_amount') as 'percentage' | 'fixed_amount',
+        discountValue: effectiveDiscountValue,
         discountAmount: Math.round(discountAmount),
         source: 'terra',
+        isTiered,
+        tiers: isTiered ? tiers : undefined,
+        minSpend: Number(promo.min_spend || 0),
+        maxDiscountAmount: promo.max_discount_amount ? Number(promo.max_discount_amount) : undefined,
         attribution
       }
     }
@@ -584,6 +627,7 @@ export interface CheckoutPayload {
   taxId?: string | null;           // ✨ เพิ่มข้อมูลบริษัท
   specialDiscountPercent?: number;  // ✨ ส่วนลดพิเศษ %
   specialDiscountBaht?: number;     // ✨ ส่วนลดพิเศษ บาท
+  couponId?: number | null;         // 🎟️ ID คูปอง (terra_collection_promotions)
   couponCode?: string | null;       // 🎟️ โค้ดคูปอง
   couponDiscountAmount?: number;    // 🎟️ มูลค่าส่วนลดคูปอง
   couponAttribution?: {             // 🤝 ข้อมูลเซลล์ / คู่ค้าผู้ได้รับสิทธิ์
@@ -668,6 +712,7 @@ export async function processCheckout(payload: CheckoutPayload): Promise<Checkou
     }
     if (payload.couponCode) {
       discountSnapshot.coupon = {
+        id: payload.couponId || null,
         code: payload.couponCode,
         discount_amount: payload.couponDiscountAmount || 0,
         lead_sales: payload.couponAttribution?.leadSales || null,

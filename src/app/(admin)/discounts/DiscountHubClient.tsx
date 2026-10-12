@@ -349,6 +349,18 @@ export default function DiscountHubClient({
   const [batchUsageLimit, setBatchUsageLimit] = useState<number>(1);
   const [batchInlineError, setBatchInlineError] = useState<string | null>(null);
   const [batchCopiedIndex, setBatchCopiedIndex] = useState<number | null>(null);
+
+  // Tiered step discount state
+  const [batchIsTiered, setBatchIsTiered] = useState(false);
+  const [batchTiers, setBatchTiers] = useState<Array<{
+    id: string;
+    min_spend: string;
+    discount_type: "percentage" | "fixed_amount";
+    discount_value: string;
+  }>>([
+    { id: "1", min_spend: "20000", discount_type: "percentage", discount_value: "5" },
+    { id: "2", min_spend: "30000", discount_type: "percentage", discount_value: "10" },
+  ]);
   const [batchCreatedResult, setBatchCreatedResult] = useState<{
     batchId: string;
     codes: string[];
@@ -745,9 +757,27 @@ export default function DiscountHubClient({
       setBatchInlineError("กรุณาระบุรูปแบบรหัส (เช่น YD-AA-####)");
       return;
     }
-    if (batchDiscountValue <= 0) {
-      setBatchInlineError("มูลค่าส่วนลดต้องมากกว่า 0");
-      return;
+
+    let validTiers: Array<{ min_spend: number; discount_type: "percentage" | "fixed_amount"; discount_value: number }> = [];
+    if (batchIsTiered) {
+      validTiers = batchTiers
+        .map(t => ({
+          min_spend: Number(t.min_spend) || 0,
+          discount_type: t.discount_type || "percentage",
+          discount_value: Number(t.discount_value) || 0,
+        }))
+        .filter(t => t.min_spend > 0 && t.discount_value > 0)
+        .sort((a, b) => a.min_spend - b.min_spend);
+
+      if (validTiers.length < 1) {
+        setBatchInlineError("กรุณาระบุขั้นบันไดอย่างน้อย 1 ขั้น (ต้องมียอดซื้อและส่วนลดมากกว่า 0)");
+        return;
+      }
+    } else {
+      if (batchDiscountValue <= 0) {
+        setBatchInlineError("มูลค่าส่วนลดต้องมากกว่า 0");
+        return;
+      }
     }
 
     startTransition(async () => {
@@ -759,13 +789,15 @@ export default function DiscountHubClient({
         count: Math.max(1, Math.min(100, Number(batchCount) || 1)),
         pattern: batchPattern,
         title_prefix: batchTitlePrefix.trim() || undefined,
-        discount_type: batchDiscountType,
-        discount_value: batchDiscountValue,
-        min_spend: batchMinSpend ? Number(batchMinSpend) : 0,
+        discount_type: batchIsTiered ? validTiers[0].discount_type : batchDiscountType,
+        discount_value: batchIsTiered ? validTiers[0].discount_value : batchDiscountValue,
+        min_spend: batchIsTiered ? validTiers[0].min_spend : (batchMinSpend ? Number(batchMinSpend) : 0),
         max_discount_amount: batchMaxDiscount ? Number(batchMaxDiscount) : null,
         start_date: batchStartDate ? new Date(batchStartDate).toISOString() : null,
         end_date: batchEndDate ? new Date(batchEndDate).toISOString() : null,
         usage_limit: batchUsageLimit,
+        is_tiered: batchIsTiered,
+        tiers: batchIsTiered ? validTiers : undefined,
       });
 
       if (!res.success || !res.codes) {
@@ -774,9 +806,11 @@ export default function DiscountHubClient({
         return;
       }
 
-      const discountSummary = batchDiscountType === "percentage"
-        ? `${batchDiscountValue}% (ลดสูงสุด ${batchMaxDiscount ? `฿${Number(batchMaxDiscount).toLocaleString()}` : "ไม่จำกัด"})`
-        : `฿${Number(batchDiscountValue).toLocaleString()}`;
+      const discountSummary = batchIsTiered
+        ? `ขั้นบันได: ` + validTiers.map(t => `ซื้อครบ ฿${Number(t.min_spend).toLocaleString()} ลด ${t.discount_type === "percentage" ? `${t.discount_value}%` : `฿${Number(t.discount_value).toLocaleString()}`}`).join(" | ") + (batchMaxDiscount ? ` (ลดสูงสุด ฿${Number(batchMaxDiscount).toLocaleString()})` : "")
+        : batchDiscountType === "percentage"
+          ? `${batchDiscountValue}% (ลดสูงสุด ${batchMaxDiscount ? `฿${Number(batchMaxDiscount).toLocaleString()}` : "ไม่จำกัด"})`
+          : `฿${Number(batchDiscountValue).toLocaleString()}`;
 
       const expiresSummary = batchEndDate
         ? new Date(batchEndDate).toLocaleDateString("th-TH")
@@ -1389,6 +1423,12 @@ export default function DiscountHubClient({
                             </span>
                           )}
 
+                          {promo.is_tiered && (
+                            <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700 border border-slate-200">
+                              ขั้นบันได
+                            </span>
+                          )}
+
                           {isExpired && (
                             <span className="inline-flex items-center gap-1 rounded-md bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-700 border border-rose-200">
                               หมดอายุ
@@ -1443,18 +1483,39 @@ export default function DiscountHubClient({
                           <h3 className="text-sm font-bold text-slate-900 leading-snug mt-0.5 truncate">
                             {promo.title}
                           </h3>
-                          <div className="mt-1 flex items-baseline gap-1.5 flex-wrap">
-                            <span className="text-xl font-bold font-mono text-slate-900 tracking-tight">
-                              {isPercent ? `${promo.discount_value}% OFF` : `฿${Number(promo.discount_value).toLocaleString()} OFF`}
-                            </span>
-                            <span className="text-[10px] text-slate-500 font-medium truncate">
-                              {isAuto
-                                ? `ครบ ${promo.min_sets || 1} เซ็ต`
-                                : promo.min_spend
-                                  ? `(ขั้นต่ำ ฿${Number(promo.min_spend).toLocaleString()})`
-                                  : "(ไม่มีขั้นต่ำ)"}
-                            </span>
-                          </div>
+
+                          {promo.is_tiered && promo.tiers && promo.tiers.length > 0 ? (
+                            <div className="mt-1.5 space-y-1">
+                              <div className="flex items-center gap-1 flex-wrap">
+                                {promo.tiers.map((t, idx) => (
+                                  <span
+                                    key={idx}
+                                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-slate-700 font-mono text-[10px] font-medium"
+                                  >
+                                    ≥฿{Number(t.min_spend).toLocaleString()}: {t.discount_type === "percentage" ? `${t.discount_value}%` : `฿${Number(t.discount_value).toLocaleString()}`}
+                                  </span>
+                                ))}
+                              </div>
+                              {promo.max_discount_amount && (
+                                <span className="text-[10px] text-slate-400 font-medium block">
+                                  (ลดสูงสุด ฿{Number(promo.max_discount_amount).toLocaleString()})
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="mt-1 flex items-baseline gap-1.5 flex-wrap">
+                              <span className="text-xl font-bold font-mono text-slate-900 tracking-tight">
+                                {isPercent ? `${promo.discount_value}% OFF` : `฿${Number(promo.discount_value).toLocaleString()} OFF`}
+                              </span>
+                              <span className="text-[10px] text-slate-500 font-medium truncate">
+                                {isAuto
+                                  ? `ครบ ${promo.min_sets || 1} เซ็ต`
+                                  : promo.min_spend
+                                    ? `(ขั้นต่ำ ฿${Number(promo.min_spend).toLocaleString()})`
+                                    : "(ไม่มีขั้นต่ำ)"}
+                              </span>
+                            </div>
+                          )}
                         </div>
                       </div>
 
@@ -2635,74 +2696,223 @@ export default function DiscountHubClient({
                   </div>
 
                   {/* Section 3: Discount Terms */}
-                  <div className="space-y-3 rounded-xl bg-slate-50/70 border border-slate-200 p-4">
-                    <div className="flex items-center gap-2 text-xs font-bold text-slate-900">
-                      <Percent className="w-4 h-4 text-slate-600" />
-                      <span>3. เงื่อนไขส่วนลด</span>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      <div>
-                        <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                          ประเภทส่วนลด
-                        </label>
-                        <div className="flex rounded-lg bg-slate-200/70 p-1 border border-slate-200">
-                          <button
-                            type="button"
-                            onClick={() => setBatchDiscountType("percentage")}
-                            className={`flex-1 py-1 text-xs font-bold rounded-md transition cursor-pointer ${
-                              batchDiscountType === "percentage"
-                                ? "bg-white text-slate-900 shadow-2xs"
-                                : "text-slate-600 hover:text-slate-900"
-                            }`}
-                          >
-                            % เปอร์เซ็นต์
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setBatchDiscountType("fixed_amount")}
-                            className={`flex-1 py-1 text-xs font-bold rounded-md transition cursor-pointer ${
-                              batchDiscountType === "fixed_amount"
-                                ? "bg-white text-slate-900 shadow-2xs"
-                                : "text-slate-600 hover:text-slate-900"
-                            }`}
-                          >
-                            ฿ บาทถ้วน
-                          </button>
-                        </div>
+                  <div className="space-y-3.5 rounded-xl bg-slate-50/70 border border-slate-200 p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-xs font-bold text-slate-900">
+                        <Percent className="w-4 h-4 text-slate-600" />
+                        <span>3. เงื่อนไขส่วนลด</span>
                       </div>
 
-                      <div>
-                        <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                          มูลค่าส่วนลด <span className="text-rose-500">*</span>
-                        </label>
-                        <div className="relative">
+                      {/* Mode Selector */}
+                      <div className="flex rounded-lg bg-slate-200/70 p-0.5 border border-slate-200">
+                        <button
+                          type="button"
+                          onClick={() => setBatchIsTiered(false)}
+                          className={`px-3 py-1 text-xs font-bold rounded-md transition cursor-pointer ${
+                            !batchIsTiered
+                              ? "bg-white text-slate-900 shadow-2xs"
+                              : "text-slate-600 hover:text-slate-900"
+                          }`}
+                        >
+                          ส่วนลดปกติ
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setBatchIsTiered(true)}
+                          className={`px-3 py-1 text-xs font-bold rounded-md transition cursor-pointer ${
+                            batchIsTiered
+                              ? "bg-white text-slate-900 shadow-2xs"
+                              : "text-slate-600 hover:text-slate-900"
+                          }`}
+                        >
+                          ขั้นบันได
+                        </button>
+                      </div>
+                    </div>
+
+                    {!batchIsTiered ? (
+                      /* Flat Mode Inputs */
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div>
+                          <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                            ประเภทส่วนลด
+                          </label>
+                          <div className="flex rounded-lg bg-slate-200/70 p-1 border border-slate-200">
+                            <button
+                              type="button"
+                              onClick={() => setBatchDiscountType("percentage")}
+                              className={`flex-1 py-1 text-xs font-bold rounded-md transition cursor-pointer ${
+                                batchDiscountType === "percentage"
+                                  ? "bg-white text-slate-900 shadow-2xs"
+                                  : "text-slate-600 hover:text-slate-900"
+                              }`}
+                            >
+                              % เปอร์เซ็นต์
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setBatchDiscountType("fixed_amount")}
+                              className={`flex-1 py-1 text-xs font-bold rounded-md transition cursor-pointer ${
+                                batchDiscountType === "fixed_amount"
+                                  ? "bg-white text-slate-900 shadow-2xs"
+                                  : "text-slate-600 hover:text-slate-900"
+                              }`}
+                            >
+                              ฿ บาทถ้วน
+                            </button>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                            มูลค่าส่วนลด <span className="text-rose-500">*</span>
+                          </label>
+                          <div className="relative">
+                            <input
+                              type="number"
+                              min="1"
+                              value={batchDiscountValue}
+                              onChange={(e) => setBatchDiscountValue(Number(e.target.value))}
+                              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition"
+                            />
+                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                              {batchDiscountType === "percentage" ? "%" : "฿"}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="text-[11px] font-medium text-slate-600 block mb-1">
+                            ยอดซื้อขั้นต่ำ (บาท)
+                          </label>
                           <input
                             type="number"
-                            min="1"
-                            value={batchDiscountValue}
-                            onChange={(e) => setBatchDiscountValue(Number(e.target.value))}
-                            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition"
+                            placeholder="0 (ไม่มีขั้นต่ำ)"
+                            value={batchMinSpend}
+                            onChange={(e) => setBatchMinSpend(e.target.value)}
+                            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-900 outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition"
                           />
-                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
-                            {batchDiscountType === "percentage" ? "%" : "฿"}
-                          </span>
                         </div>
                       </div>
+                    ) : (
+                      /* Tiered Step Mode Inputs - Clean, Native Form */
+                      <div className="space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[11px] font-bold text-slate-700">
+                            กำหนดระดับส่วนลดตามยอดซื้อ
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setBatchTiers(prev => {
+                                const lastMin = Number(prev[prev.length - 1]?.min_spend || 30000);
+                                const lastDisc = Number(prev[prev.length - 1]?.discount_value || 10);
+                                return [
+                                  ...prev,
+                                  {
+                                    id: String(Date.now()),
+                                    min_spend: String(lastMin + 10000),
+                                    discount_type: "percentage",
+                                    discount_value: String(lastDisc + 5),
+                                  }
+                                ];
+                              });
+                            }}
+                            className="text-xs font-bold text-slate-700 hover:text-slate-900 bg-white border border-slate-200 hover:bg-slate-100 px-2.5 py-1 rounded-lg flex items-center gap-1 transition cursor-pointer shadow-2xs"
+                          >
+                            <Plus size={13} />
+                            <span>เพิ่มขั้น</span>
+                          </button>
+                        </div>
 
-                      <div>
-                        <label className="text-[11px] font-medium text-slate-600 block mb-1">
-                          ยอดซื้อขั้นต่ำ (บาท)
-                        </label>
-                        <input
-                          type="number"
-                          placeholder="0 (ไม่มีขั้นต่ำ)"
-                          value={batchMinSpend}
-                          onChange={(e) => setBatchMinSpend(e.target.value)}
-                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-900 outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition"
-                        />
+                        <div className="space-y-2">
+                          {batchTiers.map((tier, idx) => (
+                            <div key={tier.id} className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl p-2.5 shadow-2xs">
+                              <span className="text-xs font-bold text-slate-400 w-12 shrink-0 text-center">
+                                ขั้น {idx + 1}
+                              </span>
+                              <div className="flex-1 min-w-[120px]">
+                                <label className="text-[10px] font-medium text-slate-500 block mb-0.5">
+                                  ยอดซื้อครบ (บาท) <span className="text-rose-500">*</span>
+                                </label>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  value={tier.min_spend}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setBatchTiers(prev => prev.map(t => t.id === tier.id ? { ...t, min_spend: val } : t));
+                                  }}
+                                  placeholder="20000"
+                                  className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-900 outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition"
+                                />
+                              </div>
+                              <div className="w-28 shrink-0">
+                                <label className="text-[10px] font-medium text-slate-500 block mb-0.5">
+                                  ประเภท
+                                </label>
+                                <select
+                                  value={tier.discount_type}
+                                  onChange={(e) => {
+                                    const val = e.target.value as "percentage" | "fixed_amount";
+                                    setBatchTiers(prev => prev.map(t => t.id === tier.id ? { ...t, discount_type: val } : t));
+                                  }}
+                                  className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-bold text-slate-800 outline-none focus:border-slate-800 cursor-pointer"
+                                >
+                                  <option value="percentage">% เปอร์เซ็นต์</option>
+                                  <option value="fixed_amount">฿ บาท</option>
+                                </select>
+                              </div>
+                              <div className="w-24 shrink-0">
+                                <label className="text-[10px] font-medium text-slate-500 block mb-0.5">
+                                  มูลค่าลด <span className="text-rose-500">*</span>
+                                </label>
+                                <div className="relative">
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    value={tier.discount_value}
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      setBatchTiers(prev => prev.map(t => t.id === tier.id ? { ...t, discount_value: val } : t));
+                                    }}
+                                    placeholder="5"
+                                    className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-900 outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition pr-5"
+                                  />
+                                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                                    {tier.discount_type === "percentage" ? "%" : "฿"}
+                                  </span>
+                                </div>
+                              </div>
+                              {batchTiers.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => setBatchTiers(prev => prev.filter(t => t.id !== tier.id))}
+                                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition shrink-0 cursor-pointer mt-3"
+                                  title="ลบขั้นนี้"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Minimal quiet summary */}
+                        <div className="text-[11px] text-slate-500 flex items-center gap-1.5 flex-wrap pt-0.5">
+                          <span className="font-semibold text-slate-600">ตัวอย่าง:</span>
+                          {batchTiers
+                            .filter(t => Number(t.min_spend) > 0 && Number(t.discount_value) > 0)
+                            .sort((a, b) => Number(a.min_spend) - Number(b.min_spend))
+                            .map((t, i) => (
+                              <span key={t.id || i} className="font-mono text-slate-700 font-medium">
+                                {i > 0 && <span className="text-slate-300 mr-1.5">|</span>}
+                                ครบ ฿{Number(t.min_spend).toLocaleString()} ลด {t.discount_type === "percentage" ? `${t.discount_value}%` : `฿${Number(t.discount_value).toLocaleString()}`}
+                              </span>
+                            ))}
+                        </div>
                       </div>
-                    </div>
+                    )}
 
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
                       <div>
@@ -2712,7 +2922,7 @@ export default function DiscountHubClient({
                         <input
                           type="number"
                           placeholder="ไม่จำกัด"
-                          disabled={batchDiscountType !== "percentage"}
+                          disabled={batchIsTiered ? !batchTiers.some(t => t.discount_type === "percentage") : batchDiscountType !== "percentage"}
                           value={batchMaxDiscount}
                           onChange={(e) => setBatchMaxDiscount(e.target.value)}
                           className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-900 outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition disabled:bg-slate-100 disabled:text-slate-400"
