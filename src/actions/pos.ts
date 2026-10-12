@@ -444,13 +444,6 @@ export async function validatePosCoupon(code: string, currentSubtotal: number, e
   })
   const now = new Date().toISOString()
 
-  // 🏷️ ฐานคำนวณส่วนลด: ถ้ามีการส่ง eligibleSubtotal มา ให้คิดส่วนลดเฉพาะสินค้าที่ไม่มีส่วนลดรายชิ้น
-  const calcBase = eligibleSubtotal !== undefined ? eligibleSubtotal : currentSubtotal
-
-  if (calcBase <= 0) {
-    return { success: false, error: "สินค้าในบิลมีส่วนลดรายชิ้นอยู่แล้ว จึงไม่สามารถใช้โค้ดลดร่วมได้ครับ" }
-  }
-
   // 1. ตรวจสอบจาก terra_collection_promotions (Global Coupon Code)
   const { data: terraCoupons } = await supabase
     .from('terra_collection_promotions')
@@ -469,6 +462,7 @@ export async function validatePosCoupon(code: string, currentSubtotal: number, e
     if (promo.usage_limit && promo.used_count >= promo.usage_limit) {
       return { success: false, error: "คูปองนี้ถูกใช้งานครบจำนวนสิทธิ์แล้ว" }
     }
+    let isTopUp = false;
     let isTiered = false;
     let tiers: any[] = [];
     let attribution: {
@@ -478,11 +472,13 @@ export async function validatePosCoupon(code: string, currentSubtotal: number, e
       note?: string;
       isTiered?: boolean;
       tiers?: any[];
+      isTopUp?: boolean;
     } | null = null;
 
     try {
       if (promo.description && promo.description.trim().startsWith('{')) {
         const parsed = JSON.parse(promo.description);
+        isTopUp = Boolean(parsed.is_top_up || parsed.isTopUp);
         if (parsed.is_tiered && Array.isArray(parsed.tiers) && parsed.tiers.length > 0) {
           isTiered = true;
           tiers = parsed.tiers;
@@ -495,10 +491,29 @@ export async function validatePosCoupon(code: string, currentSubtotal: number, e
             note: parsed.note || '',
             isTiered,
             tiers,
+            isTopUp,
           };
         }
       }
     } catch {}
+
+    if (!isTopUp && (promo.title.toLowerCase().includes('top up') || promo.title.toLowerCase().includes('top-up') || promo.title.includes('ลด On-top') || promo.title.includes('Top up') || promo.title.includes('Top-up'))) {
+      isTopUp = true;
+    }
+
+    // 🏷️ ฐานคำนวณส่วนลด:
+    // หากเป็นคูปองแบบ Top-up (On-top) สามารถลดเพิ่มจากยอดขายปัจจุบัน (currentSubtotal) ได้เลย แม้สินค้าในบิลจะลด 50% แล้วก็ตาม
+    // หากไม่ใช่ Top-up จะคิดเฉพาะสินค้าที่ไม่มีส่วนลดรายชิ้น (eligibleSubtotal)
+    const calcBase = isTopUp 
+      ? currentSubtotal 
+      : (eligibleSubtotal !== undefined ? eligibleSubtotal : currentSubtotal);
+
+    if (calcBase <= 0) {
+      if (isTopUp) {
+        return { success: false, error: "ยอดรวมสินค้าในบิลต้องมากกว่า 0 บาท" }
+      }
+      return { success: false, error: "สินค้าในบิลมีส่วนลดรายชิ้นอยู่แล้ว จึงไม่สามารถใช้โค้ดลดร่วมได้ครับ (ต้องใช้โค้ดประเภท Top-up เท่านั้น)" }
+    }
 
     let discountAmount = 0;
     let effectiveDiscountType = promo.discount_type;
@@ -556,6 +571,7 @@ export async function validatePosCoupon(code: string, currentSubtotal: number, e
         discountValue: effectiveDiscountValue,
         discountAmount: Math.round(discountAmount),
         source: 'terra',
+        isTopUp,
         isTiered,
         tiers: isTiered ? tiers : undefined,
         minSpend: Number(promo.min_spend || 0),
@@ -581,6 +597,18 @@ export async function validatePosCoupon(code: string, currentSubtotal: number, e
       return { success: false, error: "ส่วนลดนี้หมดอายุแล้ว" }
     }
 
+    const isTopUp = Boolean(disc.name && (disc.name.toLowerCase().includes('top up') || disc.name.toLowerCase().includes('top-up') || disc.name.includes('on-top') || disc.name.includes('Top up')));
+    const calcBase = isTopUp 
+      ? currentSubtotal 
+      : (eligibleSubtotal !== undefined ? eligibleSubtotal : currentSubtotal);
+
+    if (calcBase <= 0) {
+      if (isTopUp) {
+        return { success: false, error: "ยอดรวมสินค้าในบิลต้องมากกว่า 0 บาท" }
+      }
+      return { success: false, error: "สินค้าในบิลมีส่วนลดรายชิ้นอยู่แล้ว จึงไม่สามารถใช้โค้ดลดร่วมได้ครับ (ต้องใช้โค้ดประเภท Top-up เท่านั้น)" }
+    }
+
     let discountAmount = 0
     if (disc.discount_type === 'PERCENT') {
       discountAmount = (calcBase * Number(disc.value)) / 100
@@ -597,7 +625,8 @@ export async function validatePosCoupon(code: string, currentSubtotal: number, e
         discountType: (disc.discount_type === 'PERCENT' ? 'percentage' : 'fixed_amount') as 'percentage' | 'fixed_amount',
         discountValue: Number(disc.value),
         discountAmount: Math.round(discountAmount),
-        source: 'pos'
+        source: 'pos',
+        isTopUp,
       }
     }
   }

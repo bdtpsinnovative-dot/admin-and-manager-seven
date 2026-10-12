@@ -106,6 +106,7 @@ export default function ManagerPOSPage() {
     discountType: 'percentage' | 'fixed_amount' | string;
     discountValue: number;
     discountAmount: number;
+    isTopUp?: boolean;
     isTiered?: boolean;
     tiers?: Array<{ min_spend: number | string; discount_type: 'percentage' | 'fixed_amount'; discount_value: number | string }>;
     maxDiscountAmount?: number;
@@ -797,14 +798,14 @@ export default function ManagerPOSPage() {
       return
     }
 
-    if (eligibleForCouponSubtotal <= 0) {
-      setCouponErrorMsg("สินค้าทุกชิ้นในบิลมีส่วนลดรายชิ้นอยู่แล้ว จึงไม่สามารถใช้โค้ดลดร่วมได้ครับ")
-      toast.error("สินค้าทุกชิ้นในบิลมีส่วนลดรายชิ้นอยู่แล้ว จึงไม่สามารถใช้โค้ดลดร่วมได้ครับ")
+    const currentSubtotal = Math.max(0, totalFinalPriceBeforeSpecial - totalSetDiscountAmount)
+    if (currentSubtotal <= 0) {
+      setCouponErrorMsg("ยังไม่มียอดสินค้าในบิล กรุณาเลือกสินค้าก่อนใช้คูปอง")
+      toast.warning("ยังไม่มียอดสินค้าในบิล")
       return
     }
 
     setIsValidatingCoupon(true)
-    const currentSubtotal = Math.max(0, totalFinalPriceBeforeSpecial - totalSetDiscountAmount)
     const res = await validatePosCoupon(couponInput.trim(), currentSubtotal, eligibleForCouponSubtotal)
     setIsValidatingCoupon(false)
 
@@ -812,10 +813,11 @@ export default function ManagerPOSPage() {
       setAppliedCoupon(res.coupon)
       setCouponInput('')
       setCouponErrorMsg(null)
+      const topUpTag = res.coupon.isTopUp ? ' ⚡[Top-up ลดเพิ่ม]' : ''
       const attrInfo = res.coupon.attribution?.partnerCompany
         ? ` (${res.coupon.attribution.partnerCompany} • เซลล์: ${res.coupon.attribution.leadSales || '-'})`
         : ''
-      toast.success(`🎟️ ใช้คูปอง [${res.coupon.code}] สำเร็จ! ลดทันที ฿${res.coupon.discountAmount.toLocaleString()}${attrInfo}`)
+      toast.success(`🎟️ ใช้คูปอง [${res.coupon.code}] สำเร็จ!${topUpTag} ลดทันที ฿${res.coupon.discountAmount.toLocaleString()}${attrInfo}`)
     } else {
       const errMsg = res.error || "รหัสคูปองไม่ถูกต้อง"
       setCouponErrorMsg(errMsg)
@@ -829,17 +831,28 @@ export default function ManagerPOSPage() {
     toast.info("ยกเลิกการใช้คูปองแล้ว")
   }
 
-  // อัปเดตมูลค่าคูปองอัตโนมัติหากสินค้าในตะกร้าเปลี่ยน (คิดเฉพาะสินค้าที่ไม่ลดรายชิ้น และปรับขั้นบันไดตามยอดซื้อจริง)
+  // อัปเดตมูลค่าคูปองอัตโนมัติหากสินค้าในตะกร้าเปลี่ยน (คิดเฉพาะสินค้าที่ไม่ลดรายชิ้น หรือคิดทั้งบิลกรณีเป็น Top-up)
   useEffect(() => {
     if (appliedCoupon) {
-      if (eligibleForCouponSubtotal <= 0) {
+      const isTopUp = Boolean(appliedCoupon.isTopUp || (appliedCoupon.attribution as any)?.isTopUp)
+      
+      // ถ้าไม่ใช่ Top-up และไม่มีสินค้าที่ร่วมรายการแล้ว ให้ยกเลิกคูปอง
+      if (!isTopUp && eligibleForCouponSubtotal <= 0) {
         setAppliedCoupon(null)
         toast.warning("ยกเลิกคูปองอัตโนมัติ เนื่องจากสินค้าในบิลมีส่วนลดรายชิ้นทั้งหมดแล้ว")
         return
       }
 
-      // 🏷️ กฎเหล็ก: คำนวณขั้นบันไดและสิทธิ์คูปองจากยอดสินค้าที่ร่วมรายการเท่านั้น (ไม่นำสินค้าที่มีส่วนลดรายชิ้นแล้วมานับสะสมขั้น)
-      const tierCheckSubtotal = eligibleForCouponSubtotal
+      const currentSubtotal = Math.max(0, totalFinalPriceBeforeSpecial - totalSetDiscountAmount)
+      const calcBase = isTopUp ? currentSubtotal : eligibleForCouponSubtotal
+
+      if (calcBase <= 0) {
+        setAppliedCoupon(null)
+        return
+      }
+
+      // 🏷️ กฎเหล็ก: คำนวณขั้นบันไดและสิทธิ์คูปองจากยอดสินค้าที่ร่วมรายการ
+      const tierCheckSubtotal = calcBase
       const isTiered = Boolean(appliedCoupon.isTiered || (appliedCoupon.attribution as any)?.isTiered)
       const rawTiers = appliedCoupon.tiers || (appliedCoupon.attribution as any)?.tiers
 
@@ -863,12 +876,12 @@ export default function ManagerPOSPage() {
 
         let newDiscount = 0
         if (tierType === 'percentage') {
-          newDiscount = Math.round((eligibleForCouponSubtotal * tierValue) / 100)
+          newDiscount = Math.round((calcBase * tierValue) / 100)
           if (appliedCoupon.maxDiscountAmount && newDiscount > appliedCoupon.maxDiscountAmount) {
             newDiscount = appliedCoupon.maxDiscountAmount
           }
         } else {
-          newDiscount = Math.min(eligibleForCouponSubtotal, tierValue)
+          newDiscount = Math.min(calcBase, tierValue)
         }
 
         setAppliedCoupon(prev => {
@@ -895,7 +908,7 @@ export default function ManagerPOSPage() {
         }
 
         if (appliedCoupon.discountType === 'percentage') {
-          let newDiscount = Math.round((eligibleForCouponSubtotal * appliedCoupon.discountValue) / 100)
+          let newDiscount = Math.round((calcBase * appliedCoupon.discountValue) / 100)
           if (appliedCoupon.maxDiscountAmount && newDiscount > appliedCoupon.maxDiscountAmount) {
             newDiscount = appliedCoupon.maxDiscountAmount
           }
@@ -904,7 +917,7 @@ export default function ManagerPOSPage() {
             return { ...prev, discountAmount: newDiscount }
           })
         } else {
-          const newDiscount = Math.min(eligibleForCouponSubtotal, appliedCoupon.discountValue)
+          const newDiscount = Math.min(calcBase, appliedCoupon.discountValue)
           setAppliedCoupon(prev => {
             if (!prev || prev.discountAmount === newDiscount) return prev
             return { ...prev, discountAmount: newDiscount }
@@ -2034,7 +2047,19 @@ export default function ManagerPOSPage() {
               <div className="flex justify-between"><span>ยอดรวมสินค้า</span><span>{totalOriginalPrice.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span></div>
               {promotionDiscountAmount > 0 && <div className="flex justify-between text-orange-600"><span>ส่วนลดสินค้า</span><span>- {promotionDiscountAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span></div>}
               {totalSetDiscountAmount > 0 && <div className="flex justify-between text-emerald-600 font-bold"><span>ส่วนลดเซ็ตโปรโมชั่น</span><span>- {totalSetDiscountAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span></div>}
-              {couponDiscountAmount > 0 && <div className="flex justify-between text-purple-600 font-bold"><span>ส่วนลดคูปอง ({appliedCoupon?.code})</span><span>- {couponDiscountAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span></div>}
+              {couponDiscountAmount > 0 && (
+                <div className="flex justify-between text-purple-600 font-bold">
+                  <span className="flex items-center gap-1.5">
+                    {appliedCoupon?.isTopUp && (
+                      <span className="bg-amber-100 text-amber-800 text-[9px] px-1.5 py-0.5 rounded font-black tracking-wide">
+                        TOP-UP
+                      </span>
+                    )}
+                    <span>ส่วนลดคูปอง ({appliedCoupon?.code})</span>
+                  </span>
+                  <span>- {couponDiscountAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span>
+                </div>
+              )}
               {totalSpecialDiscountAmount !== 0 && (
                 <div className={`flex justify-between ${totalSpecialDiscountAmount > 0 ? 'text-red-500' : 'text-emerald-600'}`}>
                   <span>{totalSpecialDiscountAmount > 0 ? 'ส่วนลดพิเศษ' : 'ปัดเศษเพิ่ม'}</span>

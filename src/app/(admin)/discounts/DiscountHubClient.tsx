@@ -52,6 +52,7 @@ import {
   AvailableCollectionGroup,
   createTerraPromotion,
   createBatchPartnerCoupons,
+  updatePartnerCoupon,
   updateTerraPromotion,
   toggleTerraPromotion,
   deleteTerraPromotion,
@@ -327,12 +328,16 @@ export default function DiscountHubClient({
   const [terraFormEndDate, setTerraFormEndDate] = useState<string>("");
   const [terraFormUsageLimit, setTerraFormUsageLimit] = useState<string>("");
   const [terraFormIsActive, setTerraFormIsActive] = useState<boolean>(true);
+  const [terraFormIsTopUp, setTerraFormIsTopUp] = useState<boolean>(false);
   const [terraCollectionSearch, setTerraCollectionSearch] = useState("");
   const [terraCategoryFilter, setTerraCategoryFilter] = useState<string>("all");
   const [formInlineError, setFormInlineError] = useState<string | null>(null);
 
   // ── Batch Partner Coupon Generator State ────────────────────────────────────
   const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
+  const [editingPartnerCoupon, setEditingPartnerCoupon] = useState<TerraPromotion | null>(null);
+  const [batchSingleCode, setBatchSingleCode] = useState<string>("");
+  const [batchUpdateEntireBatch, setBatchUpdateEntireBatch] = useState<boolean>(false);
   const [batchLeadSales, setBatchLeadSales] = useState("ยันได");
   const [batchPartnerCompany, setBatchPartnerCompany] = useState("");
   const [batchPartnerSales, setBatchPartnerSales] = useState("");
@@ -347,6 +352,7 @@ export default function DiscountHubClient({
   const [batchStartDate, setBatchStartDate] = useState<string>("");
   const [batchEndDate, setBatchEndDate] = useState<string>("");
   const [batchUsageLimit, setBatchUsageLimit] = useState<number>(1);
+  const [batchIsTopUp, setBatchIsTopUp] = useState<boolean>(false);
   const [batchInlineError, setBatchInlineError] = useState<string | null>(null);
   const [batchCopiedIndex, setBatchCopiedIndex] = useState<number | null>(null);
 
@@ -591,6 +597,7 @@ export default function DiscountHubClient({
     setTerraFormEndDate("");
     setTerraFormUsageLimit("");
     setTerraFormIsActive(true);
+    setTerraFormIsTopUp(false);
     setTerraCollectionSearch("");
     setTerraCategoryFilter("all");
     setIsTerraModalOpen(true);
@@ -602,7 +609,19 @@ export default function DiscountHubClient({
     const scope = p.promo_scope || (p.trigger_type === "auto" ? "set" : "global");
     setTerraFormPromoScope(scope);
     setTerraFormTitle(p.title);
-    setTerraFormDescription(p.description || "");
+
+    let editIsTopUp = Boolean(p.is_top_up || p.attribution?.is_top_up);
+    let displayDesc = p.description || "";
+    if (displayDesc.trim().startsWith("{")) {
+      try {
+        const parsed = JSON.parse(displayDesc);
+        if (parsed.is_top_up !== undefined) editIsTopUp = Boolean(parsed.is_top_up);
+        if (parsed.note !== undefined) displayDesc = parsed.note;
+      } catch {}
+    }
+    setTerraFormIsTopUp(editIsTopUp);
+    setTerraFormDescription(displayDesc);
+
     setTerraFormCollectionId(p.collection_group_id || collectionGroups[0]?.id || "");
     setTerraFormTriggerType(p.trigger_type);
     setTerraFormCouponCode(p.coupon_code || "");
@@ -662,6 +681,7 @@ export default function DiscountHubClient({
           end_date: terraFormEndDate || null,
           usage_limit: terraFormUsageLimit ? Number(terraFormUsageLimit) : null,
           is_active: terraFormIsActive,
+          is_top_up: terraFormPromoScope === "global" ? terraFormIsTopUp : false,
         });
 
         if (!res.success) {
@@ -688,6 +708,7 @@ export default function DiscountHubClient({
           end_date: terraFormEndDate || null,
           usage_limit: terraFormUsageLimit ? Number(terraFormUsageLimit) : null,
           is_active: terraFormIsActive,
+          is_top_up: terraFormPromoScope === "global" ? terraFormIsTopUp : false,
         });
 
         if (!res.success) {
@@ -745,14 +766,6 @@ export default function DiscountHubClient({
       setBatchInlineError("กรุณาระบุชื่อเซลล์คนแรก (เช่น ยันได)");
       return;
     }
-    if (!batchPartnerCompany.trim()) {
-      setBatchInlineError("กรุณาระบุชื่อบริษัทคู่ค้า / ลูกค้าโครงการ (เช่น บ. สถาปัตย์ AA)");
-      return;
-    }
-    if (!batchPartnerSales.trim()) {
-      setBatchInlineError("กรุณาระบุชื่อเซลล์ของบริษัทคู่ค้า (เช่น คุณสมชาย)");
-      return;
-    }
     if (!batchPattern.trim()) {
       setBatchInlineError("กรุณาระบุรูปแบบรหัส (เช่น YD-AA-####)");
       return;
@@ -798,6 +811,7 @@ export default function DiscountHubClient({
         usage_limit: batchUsageLimit,
         is_tiered: batchIsTiered,
         tiers: batchIsTiered ? validTiers : undefined,
+        is_top_up: batchIsTopUp,
       });
 
       if (!res.success || !res.codes) {
@@ -835,10 +849,13 @@ export default function DiscountHubClient({
 
   const handleCopyAllBatchCodes = () => {
     if (!batchCreatedResult) return;
+    const headerTitle = batchCreatedResult.partnerCompany
+      ? `🎟️ รหัสส่วนลดพิเศษสำหรับ ${batchCreatedResult.partnerCompany}`
+      : `🎟️ รหัสส่วนลดพิเศษ`;
     const lines = [
-      `🎟️ รหัสส่วนลดพิเศษสำหรับ ${batchCreatedResult.partnerCompany}`,
+      headerTitle,
       `👤 เซลล์ผู้ดูแล: ${batchCreatedResult.leadSales}`,
-      `🤝 ผู้ติดต่อ: ${batchCreatedResult.partnerSales}`,
+      batchCreatedResult.partnerSales ? `🤝 ผู้ติดต่อ: ${batchCreatedResult.partnerSales}` : "",
       `💰 ส่วนลด: ${batchCreatedResult.discountSummary}`,
       `📅 หมดอายุ: ${batchCreatedResult.expiresSummary}`,
       batchCreatedResult.note ? `📝 หมายเหตุ: ${batchCreatedResult.note}` : "",
@@ -851,6 +868,142 @@ export default function DiscountHubClient({
 
     navigator.clipboard.writeText(lines);
     triggerToast("success", "คัดลอกทั้งหมดแล้ว", "คัดลอกข้อความพร้อมรหัสทั้งหมดสำหรับส่ง LINE เรียบร้อยแล้ว");
+  };
+
+  const handleOpenCreateBatchModal = () => {
+    setEditingPartnerCoupon(null);
+    setBatchCreatedResult(null);
+    setBatchInlineError(null);
+    setBatchLeadSales("ยันได");
+    setBatchPartnerCompany("");
+    setBatchPartnerSales("");
+    setBatchNote("");
+    setBatchCount(10);
+    setBatchPattern("YD-AA-####");
+    setBatchTitlePrefix("");
+    setBatchSingleCode("");
+    setBatchDiscountType("percentage");
+    setBatchDiscountValue(10);
+    setBatchMinSpend("");
+    setBatchMaxDiscount("");
+    setBatchStartDate("");
+    setBatchEndDate("");
+    setBatchUsageLimit(1);
+    setBatchIsTopUp(false);
+    setBatchIsTiered(false);
+    setBatchUpdateEntireBatch(false);
+    setBatchTiers([
+      { id: "1", min_spend: "20000", discount_type: "percentage", discount_value: "5" },
+      { id: "2", min_spend: "30000", discount_type: "percentage", discount_value: "10" },
+    ]);
+    setIsBatchModalOpen(true);
+  };
+
+  const handleOpenEditPartnerModal = (promo: TerraPromotion) => {
+    setEditingPartnerCoupon(promo);
+    setBatchCreatedResult(null);
+    setBatchInlineError(null);
+    setBatchLeadSales(promo.attribution?.lead_sales || "");
+    setBatchPartnerCompany(promo.attribution?.partner_company || "");
+    setBatchPartnerSales(promo.attribution?.partner_sales || "");
+    setBatchNote(promo.attribution?.note || "");
+    setBatchTitlePrefix(promo.title || "");
+    setBatchSingleCode(promo.coupon_code || "");
+    setBatchDiscountType(promo.discount_type || "percentage");
+    setBatchDiscountValue(promo.discount_value || 10);
+    setBatchMinSpend(promo.min_spend ? String(promo.min_spend) : "");
+    setBatchMaxDiscount(promo.max_discount_amount ? String(promo.max_discount_amount) : "");
+    setBatchStartDate(promo.start_date ? promo.start_date.slice(0, 16) : "");
+    setBatchEndDate(promo.end_date ? promo.end_date.slice(0, 16) : "");
+    setBatchUsageLimit(promo.usage_limit || 1);
+    setBatchIsTopUp(Boolean(promo.is_top_up || promo.attribution?.is_top_up));
+    setBatchUpdateEntireBatch(false);
+
+    if (promo.is_tiered && promo.tiers && promo.tiers.length > 0) {
+      setBatchIsTiered(true);
+      setBatchTiers(
+        promo.tiers.map((t, idx) => ({
+          id: String(idx + 1),
+          min_spend: String(t.min_spend),
+          discount_type: t.discount_type,
+          discount_value: String(t.discount_value),
+        }))
+      );
+    } else {
+      setBatchIsTiered(false);
+    }
+
+    setIsBatchModalOpen(true);
+  };
+
+  const handleExecuteUpdatePartner = () => {
+    if (!editingPartnerCoupon) return;
+    setBatchInlineError(null);
+    if (!batchLeadSales.trim()) {
+      setBatchInlineError("กรุณาระบุชื่อเซลล์คนแรก (เช่น ยันได)");
+      return;
+    }
+    if (!batchSingleCode.trim()) {
+      setBatchInlineError("กรุณาระบุรหัสคูปอง (Coupon Code)");
+      return;
+    }
+
+    let validTiers: Array<{ min_spend: number; discount_type: "percentage" | "fixed_amount"; discount_value: number }> = [];
+    if (batchIsTiered) {
+      validTiers = batchTiers
+        .map(t => ({
+          min_spend: Number(t.min_spend) || 0,
+          discount_type: t.discount_type || "percentage",
+          discount_value: Number(t.discount_value) || 0,
+        }))
+        .filter(t => t.min_spend > 0 && t.discount_value > 0)
+        .sort((a, b) => a.min_spend - b.min_spend);
+
+      if (validTiers.length < 1) {
+        setBatchInlineError("กรุณาระบุขั้นบันไดอย่างน้อย 1 ขั้น (ต้องมียอดซื้อและส่วนลดมากกว่า 0)");
+        return;
+      }
+    } else {
+      if (batchDiscountValue <= 0) {
+        setBatchInlineError("มูลค่าส่วนลดต้องมากกว่า 0");
+        return;
+      }
+    }
+
+    startTransition(async () => {
+      const res = await updatePartnerCoupon({
+        id: editingPartnerCoupon.id,
+        lead_sales: batchLeadSales,
+        partner_company: batchPartnerCompany,
+        partner_sales: batchPartnerSales,
+        note: batchNote,
+        coupon_code: batchSingleCode,
+        title: batchTitlePrefix.trim() || undefined,
+        discount_type: batchIsTiered ? validTiers[0].discount_type : batchDiscountType,
+        discount_value: batchIsTiered ? validTiers[0].discount_value : batchDiscountValue,
+        min_spend: batchIsTiered ? validTiers[0].min_spend : (batchMinSpend ? Number(batchMinSpend) : 0),
+        max_discount_amount: batchMaxDiscount ? Number(batchMaxDiscount) : null,
+        start_date: batchStartDate ? new Date(batchStartDate).toISOString() : null,
+        end_date: batchEndDate ? new Date(batchEndDate).toISOString() : null,
+        usage_limit: batchUsageLimit,
+        is_tiered: batchIsTiered,
+        tiers: batchIsTiered ? validTiers : undefined,
+        is_top_up: batchIsTopUp,
+        update_entire_batch: batchUpdateEntireBatch,
+      });
+
+      if (!res.success) {
+        setBatchInlineError(res.error || "เกิดข้อผิดพลาดในการแก้ไขรหัสส่วนลด");
+        triggerToast("error", "เกิดข้อผิดพลาด", res.error || "ไม่สามารถแก้ไขรหัสได้");
+        return;
+      }
+
+      setIsBatchModalOpen(false);
+      setEditingPartnerCoupon(null);
+      const updated = await getTerraPromotions();
+      setTerraPromotions(updated);
+      triggerToast("success", "บันทึกสำเร็จ!", "แก้ไขข้อมูลโค้ดส่วนลดเซลล์และพันธมิตรเรียบร้อยแล้ว");
+    });
   };
 
   return (
@@ -959,11 +1112,7 @@ export default function DiscountHubClient({
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => {
-                    setBatchCreatedResult(null);
-                    setBatchInlineError(null);
-                    setIsBatchModalOpen(true);
-                  }}
+                  onClick={handleOpenCreateBatchModal}
                   className="inline-flex items-center justify-center gap-2 rounded-xl bg-white border border-slate-300 px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-slate-900 active:scale-95 transition shadow-2xs cursor-pointer"
                 >
                   <Users className="w-4 h-4 text-slate-500" />
@@ -1396,6 +1545,7 @@ export default function DiscountHubClient({
                 const isPercent = promo.discount_type === "percentage";
                 const isExpired =
                   promo.end_date && new Date(promo.end_date).toISOString() < new Date().toISOString();
+                const isTopUpPromo = Boolean(promo.is_top_up || promo.attribution?.is_top_up);
 
                 return (
                   <div
@@ -1420,6 +1570,12 @@ export default function DiscountHubClient({
                             <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-800 border border-emerald-200">
                               <Zap className="h-3 w-3 text-emerald-600" />
                               Auto-apply เซ็ต
+                            </span>
+                          )}
+
+                          {isTopUpPromo && (
+                            <span className="inline-flex items-center gap-1 rounded-md bg-amber-100 px-2 py-0.5 text-[10px] font-black text-amber-900 border border-amber-300">
+                              ⚡ TOP-UP
                             </span>
                           )}
 
@@ -1519,22 +1675,35 @@ export default function DiscountHubClient({
                         </div>
                       </div>
 
-                      {/* Attribution Badges */}
-                      {promo.attribution && (
+                      {/* Attribution Badges & Top-Up Badges */}
+                      {(promo.attribution || isTopUpPromo) && (
                         <div className="mt-2.5 pt-2 border-t border-slate-100 flex flex-wrap items-center gap-1.5 px-1">
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 border border-purple-200 text-[10px] font-bold">
-                            👤 เซลล์: {promo.attribution.lead_sales}
-                          </span>
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-bold">
-                            🏢 บ.: {promo.attribution.partner_company}
-                          </span>
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold">
-                            🤝 เซลล์คู่ค้า: {promo.attribution.partner_sales}
-                          </span>
-                          {promo.attribution.note && (
-                            <span className="text-[10px] text-slate-500 italic block w-full mt-0.5">
-                              โน้ต: {promo.attribution.note}
+                          {isTopUpPromo && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-black uppercase tracking-wider">
+                              ⚡ TOP-UP (ลด On-top)
                             </span>
+                          )}
+                          {promo.attribution && (
+                            <>
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 border border-purple-200 text-[10px] font-bold">
+                                👤 เซลล์: {promo.attribution.lead_sales}
+                              </span>
+                              {promo.attribution.partner_company && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-bold">
+                                  🏢 บ.: {promo.attribution.partner_company}
+                                </span>
+                              )}
+                              {promo.attribution.partner_sales && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold">
+                                  🤝 เซลล์คู่ค้า: {promo.attribution.partner_sales}
+                                </span>
+                              )}
+                              {promo.attribution.note && (
+                                <span className="text-[10px] text-slate-500 italic block w-full mt-0.5">
+                                  โน้ต: {promo.attribution.note}
+                                </span>
+                              )}
+                            </>
                           )}
                         </div>
                       )}
@@ -1607,7 +1776,13 @@ export default function DiscountHubClient({
                       <div className="mt-3 flex items-center justify-end gap-1.5 border-t border-slate-100 pt-2.5">
                         <button
                           type="button"
-                          onClick={() => handleOpenEditTerraModal(promo)}
+                          onClick={() => {
+                            if (promo.attribution || promo.is_tiered) {
+                              handleOpenEditPartnerModal(promo);
+                            } else {
+                              handleOpenEditTerraModal(promo);
+                            }
+                          }}
                           className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-200 transition active:scale-95"
                         >
                           <Edit2 className="h-3 w-3" />
@@ -2362,6 +2537,28 @@ export default function DiscountHubClient({
                       className="w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs outline-none focus:border-slate-900"
                     />
                   </div>
+
+                  {terraFormPromoScope === "global" && (
+                    <div className="sm:col-span-2 pt-1">
+                      <label className="flex items-start gap-2.5 p-3 rounded-xl border border-amber-200 bg-amber-50/60 cursor-pointer hover:bg-amber-50 transition">
+                        <input
+                          type="checkbox"
+                          checked={terraFormIsTopUp}
+                          onChange={(e) => setTerraFormIsTopUp(e.target.checked)}
+                          className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500 border-amber-300 mt-0.5"
+                        />
+                        <div className="flex-1 text-left">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-amber-950">⚡ ส่วนลดแบบ Top-up (ลด On-top ร่วมกับสินค้าที่มีส่วนลดแล้วได้)</span>
+                            <span className="text-[10px] bg-amber-200 text-amber-900 font-bold px-1.5 py-0.5 rounded">TOP-UP</span>
+                          </div>
+                          <p className="text-[11px] text-amber-800/80 mt-0.5 leading-relaxed">
+                            เปิดใช้งานเพื่อให้โค้ดนี้สามารถใช้ร่วมกับสินค้าที่ลดราคาอยู่แล้ว 50% ได้ โดยระบบจะคำนวณส่วนลด On-top เพิ่มเติมจากราคาที่ลดแล้ว
+                          </p>
+                        </div>
+                      </label>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -2399,14 +2596,22 @@ export default function DiscountHubClient({
             <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4 bg-white">
               <div className="flex items-center gap-3">
                 <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-700 border border-slate-200">
-                  <Ticket className="h-4.5 w-4.5 text-slate-700" />
+                  {editingPartnerCoupon ? (
+                    <Edit2 className="h-4.5 w-4.5 text-slate-700" />
+                  ) : (
+                    <Ticket className="h-4.5 w-4.5 text-slate-700" />
+                  )}
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-slate-900">
-                    สร้างโค้ดส่วนลดเซลล์และพันธมิตร (Batch)
+                    {editingPartnerCoupon
+                      ? "แก้ไขโค้ดส่วนลดเซลล์และพันธมิตร"
+                      : "สร้างโค้ดส่วนลดเซลล์และพันธมิตร (Batch)"}
                   </h3>
                   <p className="text-[11px] text-slate-500">
-                    กำหนดข้อมูลผู้รับสิทธิ์ รูปแบบรหัส และเงื่อนไขส่วนลด
+                    {editingPartnerCoupon
+                      ? "แก้ไขข้อมูลผู้รับสิทธิ์ รหัสคูปอง และเงื่อนไขส่วนลด"
+                      : "กำหนดข้อมูลผู้รับสิทธิ์ รูปแบบรหัส และเงื่อนไขส่วนลด"}
                   </p>
                 </div>
               </div>
@@ -2414,6 +2619,7 @@ export default function DiscountHubClient({
                 type="button"
                 onClick={() => {
                   setIsBatchModalOpen(false);
+                  setEditingPartnerCoupon(null);
                   setBatchCreatedResult(null);
                 }}
                 className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition cursor-pointer"
@@ -2454,12 +2660,12 @@ export default function DiscountHubClient({
                         <span className="font-bold text-slate-800">{batchCreatedResult.leadSales}</span>
                       </div>
                       <div>
-                        <span className="text-[10px] text-slate-400 font-semibold block uppercase">บริษัทคู่ค้า / โครงการ:</span>
-                        <span className="font-bold text-slate-800">{batchCreatedResult.partnerCompany}</span>
+                        <span className="text-[10px] text-slate-400 font-semibold block uppercase">บริษัทคู่ค้า / โครงการ / แฟร์:</span>
+                        <span className="font-bold text-slate-800">{batchCreatedResult.partnerCompany || "-"}</span>
                       </div>
                       <div>
                         <span className="text-[10px] text-slate-400 font-semibold block uppercase">เซลล์คู่ค้า / ผู้ติดต่อ:</span>
-                        <span className="font-bold text-slate-800">{batchCreatedResult.partnerSales}</span>
+                        <span className="font-bold text-slate-800">{batchCreatedResult.partnerSales || "-"}</span>
                       </div>
                     </div>
                     <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-[11px] text-slate-600">
@@ -2549,26 +2755,26 @@ export default function DiscountHubClient({
 
                       <div>
                         <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                          บริษัทคู่ค้า / โครงการ <span className="text-rose-500">*</span>
+                          บริษัทคู่ค้า / โครงการ / แฟร์ <span className="text-slate-400 font-normal text-[10px] ml-1">(ถ้ามี)</span>
                         </label>
                         <input
                           type="text"
                           value={batchPartnerCompany}
                           onChange={(e) => setBatchPartnerCompany(e.target.value)}
-                          placeholder="เช่น บ. สถาปัตย์ AA"
+                          placeholder="เช่น บ. สถาปัตย์ AA, งานแฟร์ (เว้นว่างได้)"
                           className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-900 outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition"
                         />
                       </div>
 
                       <div>
                         <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                          เซลล์คู่ค้า / ผู้ติดต่อ <span className="text-rose-500">*</span>
+                          เซลล์คู่ค้า / ผู้ติดต่อ <span className="text-slate-400 font-normal text-[10px] ml-1">(ถ้ามี)</span>
                         </label>
                         <input
                           type="text"
                           value={batchPartnerSales}
                           onChange={(e) => setBatchPartnerSales(e.target.value)}
-                          placeholder="เช่น คุณสมชาย"
+                          placeholder="เช่น คุณสมชาย (เว้นว่างได้)"
                           className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-900 outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition"
                         />
                       </div>
@@ -2588,112 +2794,177 @@ export default function DiscountHubClient({
                     </div>
                   </div>
 
-                  {/* Section 2: Pattern & Batch Count */}
-                  <div className="space-y-3 rounded-xl bg-slate-50/70 border border-slate-200 p-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 text-xs font-bold text-slate-900">
-                        <Tag className="w-4 h-4 text-slate-600" />
-                        <span>2. กำหนดรูปแบบรหัสและจำนวนที่ต้องการสร้าง</span>
+                  {/* Section 2: Pattern & Batch Count OR Single Coupon Code if Editing */}
+                  {editingPartnerCoupon ? (
+                    <div className="space-y-3 rounded-xl bg-slate-50/70 border border-slate-200 p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-xs font-bold text-slate-900">
+                          <Tag className="w-4 h-4 text-slate-600" />
+                          <span>2. รหัสคูปองและชื่อโปรโมชัน</span>
+                        </div>
+                        {editingPartnerCoupon.attribution?.batch_id && (
+                          <span className="text-[10px] font-mono font-bold text-slate-500 bg-slate-200/80 px-2 py-0.5 rounded-md">
+                            Batch: {editingPartnerCoupon.attribution.batch_id}
+                          </span>
+                        )}
                       </div>
-                      <span className="text-[10px] text-slate-500">
-                        # = สุ่มตัวเลข (0-9) | * = สุ่มตัวอักษร/ตัวเลข
-                      </span>
-                    </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                          รูปแบบรหัส (Pattern Template) <span className="text-rose-500">*</span>
-                        </label>
-                        <input
-                          type="text"
-                          value={batchPattern}
-                          onChange={(e) => setBatchPattern(e.target.value.toUpperCase())}
-                          placeholder="เช่น YD-AA-#### หรือ YD-6351-####"
-                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-mono font-bold uppercase text-slate-900 outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition"
-                        />
-                        {/* Quick Presets */}
-                        <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-                          <span className="text-[10px] text-slate-400 font-medium">ตัวอย่าง:</span>
-                          {["YD-AA-####", "YD-INT-####", "YD-6351-####", "PROJ-####"].map((preset) => (
-                            <button
-                              key={preset}
-                              type="button"
-                              onClick={() => setBatchPattern(preset)}
-                              className={`text-[10px] font-mono px-2 py-0.5 rounded-md border transition cursor-pointer ${
-                                batchPattern === preset
-                                  ? "bg-slate-900 text-white border-slate-900 font-bold"
-                                  : "bg-white text-slate-600 border-slate-200 hover:bg-slate-100"
-                              }`}
-                            >
-                              {preset}
-                            </button>
-                          ))}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                            รหัสคูปอง (Coupon Code) <span className="text-rose-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={batchSingleCode}
+                            onChange={(e) => setBatchSingleCode(e.target.value.toUpperCase())}
+                            placeholder="เช่น YD-AA-1234"
+                            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-mono font-bold uppercase text-slate-900 outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                            ชื่อแคมเปญ / โปรโมชัน <span className="text-slate-400 font-normal text-[10px] ml-1">(สำหรับแสดงผล)</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={batchTitlePrefix}
+                            onChange={(e) => setBatchTitlePrefix(e.target.value)}
+                            placeholder="เช่น โค้ดส่วนลดพิเศษพันธมิตร"
+                            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-900 outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition"
+                          />
                         </div>
                       </div>
 
-                      <div className="flex flex-col justify-between">
+                      {editingPartnerCoupon.attribution?.batch_id && (
+                        <div className="pt-1">
+                          <label className="flex items-start gap-2.5 p-2.5 rounded-lg border border-slate-200 bg-white cursor-pointer hover:bg-slate-50 transition">
+                            <input
+                              type="checkbox"
+                              checked={batchUpdateEntireBatch}
+                              onChange={(e) => setBatchUpdateEntireBatch(e.target.checked)}
+                              className="w-4 h-4 rounded text-slate-900 focus:ring-slate-800 border-slate-300 mt-0.5"
+                            />
+                            <div className="flex-1 text-left">
+                              <span className="text-xs font-bold text-slate-800 block">
+                                อัปเดตเงื่อนไขส่วนลดนี้ไปยังทุกโค้ดในชุดเดียวกัน (Batch)
+                              </span>
+                              <p className="text-[10px] text-slate-500 mt-0.5">
+                                หากเลือก ส่วนลด, วันหมดอายุ, ยอดซื้อขั้นต่ำ, และ Top-up จะถูกปรับใช้กับรหัสทั้งหมดในชุดเดียวกันโดยอัตโนมัติ
+                              </p>
+                            </div>
+                          </label>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-3 rounded-xl bg-slate-50/70 border border-slate-200 p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-xs font-bold text-slate-900">
+                          <Tag className="w-4 h-4 text-slate-600" />
+                          <span>2. กำหนดรูปแบบรหัสและจำนวนที่ต้องการสร้าง</span>
+                        </div>
+                        <span className="text-[10px] text-slate-500">
+                          # = สุ่มตัวเลข (0-9) | * = สุ่มตัวอักษร/ตัวเลข
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
-                          <div className="flex items-center justify-between mb-1">
-                            <label className="text-[11px] font-bold text-slate-700 block">
-                              จำนวนโค้ดที่ต้องการสร้าง (ชุดละ)
-                            </label>
-                            <span className="text-[10px] text-slate-400 font-medium">
-                              (1 - 100 โค้ด)
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-1.5 flex-wrap sm:flex-nowrap">
-                            {[1, 2, 5, 10, 20].map((num) => (
+                          <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                            รูปแบบรหัส (Pattern Template) <span className="text-rose-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={batchPattern}
+                            onChange={(e) => setBatchPattern(e.target.value.toUpperCase())}
+                            placeholder="เช่น YD-AA-#### หรือ YD-6351-####"
+                            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-mono font-bold uppercase text-slate-900 outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition"
+                          />
+                          {/* Quick Presets */}
+                          <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                            <span className="text-[10px] text-slate-400 font-medium">ตัวอย่าง:</span>
+                            {["YD-AA-####", "YD-INT-####", "YD-6351-####", "PROJ-####"].map((preset) => (
                               <button
-                                key={num}
+                                key={preset}
                                 type="button"
-                                onClick={() => setBatchCount(num)}
-                                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition border cursor-pointer ${
-                                  batchCount === num
-                                    ? "bg-slate-900 text-white border-slate-900 shadow-2xs"
-                                    : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
+                                onClick={() => setBatchPattern(preset)}
+                                className={`text-[10px] font-mono px-2 py-0.5 rounded-md border transition cursor-pointer ${
+                                  batchPattern === preset
+                                    ? "bg-slate-900 text-white border-slate-900 font-bold"
+                                    : "bg-white text-slate-600 border-slate-200 hover:bg-slate-100"
                                 }`}
                               >
-                                {num}
+                                {preset}
                               </button>
                             ))}
-                            <div className="relative flex-1 min-w-[75px] flex items-center">
-                              <input
-                                type="number"
-                                min={1}
-                                max={100}
-                                value={batchCount || ""}
-                                onChange={(e) => {
-                                  const val = parseInt(e.target.value, 10);
-                                  if (isNaN(val)) {
-                                    setBatchCount(0);
-                                  } else {
-                                    setBatchCount(Math.min(100, Math.max(1, val)));
-                                  }
-                                }}
-                                onBlur={() => {
-                                  if (!batchCount || batchCount < 1) {
-                                    setBatchCount(1);
-                                  }
-                                }}
-                                placeholder="ระบุเอง..."
-                                className="w-full text-center py-1.5 px-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 shadow-2xs"
-                              />
-                            </div>
-                            <span className="text-[11px] font-bold text-slate-500 shrink-0">โค้ด</span>
                           </div>
                         </div>
 
-                        {/* Live Sample Preview Badge */}
-                        <div className="mt-2 flex items-center justify-between rounded-lg bg-slate-100 border border-slate-200 px-3 py-1.5">
-                          <span className="text-[10px] text-slate-500 font-semibold">ตัวอย่างรหัสจริง:</span>
-                          <span className="font-mono text-xs font-bold text-slate-900 tracking-wider">
-                            {samplePreviewCode}
-                          </span>
+                        <div className="flex flex-col justify-between">
+                          <div>
+                            <div className="flex items-center justify-between mb-1">
+                              <label className="text-[11px] font-bold text-slate-700 block">
+                                จำนวนโค้ดที่ต้องการสร้าง (ชุดละ)
+                              </label>
+                              <span className="text-[10px] text-slate-400 font-medium">
+                                (1 - 100 โค้ด)
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1.5 flex-wrap sm:flex-nowrap">
+                              {[1, 2, 5, 10, 20].map((num) => (
+                                <button
+                                  key={num}
+                                  type="button"
+                                  onClick={() => setBatchCount(num)}
+                                  className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition border cursor-pointer ${
+                                    batchCount === num
+                                      ? "bg-slate-900 text-white border-slate-900 shadow-2xs"
+                                      : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
+                                  }`}
+                                >
+                                  {num}
+                                </button>
+                              ))}
+                              <div className="relative flex-1 min-w-[75px] flex items-center">
+                                <input
+                                  type="number"
+                                  min={1}
+                                  max={100}
+                                  value={batchCount || ""}
+                                  onChange={(e) => {
+                                    const val = parseInt(e.target.value, 10);
+                                    if (isNaN(val)) {
+                                      setBatchCount(0);
+                                    } else {
+                                      setBatchCount(Math.min(100, Math.max(1, val)));
+                                    }
+                                  }}
+                                  onBlur={() => {
+                                    if (!batchCount || batchCount < 1) {
+                                      setBatchCount(1);
+                                    }
+                                  }}
+                                  placeholder="ระบุเอง..."
+                                  className="w-full text-center py-1.5 px-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 shadow-2xs"
+                                />
+                              </div>
+                              <span className="text-[11px] font-bold text-slate-500 shrink-0">โค้ด</span>
+                            </div>
+                          </div>
+
+                          {/* Live Sample Preview Badge */}
+                          <div className="mt-2 flex items-center justify-between rounded-lg bg-slate-100 border border-slate-200 px-3 py-1.5">
+                            <span className="text-[10px] text-slate-500 font-semibold">ตัวอย่างรหัสจริง:</span>
+                            <span className="font-mono text-xs font-bold text-slate-900 tracking-wider">
+                              {samplePreviewCode}
+                            </span>
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
+                  )}
 
                   {/* Section 3: Discount Terms */}
                   <div className="space-y-3.5 rounded-xl bg-slate-50/70 border border-slate-200 p-4">
@@ -2956,6 +3227,27 @@ export default function DiscountHubClient({
                         </select>
                       </div>
                     </div>
+
+                    {/* Top-Up Toggle */}
+                    <div className="pt-2">
+                      <label className="flex items-start gap-2.5 p-3 rounded-xl border border-amber-200 bg-amber-50/60 cursor-pointer hover:bg-amber-50 transition">
+                        <input
+                          type="checkbox"
+                          checked={batchIsTopUp}
+                          onChange={(e) => setBatchIsTopUp(e.target.checked)}
+                          className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500 border-amber-300 mt-0.5"
+                        />
+                        <div className="flex-1 text-left">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-amber-950">⚡ ส่วนลดแบบ Top-up (ลด On-top ร่วมกับสินค้าที่มีส่วนลดแล้วได้)</span>
+                            <span className="text-[10px] bg-amber-200 text-amber-900 font-bold px-1.5 py-0.5 rounded">TOP-UP</span>
+                          </div>
+                          <p className="text-[11px] text-amber-800/80 mt-0.5 leading-relaxed">
+                            เปิดใช้งานเพื่อให้โค้ดทุกรหัสในชุดนี้ สามารถใช้ลด On-top กับสินค้าที่มีส่วนลดรายชิ้นหรือลด 50% อยู่แล้วได้
+                          </p>
+                        </div>
+                      </label>
+                    </div>
                   </div>
                 </div>
               )}
@@ -2979,11 +3271,35 @@ export default function DiscountHubClient({
                     type="button"
                     onClick={() => {
                       setIsBatchModalOpen(false);
+                      setEditingPartnerCoupon(null);
                       setBatchCreatedResult(null);
                     }}
                     className="rounded-lg bg-slate-900 px-5 py-2 text-xs font-bold text-white hover:bg-slate-800 transition cursor-pointer"
                   >
                     เสร็จสิ้น / ปิดหน้าต่าง
+                  </button>
+                </>
+              ) : editingPartnerCoupon ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsBatchModalOpen(false);
+                      setEditingPartnerCoupon(null);
+                    }}
+                    disabled={isPending}
+                    className="rounded-lg px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-200 transition cursor-pointer"
+                  >
+                    ยกเลิก
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isPending}
+                    onClick={handleExecuteUpdatePartner}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-5 py-2 text-xs font-bold text-white hover:bg-slate-800 active:scale-95 transition shadow-xs disabled:opacity-50 cursor-pointer"
+                  >
+                    {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                    <span>บันทึกการแก้ไข</span>
                   </button>
                 </>
               ) : (
