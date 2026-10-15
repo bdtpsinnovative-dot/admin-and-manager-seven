@@ -9,7 +9,7 @@ import { useRef, useCallback, useEffect as useEffectBarcode } from "react"
 import JsBarcode from "jsbarcode"
 
 const STORAGE_BUCKET = "product-images"
-const PUBLIC_SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://zexflchjcycxrpjkuews.supabase.co"
+const PUBLIC_SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://gshppxgvdrmbfcxsxeph.supabase.co"
 
 const QUICK_REASONS = [
   "Tag ชำรุด / สูญหาย",

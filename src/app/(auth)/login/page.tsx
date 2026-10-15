@@ -39,7 +39,7 @@ function makeDefaultJan(): SavedAccount {
     email: 'jan@gmail.com',
     name: 'แจน อิอิ',
     role: 'admin',
-    avatar_url: 'https://zexflchjcycxrpjkuews.supabase.co/storage/v1/object/public/profiles/93fd4693-488b-484d-b481-bbccbb626350-1768983414399.webp',
+    avatar_url: 'https://gshppxgvdrmbfcxsxeph.supabase.co/storage/v1/object/public/profiles/93fd4693-488b-484d-b481-bbccbb626350-1768983414399.webp',
     token_payload: encodeCred('123456')
   }
 }

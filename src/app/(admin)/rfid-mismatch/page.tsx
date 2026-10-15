@@ -6,7 +6,7 @@ import { getRfidStockMismatch, updateStockQty, bulkUpdateStockQty } from "../../
 import { AlertTriangle, Search, Info, Package, RefreshCw, CheckCircle2, Edit2, Loader2, X } from "lucide-react"
 
 const STORAGE_BUCKET = "product-images"
-const PUBLIC_SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://zexflchjcycxrpjkuews.supabase.co"
+const PUBLIC_SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://gshppxgvdrmbfcxsxeph.supabase.co"
 
 export default function RfidMismatchPage() {
   const [loading, setLoading] = useState(true)
