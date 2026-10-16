@@ -41,6 +41,7 @@ import {
   SlidersHorizontal,
   ChevronDown,
   ChevronRight,
+  ArrowUpDown,
 } from "lucide-react";
 
 import {
@@ -215,16 +216,22 @@ function ProductPicker({
   selectedProductIds,
   onSelectionChange,
   selectedBranchId,
+  existingDiscounts,
 }: {
   products: any[];
   selectedProductIds: string[];
   onSelectionChange: (ids: string[]) => void;
   selectedBranchId?: string;
+  existingDiscounts?: any[];
 }) {
   const [query, setQuery] = useState("");
   const [selectedMainCat, setSelectedMainCat] = useState<string>("ALL");
   const [selectedSubCat, setSelectedSubCat] = useState<string>("");
   const [stockFilter, setStockFilter] = useState<"ALL" | "IN_STOCK" | "OUT_OF_STOCK" | "NEGATIVE">("ALL");
+  const [promoStatusFilter, setPromoStatusFilter] = useState<"ALL" | "NO_PROMO" | "HAS_PROMO">("ALL");
+  const [sortBy, setSortBy] = useState<
+    "default" | "stock_desc" | "stock_asc" | "price_desc" | "price_asc" | "name_asc" | "sku_asc"
+  >("default");
   const [selectedColor, setSelectedColor] = useState<string>("");
   const [selectedMaterial, setSelectedMaterial] = useState<string>("");
   const [minHeight, setMinHeight] = useState<string>("");
@@ -234,6 +241,29 @@ function ProductPicker({
   const [minLength, setMinLength] = useState<string>("");
   const [maxLength, setMaxLength] = useState<string>("");
   const [displayLimit, setDisplayLimit] = useState(100);
+
+  // ตรวจสอบสินค้าที่มีโปรโมชันใช้งานอยู่แล้วในระบบ
+  const productPromoMap = useMemo(() => {
+    const map = new Map<string, Array<{ id: number | string; name: string; discount_type: string; value: number }>>();
+    (existingDiscounts || []).forEach((d: any) => {
+      if (d.active && Array.isArray(d.discount_rules)) {
+        d.discount_rules.forEach((r: any) => {
+          if (r.product_id) {
+            const key = String(r.product_id);
+            const list = map.get(key) || [];
+            list.push({
+              id: d.id,
+              name: d.name,
+              discount_type: d.discount_type,
+              value: d.value,
+            });
+            map.set(key, list);
+          }
+        });
+      }
+    });
+    return map;
+  }, [existingDiscounts]);
 
   // Accordion state for category hierarchy
   const [openCatGroups, setOpenCatGroups] = useState<Record<string, boolean>>({
@@ -247,7 +277,7 @@ function ProductPicker({
     setOpenCatGroups((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  // Reset lazy load limit when any filter changes
+  // Reset lazy load limit when any filter or sort changes
   useEffect(() => {
     setDisplayLimit(100);
   }, [
@@ -255,6 +285,8 @@ function ProductPicker({
     selectedMainCat,
     selectedSubCat,
     stockFilter,
+    promoStatusFilter,
+    sortBy,
     selectedColor,
     selectedMaterial,
     minHeight,
@@ -472,6 +504,13 @@ function ProductPicker({
       });
     }
 
+    // 3.1. กรองตามสถานะโปรโมชันปัจจุบัน
+    if (promoStatusFilter === "NO_PROMO") {
+      result = result.filter((p) => !productPromoMap.has(String(p.id)));
+    } else if (promoStatusFilter === "HAS_PROMO") {
+      result = result.filter((p) => productPromoMap.has(String(p.id)));
+    }
+
     // 4. สี (Color)
     if (selectedColor) {
       const col = selectedColor.toLowerCase();
@@ -522,6 +561,7 @@ function ProductPicker({
     selectedMainCat,
     selectedSubCat,
     stockFilter,
+    promoStatusFilter,
     selectedColor,
     selectedMaterial,
     minHeight,
@@ -532,7 +572,43 @@ function ProductPicker({
     maxLength,
     query,
     selectedBranchId,
+    productPromoMap,
   ]);
+
+  // เรียงลำดับรายการสินค้าตามตัวเลือกที่เลือก
+  const sortedList = useMemo(() => {
+    const list = [...filtered];
+    if (sortBy === "stock_desc") {
+      list.sort((a, b) => {
+        const stockA = selectedBranchId
+          ? (a.stock?.find((s: any) => String(s.branch_id) === String(selectedBranchId))?.qty ?? 0)
+          : (a.total_stock ?? 0);
+        const stockB = selectedBranchId
+          ? (b.stock?.find((s: any) => String(s.branch_id) === String(selectedBranchId))?.qty ?? 0)
+          : (b.total_stock ?? 0);
+        return stockB - stockA;
+      });
+    } else if (sortBy === "stock_asc") {
+      list.sort((a, b) => {
+        const stockA = selectedBranchId
+          ? (a.stock?.find((s: any) => String(s.branch_id) === String(selectedBranchId))?.qty ?? 0)
+          : (a.total_stock ?? 0);
+        const stockB = selectedBranchId
+          ? (b.stock?.find((s: any) => String(s.branch_id) === String(selectedBranchId))?.qty ?? 0)
+          : (b.total_stock ?? 0);
+        return stockA - stockB;
+      });
+    } else if (sortBy === "price_desc") {
+      list.sort((a, b) => (Number(b.price) || 0) - (Number(a.price) || 0));
+    } else if (sortBy === "price_asc") {
+      list.sort((a, b) => (Number(a.price) || 0) - (Number(b.price) || 0));
+    } else if (sortBy === "name_asc") {
+      list.sort((a, b) => (a.name || "").localeCompare(b.name || "", "th"));
+    } else if (sortBy === "sku_asc") {
+      list.sort((a, b) => (a.sku || "").localeCompare(b.sku || ""));
+    }
+    return list;
+  }, [filtered, sortBy, selectedBranchId]);
 
   const toggle = (id: string) => {
     if (selectedProductIds.includes(id)) {
@@ -549,7 +625,7 @@ function ProductPicker({
   const clearAll = () => onSelectionChange([]);
 
   const selectAllFiltered = () => {
-    const allFilteredIds = filtered.map((p) => String(p.id));
+    const allFilteredIds = sortedList.map((p) => String(p.id));
     const merged = Array.from(new Set([...selectedProductIds, ...allFilteredIds]));
     onSelectionChange(merged);
   };
@@ -558,6 +634,8 @@ function ProductPicker({
     selectedMainCat !== "ALL" ||
     selectedSubCat !== "" ||
     stockFilter !== "ALL" ||
+    promoStatusFilter !== "ALL" ||
+    sortBy !== "default" ||
     selectedColor !== "" ||
     selectedMaterial !== "" ||
     minHeight !== "" ||
@@ -574,6 +652,8 @@ function ProductPicker({
     setSelectedMainCat("ALL");
     setSelectedSubCat("");
     setStockFilter("ALL");
+    setPromoStatusFilter("ALL");
+    setSortBy("default");
     setSelectedColor("");
     setSelectedMaterial("");
     setMinHeight("");
@@ -647,8 +727,8 @@ function ProductPicker({
   };
 
   const displayedList = useMemo(() => {
-    return filtered.slice(0, displayLimit);
-  }, [filtered, displayLimit]);
+    return sortedList.slice(0, displayLimit);
+  }, [sortedList, displayLimit]);
 
   return (
     <>
@@ -989,6 +1069,36 @@ function ProductPicker({
             </div>
           </div>
 
+          {/* 3.1. Promo Status Filter */}
+          <div>
+            <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+              สถานะโปรโมชันปัจจุบัน
+            </label>
+            <div className="grid grid-cols-3 gap-1 bg-white rounded-lg border border-slate-200/80 p-1">
+              {[
+                { key: "ALL", label: "ทั้งหมด" },
+                { key: "NO_PROMO", label: "ยังไม่มีโปร" },
+                { key: "HAS_PROMO", label: "มีโปรแล้ว" },
+              ].map((item) => {
+                const isActive = promoStatusFilter === item.key;
+                return (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => setPromoStatusFilter(item.key as any)}
+                    className={`px-1 py-1.5 rounded text-[11px] font-medium transition text-center ${
+                      isActive
+                        ? "bg-slate-900 text-white font-bold shadow-xs"
+                        : "hover:bg-slate-100 text-slate-600"
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           {/* 4. Color Filter with Real Hex Swatches */}
           <div>
             <div className="flex items-center justify-between mb-1.5">
@@ -1196,15 +1306,33 @@ function ProductPicker({
             )}
           </div>
 
+          {/* Sort Selector */}
+          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 flex-shrink-0">
+            <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as any)}
+              className="bg-transparent text-xs font-semibold text-slate-700 outline-none cursor-pointer"
+            >
+              <option value="default">เรียงลำดับ: ค่าเริ่มต้น</option>
+              <option value="stock_desc">สต็อกมากสุด ไป น้อยสุด</option>
+              <option value="stock_asc">สต็อกน้อยสุด ไป มากสุด</option>
+              <option value="price_desc">ราคาสูงสุด ไป ต่ำสุด</option>
+              <option value="price_asc">ราคาต่ำสุด ไป สูงสุด</option>
+              <option value="name_asc">ชื่อสินค้า A-Z / ก-ฮ</option>
+              <option value="sku_asc">รหัสสินค้า SKU</option>
+            </select>
+          </div>
+
           <button
             type="button"
             onClick={selectAllFiltered}
-            disabled={filtered.length === 0}
+            disabled={sortedList.length === 0}
             className="px-3 py-2 text-xs font-bold rounded-xl bg-slate-900 hover:bg-slate-800 text-white transition flex items-center gap-1.5 flex-shrink-0 disabled:opacity-40"
             title="เลือกสินค้าที่กรองอยู่ทั้งหมดเข้าสู่โปรโมชั่น"
           >
             <Check className="w-3.5 h-3.5" />
-            <span>เลือกที่กรองทั้งหมด ({filtered.length})</span>
+            <span>เลือกที่กรองทั้งหมด ({sortedList.length})</span>
           </button>
 
           {selectedProductIds.length > 0 && (
@@ -1364,6 +1492,35 @@ function ProductPicker({
                             วัสดุ: {p.material}
                           </span>
                         )}
+                        {(() => {
+                          const activePromos = productPromoMap.get(String(p.id));
+                          if (!activePromos || activePromos.length === 0) return null;
+                          return (
+                            <span
+                              title={activePromos
+                                .map(
+                                  (pr) =>
+                                    `${pr.name} (${
+                                      pr.discount_type === "PERCENT" ? `${pr.value}%` : `${pr.value}฿`
+                                    })`
+                                )
+                                .join(", ")}
+                              className="px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200 font-semibold inline-flex items-center gap-1 text-[10px]"
+                            >
+                              <Tag className="w-2.5 h-2.5 text-amber-600 shrink-0" />
+                              <span>
+                                มีโปร:{" "}
+                                {activePromos
+                                  .map(
+                                    (pr) =>
+                                      pr.name ||
+                                      (pr.discount_type === "PERCENT" ? `${pr.value}%` : `${pr.value}฿`)
+                                  )
+                                  .join(", ")}
+                              </span>
+                            </span>
+                          );
+                        })()}
                       </div>
                     </div>
 
@@ -3109,6 +3266,7 @@ export default function DiscountHubClient({
                 selectedProductIds={posSelectedProductIds}
                 onSelectionChange={setPosSelectedProductIds}
                 selectedBranchId={posCreateBranchId}
+                existingDiscounts={posDiscounts}
               />
             </form>
           </div>
