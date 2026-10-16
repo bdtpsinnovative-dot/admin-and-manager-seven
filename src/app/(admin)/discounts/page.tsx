@@ -28,14 +28,15 @@ export default async function DiscountsPage() {
     getAvailableCollectionGroups(),
   ]);
 
-  // 2. Fetch products in chunks (Supabase 1000 row batching) พร้อมหมวดหมู่และสต็อก
+  // 2. Fetch products in chunks (Supabase 1000 row batching) พร้อมหมวดหมู่, สเปก และสต็อก
   let allProducts: any[] = [];
   let from = 0;
   while (true) {
     const { data: chunk } = await supabase
       .from("products")
       .select(`
-        id, name, sku, image_url, category_id,
+        id, name, sku, price, image_url, category_id,
+        color, length_cm, width_cm, thickness_cm, specs,
         collection_groups ( id, name, product_sup, tag ),
         stock ( branch_id, qty )
       `)
@@ -51,16 +52,36 @@ export default async function DiscountsPage() {
     const totalStock = Array.isArray(p.stock)
       ? p.stock.reduce((sum: number, s: any) => sum + (Number(s.qty) || 0), 0)
       : 0;
-    const subCategory = p.collection_groups?.product_sup || p.collection_groups?.name || null;
+    const s = p.specs && typeof p.specs === "object" ? p.specs : {};
+    const subCategory =
+      p.collection_groups?.product_sup ||
+      p.collection_groups?.name ||
+      s.spec_type ||
+      s.type ||
+      null;
+    const color = p.color || s.color || s.colour || s.color_craft || s.tone || null;
+    const material = s.material || null;
+
+    const height = Number(p.thickness_cm ?? s.thickness_cm ?? s.height_cm ?? s.H ?? 0) || null;
+    const width = Number(p.width_cm ?? s.width_cm ?? s.W ?? 0) || null;
+    const length = Number(p.length_cm ?? s.length_cm ?? s.depth_cm ?? s.D ?? 0) || null;
+
     return {
       id: p.id,
       name: p.name,
       sku: p.sku,
+      price: p.price,
       image_url: p.image_url,
       category_id: p.category_id || "prop",
-      sub_category: subCategory,
+      sub_category: subCategory ? String(subCategory).trim() : null,
+      color: color ? String(color).trim() : null,
+      material: material ? String(material).trim() : null,
+      height_cm: height,
+      width_cm: width,
+      length_cm: length,
       total_stock: totalStock,
       stock: p.stock || [],
+      specs: s,
     };
   });
 

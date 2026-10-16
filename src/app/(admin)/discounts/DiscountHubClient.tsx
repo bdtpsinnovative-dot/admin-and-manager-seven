@@ -38,6 +38,7 @@ import {
   Share2,
   FileText,
   Filter,
+  SlidersHorizontal,
 } from "lucide-react";
 
 import {
@@ -68,7 +69,7 @@ function getImageUrl(url: string | null | undefined): string | null {
   return R2_BASE + url;
 }
 
-// ── POS Product Multi-Picker Component ──────────────────────────────────────
+// ── POS Product Multi-Picker Component (Middle Spec Filter Panel + Right Product List) ──
 function ProductPicker({
   products,
   selectedProductIds,
@@ -84,12 +85,34 @@ function ProductPicker({
   const [selectedMainCat, setSelectedMainCat] = useState<string>("ALL");
   const [selectedSubCat, setSelectedSubCat] = useState<string>("");
   const [stockFilter, setStockFilter] = useState<"ALL" | "IN_STOCK" | "OUT_OF_STOCK" | "NEGATIVE">("ALL");
-  const [displayLimit, setDisplayLimit] = useState(120);
+  const [selectedColor, setSelectedColor] = useState<string>("");
+  const [selectedMaterial, setSelectedMaterial] = useState<string>("");
+  const [minHeight, setMinHeight] = useState<string>("");
+  const [maxHeight, setMaxHeight] = useState<string>("");
+  const [minWidth, setMinWidth] = useState<string>("");
+  const [maxWidth, setMaxWidth] = useState<string>("");
+  const [minLength, setMinLength] = useState<string>("");
+  const [maxLength, setMaxLength] = useState<string>("");
+  const [displayLimit, setDisplayLimit] = useState(100);
 
-  // รีเซ็ตการโหลดเพิ่มเมื่อเปลี่ยนเงื่อนไข
+  // Reset lazy load limit when any filter changes
   useEffect(() => {
-    setDisplayLimit(120);
-  }, [query, selectedMainCat, selectedSubCat, stockFilter, selectedBranchId]);
+    setDisplayLimit(100);
+  }, [
+    query,
+    selectedMainCat,
+    selectedSubCat,
+    stockFilter,
+    selectedColor,
+    selectedMaterial,
+    minHeight,
+    maxHeight,
+    minWidth,
+    maxWidth,
+    minLength,
+    maxLength,
+    selectedBranchId,
+  ]);
 
   const MAIN_CATEGORIES = [
     { key: "ALL", label: "ทั้งหมด", icon: "🌐" },
@@ -114,7 +137,37 @@ function ProductPicker({
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [products, selectedMainCat]);
 
-  // ฟิลเตอร์สินค้าตามเงื่อนไขทั้งหมด
+  // สีที่มีอยู่จริงตามหมวดหมู่หลักที่เลือก
+  const availableColors = useMemo(() => {
+    let source = products;
+    if (selectedMainCat !== "ALL") {
+      source = source.filter((p) => p.category_id === selectedMainCat);
+    }
+    const set = new Set<string>();
+    source.forEach((p) => {
+      if (p.color && typeof p.color === "string" && p.color.trim()) {
+        set.add(p.color.trim());
+      }
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [products, selectedMainCat]);
+
+  // วัสดุที่มีอยู่จริงตามหมวดหมู่หลักที่เลือก
+  const availableMaterials = useMemo(() => {
+    let source = products;
+    if (selectedMainCat !== "ALL") {
+      source = source.filter((p) => p.category_id === selectedMainCat);
+    }
+    const set = new Set<string>();
+    source.forEach((p) => {
+      if (p.material && typeof p.material === "string" && p.material.trim()) {
+        set.add(p.material.trim());
+      }
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [products, selectedMainCat]);
+
+  // ฟิลเตอร์สินค้าตามเงื่อนไขสเปกทั้งหมด
   const filtered = useMemo(() => {
     let result = products;
 
@@ -154,19 +207,80 @@ function ProductPicker({
       });
     }
 
-    // 4. ค้นหาข้อความ (ชื่อ, SKU, หมวดย่อย)
+    // 4. สี (Color)
+    if (selectedColor) {
+      result = result.filter(
+        (p) => (p.color || "").toLowerCase() === selectedColor.toLowerCase()
+      );
+    }
+
+    // 5. วัสดุ (Material)
+    if (selectedMaterial) {
+      result = result.filter(
+        (p) => (p.material || "").toLowerCase() === selectedMaterial.toLowerCase()
+      );
+    }
+
+    // 6. ความสูง / ความหนา (Height / Thickness)
+    const minH = parseFloat(minHeight);
+    const maxH = parseFloat(maxHeight);
+    if (!isNaN(minH)) {
+      result = result.filter((p) => p.height_cm !== null && p.height_cm >= minH);
+    }
+    if (!isNaN(maxH)) {
+      result = result.filter((p) => p.height_cm !== null && p.height_cm <= maxH);
+    }
+
+    // 7. ความกว้าง (Width)
+    const minW = parseFloat(minWidth);
+    const maxW = parseFloat(maxWidth);
+    if (!isNaN(minW)) {
+      result = result.filter((p) => p.width_cm !== null && p.width_cm >= minW);
+    }
+    if (!isNaN(maxW)) {
+      result = result.filter((p) => p.width_cm !== null && p.width_cm <= maxW);
+    }
+
+    // 8. ความยาว / ลึก (Length / Depth)
+    const minL = parseFloat(minLength);
+    const maxL = parseFloat(maxLength);
+    if (!isNaN(minL)) {
+      result = result.filter((p) => p.length_cm !== null && p.length_cm >= minL);
+    }
+    if (!isNaN(maxL)) {
+      result = result.filter((p) => p.length_cm !== null && p.length_cm <= maxL);
+    }
+
+    // 9. ค้นหาข้อความ (ชื่อ, SKU, หมวดย่อย, สี, วัสดุ)
     if (query.trim()) {
       const q = query.toLowerCase();
       result = result.filter(
         (p) =>
           p.name?.toLowerCase().includes(q) ||
           p.sku?.toLowerCase().includes(q) ||
-          (p.sub_category && p.sub_category.toLowerCase().includes(q))
+          (p.sub_category && p.sub_category.toLowerCase().includes(q)) ||
+          (p.color && p.color.toLowerCase().includes(q)) ||
+          (p.material && p.material.toLowerCase().includes(q))
       );
     }
 
     return result;
-  }, [products, selectedMainCat, selectedSubCat, stockFilter, query, selectedBranchId]);
+  }, [
+    products,
+    selectedMainCat,
+    selectedSubCat,
+    stockFilter,
+    selectedColor,
+    selectedMaterial,
+    minHeight,
+    maxHeight,
+    minWidth,
+    maxWidth,
+    minLength,
+    maxLength,
+    query,
+    selectedBranchId,
+  ]);
 
   const toggle = (id: string) => {
     if (selectedProductIds.includes(id)) {
@@ -188,23 +302,48 @@ function ProductPicker({
     onSelectionChange(merged);
   };
 
+  const hasActiveFilters = Boolean(
+    selectedMainCat !== "ALL" ||
+    selectedSubCat !== "" ||
+    stockFilter !== "ALL" ||
+    selectedColor !== "" ||
+    selectedMaterial !== "" ||
+    minHeight !== "" ||
+    maxHeight !== "" ||
+    minWidth !== "" ||
+    maxWidth !== "" ||
+    minLength !== "" ||
+    maxLength !== "" ||
+    query.trim() !== ""
+  );
+
   const clearFilters = () => {
     setQuery("");
     setSelectedMainCat("ALL");
     setSelectedSubCat("");
     setStockFilter("ALL");
+    setSelectedColor("");
+    setSelectedMaterial("");
+    setMinHeight("");
+    setMaxHeight("");
+    setMinWidth("");
+    setMaxWidth("");
+    setMinLength("");
+    setMaxLength("");
   };
-
-  const hasActiveFilters =
-    query.trim() !== "" ||
-    selectedMainCat !== "ALL" ||
-    selectedSubCat !== "" ||
-    stockFilter !== "ALL";
 
   const selectedProducts = useMemo(() => {
     const set = new Set(selectedProductIds.map(String));
     return products.filter((p) => set.has(String(p.id)));
   }, [products, selectedProductIds]);
+
+  const formatDimensions = (p: any) => {
+    const parts: string[] = [];
+    if (p.width_cm) parts.push(`ก:${p.width_cm}`);
+    if (p.length_cm) parts.push(`ย:${p.length_cm}`);
+    if (p.height_cm) parts.push(`ส:${p.height_cm}`);
+    return parts.length > 0 ? `${parts.join(" × ")} cm` : null;
+  };
 
   const renderStockBadge = (p: any) => {
     const branchStock = selectedBranchId
@@ -215,20 +354,20 @@ function ProductPicker({
     if (selectedBranchId) {
       if (branchStock > 0) {
         return (
-          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-            สาขานี้: {branchStock} <span className="font-normal text-emerald-600/70 ml-1">(รวม {totalStock})</span>
+          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+            สาขา: {branchStock} <span className="font-normal text-emerald-600/70 ml-1">(รวม {totalStock})</span>
           </span>
         );
       }
       if (branchStock === 0) {
         return (
-          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 text-slate-400 border border-slate-200">
-            สาขานี้หมด <span className="text-slate-400/80 ml-1">(รวม {totalStock})</span>
+          <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-slate-100 text-slate-500 border border-slate-200">
+            สาขาหมด <span className="text-slate-400/80 ml-1">(รวม {totalStock})</span>
           </span>
         );
       }
       return (
-        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-rose-50 text-rose-600 border border-rose-200">
+        <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-rose-50 text-rose-600 border border-rose-200">
           ติดลบ {branchStock} <span className="font-normal text-rose-500/70 ml-1">(รวม {totalStock})</span>
         </span>
       );
@@ -236,20 +375,20 @@ function ProductPicker({
 
     if (totalStock > 0) {
       return (
-        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-          สต็อก: {totalStock}
+        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+          สต็อก: {totalStock.toLocaleString()}
         </span>
       );
     }
     if (totalStock === 0) {
       return (
-        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 text-slate-400 border border-slate-200">
+        <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-slate-100 text-slate-500 border border-slate-200">
           หมด (0)
         </span>
       );
     }
     return (
-      <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-rose-50 text-rose-600 border border-rose-200">
+      <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-rose-50 text-rose-600 border border-rose-200">
         ติดลบ {totalStock}
       </span>
     );
@@ -260,277 +399,457 @@ function ProductPicker({
   }, [filtered, displayLimit]);
 
   return (
-    <div className="flex flex-col h-full gap-2.5">
-      {/* ── Search & Action Rail ── */}
-      <div className="flex items-center gap-2 flex-shrink-0">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-          <input
-            type="text"
-            placeholder="ค้นหาชื่อสินค้า, SKU, หมวดหมู่ย่อย..."
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-8 py-2 text-xs font-medium text-slate-800 placeholder-slate-400 outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900 transition"
-          />
-          {query && (
+    <>
+      {/* ── Middle Column: Spec Filters Panel (แยกออกมาต่างหากอย่างละเอียด) ── */}
+      <div className="w-72 sm:w-80 border-r border-slate-100 flex flex-col flex-shrink-0 bg-slate-50/70">
+        {/* Header */}
+        <div className="px-4 py-3.5 border-b border-slate-200/80 flex items-center justify-between bg-white flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <SlidersHorizontal className="w-4 h-4 text-slate-700" />
+            <span className="text-xs font-bold text-slate-800">ตัวกรองสเปกละเอียด</span>
+          </div>
+          {hasActiveFilters && (
             <button
               type="button"
-              onClick={() => setQuery("")}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition"
+              onClick={clearFilters}
+              className="text-[11px] font-semibold text-rose-600 hover:text-rose-700 transition flex items-center gap-1"
             >
-              <X className="w-3.5 h-3.5" />
+              <X className="w-3 h-3" />
+              <span>ล้างตัวกรอง</span>
             </button>
           )}
         </div>
 
-        <button
-          type="button"
-          onClick={selectAllFiltered}
-          disabled={filtered.length === 0}
-          className="px-3 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 hover:border-slate-300 active:bg-slate-100 transition whitespace-nowrap disabled:opacity-40"
-        >
-          เลือกตามค้นหา ({filtered.length})
-        </button>
-
-        {selectedProductIds.length > 0 && (
-          <button
-            type="button"
-            onClick={clearAll}
-            className="px-3 py-2 text-xs font-semibold text-rose-600 bg-rose-50 border border-rose-200 rounded-xl hover:bg-rose-100 active:bg-rose-200 transition whitespace-nowrap"
-          >
-            ล้างที่เลือก
-          </button>
-        )}
-      </div>
-
-      {/* ── Main Category Pills ── */}
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 flex-shrink-0 no-scrollbar">
-        {MAIN_CATEGORIES.map((cat) => {
-          const isActive = selectedMainCat === cat.key;
-          return (
-            <button
-              key={cat.key}
-              type="button"
-              onClick={() => {
-                setSelectedMainCat(cat.key);
-                setSelectedSubCat("");
-              }}
-              className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition whitespace-nowrap flex items-center gap-1.5 ${
-                isActive
-                  ? "bg-slate-900 text-white shadow-xs"
-                  : "bg-slate-100/80 text-slate-600 hover:bg-slate-200/80 hover:text-slate-900"
-              }`}
-            >
-              <span>{cat.icon}</span>
-              <span>{cat.label}</span>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* ── Sub-Category & Stock Dropdowns ── */}
-      <div className="flex items-center gap-2 flex-shrink-0">
-        {/* Dropdown หมวดย่อย */}
-        <div className="flex-1 min-w-0">
-          <select
-            value={selectedSubCat}
-            onChange={(e) => setSelectedSubCat(e.target.value)}
-            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 font-medium outline-none focus:border-slate-900 focus:bg-white transition"
-          >
-            <option value="">📁 ทุกหมวดย่อย ({availableSubCats.length})</option>
-            {availableSubCats.map((sub) => (
-              <option key={sub} value={sub}>
-                {sub}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Dropdown สต็อก */}
-        <div className="w-44 flex-shrink-0">
-          <select
-            value={stockFilter}
-            onChange={(e) => setStockFilter(e.target.value as any)}
-            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 font-medium outline-none focus:border-slate-900 focus:bg-white transition"
-          >
-            <option value="ALL">📦 สต็อกทั้งหมด</option>
-            <option value="IN_STOCK">🟢 มีสต็อก (&gt; 0)</option>
-            <option value="OUT_OF_STOCK">⚪ สต็อกหมด (= 0)</option>
-            <option value="NEGATIVE">🔴 สต็อกติดลบ (&lt; 0)</option>
-          </select>
-        </div>
-
-        {/* ปุ่มล้างฟิลเตอร์ */}
-        {hasActiveFilters && (
-          <button
-            type="button"
-            onClick={clearFilters}
-            className="px-2 py-1.5 text-xs text-slate-500 hover:text-rose-600 transition flex items-center gap-1 flex-shrink-0 hover:bg-slate-100 rounded-lg"
-            title="ล้างตัวกรองทั้งหมด"
-          >
-            <X className="w-3.5 h-3.5" />
-            <span>รีเซ็ต</span>
-          </button>
-        )}
-      </div>
-
-      {/* ── Selected Items Tray ── */}
-      {selectedProducts.length > 0 && (
-        <div className="flex-shrink-0 bg-slate-100/80 border border-slate-200 rounded-xl p-2.5">
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-xs font-bold text-slate-800">
-              เลือกแล้ว {selectedProducts.length} รายการ
-            </span>
-            <button
-              type="button"
-              onClick={clearAll}
-              className="text-[11px] font-semibold text-slate-500 hover:text-rose-600 transition"
-            >
-              ล้างทั้งหมด
-            </button>
+        {/* Scrollable Filters */}
+        <div className="flex-1 overflow-y-auto px-4 py-3.5 space-y-4 text-xs">
+          {/* 1. Main Categories */}
+          <div>
+            <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+              หมวดหมู่หลัก
+            </label>
+            <div className="space-y-1">
+              {MAIN_CATEGORIES.map((cat) => {
+                const isActive = selectedMainCat === cat.key;
+                const count =
+                  cat.key === "ALL"
+                    ? products.length
+                    : products.filter((p) => p.category_id === cat.key).length;
+                return (
+                  <button
+                    key={cat.key}
+                    type="button"
+                    onClick={() => {
+                      setSelectedMainCat(cat.key);
+                      setSelectedSubCat("");
+                      setSelectedColor("");
+                      setSelectedMaterial("");
+                    }}
+                    className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition ${
+                      isActive
+                        ? "bg-slate-900 text-white font-bold shadow-xs"
+                        : "bg-white hover:bg-slate-100 text-slate-700 border border-slate-200/60 font-medium"
+                    }`}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <span>{cat.icon}</span>
+                      <span>{cat.label}</span>
+                    </span>
+                    <span
+                      className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                        isActive ? "bg-white/20 text-white" : "bg-slate-100 text-slate-500"
+                      }`}
+                    >
+                      {count.toLocaleString()}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
-          <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto">
-            {selectedProducts.map((p) => (
-              <div
-                key={p.id}
-                className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-lg px-2 py-1 shadow-2xs"
+
+          {/* 2. Stock Filter */}
+          <div>
+            <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+              สถานะสต็อก
+            </label>
+            <select
+              value={stockFilter}
+              onChange={(e) => setStockFilter(e.target.value as any)}
+              className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 font-medium outline-none focus:border-slate-900 transition"
+            >
+              <option value="ALL">📦 สต็อกทั้งหมด</option>
+              <option value="IN_STOCK">🟢 มีสต็อก (&gt; 0)</option>
+              <option value="OUT_OF_STOCK">⚪ สต็อกหมด (= 0)</option>
+              <option value="NEGATIVE">🔴 สต็อกติดลบ (&lt; 0)</option>
+            </select>
+          </div>
+
+          {/* 3. Subcategories */}
+          {availableSubCats.length > 0 && (
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                หมวดหมู่ย่อย ({availableSubCats.length})
+              </label>
+              <select
+                value={selectedSubCat}
+                onChange={(e) => setSelectedSubCat(e.target.value)}
+                className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 font-medium outline-none focus:border-slate-900 transition"
               >
-                <div className="w-4 h-4 rounded overflow-hidden flex-shrink-0 bg-slate-100">
-                  {getImageUrl(p.image_url) ? (
-                    <img
-                      src={getImageUrl(p.image_url)!}
-                      alt=""
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <Package className="w-3 h-3 text-slate-300 mx-auto" />
-                  )}
-                </div>
-                <span className="text-xs text-slate-700 font-medium max-w-[130px] truncate">
-                  {p.name || p.sku}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => removeOne(String(p.id))}
-                  className="text-slate-300 hover:text-rose-500 transition flex-shrink-0"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
+                <option value="">📁 ทุกหมวดย่อย</option>
+                {availableSubCats.map((sc) => (
+                  <option key={sc} value={sc}>
+                    {sc}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* 4. Colors */}
+          {availableColors.length > 0 && (
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                🎨 สี ({availableColors.length})
+              </label>
+              <select
+                value={selectedColor}
+                onChange={(e) => setSelectedColor(e.target.value)}
+                className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 font-medium outline-none focus:border-slate-900 transition"
+              >
+                <option value="">ทุกสี</option>
+                {availableColors.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* 5. Materials */}
+          {availableMaterials.length > 0 && (
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                🧱 วัสดุ ({availableMaterials.length})
+              </label>
+              <select
+                value={selectedMaterial}
+                onChange={(e) => setSelectedMaterial(e.target.value)}
+                className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 font-medium outline-none focus:border-slate-900 transition"
+              >
+                <option value="">ทุกวัสดุ</option>
+                {availableMaterials.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* 6. Dimensions Filter (ความสูง, ความยาว, ความกว้าง) */}
+          <div className="pt-2 border-t border-slate-200/80 space-y-3">
+            <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+              📏 มิติและขนาด (cm)
+            </label>
+
+            {/* ความสูง / หนา */}
+            <div>
+              <span className="text-[11px] text-slate-600 font-medium mb-1 block">ความสูง / ความหนา</span>
+              <div className="grid grid-cols-2 gap-1.5">
+                <input
+                  type="number"
+                  placeholder="ต่ำสุด"
+                  value={minHeight}
+                  onChange={(e) => setMinHeight(e.target.value)}
+                  className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs outline-none focus:border-slate-900 font-mono"
+                />
+                <input
+                  type="number"
+                  placeholder="สูงสุด"
+                  value={maxHeight}
+                  onChange={(e) => setMaxHeight(e.target.value)}
+                  className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs outline-none focus:border-slate-900 font-mono"
+                />
               </div>
-            ))}
+            </div>
+
+            {/* ความยาว / ลึก */}
+            <div>
+              <span className="text-[11px] text-slate-600 font-medium mb-1 block">ความยาว / ลึก</span>
+              <div className="grid grid-cols-2 gap-1.5">
+                <input
+                  type="number"
+                  placeholder="ต่ำสุด"
+                  value={minLength}
+                  onChange={(e) => setMinLength(e.target.value)}
+                  className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs outline-none focus:border-slate-900 font-mono"
+                />
+                <input
+                  type="number"
+                  placeholder="สูงสุด"
+                  value={maxLength}
+                  onChange={(e) => setMaxLength(e.target.value)}
+                  className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs outline-none focus:border-slate-900 font-mono"
+                />
+              </div>
+            </div>
+
+            {/* ความกว้าง */}
+            <div>
+              <span className="text-[11px] text-slate-600 font-medium mb-1 block">ความกว้าง</span>
+              <div className="grid grid-cols-2 gap-1.5">
+                <input
+                  type="number"
+                  placeholder="ต่ำสุด"
+                  value={minWidth}
+                  onChange={(e) => setMinWidth(e.target.value)}
+                  className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs outline-none focus:border-slate-900 font-mono"
+                />
+                <input
+                  type="number"
+                  placeholder="สูงสุด"
+                  value={maxWidth}
+                  onChange={(e) => setMaxWidth(e.target.value)}
+                  className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs outline-none focus:border-slate-900 font-mono"
+                />
+              </div>
+            </div>
           </div>
         </div>
-      )}
 
-      {/* ── Scrollable Product List with Virtual Pagination ── */}
-      <div
-        onScroll={(e) => {
-          const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
-          if (scrollHeight - scrollTop - clientHeight < 300) {
-            if (displayLimit < filtered.length) {
-              setDisplayLimit((prev) => Math.min(prev + 100, filtered.length));
-            }
-          }
-        }}
-        className="flex-1 overflow-y-auto rounded-xl border border-slate-200 bg-white min-h-0 divide-y divide-slate-100"
-      >
-        {filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full py-8 text-center">
-            <Package className="w-8 h-8 text-slate-300 mb-2" />
-            <p className="text-xs text-slate-500 font-medium">
-              ไม่พบสินค้าที่ตรงกับเงื่อนไขการค้นหา
-            </p>
-            {hasActiveFilters && (
+        {/* Footer info box */}
+        <div className="p-3 bg-white border-t border-slate-200/80 flex-shrink-0 text-center text-[11px] text-slate-500 font-medium">
+          ตรงตามสเปก <strong className="text-slate-900 font-bold">{filtered.length.toLocaleString()}</strong> จาก {products.length.toLocaleString()} รายการ
+        </div>
+      </div>
+
+      {/* ── Column 3: Product Picker List & Search ── */}
+      <div className="flex-1 flex flex-col min-w-0 bg-white p-5 space-y-3">
+        {/* Top search & batch action bar */}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="relative flex-1">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="ค้นหาชื่อสินค้า, SKU, สี, วัสดุ, หมวดย่อย..."
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-8 py-2 text-xs font-medium outline-none focus:border-slate-900 focus:bg-white transition"
+            />
+            {query && (
               <button
                 type="button"
-                onClick={clearFilters}
-                className="mt-2 text-xs font-semibold text-slate-900 underline"
+                onClick={() => setQuery("")}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
               >
-                ล้างตัวกรองทั้งหมด
+                <X className="w-3.5 h-3.5" />
               </button>
             )}
           </div>
-        ) : (
-          <>
-            {displayedList.map((p) => {
-              const isSel = selectedProductIds.includes(String(p.id));
-              const imgUrl = getImageUrl(p.image_url);
-              return (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => toggle(String(p.id))}
-                  className={`w-full flex items-center gap-3 px-3 py-2 text-left transition ${
-                    isSel ? "bg-slate-50" : "hover:bg-slate-50/60"
-                  }`}
-                >
-                  <div
-                    className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition ${
-                      isSel
-                        ? "bg-slate-900 border-slate-900"
-                        : "border-slate-300 bg-white"
-                    }`}
-                  >
-                    {isSel && <Check className="w-3 h-3 text-white stroke-[3]" />}
-                  </div>
 
-                  <div className="w-9 h-9 rounded-lg overflow-hidden shrink-0 border border-slate-200 bg-slate-50 flex items-center justify-center">
-                    {imgUrl ? (
-                      <img src={imgUrl} alt="" className="w-full h-full object-cover" />
+          <button
+            type="button"
+            onClick={selectAllFiltered}
+            disabled={filtered.length === 0}
+            className="px-3 py-2 text-xs font-bold rounded-xl bg-slate-900 hover:bg-slate-800 text-white transition flex items-center gap-1.5 flex-shrink-0 disabled:opacity-40"
+            title="เลือกสินค้าที่กรองอยู่ทั้งหมดเข้าสู่โปรโมชั่น"
+          >
+            <Check className="w-3.5 h-3.5" />
+            <span>เลือกที่กรองทั้งหมด ({filtered.length})</span>
+          </button>
+
+          {selectedProductIds.length > 0 && (
+            <button
+              type="button"
+              onClick={clearAll}
+              className="px-3 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 border border-rose-200 rounded-xl transition flex items-center gap-1 flex-shrink-0"
+              title="ยกเลิกการเลือกสินค้าทั้งหมด"
+            >
+              <X className="w-3.5 h-3.5" />
+              <span>ล้างที่เลือก</span>
+            </button>
+          )}
+        </div>
+
+        {/* Selected Items Tray */}
+        {selectedProducts.length > 0 && (
+          <div className="flex-shrink-0 bg-slate-50 border border-slate-200 rounded-xl p-2.5">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-xs font-bold text-slate-800">
+                เลือกไว้ {selectedProducts.length} รายการ
+              </span>
+              <button
+                type="button"
+                onClick={clearAll}
+                className="text-[11px] font-semibold text-slate-500 hover:text-rose-600 transition"
+              >
+                ล้างทั้งหมด
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto">
+              {selectedProducts.map((p) => (
+                <div
+                  key={p.id}
+                  className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-lg px-2 py-1 shadow-2xs"
+                >
+                  <div className="w-4 h-4 rounded overflow-hidden flex-shrink-0 bg-slate-100">
+                    {getImageUrl(p.image_url) ? (
+                      <img
+                        src={getImageUrl(p.image_url)!}
+                        alt=""
+                        className="w-full h-full object-cover"
+                      />
                     ) : (
-                      <Package className="w-4 h-4 text-slate-300" />
+                      <Package className="w-3 h-3 text-slate-300 mx-auto" />
                     )}
                   </div>
+                  <span className="text-xs text-slate-700 font-medium max-w-[130px] truncate">
+                    {p.name || p.sku}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => removeOne(String(p.id))}
+                    className="text-slate-300 hover:text-rose-500 transition flex-shrink-0"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p
-                        className={`text-xs font-bold truncate ${
-                          isSel ? "text-slate-900" : "text-slate-700"
-                        }`}
-                      >
-                        {p.name || "—"}
-                      </p>
-                      {p.sub_category && (
-                        <span className="px-1.5 py-0.2 rounded text-[10px] bg-slate-100 text-slate-600 font-medium shrink-0">
-                          {p.sub_category}
-                        </span>
+        {/* Product Cards List (Lazy Loaded Virtual Scroll) */}
+        <div
+          onScroll={(e) => {
+            const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+            if (scrollHeight - scrollTop <= clientHeight + 300) {
+              if (displayLimit < filtered.length) {
+                setDisplayLimit((prev) => Math.min(prev + 100, filtered.length));
+              }
+            }
+          }}
+          className="flex-1 overflow-y-auto rounded-xl border border-slate-200 divide-y divide-slate-100 bg-white min-h-0"
+        >
+          {filtered.length === 0 ? (
+            <div className="p-12 text-center text-xs text-slate-400">
+              <Package className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+              <p className="font-semibold text-slate-600">ไม่พบสินค้าตรงตามสเปกและตัวกรองที่เลือก</p>
+              <p className="text-[11px] text-slate-400 mt-0.5">ลองปรับขนาด สี หรือหมวดหมู่ในแผงตัวกรองด้านซ้าย</p>
+            </div>
+          ) : (
+            <>
+              {displayedList.map((p) => {
+                const isSel = selectedProductIds.includes(String(p.id));
+                const imgUrl = getImageUrl(p.image_url);
+                const dims = formatDimensions(p);
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => toggle(String(p.id))}
+                    className={`w-full flex items-center gap-3 px-3.5 py-2.5 text-left transition select-none ${
+                      isSel
+                        ? "bg-slate-900/5 hover:bg-slate-900/10"
+                        : "hover:bg-slate-50/80"
+                    }`}
+                  >
+                    {/* Checkbox */}
+                    <div
+                      className={`w-4 h-4 rounded flex items-center justify-center shrink-0 transition ${
+                        isSel
+                          ? "bg-slate-900 text-white"
+                          : "border border-slate-300 bg-white hover:border-slate-400"
+                      }`}
+                    >
+                      {isSel && <Check className="w-3 h-3 stroke-[3]" />}
+                    </div>
+
+                    {/* Image */}
+                    <div className="w-10 h-10 rounded-lg overflow-hidden shrink-0 border border-slate-200 bg-slate-50 flex items-center justify-center">
+                      {imgUrl ? (
+                        <img src={imgUrl} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <Package className="w-4 h-4 text-slate-300" />
                       )}
                     </div>
-                    <p className="text-[10px] text-slate-400 font-mono mt-0.5">{p.sku}</p>
-                  </div>
 
-                  {/* Stock Display Badge */}
-                  <div className="shrink-0 text-right">
-                    {renderStockBadge(p)}
-                  </div>
-                </button>
-              );
-            })}
+                    {/* Main Details */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p
+                          className={`text-xs font-bold truncate ${
+                            isSel ? "text-slate-900" : "text-slate-700"
+                          }`}
+                        >
+                          {p.name || "—"}
+                        </p>
+                        {p.sub_category && (
+                          <span className="px-1.5 py-0.2 rounded text-[10px] bg-slate-100 text-slate-600 font-medium shrink-0">
+                            {p.sub_category}
+                          </span>
+                        )}
+                      </div>
 
-            {displayLimit < filtered.length && (
-              <div className="p-3 text-center text-xs text-slate-400 bg-slate-50/50">
-                แสดงแล้ว {displayLimit} จาก {filtered.length} รายการ (เลื่อนลงเพื่อดูเพิ่ม)
-              </div>
-            )}
-          </>
-        )}
-      </div>
+                      {/* Specs badges line */}
+                      <div className="flex items-center gap-2 mt-1 flex-wrap text-[10px]">
+                        <span className="text-slate-400 font-mono">{p.sku}</span>
+                        {dims && (
+                          <span className="px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 font-mono">
+                            📏 {dims}
+                          </span>
+                        )}
+                        {p.color && (
+                          <span className="px-1.5 py-0.2 rounded bg-amber-50 text-amber-800 border border-amber-200/60 font-medium">
+                            🎨 {p.color}
+                          </span>
+                        )}
+                        {p.material && (
+                          <span className="px-1.5 py-0.2 rounded bg-blue-50 text-blue-700 border border-blue-200/60 font-medium">
+                            🧱 {p.material}
+                          </span>
+                        )}
+                      </div>
+                    </div>
 
-      {/* ── Footer Status Rail ── */}
-      <div className="flex items-center justify-between text-[11px] text-slate-400 flex-shrink-0 pt-0.5">
-        <span>
-          กรองพบ <strong className="text-slate-700">{filtered.length}</strong> จาก {products.length} รายการ
-        </span>
-        {selectedProductIds.length > 0 ? (
-          <span className="font-semibold text-slate-700">
-            เลือกไว้ {selectedProductIds.length} รายการ
+                    {/* Price & Stock Display Badge */}
+                    <div className="shrink-0 text-right space-y-1">
+                      {p.price > 0 && (
+                        <div className="text-xs font-bold font-mono text-slate-800">
+                          {Number(p.price).toLocaleString()} ฿
+                        </div>
+                      )}
+                      <div>{renderStockBadge(p)}</div>
+                    </div>
+                  </button>
+                );
+              })}
+
+              {displayLimit < filtered.length && (
+                <div className="p-3 text-center text-xs text-slate-400 bg-slate-50/50">
+                  แสดงแล้ว {displayLimit} จาก {filtered.length} รายการ (เลื่อนลงเพื่อดูเพิ่ม)
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Footer Status Bar */}
+        <div className="flex items-center justify-between text-[11px] text-slate-400 flex-shrink-0 pt-0.5">
+          <span>
+            กรองพบ <strong className="text-slate-700">{filtered.length}</strong> จาก {products.length} รายการ
           </span>
-        ) : (
-          <span className="text-slate-400 italic">ไม่เลือก = ใช้ได้กับทุกสินค้าในระบบ</span>
-        )}
+          {selectedProductIds.length > 0 ? (
+            <span className="font-semibold text-slate-700">
+              เลือกไว้ {selectedProductIds.length} รายการ
+            </span>
+          ) : (
+            <span className="text-slate-400 italic">ไม่เลือก = ใช้ได้กับทุกสินค้าในระบบ</span>
+          )}
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -2080,7 +2399,7 @@ export default function DiscountHubClient({
       {/* ===================================================================== */}
       {isPosCreateOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl h-[88vh] flex flex-col overflow-hidden border border-slate-200">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[1440px] h-[92vh] flex flex-col overflow-hidden border border-slate-200">
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 flex-shrink-0 bg-slate-50/50">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-xl bg-slate-900 text-white flex items-center justify-center shadow-xs">
@@ -2114,9 +2433,9 @@ export default function DiscountHubClient({
               }}
               className="flex flex-1 min-h-0"
             >
-              {/* Left Column: Settings */}
-              <div className="w-80 flex-shrink-0 border-r border-slate-100 flex flex-col">
-                <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+              {/* Left Column: Promotion Settings */}
+              <div className="w-72 sm:w-80 flex-shrink-0 border-r border-slate-100 flex flex-col bg-white">
+                <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4">
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1">
                       ชื่อโปรโมชั่น <span className="text-rose-500">*</span>
@@ -2184,9 +2503,25 @@ export default function DiscountHubClient({
                       </select>
                     </div>
                   )}
+
+                  {/* สรุปสถานะการเลือกสินค้า */}
+                  <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80">
+                    <p className="text-[11px] font-bold text-slate-700">การครอบคลุมสินค้า</p>
+                    <p className="text-xs text-slate-600 mt-1">
+                      {posSelectedProductIds.length > 0 ? (
+                        <span className="font-semibold text-emerald-700">
+                          ✓ เจาะจง {posSelectedProductIds.length.toLocaleString()} รายการ
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 italic">
+                          ใช้ได้กับทุกสินค้าในระบบ (ไม่ได้ระบุเฉพาะ)
+                        </span>
+                      )}
+                    </p>
+                  </div>
                 </div>
 
-                <div className="px-6 py-4 border-t border-slate-100 flex gap-2 flex-shrink-0 bg-slate-50/50">
+                <div className="px-5 py-4 border-t border-slate-100 flex gap-2 flex-shrink-0 bg-slate-50/50">
                   <button
                     type="button"
                     onClick={() => {
@@ -2209,20 +2544,13 @@ export default function DiscountHubClient({
                 </div>
               </div>
 
-              {/* Right Column: Product Picker */}
-              <div className="flex-1 flex flex-col min-h-0 px-6 py-5">
-                <p className="text-xs font-bold text-slate-700 mb-3 flex-shrink-0">
-                  เลือกสินค้าที่ร่วมรายการ (หากไม่เลือก = ใช้ได้กับทุกสินค้า)
-                </p>
-                <div className="flex-1 min-h-0">
-                  <ProductPicker
-                    products={products}
-                    selectedProductIds={posSelectedProductIds}
-                    onSelectionChange={setPosSelectedProductIds}
-                    selectedBranchId={posCreateBranchId}
-                  />
-                </div>
-              </div>
+              {/* Middle (Spec Filters) + Right (Product Selection) Columns */}
+              <ProductPicker
+                products={products}
+                selectedProductIds={posSelectedProductIds}
+                onSelectionChange={setPosSelectedProductIds}
+                selectedBranchId={posCreateBranchId}
+              />
             </form>
           </div>
         </div>
