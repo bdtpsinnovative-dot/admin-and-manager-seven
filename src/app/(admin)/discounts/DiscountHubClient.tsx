@@ -115,11 +115,11 @@ function ProductPicker({
   ]);
 
   const MAIN_CATEGORIES = [
-    { key: "ALL", label: "ทั้งหมด", icon: "🌐" },
-    { key: "furniture", label: "เฟอร์นิเจอร์", icon: "🛋️" },
-    { key: "prop", label: "พร็อพ & ตกแต่ง", icon: "🏺" },
-    { key: "SLABS", label: "แผ่นไม้", icon: "🪵" },
-    { key: "rough_wood", label: "ไม้ดิบ", icon: "🌲" },
+    { key: "ALL", label: "ทั้งหมด" },
+    { key: "furniture", label: "เฟอร์นิเจอร์" },
+    { key: "prop", label: "พร็อพ & ตกแต่ง" },
+    { key: "SLABS", label: "แผ่นไม้" },
+    { key: "rough_wood", label: "ไม้ดิบ" },
   ];
 
   // หมวดย่อยที่มีอยู่จริงตามหมวดหมู่หลักที่เลือก
@@ -450,10 +450,7 @@ function ProductPicker({
                         : "bg-white hover:bg-slate-100 text-slate-700 border border-slate-200/60 font-medium"
                     }`}
                   >
-                    <span className="flex items-center gap-1.5">
-                      <span>{cat.icon}</span>
-                      <span>{cat.label}</span>
-                    </span>
+                    <span>{cat.label}</span>
                     <span
                       className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
                         isActive ? "bg-white/20 text-white" : "bg-slate-100 text-slate-500"
@@ -477,10 +474,10 @@ function ProductPicker({
               onChange={(e) => setStockFilter(e.target.value as any)}
               className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 font-medium outline-none focus:border-slate-900 transition"
             >
-              <option value="ALL">📦 สต็อกทั้งหมด</option>
-              <option value="IN_STOCK">🟢 มีสต็อก (&gt; 0)</option>
-              <option value="OUT_OF_STOCK">⚪ สต็อกหมด (= 0)</option>
-              <option value="NEGATIVE">🔴 สต็อกติดลบ (&lt; 0)</option>
+              <option value="ALL">สต็อกทั้งหมด</option>
+              <option value="IN_STOCK">มีสต็อก (&gt; 0)</option>
+              <option value="OUT_OF_STOCK">สต็อกหมด (= 0)</option>
+              <option value="NEGATIVE">สต็อกติดลบ (&lt; 0)</option>
             </select>
           </div>
 
@@ -495,7 +492,7 @@ function ProductPicker({
                 onChange={(e) => setSelectedSubCat(e.target.value)}
                 className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 font-medium outline-none focus:border-slate-900 transition"
               >
-                <option value="">📁 ทุกหมวดย่อย</option>
+                <option value="">ทุกหมวดย่อย</option>
                 {availableSubCats.map((sc) => (
                   <option key={sc} value={sc}>
                     {sc}
@@ -509,7 +506,7 @@ function ProductPicker({
           {availableColors.length > 0 && (
             <div>
               <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                🎨 สี ({availableColors.length})
+                สี ({availableColors.length})
               </label>
               <select
                 value={selectedColor}
@@ -530,7 +527,7 @@ function ProductPicker({
           {availableMaterials.length > 0 && (
             <div>
               <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                🧱 วัสดุ ({availableMaterials.length})
+                วัสดุ ({availableMaterials.length})
               </label>
               <select
                 value={selectedMaterial}
@@ -550,7 +547,7 @@ function ProductPicker({
           {/* 6. Dimensions Filter (ความสูง, ความยาว, ความกว้าง) */}
           <div className="pt-2 border-t border-slate-200/80 space-y-3">
             <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider">
-              📏 มิติและขนาด (cm)
+              มิติและขนาด (cm)
             </label>
 
             {/* ความสูง / หนา */}
@@ -797,17 +794,17 @@ function ProductPicker({
                         <span className="text-slate-400 font-mono">{p.sku}</span>
                         {dims && (
                           <span className="px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 font-mono">
-                            📏 {dims}
+                            {dims}
                           </span>
                         )}
                         {p.color && (
-                          <span className="px-1.5 py-0.2 rounded bg-amber-50 text-amber-800 border border-amber-200/60 font-medium">
-                            🎨 {p.color}
+                          <span className="px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 font-medium">
+                            สี: {p.color}
                           </span>
                         )}
                         {p.material && (
-                          <span className="px-1.5 py-0.2 rounded bg-blue-50 text-blue-700 border border-blue-200/60 font-medium">
-                            🧱 {p.material}
+                          <span className="px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 font-medium">
+                            วัสดุ: {p.material}
                           </span>
                         )}
                       </div>
@@ -2510,7 +2507,7 @@ export default function DiscountHubClient({
                     <p className="text-xs text-slate-600 mt-1">
                       {posSelectedProductIds.length > 0 ? (
                         <span className="font-semibold text-emerald-700">
-                          ✓ เจาะจง {posSelectedProductIds.length.toLocaleString()} รายการ
+                          เจาะจง {posSelectedProductIds.length.toLocaleString()} รายการ
                         </span>
                       ) : (
                         <span className="text-slate-400 italic">
