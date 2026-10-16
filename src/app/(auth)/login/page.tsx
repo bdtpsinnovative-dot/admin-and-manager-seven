@@ -33,17 +33,6 @@ function decodeCred(val: string): string {
   try { return decodeURIComponent(atob(val)) } catch { return val }
 }
 
-// DEFAULT_JAN ต้อง define หลัง encodeCred เสมอ
-function makeDefaultJan(): SavedAccount {
-  return {
-    email: 'jan@gmail.com',
-    name: 'แจน อิอิ',
-    role: 'admin',
-    avatar_url: 'https://gshppxgvdrmbfcxsxeph.supabase.co/storage/v1/object/public/profiles/93fd4693-488b-484d-b481-bbccbb626350-1768983414399.webp',
-    token_payload: encodeCred('123456')
-  }
-}
-
 // ─────────────────────────────────────────────
 // Component
 // ─────────────────────────────────────────────
@@ -54,7 +43,8 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [rememberMe, setRememberMe] = useState(true)
-  const [savedAccounts, setSavedAccounts] = useState<SavedAccount[]>([makeDefaultJan()])
+  const [savedAccounts, setSavedAccounts] = useState<SavedAccount[]>([])
+  const [isLoaded, setIsLoaded] = useState(false)
   const [showAddModal, setShowAddModal] = useState(false)
   const [activeLoggingEmail, setActiveLoggingEmail] = useState<string | null>(null)
   const isMouseDownOnBackdrop = useRef(false)
@@ -77,7 +67,6 @@ export default function LoginPage() {
       window.history.replaceState({}, '', window.location.pathname)
     }
 
-    const DEFAULT_JAN = makeDefaultJan()
     try {
       const raw = localStorage.getItem(STORAGE_KEY)
       let accounts: SavedAccount[] = []
@@ -85,23 +74,22 @@ export default function LoginPage() {
         try { accounts = JSON.parse(raw) } catch { accounts = [] }
       }
 
-      // ต้องมีแจนเสมอ
-      if (!accounts || accounts.length === 0) {
-        accounts = [DEFAULT_JAN]
-      } else if (!accounts.some(a => a.email.toLowerCase() === 'jan@gmail.com')) {
-        accounts.unshift(DEFAULT_JAN)
-      }
+      // ล้าง jan@gmail.com ที่เคยถูก hardcode ไว้ในเครื่องออกอัตโนมัติ
+      accounts = (accounts || []).filter(
+        a => a && a.email && a.email.toLowerCase() !== 'jan@gmail.com'
+      )
 
       localStorage.setItem(STORAGE_KEY, JSON.stringify(accounts))
       setSavedAccounts(accounts)
     } catch {
-      setSavedAccounts([DEFAULT_JAN])
+      setSavedAccounts([])
+    } finally {
+      setIsLoaded(true)
     }
   }, [])
 
   // บันทึกบัญชีใหม่ลง localStorage (สูงสุด 8 บัญชี)
   function persistAccount(acc: { email: string; name: string; role: string; avatar_url?: string | null; pass: string }) {
-    const DEFAULT_JAN = makeDefaultJan()
     try {
       let current = [...savedAccounts]
       current = current.filter(a => a.email.toLowerCase() !== acc.email.toLowerCase())
@@ -112,9 +100,6 @@ export default function LoginPage() {
         avatar_url: acc.avatar_url,
         token_payload: encodeCred(acc.pass)
       })
-      if (!current.some(a => a.email.toLowerCase() === 'jan@gmail.com')) {
-        current.push(DEFAULT_JAN)
-      }
       if (current.length > 8) current = current.slice(0, 8)
       setSavedAccounts(current)
       localStorage.setItem(STORAGE_KEY, JSON.stringify(current))
@@ -126,9 +111,7 @@ export default function LoginPage() {
   // ลบบัญชีออกจากรายการ
   function handleRemoveAccount(e: React.MouseEvent, emailToRemove: string) {
     e.stopPropagation()
-    const DEFAULT_JAN = makeDefaultJan()
-    let updated = savedAccounts.filter(a => a.email.toLowerCase() !== emailToRemove.toLowerCase())
-    if (updated.length === 0) updated = [DEFAULT_JAN]
+    const updated = savedAccounts.filter(a => a.email.toLowerCase() !== emailToRemove.toLowerCase())
     setSavedAccounts(updated)
     localStorage.setItem(STORAGE_KEY, JSON.stringify(updated))
   }
@@ -277,119 +260,207 @@ export default function LoginPage() {
       {/* Main container */}
       <div className="w-full max-w-[560px] relative z-10">
 
-        {/* ── CARD: โปรไฟล์ ── */}
-        <div className="bg-white border border-[#dbdbdb] rounded-2xl shadow-sm p-6 sm:p-8">
-
-          {/* Header */}
-          <div className="flex flex-col items-center mb-6">
-            <img
-              src="/logo.terra.home.png"
-              alt="Terra Home Studio"
-              className="h-12 sm:h-14 w-auto object-contain mb-3 drop-shadow-sm"
-            />
-            <h1 className="text-xl font-bold text-[#262626]">Wood Management</h1>
-            <p className="text-xs text-[#8e8e8e] mt-1">เลือกโปรไฟล์เพื่อเข้าสู่ระบบทันที</p>
+        {!isLoaded ? (
+          <div className="bg-white border border-[#dbdbdb] rounded-2xl shadow-sm p-12 flex flex-col items-center justify-center min-h-[300px]">
+            <Loader2 className="w-8 h-8 text-[#A89880] animate-spin mb-3" />
+            <p className="text-xs text-gray-400">กำลังเตรียมหน้าเข้าสู่ระบบ...</p>
           </div>
-
-          {/* Error */}
-          {error && (
-            <div className="mb-4 p-3 bg-red-50 text-red-600 rounded-xl border border-red-100 text-xs font-medium flex items-start gap-2">
-              <ShieldCheck className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
-              <span>{error}</span>
+        ) : savedAccounts.length === 0 ? (
+          /* ── ฟอร์มล็อกอินมาตรฐาน (เมื่อยังไม่มีบัญชีที่บันทึกไว้ในเครื่องนี้) ── */
+          <div className="bg-white border border-[#dbdbdb] rounded-2xl shadow-sm p-6 sm:p-8">
+            {/* Header */}
+            <div className="flex flex-col items-center mb-6">
+              <img
+                src="/logo.terra.home.png"
+                alt="Terra Home Studio"
+                className="h-12 sm:h-14 w-auto object-contain mb-3 drop-shadow-sm"
+              />
+              <h1 className="text-xl font-bold text-[#262626]">Wood Management</h1>
+              <p className="text-xs text-[#8e8e8e] mt-1">เข้าสู่ระบบเพื่อใช้งานระบบจัดการไม้</p>
             </div>
-          )}
 
-          {/* Accounts Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-
-            {savedAccounts.map((acc) => {
-              const isActive = activeLoggingEmail === acc.email
-              return (
-                <div
-                  key={acc.email}
-                  onClick={() => handleOneClickLogin(acc)}
-                  className={`group relative bg-white border rounded-2xl p-3 flex flex-col items-center text-center transition-all cursor-pointer select-none hover:shadow-md hover:-translate-y-0.5 active:scale-[0.97] ${
-                    isActive
-                      ? 'border-[#A89880] ring-2 ring-[#A89880]/20 bg-[#faf8f5]'
-                      : 'border-[#dbdbdb] hover:border-[#A89880]/60'
-                  }`}
-                >
-                  {/* ปุ่ม X ลบ */}
-                  <button
-                    type="button"
-                    onClick={(e) => handleRemoveAccount(e, acc.email)}
-                    className="absolute top-2 right-2 w-5 h-5 rounded-full bg-gray-100 hover:bg-red-100 text-gray-400 hover:text-red-500 flex items-center justify-center transition-colors opacity-0 group-hover:opacity-100 cursor-pointer"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-
-                  {/* Avatar + Story Ring */}
-                  <div className="relative mb-2 mt-1">
-                    <div className="p-[2.5px] rounded-full bg-gradient-to-tr from-[#C8BFB0] via-[#A89880] to-[#7B6A55] group-hover:scale-105 transition-transform">
-                      <div className="p-[2px] bg-white rounded-full">
-                        {acc.avatar_url ? (
-                          <img
-                            src={acc.avatar_url}
-                            alt={acc.name}
-                            className="w-14 h-14 rounded-full object-cover"
-                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-                          />
-                        ) : (
-                          <div className="w-14 h-14 rounded-full bg-gradient-to-tr from-[#C8BFB0] to-[#7B6A55] text-white flex items-center justify-center font-bold text-xl">
-                            {acc.name.charAt(0).toUpperCase()}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    {/* Online dot */}
-                    <span className="absolute bottom-0 right-0 w-3 h-3 bg-[#22c55e] border-2 border-white rounded-full" />
-                  </div>
-
-                  <p className="text-xs font-bold text-[#262626] truncate w-full group-hover:text-[#7B6A55] transition-colors">
-                    {acc.name}
-                  </p>
-                  <div className="mt-0.5">
-                    {renderRoleBadge(acc.role)}
-                  </div>
-                  <p className="text-[10px] text-[#8e8e8e] truncate w-full mt-0.5">{acc.email}</p>
-
-                  <button
-                    type="button"
-                    className="mt-2.5 w-full py-1.5 bg-gradient-to-r from-[#A89880] to-[#7B6A55] group-hover:from-[#7B6A55] group-hover:to-[#5C4E3D] text-white text-[11px] font-semibold rounded-lg transition-all flex items-center justify-center shadow-sm"
-                  >
-                    {isActive ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'เข้าสู่ระบบ'}
-                  </button>
-                </div>
-              )
-            })}
-
-            {/* การ์ด [+] เพิ่มบัญชีอื่น */}
-            {savedAccounts.length < 8 && (
-              <div
-                onClick={() => { setError(null); setEmail(''); setPassword(''); setShowAddModal(true) }}
-                className="border-2 border-dashed border-gray-300 hover:border-[#A89880] rounded-2xl p-3 flex flex-col items-center justify-center text-center cursor-pointer group bg-gray-50/50 hover:bg-[#faf8f5] hover:shadow-md transition-all active:scale-[0.97] min-h-[180px]"
-              >
-                <div className="w-12 h-12 rounded-full bg-gray-100 group-hover:bg-[#f0ece6] text-gray-400 group-hover:text-[#7B6A55] flex items-center justify-center mb-2 transition-colors">
-                  <Plus className="w-5 h-5 stroke-[2.5]" />
-                </div>
-                <p className="text-xs font-bold text-gray-600 group-hover:text-[#7B6A55] transition-colors">เพิ่มบัญชีอื่น</p>
-                <p className="text-[10px] text-gray-400 mt-0.5">เข้าด้วยอีเมลใหม่</p>
+            {/* Error */}
+            {error && (
+              <div className="mb-4 p-3 bg-red-50 text-red-600 rounded-xl border border-red-100 text-xs font-medium flex items-start gap-2">
+                <ShieldCheck className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                <span>{error}</span>
               </div>
             )}
-          </div>
-        </div>
 
-        {/* ── CARD 2: ลิงก์เพิ่มบัญชี ── */}
-        <div className="bg-white border border-[#dbdbdb] rounded-2xl p-4 text-center text-xs text-gray-500 mt-3 shadow-sm">
-          ต้องการเพิ่มหรือสลับบัญชี?{' '}
-          <button
-            type="button"
-            onClick={() => { setError(null); setEmail(''); setPassword(''); setShowAddModal(true) }}
-            className="text-[#7B6A55] font-semibold hover:underline cursor-pointer"
-          >
-            คลิกเพื่อเพิ่มบัญชี
-          </button>
-        </div>
+            {/* Direct Form */}
+            <form onSubmit={(e) => handleAddLogin(e)} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1.5">อีเมล</label>
+                <input
+                  type="text"
+                  autoComplete="username"
+                  disabled={loading}
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full bg-[#fafafa] border border-[#dbdbdb] focus:border-gray-400 focus:bg-white text-gray-900 rounded-xl px-3.5 py-2.5 text-sm outline-none transition-all placeholder:text-gray-400 disabled:opacity-50"
+                  placeholder="อีเมล (เช่น sathon@gmail.com)"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1.5">รหัสผ่าน</label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    autoComplete="current-password"
+                    disabled={loading}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full bg-[#fafafa] border border-[#dbdbdb] focus:border-gray-400 focus:bg-white text-gray-900 rounded-xl px-3.5 py-2.5 pr-10 text-sm outline-none transition-all placeholder:text-gray-400 disabled:opacity-50"
+                    placeholder="รหัสผ่าน"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 cursor-pointer"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <label className="flex items-center gap-2 cursor-pointer select-none pt-1">
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-300 accent-[#7B6A55]"
+                />
+                <span className="text-xs text-gray-600">บันทึกบัญชีนี้ไว้ในเครื่องเพื่อความสะดวกรวดเร็ว</span>
+              </label>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-2.5 bg-gradient-to-r from-[#A89880] to-[#7B6A55] hover:from-[#7B6A55] hover:to-[#5C4E3D] text-white font-semibold text-sm rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer active:scale-[0.98] shadow-sm"
+              >
+                {loading
+                  ? <><Loader2 className="w-4 h-4 animate-spin" /><span>กำลังเข้าสู่ระบบ...</span></>
+                  : 'เข้าสู่ระบบ'}
+              </button>
+            </form>
+          </div>
+        ) : (
+          /* ── การ์ดโปรไฟล์ Quick 1-Tap (เมื่อมีบัญชีที่บันทึกไว้ในเครื่องนี้) ── */
+          <>
+            <div className="bg-white border border-[#dbdbdb] rounded-2xl shadow-sm p-6 sm:p-8">
+              {/* Header */}
+              <div className="flex flex-col items-center mb-6">
+                <img
+                  src="/logo.terra.home.png"
+                  alt="Terra Home Studio"
+                  className="h-12 sm:h-14 w-auto object-contain mb-3 drop-shadow-sm"
+                />
+                <h1 className="text-xl font-bold text-[#262626]">Wood Management</h1>
+                <p className="text-xs text-[#8e8e8e] mt-1">เลือกโปรไฟล์เพื่อเข้าสู่ระบบทันที</p>
+              </div>
+
+              {/* Error */}
+              {error && (
+                <div className="mb-4 p-3 bg-red-50 text-red-600 rounded-xl border border-red-100 text-xs font-medium flex items-start gap-2">
+                  <ShieldCheck className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                  <span>{error}</span>
+                </div>
+              )}
+
+              {/* Accounts Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {savedAccounts.map((acc) => {
+                  const isActive = activeLoggingEmail === acc.email
+                  return (
+                    <div
+                      key={acc.email}
+                      onClick={() => handleOneClickLogin(acc)}
+                      className={`group relative bg-white border rounded-2xl p-3 flex flex-col items-center text-center transition-all cursor-pointer select-none hover:shadow-md hover:-translate-y-0.5 active:scale-[0.97] ${
+                        isActive
+                          ? 'border-[#A89880] ring-2 ring-[#A89880]/20 bg-[#faf8f5]'
+                          : 'border-[#dbdbdb] hover:border-[#A89880]/60'
+                      }`}
+                    >
+                      {/* ปุ่ม X ลบ */}
+                      <button
+                        type="button"
+                        onClick={(e) => handleRemoveAccount(e, acc.email)}
+                        title="ลบบัญชีออกจากเครื่องนี้"
+                        className="absolute top-2 right-2 w-5 h-5 rounded-full bg-gray-100 hover:bg-red-100 text-gray-400 hover:text-red-500 flex items-center justify-center transition-colors opacity-0 group-hover:opacity-100 cursor-pointer z-10"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+
+                      {/* Avatar + Story Ring */}
+                      <div className="relative mb-2 mt-1">
+                        <div className="p-[2.5px] rounded-full bg-gradient-to-tr from-[#C8BFB0] via-[#A89880] to-[#7B6A55] group-hover:scale-105 transition-transform">
+                          <div className="p-[2px] bg-white rounded-full">
+                            {acc.avatar_url ? (
+                              <img
+                                src={acc.avatar_url}
+                                alt={acc.name}
+                                className="w-14 h-14 rounded-full object-cover"
+                                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                              />
+                            ) : (
+                              <div className="w-14 h-14 rounded-full bg-gradient-to-tr from-[#C8BFB0] to-[#7B6A55] text-white flex items-center justify-center font-bold text-xl">
+                                {acc.name.charAt(0).toUpperCase()}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        {/* Online dot */}
+                        <span className="absolute bottom-0 right-0 w-3 h-3 bg-[#22c55e] border-2 border-white rounded-full" />
+                      </div>
+
+                      <p className="text-xs font-bold text-[#262626] truncate w-full group-hover:text-[#7B6A55] transition-colors">
+                        {acc.name}
+                      </p>
+                      <div className="mt-0.5">
+                        {renderRoleBadge(acc.role)}
+                      </div>
+                      <p className="text-[10px] text-[#8e8e8e] truncate w-full mt-0.5">{acc.email}</p>
+
+                      <button
+                        type="button"
+                        className="mt-2.5 w-full py-1.5 bg-gradient-to-r from-[#A89880] to-[#7B6A55] group-hover:from-[#7B6A55] group-hover:to-[#5C4E3D] text-white text-[11px] font-semibold rounded-lg transition-all flex items-center justify-center shadow-sm"
+                      >
+                        {isActive ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'เข้าสู่ระบบ'}
+                      </button>
+                    </div>
+                  )
+                })}
+
+                {/* การ์ด [+] เพิ่มบัญชีอื่น */}
+                {savedAccounts.length < 8 && (
+                  <div
+                    onClick={() => { setError(null); setEmail(''); setPassword(''); setShowAddModal(true) }}
+                    className="border-2 border-dashed border-gray-300 hover:border-[#A89880] rounded-2xl p-3 flex flex-col items-center justify-center text-center cursor-pointer group bg-gray-50/50 hover:bg-[#faf8f5] hover:shadow-md transition-all active:scale-[0.97] min-h-[180px]"
+                  >
+                    <div className="w-12 h-12 rounded-full bg-gray-100 group-hover:bg-[#f0ece6] text-gray-400 group-hover:text-[#7B6A55] flex items-center justify-center mb-2 transition-colors">
+                      <Plus className="w-5 h-5 stroke-[2.5]" />
+                    </div>
+                    <p className="text-xs font-bold text-gray-600 group-hover:text-[#7B6A55] transition-colors">เพิ่มบัญชีอื่น</p>
+                    <p className="text-[10px] text-gray-400 mt-0.5">เข้าด้วยอีเมลใหม่</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* ── CARD 2: ลิงก์เพิ่มบัญชี ── */}
+            <div className="bg-white border border-[#dbdbdb] rounded-2xl p-4 text-center text-xs text-gray-500 mt-3 shadow-sm">
+              ต้องการเพิ่มหรือสลับบัญชี?{' '}
+              <button
+                type="button"
+                onClick={() => { setError(null); setEmail(''); setPassword(''); setShowAddModal(true) }}
+                className="text-[#7B6A55] font-semibold hover:underline cursor-pointer"
+              >
+                คลิกเพื่อเพิ่มบัญชี
+              </button>
+            </div>
+          </>
+        )}
 
         {/* Footer */}
         <p className="mt-6 text-center text-[10px] text-gray-400 uppercase tracking-wider">
