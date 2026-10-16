@@ -226,14 +226,15 @@ function ProductPicker({
 }) {
   const [query, setQuery] = useState("");
   const [selectedMainCat, setSelectedMainCat] = useState<string>("ALL");
-  const [selectedSubCat, setSelectedSubCat] = useState<string>("");
+  const [selectedSubCats, setSelectedSubCats] = useState<string[]>([]);
   const [stockFilter, setStockFilter] = useState<"ALL" | "IN_STOCK" | "OUT_OF_STOCK" | "NEGATIVE">("ALL");
   const [promoStatusFilter, setPromoStatusFilter] = useState<"ALL" | "NO_PROMO" | "HAS_PROMO">("ALL");
   const [sortBy, setSortBy] = useState<
     "default" | "stock_desc" | "stock_asc" | "price_desc" | "price_asc" | "name_asc" | "sku_asc"
   >("default");
-  const [selectedColor, setSelectedColor] = useState<string>("");
-  const [selectedMaterial, setSelectedMaterial] = useState<string>("");
+  const [selectedColors, setSelectedColors] = useState<string[]>([]);
+  const [selectedMaterials, setSelectedMaterials] = useState<string[]>([]);
+  const [viewMode, setViewMode] = useState<"all" | "selected">("all");
   const [minHeight, setMinHeight] = useState<string>("");
   const [maxHeight, setMaxHeight] = useState<string>("");
   const [minWidth, setMinWidth] = useState<string>("");
@@ -241,6 +242,29 @@ function ProductPicker({
   const [minLength, setMinLength] = useState<string>("");
   const [maxLength, setMaxLength] = useState<string>("");
   const [displayLimit, setDisplayLimit] = useState(100);
+
+  // สลับการเลือกหมวดย่อยหลายอันพร้อมกัน
+  const toggleSubCat = (val: string) => {
+    setSelectedSubCats((prev) =>
+      prev.includes(val) ? prev.filter((item) => item !== val) : [...prev, val]
+    );
+  };
+
+  // สลับการเลือกสีหลายสีพร้อมกัน
+  const toggleColor = (val: string) => {
+    const norm = val.toLowerCase();
+    setSelectedColors((prev) =>
+      prev.includes(norm) ? prev.filter((item) => item !== norm) : [...prev, norm]
+    );
+  };
+
+  // สลับการเลือกวัสดุหลายวัสดุพร้อมกัน
+  const toggleMaterial = (val: string) => {
+    const norm = val.toLowerCase();
+    setSelectedMaterials((prev) =>
+      prev.includes(norm) ? prev.filter((item) => item !== norm) : [...prev, norm]
+    );
+  };
 
   // ตรวจสอบสินค้าที่มีโปรโมชันใช้งานอยู่แล้วในระบบ
   const productPromoMap = useMemo(() => {
@@ -283,12 +307,13 @@ function ProductPicker({
   }, [
     query,
     selectedMainCat,
-    selectedSubCat,
+    selectedSubCats,
     stockFilter,
     promoStatusFilter,
     sortBy,
-    selectedColor,
-    selectedMaterial,
+    selectedColors,
+    selectedMaterials,
+    viewMode,
     minHeight,
     maxHeight,
     minWidth,
@@ -367,8 +392,10 @@ function ProductPicker({
     if (selectedMainCat !== "ALL") {
       source = source.filter((p) => p.category_id === selectedMainCat);
     }
-    if (selectedSubCat) {
-      source = source.filter((p) => checkProductCategoryMatch(p, selectedMainCat, selectedSubCat));
+    if (selectedSubCats.length > 0) {
+      source = source.filter((p) =>
+        selectedSubCats.some((sub) => checkProductCategoryMatch(p, selectedMainCat, sub))
+      );
     }
 
     const countMap = new Map<string, number>();
@@ -403,7 +430,7 @@ function ProductPicker({
     });
 
     return list;
-  }, [products, selectedMainCat, selectedSubCat]);
+  }, [products, selectedMainCat, selectedSubCats]);
 
   // ตัวเลือกวัสดุพร้อมการจัดกลุ่ม (Ceramic, Glass, Resin, Metal, Stone, Wood, Canvas, Cement, Leather, Acrylic, Solid Wood, Bouclé)
   const materialOptions = useMemo(() => {
@@ -411,8 +438,10 @@ function ProductPicker({
     if (selectedMainCat !== "ALL") {
       source = source.filter((p) => p.category_id === selectedMainCat);
     }
-    if (selectedSubCat) {
-      source = source.filter((p) => checkProductCategoryMatch(p, selectedMainCat, selectedSubCat));
+    if (selectedSubCats.length > 0) {
+      source = source.filter((p) =>
+        selectedSubCats.some((sub) => checkProductCategoryMatch(p, selectedMainCat, sub))
+      );
     }
 
     const countMap = new Map<string, number>();
@@ -463,8 +492,70 @@ function ProductPicker({
       }
     });
 
-    return list.sort((a, b) => b.count - a.count);
-  }, [products, selectedMainCat, selectedSubCat]);
+    return list;
+  }, [products, selectedMainCat, selectedSubCats]);
+
+  // รายการสินค้าที่ถูกเลือกไว้ทั้งหมด
+  const selectedProducts = useMemo(() => {
+    const set = new Set(selectedProductIds.map(String));
+    return products.filter((p) => set.has(String(p.id)));
+  }, [products, selectedProductIds]);
+
+  // จำนวนสินค้าที่ถูกเลือกสะสมแยกตามหมวดหมู่หลักและหมวดย่อย เพื่อแสดง Badge ให้เห็นชัดเจนตลอดเวลาว่าของเก่ายังอยู่
+  const selectedCounts = useMemo(() => {
+    const selectedSet = new Set(selectedProductIds.map(String));
+    const mainCounts: Record<string, number> = {
+      ALL: selectedProductIds.length,
+      furniture: 0,
+      prop: 0,
+      SLABS: 0,
+      rough_wood: 0,
+    };
+    const subCounts: Record<string, number> = {};
+
+    products.forEach((p) => {
+      if (selectedSet.has(String(p.id))) {
+        if (mainCounts[p.category_id] !== undefined) {
+          mainCounts[p.category_id]++;
+        }
+        if (p.sub_category) {
+          subCounts[p.sub_category] = (subCounts[p.sub_category] || 0) + 1;
+        }
+        FURNITURE_CATEGORY_GROUPS.forEach((g) => {
+          if (checkProductCategoryMatch(p, "furniture", g.label)) {
+            subCounts[g.label] = (subCounts[g.label] || 0) + 1;
+          }
+          g.items.forEach((item) => {
+            if (checkProductCategoryMatch(p, "furniture", item.name)) {
+              subCounts[item.name] = (subCounts[item.name] || 0) + 1;
+            }
+          });
+        });
+        PRODUCT_FILTER_ITEMS.forEach((item) => {
+          if (checkProductCategoryMatch(p, "prop", item.label)) {
+            subCounts[item.label] = (subCounts[item.label] || 0) + 1;
+          }
+          item.items?.forEach((child) => {
+            if (checkProductCategoryMatch(p, "prop", child.fullValue)) {
+              subCounts[child.fullValue] = (subCounts[child.fullValue] || 0) + 1;
+            }
+          });
+        });
+        SLAB_CATEGORY_GROUPS.forEach((slab) => {
+          if (checkProductCategoryMatch(p, "SLABS", slab.name)) {
+            subCounts[slab.name] = (subCounts[slab.name] || 0) + 1;
+          }
+        });
+        ROUGH_WOOD_GROUPS.forEach((rw) => {
+          if (checkProductCategoryMatch(p, "rough_wood", rw.name)) {
+            subCounts[rw.name] = (subCounts[rw.name] || 0) + 1;
+          }
+        });
+      }
+    });
+
+    return { mainCounts, subCounts };
+  }, [products, selectedProductIds]);
 
   // ฟิลเตอร์สินค้าตามเงื่อนไขสเปกทั้งหมด
   const filtered = useMemo(() => {
@@ -475,9 +566,11 @@ function ProductPicker({
       result = result.filter((p) => p.category_id === selectedMainCat);
     }
 
-    // 2. หมวดย่อย & โครงสร้าง
-    if (selectedSubCat) {
-      result = result.filter((p) => checkProductCategoryMatch(p, selectedMainCat, selectedSubCat));
+    // 2. หมวดย่อย & โครงสร้าง (เลือกหลายหมวดย่อยพร้อมกันได้)
+    if (selectedSubCats.length > 0) {
+      result = result.filter((p) =>
+        selectedSubCats.some((sub) => checkProductCategoryMatch(p, selectedMainCat, sub))
+      );
     }
 
     // 3. กรองตามสต็อก
@@ -511,22 +604,21 @@ function ProductPicker({
       result = result.filter((p) => productPromoMap.has(String(p.id)));
     }
 
-    // 4. สี (Color)
-    if (selectedColor) {
-      const col = selectedColor.toLowerCase();
+    // 4. สี (Color - เลือกหลายสีพร้อมกันได้)
+    if (selectedColors.length > 0) {
       result = result.filter((p) => {
         const colors = productColorValues(p).map((c) => c.toLowerCase());
-        return colors.includes(col) || (p.color && p.color.toLowerCase().includes(col));
+        const rawCol = (p.color || "").toLowerCase();
+        return selectedColors.some((col) => colors.includes(col) || rawCol.includes(col));
       });
     }
 
-    // 5. วัสดุ (Material)
-    if (selectedMaterial) {
-      const mat = selectedMaterial.toLowerCase();
+    // 5. วัสดุ (Material - เลือกหลายวัสดุพร้อมกันได้)
+    if (selectedMaterials.length > 0) {
       result = result.filter((p) => {
         const mats = productMaterialValues(p).map((m) => m.toLowerCase());
         const rawMat = String(p.material || p.specs?.material || "").toLowerCase();
-        return mats.includes(mat) || rawMat.includes(mat);
+        return selectedMaterials.some((mat) => mats.includes(mat) || rawMat.includes(mat));
       });
     }
 
@@ -559,11 +651,11 @@ function ProductPicker({
   }, [
     products,
     selectedMainCat,
-    selectedSubCat,
+    selectedSubCats,
     stockFilter,
     promoStatusFilter,
-    selectedColor,
-    selectedMaterial,
+    selectedColors,
+    selectedMaterials,
     minHeight,
     maxHeight,
     minWidth,
@@ -575,9 +667,29 @@ function ProductPicker({
     productPromoMap,
   ]);
 
+  // สินค้าทั้งหมดที่จะแสดงผล: ถ้า viewMode === "selected" จะแสดงสินค้าที่เลือกไว้ทั้งหมด
+  const activeBaseList = useMemo(() => {
+    if (viewMode === "selected") {
+      let base = selectedProducts;
+      if (query.trim()) {
+        const q = query.toLowerCase();
+        base = base.filter(
+          (p) =>
+            p.name?.toLowerCase().includes(q) ||
+            p.sku?.toLowerCase().includes(q) ||
+            (p.sub_category && p.sub_category.toLowerCase().includes(q)) ||
+            (p.color && p.color.toLowerCase().includes(q)) ||
+            (p.material && p.material.toLowerCase().includes(q))
+        );
+      }
+      return base;
+    }
+    return filtered;
+  }, [viewMode, selectedProducts, query, filtered]);
+
   // เรียงลำดับรายการสินค้าตามตัวเลือกที่เลือก
   const sortedList = useMemo(() => {
-    const list = [...filtered];
+    const list = [...activeBaseList];
     if (sortBy === "stock_desc") {
       list.sort((a, b) => {
         const stockA = selectedBranchId
@@ -608,7 +720,7 @@ function ProductPicker({
       list.sort((a, b) => (a.sku || "").localeCompare(b.sku || ""));
     }
     return list;
-  }, [filtered, sortBy, selectedBranchId]);
+  }, [activeBaseList, sortBy, selectedBranchId]);
 
   const toggle = (id: string) => {
     if (selectedProductIds.includes(id)) {
@@ -624,20 +736,32 @@ function ProductPicker({
 
   const clearAll = () => onSelectionChange([]);
 
-  const selectAllFiltered = () => {
-    const allFilteredIds = sortedList.map((p) => String(p.id));
-    const merged = Array.from(new Set([...selectedProductIds, ...allFilteredIds]));
-    onSelectionChange(merged);
+  // ตรวจสอบว่าสินค้าในตัวกรองปัจจุบันถูกเลือกครบทั้งหมดแล้วหรือยัง
+  const areAllFilteredSelected = useMemo(() => {
+    if (sortedList.length === 0) return false;
+    const selectedSet = new Set(selectedProductIds.map(String));
+    return sortedList.every((p) => selectedSet.has(String(p.id)));
+  }, [sortedList, selectedProductIds]);
+
+  // สลับเลือก/ยกเลิกเลือกเฉพาะสินค้าที่กำลังแสดงในตัวกรองปัจจุบัน โดยไม่กระทบสินค้าที่เลือกจากตัวกรองอื่น
+  const handleToggleSelectAllFiltered = () => {
+    const filteredIdSet = new Set(sortedList.map((p) => String(p.id)));
+    if (areAllFilteredSelected) {
+      onSelectionChange(selectedProductIds.filter((id) => !filteredIdSet.has(id)));
+    } else {
+      const merged = Array.from(new Set([...selectedProductIds, ...Array.from(filteredIdSet)]));
+      onSelectionChange(merged);
+    }
   };
 
   const hasActiveFilters = Boolean(
     selectedMainCat !== "ALL" ||
-    selectedSubCat !== "" ||
+    selectedSubCats.length > 0 ||
     stockFilter !== "ALL" ||
     promoStatusFilter !== "ALL" ||
     sortBy !== "default" ||
-    selectedColor !== "" ||
-    selectedMaterial !== "" ||
+    selectedColors.length > 0 ||
+    selectedMaterials.length > 0 ||
     minHeight !== "" ||
     maxHeight !== "" ||
     minWidth !== "" ||
@@ -650,12 +774,12 @@ function ProductPicker({
   const clearFilters = () => {
     setQuery("");
     setSelectedMainCat("ALL");
-    setSelectedSubCat("");
+    setSelectedSubCats([]);
     setStockFilter("ALL");
     setPromoStatusFilter("ALL");
     setSortBy("default");
-    setSelectedColor("");
-    setSelectedMaterial("");
+    setSelectedColors([]);
+    setSelectedMaterials([]);
     setMinHeight("");
     setMaxHeight("");
     setMinWidth("");
@@ -663,11 +787,6 @@ function ProductPicker({
     setMinLength("");
     setMaxLength("");
   };
-
-  const selectedProducts = useMemo(() => {
-    const set = new Set(selectedProductIds.map(String));
-    return products.filter((p) => set.has(String(p.id)));
-  }, [products, selectedProductIds]);
 
   const formatDimensions = (p: any) => {
     const parts: string[] = [];
@@ -766,15 +885,14 @@ function ProductPicker({
                   cat.key === "ALL"
                     ? products.length
                     : products.filter((p) => p.category_id === cat.key).length;
+                const chosenCount = selectedCounts.mainCounts[cat.key] || 0;
                 return (
                   <button
                     key={cat.key}
                     type="button"
                     onClick={() => {
                       setSelectedMainCat(cat.key);
-                      setSelectedSubCat("");
-                      setSelectedColor("");
-                      setSelectedMaterial("");
+                      setSelectedSubCats([]);
                     }}
                     className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition ${
                       isActive
@@ -782,9 +900,22 @@ function ProductPicker({
                         : "bg-white hover:bg-slate-100 text-slate-700 border border-slate-200/60 font-medium"
                     }`}
                   >
-                    <span>{cat.label}</span>
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="truncate">{cat.label}</span>
+                      {chosenCount > 0 && (
+                        <span
+                          className={`px-1.5 py-0.2 rounded-full text-[9px] font-bold shrink-0 ${
+                            isActive
+                              ? "bg-emerald-500 text-white"
+                              : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                          }`}
+                        >
+                          เลือก {chosenCount}
+                        </span>
+                      )}
+                    </div>
                     <span
-                      className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                      className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono shrink-0 ml-1 ${
                         isActive ? "bg-white/20 text-white" : "bg-slate-100 text-slate-500"
                       }`}
                     >
@@ -810,13 +941,13 @@ function ProductPicker({
                   ? "ประเภทไม้ดิบ"
                   : "หมวดหมู่ย่อยทั้งหมด"}
               </label>
-              {selectedSubCat && (
+              {selectedSubCats.length > 0 && (
                 <button
                   type="button"
-                  onClick={() => setSelectedSubCat("")}
+                  onClick={() => setSelectedSubCats([])}
                   className="text-[10px] text-rose-600 hover:underline font-medium"
                 >
-                  รีเซ็ตหมวดย่อย
+                  รีเซ็ตหมวดย่อย ({selectedSubCats.length})
                 </button>
               )}
             </div>
@@ -825,22 +956,30 @@ function ProductPicker({
             {selectedMainCat === "furniture" && (
               <div className="space-y-1 bg-white rounded-lg border border-slate-200/80 p-1.5 max-h-56 overflow-y-auto">
                 {FURNITURE_CATEGORY_GROUPS.map((group) => {
-                  const isGroupActive = selectedSubCat.toLowerCase() === group.label.toLowerCase();
+                  const isGroupActive = selectedSubCats.includes(group.label);
                   const isOpen = !!openCatGroups[group.label];
                   const groupCount = furnitureCounts[group.label] || 0;
+                  const groupChosen = selectedCounts.subCounts[group.label] || 0;
 
                   return (
                     <div key={group.label} className="border-b border-slate-100 last:border-0 pb-0.5">
                       <div className="flex items-center justify-between py-1 px-1.5 rounded hover:bg-slate-50 transition">
                         <button
                           type="button"
-                          onClick={() => setSelectedSubCat(isGroupActive ? "" : group.label)}
+                          onClick={() => toggleSubCat(group.label)}
                           className={`flex-1 text-left flex items-center justify-between text-xs ${
                             isGroupActive ? "text-slate-900 font-bold" : "text-slate-700 font-medium"
                           }`}
                         >
                           <div className="flex flex-col text-left">
-                            <span>{group.label}</span>
+                            <div className="flex items-center gap-1.5">
+                              <span>{group.label}</span>
+                              {groupChosen > 0 && (
+                                <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
+                                  เลือก {groupChosen}
+                                </span>
+                              )}
+                            </div>
                             <span className="text-[10px] text-slate-400 font-normal">{group.thaiLabel}</span>
                           </div>
                           <span className="text-[10px] text-slate-400 font-mono ml-1 shrink-0">({groupCount})</span>
@@ -859,20 +998,28 @@ function ProductPicker({
                       {isOpen && group.items.length > 0 && (
                         <div className="pl-3 pr-1 py-1 space-y-0.5 border-l-2 border-slate-100 ml-2 mb-1">
                           {group.items.map((item) => {
-                            const isItemActive = selectedSubCat.toLowerCase() === item.name.toLowerCase();
+                            const isItemActive = selectedSubCats.includes(item.name);
                             const itemCount = furnitureCounts[item.name] || 0;
+                            const itemChosen = selectedCounts.subCounts[item.name] || 0;
                             return (
                               <button
                                 key={item.name}
                                 type="button"
-                                onClick={() => setSelectedSubCat(isItemActive ? "" : item.name)}
+                                onClick={() => toggleSubCat(item.name)}
                                 className={`w-full flex items-center justify-between px-2 py-1 rounded text-[11px] transition ${
                                   isItemActive
                                     ? "bg-slate-900 text-white font-semibold"
                                     : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                                 }`}
                               >
-                                <span>{item.name}</span>
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  <span className="truncate">{item.name}</span>
+                                  {itemChosen > 0 && (
+                                    <span className={`px-1 py-0.2 rounded text-[9px] font-bold shrink-0 ${isItemActive ? "bg-emerald-500 text-white" : "bg-emerald-50 text-emerald-700 border border-emerald-200"}`}>
+                                      เลือก {itemChosen}
+                                    </span>
+                                  )}
+                                </div>
                                 <span className={`text-[10px] font-mono shrink-0 ml-1 ${isItemActive ? "text-slate-300" : "text-slate-400"}`}>
                                   {itemCount}
                                 </span>
@@ -891,9 +1038,10 @@ function ProductPicker({
             {selectedMainCat === "prop" && (
               <div className="space-y-1 bg-white rounded-lg border border-slate-200/80 p-1.5 max-h-56 overflow-y-auto">
                 {propCategoryItems.map((item) => {
-                  const isGroupActive = selectedSubCat.toLowerCase() === item.label.toLowerCase();
+                  const isGroupActive = selectedSubCats.includes(item.label);
                   const isOpen = !!openCatGroups[item.label];
                   const groupCount = propCounts[item.label] || 0;
+                  const groupChosen = selectedCounts.subCounts[item.label] || 0;
                   const hasChildren = item.items && item.items.length > 0;
 
                   return (
@@ -901,13 +1049,20 @@ function ProductPicker({
                       <div className="flex items-center justify-between py-1 px-1.5 rounded hover:bg-slate-50 transition">
                         <button
                           type="button"
-                          onClick={() => setSelectedSubCat(isGroupActive ? "" : item.label)}
+                          onClick={() => toggleSubCat(item.label)}
                           className={`flex-1 text-left flex items-center justify-between text-xs ${
                             isGroupActive ? "text-slate-900 font-bold" : "text-slate-700 font-medium"
                           }`}
                         >
                           <div className="flex flex-col text-left">
-                            <span>{item.displayLabel || item.label}</span>
+                            <div className="flex items-center gap-1.5">
+                              <span>{item.displayLabel || item.label}</span>
+                              {groupChosen > 0 && (
+                                <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
+                                  เลือก {groupChosen}
+                                </span>
+                              )}
+                            </div>
                             {item.thaiLabel && <span className="text-[10px] text-slate-400 font-normal">{item.thaiLabel}</span>}
                           </div>
                           <span className="text-[10px] text-slate-400 font-mono ml-1 shrink-0">({groupCount})</span>
@@ -926,13 +1081,14 @@ function ProductPicker({
                       {isOpen && hasChildren && (
                         <div className="pl-3 pr-1 py-1 space-y-0.5 border-l-2 border-slate-100 ml-2 mb-1">
                           {item.items?.map((child) => {
-                            const isChildActive = selectedSubCat.toLowerCase() === child.fullValue.toLowerCase();
+                            const isChildActive = selectedSubCats.includes(child.fullValue);
                             const childCount = propCounts[child.fullValue] || 0;
+                            const childChosen = selectedCounts.subCounts[child.fullValue] || 0;
                             return (
                               <button
                                 key={child.fullValue}
                                 type="button"
-                                onClick={() => setSelectedSubCat(isChildActive ? "" : child.fullValue)}
+                                onClick={() => toggleSubCat(child.fullValue)}
                                 className={`w-full flex items-center justify-between px-2 py-1 rounded text-[11px] transition ${
                                   isChildActive
                                     ? "bg-slate-900 text-white font-semibold"
@@ -940,7 +1096,14 @@ function ProductPicker({
                                 }`}
                               >
                                 <div className="flex flex-col text-left">
-                                  <span>{child.displayLabel}</span>
+                                  <div className="flex items-center gap-1.5">
+                                    <span>{child.displayLabel}</span>
+                                    {childChosen > 0 && (
+                                      <span className={`px-1 py-0.2 rounded text-[9px] font-bold shrink-0 ${isChildActive ? "bg-emerald-500 text-white" : "bg-emerald-50 text-emerald-700 border border-emerald-200"}`}>
+                                        เลือก {childChosen}
+                                      </span>
+                                    )}
+                                  </div>
                                   {child.thaiLabel && (
                                     <span className={`text-[9px] ${isChildActive ? "text-slate-300" : "text-slate-400"}`}>
                                       {child.thaiLabel}
@@ -965,13 +1128,14 @@ function ProductPicker({
             {selectedMainCat === "SLABS" && (
               <div className="space-y-1 bg-white rounded-lg border border-slate-200/80 p-1.5">
                 {SLAB_CATEGORY_GROUPS.map((slab) => {
-                  const isActive = selectedSubCat.toLowerCase() === slab.name.toLowerCase();
+                  const isActive = selectedSubCats.includes(slab.name);
                   const count = slabCounts[slab.name] || 0;
+                  const slabChosen = selectedCounts.subCounts[slab.name] || 0;
                   return (
                     <button
                       key={slab.name}
                       type="button"
-                      onClick={() => setSelectedSubCat(isActive ? "" : slab.name)}
+                      onClick={() => toggleSubCat(slab.name)}
                       className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition ${
                         isActive
                           ? "bg-slate-900 text-white font-bold"
@@ -979,7 +1143,14 @@ function ProductPicker({
                       }`}
                     >
                       <div className="flex flex-col text-left">
-                        <span>{slab.name}</span>
+                        <div className="flex items-center gap-1.5">
+                          <span>{slab.name}</span>
+                          {slabChosen > 0 && (
+                            <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
+                              เลือก {slabChosen}
+                            </span>
+                          )}
+                        </div>
                         <span className={`text-[10px] ${isActive ? "text-slate-300" : "text-slate-400"}`}>{slab.thaiLabel}</span>
                       </div>
                       <span className={`text-[10px] font-mono ${isActive ? "text-slate-300" : "text-slate-500"}`}>
@@ -995,13 +1166,14 @@ function ProductPicker({
             {selectedMainCat === "rough_wood" && (
               <div className="space-y-1 bg-white rounded-lg border border-slate-200/80 p-1.5">
                 {ROUGH_WOOD_GROUPS.map((rw) => {
-                  const isActive = selectedSubCat.toLowerCase() === rw.name.toLowerCase();
+                  const isActive = selectedSubCats.includes(rw.name);
                   const count = products.filter((p) => p.category_id === "rough_wood").length;
+                  const rwChosen = selectedCounts.subCounts[rw.name] || 0;
                   return (
                     <button
                       key={rw.name}
                       type="button"
-                      onClick={() => setSelectedSubCat(isActive ? "" : rw.name)}
+                      onClick={() => toggleSubCat(rw.name)}
                       className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition ${
                         isActive
                           ? "bg-slate-900 text-white font-bold"
@@ -1009,7 +1181,14 @@ function ProductPicker({
                       }`}
                     >
                       <div className="flex flex-col text-left">
-                        <span>{rw.name}</span>
+                        <div className="flex items-center gap-1.5">
+                          <span>{rw.name}</span>
+                          {rwChosen > 0 && (
+                            <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
+                              เลือก {rwChosen}
+                            </span>
+                          )}
+                        </div>
                         <span className={`text-[10px] ${isActive ? "text-slate-300" : "text-slate-400"}`}>{rw.thaiLabel}</span>
                       </div>
                       <span className={`text-[10px] font-mono ${isActive ? "text-slate-300" : "text-slate-500"}`}>
@@ -1023,18 +1202,33 @@ function ProductPicker({
 
             {/* If ALL selected */}
             {selectedMainCat === "ALL" && availableSubCats.length > 0 && (
-              <select
-                value={selectedSubCat}
-                onChange={(e) => setSelectedSubCat(e.target.value)}
-                className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 font-medium outline-none focus:border-slate-900 transition"
-              >
-                <option value="">ทุกหมวดย่อย ({availableSubCats.length})</option>
-                {availableSubCats.map((sc) => (
-                  <option key={sc} value={sc}>
-                    {sc}
-                  </option>
-                ))}
-              </select>
+              <div className="space-y-1 bg-white rounded-lg border border-slate-200/80 p-1.5 max-h-40 overflow-y-auto">
+                {availableSubCats.map((sc) => {
+                  const isScActive = selectedSubCats.includes(sc);
+                  const scChosen = selectedCounts.subCounts[sc] || 0;
+                  return (
+                    <button
+                      key={sc}
+                      type="button"
+                      onClick={() => toggleSubCat(sc)}
+                      className={`w-full flex items-center justify-between px-2 py-1 rounded text-[11px] transition ${
+                        isScActive
+                          ? "bg-slate-900 text-white font-semibold"
+                          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="truncate">{sc}</span>
+                        {scChosen > 0 && (
+                          <span className={`px-1 py-0.2 rounded text-[9px] font-bold shrink-0 ${isScActive ? "bg-emerald-500 text-white" : "bg-emerald-50 text-emerald-700 border border-emerald-200"}`}>
+                            เลือก {scChosen}
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
             )}
           </div>
 
@@ -1105,26 +1299,26 @@ function ProductPicker({
               <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
                 สี ({colorOptions.filter((c) => c.count > 0).length})
               </label>
-              {selectedColor && (
+              {selectedColors.length > 0 && (
                 <button
                   type="button"
-                  onClick={() => setSelectedColor("")}
+                  onClick={() => setSelectedColors([])}
                   className="text-[10px] text-rose-600 hover:underline font-medium"
                 >
-                  รีเซ็ตสี
+                  รีเซ็ตสี ({selectedColors.length})
                 </button>
               )}
             </div>
             <div className="grid grid-cols-2 gap-1 max-h-48 overflow-y-auto p-1 bg-white rounded-lg border border-slate-200/80">
               {colorOptions.map((opt) => {
-                const isSelected = selectedColor.toLowerCase() === opt.value.toLowerCase();
+                const isSelected = selectedColors.includes(opt.value.toLowerCase());
                 const disabled = opt.count === 0;
                 return (
                   <button
                     key={opt.value}
                     type="button"
                     disabled={disabled}
-                    onClick={() => setSelectedColor(isSelected ? "" : opt.value)}
+                    onClick={() => toggleColor(opt.value)}
                     className={`flex items-center gap-1.5 px-2 py-1 rounded text-left transition select-none ${
                       isSelected
                         ? "bg-slate-900 text-white font-bold shadow-xs"
@@ -1153,24 +1347,24 @@ function ProductPicker({
               <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
                 วัสดุ ({materialOptions.length})
               </label>
-              {selectedMaterial && (
+              {selectedMaterials.length > 0 && (
                 <button
                   type="button"
-                  onClick={() => setSelectedMaterial("")}
+                  onClick={() => setSelectedMaterials([])}
                   className="text-[10px] text-rose-600 hover:underline font-medium"
                 >
-                  รีเซ็ตวัสดุ
+                  รีเซ็ตวัสดุ ({selectedMaterials.length})
                 </button>
               )}
             </div>
             <div className="flex flex-wrap gap-1 max-h-40 overflow-y-auto p-1 bg-white rounded-lg border border-slate-200/80">
               {materialOptions.map((mat) => {
-                const isSelected = selectedMaterial.toLowerCase() === mat.value.toLowerCase();
+                const isSelected = selectedMaterials.includes(mat.value.toLowerCase());
                 return (
                   <button
                     key={mat.value}
                     type="button"
-                    onClick={() => setSelectedMaterial(isSelected ? "" : mat.value)}
+                    onClick={() => toggleMaterial(mat.value)}
                     className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] transition ${
                       isSelected
                         ? "bg-slate-900 text-white font-bold shadow-xs"
@@ -1284,6 +1478,77 @@ function ProductPicker({
 
       {/* ── Column 3: Product Picker List & Search ── */}
       <div className="flex-1 flex flex-col min-w-0 bg-white p-5 space-y-3">
+        {/* View Mode & Selection Tabs */}
+        <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 flex-shrink-0">
+          <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl">
+            <button
+              type="button"
+              onClick={() => setViewMode("all")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+                viewMode === "all"
+                  ? "bg-white text-slate-900 shadow-xs"
+                  : "text-slate-500 hover:text-slate-800"
+              }`}
+            >
+              <Package className="w-3.5 h-3.5" />
+              <span>สินค้าตามตัวกรอง ({filtered.length.toLocaleString()})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("selected")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+                viewMode === "selected"
+                  ? "bg-slate-900 text-white shadow-xs"
+                  : "text-slate-500 hover:text-slate-800"
+              }`}
+            >
+              <Check className="w-3.5 h-3.5" />
+              <span>รายการที่เลือกแล้ว ({selectedProductIds.length.toLocaleString()})</span>
+            </button>
+          </div>
+
+          {selectedProductIds.length > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-emerald-700 font-semibold bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg">
+                เลือกสะสมไว้ {selectedProductIds.length} รายการ
+              </span>
+              <button
+                type="button"
+                onClick={clearAll}
+                className="text-xs font-semibold text-rose-600 hover:bg-rose-50 px-2.5 py-1 rounded-lg border border-rose-200 transition"
+              >
+                ล้างที่เลือกทั้งหมด
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Notice if viewing 'all' but there are items selected from other filters */}
+        {viewMode === "all" && selectedProductIds.length > 0 && (() => {
+          const visibleSelectedCount = filtered.filter((p) => selectedProductIds.includes(String(p.id))).length;
+          const otherSelectedCount = selectedProductIds.length - visibleSelectedCount;
+          if (otherSelectedCount > 0) {
+            return (
+              <div className="flex items-center justify-between bg-amber-50/80 border border-amber-200/90 rounded-xl px-3.5 py-2 text-xs text-amber-900 flex-shrink-0">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
+                  <span>
+                    มีสินค้าที่เลือกไว้จากหมวดหมู่อื่นอีก <strong>{otherSelectedCount}</strong> รายการ (ในหน้านี้เลือกไว้ {visibleSelectedCount} รายการ)
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setViewMode("selected")}
+                  className="text-amber-900 font-bold hover:underline underline ml-2 shrink-0 text-xs"
+                >
+                  ดูสินค้าที่เลือกทั้งหมด ({selectedProductIds.length})
+                </button>
+              </div>
+            );
+          }
+          return null;
+        })()}
+
         {/* Top search & batch action bar */}
         <div className="flex items-center gap-2 flex-shrink-0">
           <div className="relative flex-1">
@@ -1292,7 +1557,11 @@ function ProductPicker({
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="ค้นหาชื่อสินค้า, SKU, สี, วัสดุ, หมวดย่อย..."
+              placeholder={
+                viewMode === "selected"
+                  ? "ค้นหาภายในสินค้าที่เลือกไว้..."
+                  : "ค้นหาชื่อสินค้า, SKU, สี, วัสดุ, หมวดย่อย..."
+              }
               className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-8 py-2 text-xs font-medium outline-none focus:border-slate-900 focus:bg-white transition"
             />
             {query && (
@@ -1324,44 +1593,61 @@ function ProductPicker({
             </select>
           </div>
 
-          <button
-            type="button"
-            onClick={selectAllFiltered}
-            disabled={sortedList.length === 0}
-            className="px-3 py-2 text-xs font-bold rounded-xl bg-slate-900 hover:bg-slate-800 text-white transition flex items-center gap-1.5 flex-shrink-0 disabled:opacity-40"
-            title="เลือกสินค้าที่กรองอยู่ทั้งหมดเข้าสู่โปรโมชั่น"
-          >
-            <Check className="w-3.5 h-3.5" />
-            <span>เลือกที่กรองทั้งหมด ({sortedList.length})</span>
-          </button>
-
-          {selectedProductIds.length > 0 && (
+          {viewMode === "all" ? (
+            <button
+              type="button"
+              onClick={handleToggleSelectAllFiltered}
+              disabled={sortedList.length === 0}
+              className={`px-3 py-2 text-xs font-bold rounded-xl transition flex items-center gap-1.5 flex-shrink-0 disabled:opacity-40 ${
+                areAllFilteredSelected
+                  ? "bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100"
+                  : "bg-slate-900 hover:bg-slate-800 text-white"
+              }`}
+              title={areAllFilteredSelected ? "ยกเลิกเลือกเฉพาะสินค้าในตัวกรองนี้" : "เลือกสินค้าที่กรองอยู่ทั้งหมดเข้าสู่โปรโมชั่น"}
+            >
+              <Check className="w-3.5 h-3.5" />
+              <span>
+                {areAllFilteredSelected
+                  ? `ยกเลิกที่กรอง (${sortedList.length})`
+                  : `เลือกที่กรองทั้งหมด (${sortedList.length})`}
+              </span>
+            </button>
+          ) : (
             <button
               type="button"
               onClick={clearAll}
-              className="px-3 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 border border-rose-200 rounded-xl transition flex items-center gap-1 flex-shrink-0"
-              title="ยกเลิกการเลือกสินค้าทั้งหมด"
+              disabled={selectedProductIds.length === 0}
+              className="px-3 py-2 text-xs font-bold rounded-xl bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 transition flex items-center gap-1.5 flex-shrink-0 disabled:opacity-40"
             >
               <X className="w-3.5 h-3.5" />
-              <span>ล้างที่เลือก</span>
+              <span>ล้างรายการทั้งหมด ({selectedProductIds.length})</span>
             </button>
           )}
         </div>
 
-        {/* Selected Items Tray */}
-        {selectedProducts.length > 0 && (
+        {/* Selected Items Tray (only shown when in 'all' mode so user can see quick chips) */}
+        {viewMode === "all" && selectedProducts.length > 0 && (
           <div className="flex-shrink-0 bg-slate-50 border border-slate-200 rounded-xl p-2.5">
             <div className="flex items-center justify-between mb-1.5">
               <span className="text-xs font-bold text-slate-800">
                 เลือกไว้ {selectedProducts.length} รายการ
               </span>
-              <button
-                type="button"
-                onClick={clearAll}
-                className="text-[11px] font-semibold text-slate-500 hover:text-rose-600 transition"
-              >
-                ล้างทั้งหมด
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setViewMode("selected")}
+                  className="text-[11px] font-semibold text-slate-700 hover:text-slate-900 underline"
+                >
+                  เปิดดูแบบการ์ด
+                </button>
+                <button
+                  type="button"
+                  onClick={clearAll}
+                  className="text-[11px] font-semibold text-slate-500 hover:text-rose-600 transition"
+                >
+                  ล้างทั้งหมด
+                </button>
+              </div>
             </div>
             <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto">
               {selectedProducts.map((p) => (
@@ -1401,18 +1687,43 @@ function ProductPicker({
           onScroll={(e) => {
             const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
             if (scrollHeight - scrollTop <= clientHeight + 300) {
-              if (displayLimit < filtered.length) {
-                setDisplayLimit((prev) => Math.min(prev + 100, filtered.length));
+              if (displayLimit < activeBaseList.length) {
+                setDisplayLimit((prev) => Math.min(prev + 100, activeBaseList.length));
               }
             }
           }}
           className="flex-1 overflow-y-auto rounded-xl border border-slate-200 divide-y divide-slate-100 bg-white min-h-0"
         >
-          {filtered.length === 0 ? (
+          {activeBaseList.length === 0 ? (
             <div className="p-12 text-center text-xs text-slate-400">
               <Package className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-              <p className="font-semibold text-slate-600">ไม่พบสินค้าตรงตามสเปกและตัวกรองที่เลือก</p>
-              <p className="text-[11px] text-slate-400 mt-0.5">ลองปรับขนาด สี หรือหมวดหมู่ในแผงตัวกรองด้านซ้าย</p>
+              <p className="font-semibold text-slate-600">
+                {viewMode === "selected"
+                  ? "ยังไม่มีสินค้าที่เลือกไว้ในระบบ"
+                  : "ไม่พบสินค้าตรงตามสเปกและตัวกรองที่เลือก"}
+              </p>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                {viewMode === "selected"
+                  ? "สามารถสลับไปที่แท็บ 'สินค้าตามตัวกรอง' เพื่อเลือกสินค้าได้เลย"
+                  : "ลองปรับขนาด สี หรือหมวดหมู่ในแผงตัวกรองด้านซ้าย"}
+              </p>
+              {viewMode === "selected" ? (
+                <button
+                  type="button"
+                  onClick={() => setViewMode("all")}
+                  className="mt-3 px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-slate-800 transition"
+                >
+                  ไปเลือกสินค้าตามตัวกรอง
+                </button>
+              ) : hasActiveFilters ? (
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="mt-3 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
+                >
+                  ล้างตัวกรองทั้งหมด
+                </button>
+              ) : null}
             </div>
           ) : (
             <>
@@ -1537,9 +1848,9 @@ function ProductPicker({
                 );
               })}
 
-              {displayLimit < filtered.length && (
+              {displayLimit < activeBaseList.length && (
                 <div className="p-3 text-center text-xs text-slate-400 bg-slate-50/50">
-                  แสดงแล้ว {displayLimit} จาก {filtered.length} รายการ (เลื่อนลงเพื่อดูเพิ่ม)
+                  แสดงแล้ว {displayLimit} จาก {activeBaseList.length} รายการ (เลื่อนลงเพื่อดูเพิ่ม)
                 </div>
               )}
             </>
@@ -1549,7 +1860,9 @@ function ProductPicker({
         {/* Footer Status Bar */}
         <div className="flex items-center justify-between text-[11px] text-slate-400 flex-shrink-0 pt-0.5">
           <span>
-            กรองพบ <strong className="text-slate-700">{filtered.length}</strong> จาก {products.length} รายการ
+            {viewMode === "selected" ? "สินค้าที่เลือกไว้" : "กรองพบ"}{" "}
+            <strong className="text-slate-700">{activeBaseList.length.toLocaleString()}</strong> จาก{" "}
+            {products.length.toLocaleString()} รายการ
           </span>
           {selectedProductIds.length > 0 ? (
             <span className="font-semibold text-slate-700">
@@ -1592,6 +1905,10 @@ export default function DiscountHubClient({
     router.replace(`/discounts?${params.toString()}`);
   };
 
+  // LocalStorage keys สำหรับจำร่างการเลือกสินค้าข้ามหน้า/แท็บ/ปิดเปิด modal
+  const POS_DRAFT_PRODUCTS_KEY = "wc_pos_discount_draft_selected_product_ids";
+  const POS_DRAFT_BRANCH_KEY = "wc_pos_discount_draft_branch_id";
+
   // State: POS
   const [posDiscounts, setPosDiscounts] = useState<any[]>(initialPosDiscounts);
   const [posSearch, setPosSearch] = useState("");
@@ -1602,6 +1919,60 @@ export default function DiscountHubClient({
   const [posSelectedProductIds, setPosSelectedProductIds] = useState<string[]>([]);
   const [posCreateBranchId, setPosCreateBranchId] = useState<string>("");
   const [removingRuleId, setRemovingRuleId] = useState<number | null>(null);
+
+  // Persistent Draft: กู้คืนรายการสินค้าและสาขาที่เลือกค้างไว้จาก localStorage เมื่อโหลดหน้า
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(POS_DRAFT_PRODUCTS_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setPosSelectedProductIds(parsed);
+        }
+      }
+      const savedBranch = localStorage.getItem(POS_DRAFT_BRANCH_KEY);
+      if (savedBranch) {
+        setPosCreateBranchId(savedBranch);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const handleUpdatePosSelectedProductIds = (ids: string[]) => {
+    setPosSelectedProductIds(ids);
+    try {
+      if (ids.length > 0) {
+        localStorage.setItem(POS_DRAFT_PRODUCTS_KEY, JSON.stringify(ids));
+      } else {
+        localStorage.removeItem(POS_DRAFT_PRODUCTS_KEY);
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleClearPosDraftSelection = () => {
+    setPosSelectedProductIds([]);
+    try {
+      localStorage.removeItem(POS_DRAFT_PRODUCTS_KEY);
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleUpdatePosCreateBranchId = (branchId: string) => {
+    setPosCreateBranchId(branchId);
+    try {
+      if (branchId) {
+        localStorage.setItem(POS_DRAFT_BRANCH_KEY, branchId);
+      } else {
+        localStorage.removeItem(POS_DRAFT_BRANCH_KEY);
+      }
+    } catch {
+      // ignore
+    }
+  };
 
   // State: Terra
   const [terraPromotions, setTerraPromotions] = useState<TerraPromotion[]>(initialTerraPromotions);
@@ -1759,6 +2130,12 @@ export default function DiscountHubClient({
       } else {
         setIsPosCreateOpen(false);
         setPosSelectedProductIds([]);
+        try {
+          localStorage.removeItem(POS_DRAFT_PRODUCTS_KEY);
+          localStorage.removeItem(POS_DRAFT_BRANCH_KEY);
+        } catch {
+          // ignore
+        }
         triggerToast("success", "สร้างส่วนลดสำเร็จ", "บันทึกส่วนลด POS หน้าร้านเรียบร้อยแล้ว");
         window.location.reload();
       }
@@ -2398,7 +2775,6 @@ export default function DiscountHubClient({
               <button
                 type="button"
                 onClick={() => {
-                  setPosSelectedProductIds([]);
                   setFormInlineError(null);
                   setIsPosCreateOpen(true);
                 }}
@@ -3207,7 +3583,7 @@ export default function DiscountHubClient({
                       <select
                         name="branch_id"
                         value={posCreateBranchId}
-                        onChange={(e) => setPosCreateBranchId(e.target.value)}
+                        onChange={(e) => handleUpdatePosCreateBranchId(e.target.value)}
                         className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs outline-none focus:border-slate-900 focus:bg-white transition"
                       >
                         <option value="">ทุกสาขา</option>
@@ -3222,7 +3598,18 @@ export default function DiscountHubClient({
 
                   {/* สรุปสถานะการเลือกสินค้า */}
                   <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80">
-                    <p className="text-[11px] font-bold text-slate-700">การครอบคลุมสินค้า</p>
+                    <div className="flex items-center justify-between">
+                      <p className="text-[11px] font-bold text-slate-700">การครอบคลุมสินค้า</p>
+                      {posSelectedProductIds.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={handleClearPosDraftSelection}
+                          className="text-[10px] text-rose-600 hover:text-rose-700 hover:underline font-semibold"
+                        >
+                          ล้างรายการที่เลือก
+                        </button>
+                      )}
+                    </div>
                     <p className="text-xs text-slate-600 mt-1">
                       {posSelectedProductIds.length > 0 ? (
                         <span className="font-semibold text-emerald-700">
@@ -3242,8 +3629,6 @@ export default function DiscountHubClient({
                     type="button"
                     onClick={() => {
                       setIsPosCreateOpen(false);
-                      setPosCreateBranchId("");
-                      setPosSelectedProductIds([]);
                     }}
                     className="flex-1 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition"
                   >
@@ -3264,7 +3649,7 @@ export default function DiscountHubClient({
               <ProductPicker
                 products={products}
                 selectedProductIds={posSelectedProductIds}
-                onSelectionChange={setPosSelectedProductIds}
+                onSelectionChange={handleUpdatePosSelectedProductIds}
                 selectedBranchId={posCreateBranchId}
                 existingDiscounts={posDiscounts}
               />
