@@ -82,6 +82,8 @@ export default async function DiscountsPage() {
       total_stock: totalStock,
       stock: p.stock || [],
       specs: s,
+      collection_groups: p.collection_groups || null,
+      product_sup: p.collection_groups?.product_sup || null,
     };
   });
 

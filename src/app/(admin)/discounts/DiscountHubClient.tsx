@@ -39,7 +39,19 @@ import {
   FileText,
   Filter,
   SlidersHorizontal,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
+
+import {
+  PRODUCT_FILTER_ITEMS,
+  COLOR_PRESENTATION,
+  MATERIAL_PRESENTATION,
+  productColorValues,
+  productMaterialValues,
+  matchesStorefrontCategory,
+  productMatchesDimensions,
+} from "@/lib/propFilterModel";
 
 import {
   createDiscount,
@@ -69,6 +81,134 @@ function getImageUrl(url: string | null | undefined): string | null {
   return R2_BASE + url;
 }
 
+// ── Category Hierarchy Definitions (from furniture & terrahome.studio) ──
+const FURNITURE_CATEGORY_GROUPS = [
+  {
+    label: "Chair",
+    thaiLabel: "เก้าอี้",
+    items: [
+      { name: "Arm chair", thaiLabel: "เก้าอี้อาร์มแชร์" },
+      { name: "Bar Stool", thaiLabel: "เก้าอี้บาร์" },
+      { name: "Dining Chair", thaiLabel: "เก้าอี้ทานข้าว" },
+      { name: "Lounge Chair", thaiLabel: "เก้าอี้เลานจ์" },
+      { name: "Side Chair", thaiLabel: "เก้าอี้เสริม" },
+    ],
+  },
+  {
+    label: "Modular & Sofa",
+    thaiLabel: "โซฟาและโมดูลาร์",
+    items: [
+      { name: "Modular Sofa", thaiLabel: "โมดูลาร์โซฟา" },
+      { name: "Sofa", thaiLabel: "โซฟา" },
+    ],
+  },
+  {
+    label: "Bedroom Collection",
+    thaiLabel: "ชุดห้องนอน",
+    items: [
+      { name: "Bed collection", thaiLabel: "เตียงนอน" },
+    ],
+  },
+  {
+    label: "Table",
+    thaiLabel: "โต๊ะ",
+    items: [
+      { name: "Dining Table", thaiLabel: "โต๊ะทานข้าว" },
+      { name: "Coffee Table", thaiLabel: "โต๊ะกลาง" },
+      { name: "Night Table", thaiLabel: "โต๊ะข้างเตียง" },
+      { name: "Side Table", thaiLabel: "โต๊ะข้าง" },
+      { name: "Working Desk", thaiLabel: "โต๊ะทำงาน" },
+    ],
+  },
+  {
+    label: "Leg",
+    thaiLabel: "ขาโต๊ะเฟอร์นิเจอร์",
+    items: [
+      { name: "Leg Dining Table", thaiLabel: "ขาโต๊ะทานข้าว" },
+      { name: "Leg Coffee Table", thaiLabel: "ขาโต๊ะกลาง" },
+      { name: "Leg side Table", thaiLabel: "ขาโต๊ะข้าง" },
+    ],
+  },
+  {
+    label: "Stool & Ottoman",
+    thaiLabel: "สตูลและออตโตมัน",
+    items: [
+      { name: "Stool & Ottoman", thaiLabel: "สตูล & ออตโตมัน" },
+    ],
+  },
+  {
+    label: "Shelf",
+    thaiLabel: "ชั้นวางของ",
+    items: [
+      { name: "Shelf", thaiLabel: "ชั้นวางของ" },
+    ],
+  },
+  {
+    label: "Cabinet & More",
+    thaiLabel: "ตู้และไซด์บอร์ด",
+    items: [
+      { name: "Cabinet & More", thaiLabel: "ตู้เก็บของ" },
+      { name: "Tall Cabinet", thaiLabel: "ตู้ทรงสูง" },
+    ],
+  },
+  {
+    label: "Dressing & Working",
+    thaiLabel: "โต๊ะเครื่องแป้งและทำงาน",
+    items: [
+      { name: "Dressing & Working", thaiLabel: "แต่งหน้า / ทำงาน" },
+    ],
+  },
+  {
+    label: "Accessories",
+    thaiLabel: "ของตกแต่งเฟอร์นิเจอร์",
+    items: [
+      { name: "Accessories", thaiLabel: "อุปกรณ์ตกแต่ง" },
+    ],
+  },
+];
+
+const SLAB_CATEGORY_GROUPS = [
+  { name: "Wood slabs", thaiLabel: "แผ่นไม้จามจุรี / ไม้แผ่นใหญ่" },
+  { name: "Leg", thaiLabel: "ขาโต๊ะแผ่นไม้" },
+];
+
+const ROUGH_WOOD_GROUPS = [
+  { name: "Rough-Board", thaiLabel: "ไม้กระดานดิบ" },
+];
+
+function checkProductCategoryMatch(p: any, mainCat: string, subCat: string): boolean {
+  if (mainCat !== "ALL" && p.category_id !== mainCat) {
+    return false;
+  }
+  if (!subCat) return true;
+
+  const target = subCat.toLowerCase().trim();
+  const prodSup = String(p.product_sup || p.sub_category || "").toLowerCase().trim();
+  const specType = String(p.specs?.spec_type || p.specs?.type || "").toLowerCase().trim();
+
+  // 1. Furniture category matching
+  if (mainCat === "furniture" || p.category_id === "furniture") {
+    const group = FURNITURE_CATEGORY_GROUPS.find((g) => g.label.toLowerCase() === target);
+    if (group) {
+      const memberNames = group.items.map((i) => i.name.toLowerCase());
+      return (
+        memberNames.some((m) => prodSup.includes(m) || specType.includes(m)) ||
+        prodSup.includes(target) ||
+        specType.includes(target)
+      );
+    }
+    return prodSup.includes(target) || specType.includes(target);
+  }
+
+  // 2. Prop category matching
+  if (mainCat === "prop" || p.category_id === "prop") {
+    return matchesStorefrontCategory(p, subCat) || prodSup.includes(target) || specType.includes(target);
+  }
+
+  // 3. SLABS or rough_wood
+  return prodSup.includes(target) || specType.includes(target);
+}
+
 // ── POS Product Multi-Picker Component (Middle Spec Filter Panel + Right Product List) ──
 function ProductPicker({
   products,
@@ -94,6 +234,18 @@ function ProductPicker({
   const [minLength, setMinLength] = useState<string>("");
   const [maxLength, setMaxLength] = useState<string>("");
   const [displayLimit, setDisplayLimit] = useState(100);
+
+  // Accordion state for category hierarchy
+  const [openCatGroups, setOpenCatGroups] = useState<Record<string, boolean>>({
+    Chair: true,
+    Table: true,
+    "VASE & VESSELS": true,
+    FIGURE: true,
+  });
+
+  const toggleAccordion = (key: string) => {
+    setOpenCatGroups((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
 
   // Reset lazy load limit when any filter changes
   useEffect(() => {
@@ -122,7 +274,47 @@ function ProductPicker({
     { key: "rough_wood", label: "ไม้ดิบ" },
   ];
 
-  // หมวดย่อยที่มีอยู่จริงตามหมวดหมู่หลักที่เลือก
+  // คำนวณจำนวนสินค้าในแต่ละกลุ่มหมวดหมู่เฟอร์นิเจอร์
+  const furnitureCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    const furnProds = products.filter((p) => p.category_id === "furniture");
+    FURNITURE_CATEGORY_GROUPS.forEach((g) => {
+      counts[g.label] = furnProds.filter((p) => checkProductCategoryMatch(p, "furniture", g.label)).length;
+      g.items.forEach((item) => {
+        counts[item.name] = furnProds.filter((p) => checkProductCategoryMatch(p, "furniture", item.name)).length;
+      });
+    });
+    return counts;
+  }, [products]);
+
+  // คำนวณจำนวนสินค้าในแต่ละกลุ่มหมวดหมู่พร็อพ
+  const propCategoryItems = useMemo(() => {
+    return PRODUCT_FILTER_ITEMS.filter((item) => item.label !== "ALL" && !item.isSpecial);
+  }, []);
+
+  const propCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    const propProds = products.filter((p) => p.category_id === "prop");
+    propCategoryItems.forEach((item) => {
+      counts[item.label] = propProds.filter((p) => checkProductCategoryMatch(p, "prop", item.label)).length;
+      item.items?.forEach((child) => {
+        counts[child.fullValue] = propProds.filter((p) => checkProductCategoryMatch(p, "prop", child.fullValue)).length;
+      });
+    });
+    return counts;
+  }, [products, propCategoryItems]);
+
+  // คำนวณจำนวนสินค้าในแต่ละกลุ่มแผ่นไม้
+  const slabCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    const slabProds = products.filter((p) => p.category_id === "SLABS");
+    SLAB_CATEGORY_GROUPS.forEach((g) => {
+      counts[g.name] = slabProds.filter((p) => checkProductCategoryMatch(p, "SLABS", g.name)).length;
+    });
+    return counts;
+  }, [products]);
+
+  // หมวดย่อยทั่วไปเมื่อเลือกหมวดหมู่ ALL
   const availableSubCats = useMemo(() => {
     let source = products;
     if (selectedMainCat !== "ALL") {
@@ -137,35 +329,110 @@ function ProductPicker({
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [products, selectedMainCat]);
 
-  // สีที่มีอยู่จริงตามหมวดหมู่หลักที่เลือก
-  const availableColors = useMemo(() => {
+  // ตัวเลือกสีพร้อม Color Swatches (Beige, Black, Blue, Brown, Gold, Green, Grey, Orange, Pink, Purple, Red, Silver, White, Yellow)
+  const colorOptions = useMemo(() => {
     let source = products;
     if (selectedMainCat !== "ALL") {
       source = source.filter((p) => p.category_id === selectedMainCat);
     }
-    const set = new Set<string>();
-    source.forEach((p) => {
-      if (p.color && typeof p.color === "string" && p.color.trim()) {
-        set.add(p.color.trim());
-      }
-    });
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [products, selectedMainCat]);
+    if (selectedSubCat) {
+      source = source.filter((p) => checkProductCategoryMatch(p, selectedMainCat, selectedSubCat));
+    }
 
-  // วัสดุที่มีอยู่จริงตามหมวดหมู่หลักที่เลือก
-  const availableMaterials = useMemo(() => {
+    const countMap = new Map<string, number>();
+    source.forEach((p) => {
+      const colors = productColorValues(p);
+      colors.forEach((c) => {
+        const norm = c.toLowerCase();
+        countMap.set(norm, (countMap.get(norm) || 0) + 1);
+      });
+    });
+
+    const list: Array<{ value: string; label: string; swatch: string | null; count: number }> = [];
+    Object.entries(COLOR_PRESENTATION).forEach(([key, val]) => {
+      const count = countMap.get(key) || 0;
+      list.push({
+        value: key,
+        label: val.label,
+        swatch: val.swatch,
+        count,
+      });
+    });
+
+    countMap.forEach((count, key) => {
+      if (!COLOR_PRESENTATION[key] && count > 0) {
+        list.push({
+          value: key,
+          label: key.charAt(0).toUpperCase() + key.slice(1),
+          swatch: null,
+          count,
+        });
+      }
+    });
+
+    return list;
+  }, [products, selectedMainCat, selectedSubCat]);
+
+  // ตัวเลือกวัสดุพร้อมการจัดกลุ่ม (Ceramic, Glass, Resin, Metal, Stone, Wood, Canvas, Cement, Leather, Acrylic, Solid Wood, Bouclé)
+  const materialOptions = useMemo(() => {
     let source = products;
     if (selectedMainCat !== "ALL") {
       source = source.filter((p) => p.category_id === selectedMainCat);
     }
-    const set = new Set<string>();
+    if (selectedSubCat) {
+      source = source.filter((p) => checkProductCategoryMatch(p, selectedMainCat, selectedSubCat));
+    }
+
+    const countMap = new Map<string, number>();
     source.forEach((p) => {
-      if (p.material && typeof p.material === "string" && p.material.trim()) {
-        set.add(p.material.trim());
+      const mats = productMaterialValues(p);
+      mats.forEach((m) => {
+        const norm = m.toLowerCase();
+        countMap.set(norm, (countMap.get(norm) || 0) + 1);
+      });
+    });
+
+    const list: Array<{ value: string; label: string; thaiLabel?: string; count: number }> = [];
+    Object.entries(MATERIAL_PRESENTATION).forEach(([key, val]) => {
+      const count = countMap.get(key) || 0;
+      if (count > 0) {
+        list.push({
+          value: key,
+          label: val.label,
+          thaiLabel: val.thaiLabel,
+          count,
+        });
       }
     });
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [products, selectedMainCat]);
+
+    const extraCandidates = [
+      "Solid Wood",
+      "Bouclé Fabric",
+      "W02 Black Wood",
+      "W07 Light Walnut",
+      "Afromosia",
+      "Black Walnut",
+      "Burmese Teak",
+      "White Ash Wood",
+    ];
+    extraCandidates.forEach((candidate) => {
+      const k = candidate.toLowerCase();
+      let c = 0;
+      source.forEach((p) => {
+        const pm = String(p.material || p.specs?.material || "").toLowerCase();
+        if (pm.includes(k)) c++;
+      });
+      if (c > 0 && !list.some((item) => item.value === k)) {
+        list.push({
+          value: candidate,
+          label: candidate,
+          count: c,
+        });
+      }
+    });
+
+    return list.sort((a, b) => b.count - a.count);
+  }, [products, selectedMainCat, selectedSubCat]);
 
   // ฟิลเตอร์สินค้าตามเงื่อนไขสเปกทั้งหมด
   const filtered = useMemo(() => {
@@ -176,11 +443,9 @@ function ProductPicker({
       result = result.filter((p) => p.category_id === selectedMainCat);
     }
 
-    // 2. หมวดย่อย
+    // 2. หมวดย่อย & โครงสร้าง
     if (selectedSubCat) {
-      result = result.filter(
-        (p) => (p.sub_category || "").toLowerCase() === selectedSubCat.toLowerCase()
-      );
+      result = result.filter((p) => checkProductCategoryMatch(p, selectedMainCat, selectedSubCat));
     }
 
     // 3. กรองตามสต็อก
@@ -209,49 +474,36 @@ function ProductPicker({
 
     // 4. สี (Color)
     if (selectedColor) {
-      result = result.filter(
-        (p) => (p.color || "").toLowerCase() === selectedColor.toLowerCase()
-      );
+      const col = selectedColor.toLowerCase();
+      result = result.filter((p) => {
+        const colors = productColorValues(p).map((c) => c.toLowerCase());
+        return colors.includes(col) || (p.color && p.color.toLowerCase().includes(col));
+      });
     }
 
     // 5. วัสดุ (Material)
     if (selectedMaterial) {
-      result = result.filter(
-        (p) => (p.material || "").toLowerCase() === selectedMaterial.toLowerCase()
-      );
+      const mat = selectedMaterial.toLowerCase();
+      result = result.filter((p) => {
+        const mats = productMaterialValues(p).map((m) => m.toLowerCase());
+        const rawMat = String(p.material || p.specs?.material || "").toLowerCase();
+        return mats.includes(mat) || rawMat.includes(mat);
+      });
     }
 
-    // 6. ความสูง / ความหนา (Height / Thickness)
-    const minH = parseFloat(minHeight);
-    const maxH = parseFloat(maxHeight);
-    if (!isNaN(minH)) {
-      result = result.filter((p) => p.height_cm !== null && p.height_cm >= minH);
-    }
-    if (!isNaN(maxH)) {
-      result = result.filter((p) => p.height_cm !== null && p.height_cm <= maxH);
-    }
+    // 6. มิติและขนาด (Height / Thickness, Width, Length / Depth)
+    result = result.filter((p) =>
+      productMatchesDimensions(p, {
+        minHeight,
+        maxHeight,
+        minWidth,
+        maxWidth,
+        minDepth: minLength,
+        maxDepth: maxLength,
+      })
+    );
 
-    // 7. ความกว้าง (Width)
-    const minW = parseFloat(minWidth);
-    const maxW = parseFloat(maxWidth);
-    if (!isNaN(minW)) {
-      result = result.filter((p) => p.width_cm !== null && p.width_cm >= minW);
-    }
-    if (!isNaN(maxW)) {
-      result = result.filter((p) => p.width_cm !== null && p.width_cm <= maxW);
-    }
-
-    // 8. ความยาว / ลึก (Length / Depth)
-    const minL = parseFloat(minLength);
-    const maxL = parseFloat(maxLength);
-    if (!isNaN(minL)) {
-      result = result.filter((p) => p.length_cm !== null && p.length_cm >= minL);
-    }
-    if (!isNaN(maxL)) {
-      result = result.filter((p) => p.length_cm !== null && p.length_cm <= maxL);
-    }
-
-    // 9. ค้นหาข้อความ (ชื่อ, SKU, หมวดย่อย, สี, วัสดุ)
+    // 7. ค้นหาข้อความ (ชื่อ, SKU, หมวดย่อย, สี, วัสดุ)
     if (query.trim()) {
       const q = query.toLowerCase();
       result = result.filter(
@@ -464,106 +716,405 @@ function ProductPicker({
             </div>
           </div>
 
-          {/* 2. Stock Filter */}
+          {/* 2. Category Hierarchy Accordion (โครงสร้างหมวดหมู่ย่อยแบบมีระดับ) */}
           <div>
-            <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-              สถานะสต็อก
-            </label>
-            <select
-              value={stockFilter}
-              onChange={(e) => setStockFilter(e.target.value as any)}
-              className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 font-medium outline-none focus:border-slate-900 transition"
-            >
-              <option value="ALL">สต็อกทั้งหมด</option>
-              <option value="IN_STOCK">มีสต็อก (&gt; 0)</option>
-              <option value="OUT_OF_STOCK">สต็อกหมด (= 0)</option>
-              <option value="NEGATIVE">สต็อกติดลบ (&lt; 0)</option>
-            </select>
-          </div>
-
-          {/* 3. Subcategories */}
-          {availableSubCats.length > 0 && (
-            <div>
-              <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                หมวดหมู่ย่อย ({availableSubCats.length})
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                {selectedMainCat === "furniture"
+                  ? "หมวดหมู่เฟอร์นิเจอร์"
+                  : selectedMainCat === "prop"
+                  ? "หมวดหมู่พร็อพ (Terra Home)"
+                  : selectedMainCat === "SLABS"
+                  ? "ประเภทแผ่นไม้"
+                  : selectedMainCat === "rough_wood"
+                  ? "ประเภทไม้ดิบ"
+                  : "หมวดหมู่ย่อยทั้งหมด"}
               </label>
+              {selectedSubCat && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedSubCat("")}
+                  className="text-[10px] text-rose-600 hover:underline font-medium"
+                >
+                  รีเซ็ตหมวดย่อย
+                </button>
+              )}
+            </div>
+
+            {/* If Furniture selected */}
+            {selectedMainCat === "furniture" && (
+              <div className="space-y-1 bg-white rounded-lg border border-slate-200/80 p-1.5 max-h-56 overflow-y-auto">
+                {FURNITURE_CATEGORY_GROUPS.map((group) => {
+                  const isGroupActive = selectedSubCat.toLowerCase() === group.label.toLowerCase();
+                  const isOpen = !!openCatGroups[group.label];
+                  const groupCount = furnitureCounts[group.label] || 0;
+
+                  return (
+                    <div key={group.label} className="border-b border-slate-100 last:border-0 pb-0.5">
+                      <div className="flex items-center justify-between py-1 px-1.5 rounded hover:bg-slate-50 transition">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedSubCat(isGroupActive ? "" : group.label)}
+                          className={`flex-1 text-left flex items-center justify-between text-xs ${
+                            isGroupActive ? "text-slate-900 font-bold" : "text-slate-700 font-medium"
+                          }`}
+                        >
+                          <div className="flex flex-col text-left">
+                            <span>{group.label}</span>
+                            <span className="text-[10px] text-slate-400 font-normal">{group.thaiLabel}</span>
+                          </div>
+                          <span className="text-[10px] text-slate-400 font-mono ml-1 shrink-0">({groupCount})</span>
+                        </button>
+                        {group.items.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => toggleAccordion(group.label)}
+                            className="p-1 text-slate-400 hover:text-slate-600 rounded ml-1 shrink-0"
+                          >
+                            {isOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                          </button>
+                        )}
+                      </div>
+
+                      {isOpen && group.items.length > 0 && (
+                        <div className="pl-3 pr-1 py-1 space-y-0.5 border-l-2 border-slate-100 ml-2 mb-1">
+                          {group.items.map((item) => {
+                            const isItemActive = selectedSubCat.toLowerCase() === item.name.toLowerCase();
+                            const itemCount = furnitureCounts[item.name] || 0;
+                            return (
+                              <button
+                                key={item.name}
+                                type="button"
+                                onClick={() => setSelectedSubCat(isItemActive ? "" : item.name)}
+                                className={`w-full flex items-center justify-between px-2 py-1 rounded text-[11px] transition ${
+                                  isItemActive
+                                    ? "bg-slate-900 text-white font-semibold"
+                                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                                }`}
+                              >
+                                <span>{item.name}</span>
+                                <span className={`text-[10px] font-mono shrink-0 ml-1 ${isItemActive ? "text-slate-300" : "text-slate-400"}`}>
+                                  {itemCount}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* If Prop selected */}
+            {selectedMainCat === "prop" && (
+              <div className="space-y-1 bg-white rounded-lg border border-slate-200/80 p-1.5 max-h-56 overflow-y-auto">
+                {propCategoryItems.map((item) => {
+                  const isGroupActive = selectedSubCat.toLowerCase() === item.label.toLowerCase();
+                  const isOpen = !!openCatGroups[item.label];
+                  const groupCount = propCounts[item.label] || 0;
+                  const hasChildren = item.items && item.items.length > 0;
+
+                  return (
+                    <div key={item.label} className="border-b border-slate-100 last:border-0 pb-0.5">
+                      <div className="flex items-center justify-between py-1 px-1.5 rounded hover:bg-slate-50 transition">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedSubCat(isGroupActive ? "" : item.label)}
+                          className={`flex-1 text-left flex items-center justify-between text-xs ${
+                            isGroupActive ? "text-slate-900 font-bold" : "text-slate-700 font-medium"
+                          }`}
+                        >
+                          <div className="flex flex-col text-left">
+                            <span>{item.displayLabel || item.label}</span>
+                            {item.thaiLabel && <span className="text-[10px] text-slate-400 font-normal">{item.thaiLabel}</span>}
+                          </div>
+                          <span className="text-[10px] text-slate-400 font-mono ml-1 shrink-0">({groupCount})</span>
+                        </button>
+                        {hasChildren && (
+                          <button
+                            type="button"
+                            onClick={() => toggleAccordion(item.label)}
+                            className="p-1 text-slate-400 hover:text-slate-600 rounded ml-1 shrink-0"
+                          >
+                            {isOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                          </button>
+                        )}
+                      </div>
+
+                      {isOpen && hasChildren && (
+                        <div className="pl-3 pr-1 py-1 space-y-0.5 border-l-2 border-slate-100 ml-2 mb-1">
+                          {item.items?.map((child) => {
+                            const isChildActive = selectedSubCat.toLowerCase() === child.fullValue.toLowerCase();
+                            const childCount = propCounts[child.fullValue] || 0;
+                            return (
+                              <button
+                                key={child.fullValue}
+                                type="button"
+                                onClick={() => setSelectedSubCat(isChildActive ? "" : child.fullValue)}
+                                className={`w-full flex items-center justify-between px-2 py-1 rounded text-[11px] transition ${
+                                  isChildActive
+                                    ? "bg-slate-900 text-white font-semibold"
+                                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                                }`}
+                              >
+                                <div className="flex flex-col text-left">
+                                  <span>{child.displayLabel}</span>
+                                  {child.thaiLabel && (
+                                    <span className={`text-[9px] ${isChildActive ? "text-slate-300" : "text-slate-400"}`}>
+                                      {child.thaiLabel}
+                                    </span>
+                                  )}
+                                </div>
+                                <span className={`text-[10px] font-mono shrink-0 ml-1 ${isChildActive ? "text-slate-300" : "text-slate-400"}`}>
+                                  {childCount}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* If SLABS selected */}
+            {selectedMainCat === "SLABS" && (
+              <div className="space-y-1 bg-white rounded-lg border border-slate-200/80 p-1.5">
+                {SLAB_CATEGORY_GROUPS.map((slab) => {
+                  const isActive = selectedSubCat.toLowerCase() === slab.name.toLowerCase();
+                  const count = slabCounts[slab.name] || 0;
+                  return (
+                    <button
+                      key={slab.name}
+                      type="button"
+                      onClick={() => setSelectedSubCat(isActive ? "" : slab.name)}
+                      className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition ${
+                        isActive
+                          ? "bg-slate-900 text-white font-bold"
+                          : "bg-white hover:bg-slate-50 text-slate-700 font-medium"
+                      }`}
+                    >
+                      <div className="flex flex-col text-left">
+                        <span>{slab.name}</span>
+                        <span className={`text-[10px] ${isActive ? "text-slate-300" : "text-slate-400"}`}>{slab.thaiLabel}</span>
+                      </div>
+                      <span className={`text-[10px] font-mono ${isActive ? "text-slate-300" : "text-slate-500"}`}>
+                        {count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* If rough_wood selected */}
+            {selectedMainCat === "rough_wood" && (
+              <div className="space-y-1 bg-white rounded-lg border border-slate-200/80 p-1.5">
+                {ROUGH_WOOD_GROUPS.map((rw) => {
+                  const isActive = selectedSubCat.toLowerCase() === rw.name.toLowerCase();
+                  const count = products.filter((p) => p.category_id === "rough_wood").length;
+                  return (
+                    <button
+                      key={rw.name}
+                      type="button"
+                      onClick={() => setSelectedSubCat(isActive ? "" : rw.name)}
+                      className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition ${
+                        isActive
+                          ? "bg-slate-900 text-white font-bold"
+                          : "bg-white hover:bg-slate-50 text-slate-700 font-medium"
+                      }`}
+                    >
+                      <div className="flex flex-col text-left">
+                        <span>{rw.name}</span>
+                        <span className={`text-[10px] ${isActive ? "text-slate-300" : "text-slate-400"}`}>{rw.thaiLabel}</span>
+                      </div>
+                      <span className={`text-[10px] font-mono ${isActive ? "text-slate-300" : "text-slate-500"}`}>
+                        {count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* If ALL selected */}
+            {selectedMainCat === "ALL" && availableSubCats.length > 0 && (
               <select
                 value={selectedSubCat}
                 onChange={(e) => setSelectedSubCat(e.target.value)}
                 className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 font-medium outline-none focus:border-slate-900 transition"
               >
-                <option value="">ทุกหมวดย่อย</option>
+                <option value="">ทุกหมวดย่อย ({availableSubCats.length})</option>
                 {availableSubCats.map((sc) => (
                   <option key={sc} value={sc}>
                     {sc}
                   </option>
                 ))}
               </select>
-            </div>
-          )}
+            )}
+          </div>
 
-          {/* 4. Colors */}
-          {availableColors.length > 0 && (
-            <div>
-              <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                สี ({availableColors.length})
-              </label>
-              <select
-                value={selectedColor}
-                onChange={(e) => setSelectedColor(e.target.value)}
-                className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 font-medium outline-none focus:border-slate-900 transition"
-              >
-                <option value="">ทุกสี</option>
-                {availableColors.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {/* 5. Materials */}
-          {availableMaterials.length > 0 && (
-            <div>
-              <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                วัสดุ ({availableMaterials.length})
-              </label>
-              <select
-                value={selectedMaterial}
-                onChange={(e) => setSelectedMaterial(e.target.value)}
-                className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 font-medium outline-none focus:border-slate-900 transition"
-              >
-                <option value="">ทุกวัสดุ</option>
-                {availableMaterials.map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {/* 6. Dimensions Filter (ความสูง, ความยาว, ความกว้าง) */}
-          <div className="pt-2 border-t border-slate-200/80 space-y-3">
-            <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider">
-              มิติและขนาด (cm)
+          {/* 3. Stock Filter */}
+          <div>
+            <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+              สถานะสต็อก
             </label>
+            <div className="grid grid-cols-2 gap-1 bg-white rounded-lg border border-slate-200/80 p-1">
+              {[
+                { key: "ALL", label: "ทั้งหมด" },
+                { key: "IN_STOCK", label: "มีสต็อก (> 0)" },
+                { key: "OUT_OF_STOCK", label: "สต็อกหมด (0)" },
+                { key: "NEGATIVE", label: "สต็อกติดลบ (< 0)" },
+              ].map((item) => {
+                const isActive = stockFilter === item.key;
+                return (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => setStockFilter(item.key as any)}
+                    className={`px-2 py-1.5 rounded text-[11px] font-medium transition text-center ${
+                      isActive
+                        ? "bg-slate-900 text-white font-bold shadow-xs"
+                        : "hover:bg-slate-100 text-slate-600"
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 4. Color Filter with Real Hex Swatches */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                สี ({colorOptions.filter((c) => c.count > 0).length})
+              </label>
+              {selectedColor && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedColor("")}
+                  className="text-[10px] text-rose-600 hover:underline font-medium"
+                >
+                  รีเซ็ตสี
+                </button>
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-1 max-h-48 overflow-y-auto p-1 bg-white rounded-lg border border-slate-200/80">
+              {colorOptions.map((opt) => {
+                const isSelected = selectedColor.toLowerCase() === opt.value.toLowerCase();
+                const disabled = opt.count === 0;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => setSelectedColor(isSelected ? "" : opt.value)}
+                    className={`flex items-center gap-1.5 px-2 py-1 rounded text-left transition select-none ${
+                      isSelected
+                        ? "bg-slate-900 text-white font-bold shadow-xs"
+                        : disabled
+                        ? "opacity-35 cursor-not-allowed text-slate-400"
+                        : "hover:bg-slate-50 text-slate-700 font-medium"
+                    }`}
+                  >
+                    <span
+                      className="w-3.5 h-3.5 rounded-full shrink-0 border border-slate-300 shadow-xs"
+                      style={opt.swatch ? { backgroundColor: opt.swatch } : { backgroundColor: "#cbd5e1" }}
+                    />
+                    <span className="text-[11px] truncate flex-1">{opt.label}</span>
+                    <span className={`text-[10px] font-mono shrink-0 ${isSelected ? "text-slate-300" : "text-slate-400"}`}>
+                      {opt.count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 5. Materials Filter */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                วัสดุ ({materialOptions.length})
+              </label>
+              {selectedMaterial && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedMaterial("")}
+                  className="text-[10px] text-rose-600 hover:underline font-medium"
+                >
+                  รีเซ็ตวัสดุ
+                </button>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-1 max-h-40 overflow-y-auto p-1 bg-white rounded-lg border border-slate-200/80">
+              {materialOptions.map((mat) => {
+                const isSelected = selectedMaterial.toLowerCase() === mat.value.toLowerCase();
+                return (
+                  <button
+                    key={mat.value}
+                    type="button"
+                    onClick={() => setSelectedMaterial(isSelected ? "" : mat.value)}
+                    className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] transition ${
+                      isSelected
+                        ? "bg-slate-900 text-white font-bold shadow-xs"
+                        : "bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200/60 font-medium"
+                    }`}
+                  >
+                    <span>{mat.label}</span>
+                    <span className={`text-[10px] font-mono ${isSelected ? "text-slate-300" : "text-slate-400"}`}>
+                      {mat.count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 6. Dimensions Filter (ความสูง / ความหนา, ความกว้าง, ความยาว / ลึก) */}
+          <div className="pt-2 border-t border-slate-200/80 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                มิติและขนาด (cm)
+              </label>
+              {(minHeight || maxHeight || minWidth || maxWidth || minLength || maxLength) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMinHeight("");
+                    setMaxHeight("");
+                    setMinWidth("");
+                    setMaxWidth("");
+                    setMinLength("");
+                    setMaxLength("");
+                  }}
+                  className="text-[10px] text-rose-600 hover:underline font-medium"
+                >
+                  ล้างขนาด
+                </button>
+              )}
+            </div>
 
             {/* ความสูง / หนา */}
             <div>
-              <span className="text-[11px] text-slate-600 font-medium mb-1 block">ความสูง / ความหนา</span>
+              <span className="text-[10px] text-slate-600 font-semibold mb-1 block">ความสูง / ความหนา (Height / Thickness)</span>
               <div className="grid grid-cols-2 gap-1.5">
                 <input
                   type="number"
-                  placeholder="ต่ำสุด"
+                  placeholder="ต่ำสุด cm"
                   value={minHeight}
                   onChange={(e) => setMinHeight(e.target.value)}
                   className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs outline-none focus:border-slate-900 font-mono"
                 />
                 <input
                   type="number"
-                  placeholder="สูงสุด"
+                  placeholder="สูงสุด cm"
                   value={maxHeight}
                   onChange={(e) => setMaxHeight(e.target.value)}
                   className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs outline-none focus:border-slate-900 font-mono"
@@ -571,43 +1122,43 @@ function ProductPicker({
               </div>
             </div>
 
-            {/* ความยาว / ลึก */}
-            <div>
-              <span className="text-[11px] text-slate-600 font-medium mb-1 block">ความยาว / ลึก</span>
-              <div className="grid grid-cols-2 gap-1.5">
-                <input
-                  type="number"
-                  placeholder="ต่ำสุด"
-                  value={minLength}
-                  onChange={(e) => setMinLength(e.target.value)}
-                  className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs outline-none focus:border-slate-900 font-mono"
-                />
-                <input
-                  type="number"
-                  placeholder="สูงสุด"
-                  value={maxLength}
-                  onChange={(e) => setMaxLength(e.target.value)}
-                  className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs outline-none focus:border-slate-900 font-mono"
-                />
-              </div>
-            </div>
-
             {/* ความกว้าง */}
             <div>
-              <span className="text-[11px] text-slate-600 font-medium mb-1 block">ความกว้าง</span>
+              <span className="text-[10px] text-slate-600 font-semibold mb-1 block">ความกว้าง (Width)</span>
               <div className="grid grid-cols-2 gap-1.5">
                 <input
                   type="number"
-                  placeholder="ต่ำสุด"
+                  placeholder="ต่ำสุด cm"
                   value={minWidth}
                   onChange={(e) => setMinWidth(e.target.value)}
                   className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs outline-none focus:border-slate-900 font-mono"
                 />
                 <input
                   type="number"
-                  placeholder="สูงสุด"
+                  placeholder="สูงสุด cm"
                   value={maxWidth}
                   onChange={(e) => setMaxWidth(e.target.value)}
+                  className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs outline-none focus:border-slate-900 font-mono"
+                />
+              </div>
+            </div>
+
+            {/* ความยาว / ลึก */}
+            <div>
+              <span className="text-[10px] text-slate-600 font-semibold mb-1 block">ความยาว / ลึก (Length / Depth)</span>
+              <div className="grid grid-cols-2 gap-1.5">
+                <input
+                  type="number"
+                  placeholder="ต่ำสุด cm"
+                  value={minLength}
+                  onChange={(e) => setMinLength(e.target.value)}
+                  className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs outline-none focus:border-slate-900 font-mono"
+                />
+                <input
+                  type="number"
+                  placeholder="สูงสุด cm"
+                  value={maxLength}
+                  onChange={(e) => setMaxLength(e.target.value)}
                   className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs outline-none focus:border-slate-900 font-mono"
                 />
               </div>
@@ -798,7 +1349,13 @@ function ProductPicker({
                           </span>
                         )}
                         {p.color && (
-                          <span className="px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 font-medium">
+                          <span className="px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 font-medium inline-flex items-center gap-1">
+                            {COLOR_PRESENTATION[p.color.toLowerCase()]?.swatch && (
+                              <span
+                                className="w-2 h-2 rounded-full border border-slate-300 shrink-0"
+                                style={{ backgroundColor: COLOR_PRESENTATION[p.color.toLowerCase()].swatch }}
+                              />
+                            )}
                             สี: {p.color}
                           </span>
                         )}
@@ -1435,15 +1992,15 @@ export default function DiscountHubClient({
   const handleCopyAllBatchCodes = () => {
     if (!batchCreatedResult) return;
     const headerTitle = batchCreatedResult.partnerCompany
-      ? `🎟️ รหัสส่วนลดพิเศษสำหรับ ${batchCreatedResult.partnerCompany}`
-      : `🎟️ รหัสส่วนลดพิเศษ`;
+      ? `รหัสส่วนลดพิเศษสำหรับ ${batchCreatedResult.partnerCompany}`
+      : `รหัสส่วนลดพิเศษ`;
     const lines = [
       headerTitle,
-      `👤 เซลล์ผู้ดูแล: ${batchCreatedResult.leadSales}`,
-      batchCreatedResult.partnerSales ? `🤝 ผู้ติดต่อ: ${batchCreatedResult.partnerSales}` : "",
-      `💰 ส่วนลด: ${batchCreatedResult.discountSummary}`,
-      `📅 หมดอายุ: ${batchCreatedResult.expiresSummary}`,
-      batchCreatedResult.note ? `📝 หมายเหตุ: ${batchCreatedResult.note}` : "",
+      `เซลล์ผู้ดูแล: ${batchCreatedResult.leadSales}`,
+      batchCreatedResult.partnerSales ? `ผู้ติดต่อ: ${batchCreatedResult.partnerSales}` : "",
+      `ส่วนลด: ${batchCreatedResult.discountSummary}`,
+      `หมดอายุ: ${batchCreatedResult.expiresSummary}`,
+      batchCreatedResult.note ? `หมายเหตุ: ${batchCreatedResult.note}` : "",
       "----------------------------------------",
       "รหัสคูปอง (สิทธิ์ละ 1 ครั้ง):",
       ...batchCreatedResult.codes.map((code, idx) => `${idx + 1}. ${code}`),
@@ -2160,7 +2717,8 @@ export default function DiscountHubClient({
 
                           {isTopUpPromo && (
                             <span className="inline-flex items-center gap-1 rounded-md bg-amber-100 px-2 py-0.5 text-[10px] font-black text-amber-900 border border-amber-300">
-                              ⚡ TOP-UP
+                              <Zap className="w-3 h-3 text-amber-700" />
+                              <span>TOP-UP</span>
                             </span>
                           )}
 
@@ -2265,22 +2823,26 @@ export default function DiscountHubClient({
                         <div className="mt-2.5 pt-2 border-t border-slate-100 flex flex-wrap items-center gap-1.5 px-1">
                           {isTopUpPromo && (
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-black uppercase tracking-wider">
-                              ⚡ TOP-UP (ลด On-top)
+                              <Zap className="w-3 h-3 text-amber-700" />
+                              <span>TOP-UP (ลด On-top)</span>
                             </span>
                           )}
                           {promo.attribution && (
                             <>
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 border border-purple-200 text-[10px] font-bold">
-                                👤 เซลล์: {promo.attribution.lead_sales}
+                                <User className="w-3 h-3" />
+                                <span>เซลล์: {promo.attribution.lead_sales}</span>
                               </span>
                               {promo.attribution.partner_company && (
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-bold">
-                                  🏢 บ.: {promo.attribution.partner_company}
+                                  <Building2 className="w-3 h-3" />
+                                  <span>บริษัท: {promo.attribution.partner_company}</span>
                                 </span>
                               )}
                               {promo.attribution.partner_sales && (
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold">
-                                  🤝 เซลล์คู่ค้า: {promo.attribution.partner_sales}
+                                  <Users className="w-3 h-3" />
+                                  <span>เซลล์คู่ค้า: {promo.attribution.partner_sales}</span>
                                 </span>
                               )}
                               {promo.attribution.note && (
@@ -2802,7 +3364,7 @@ export default function DiscountHubClient({
                       <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-600 text-white">
                         <Zap className="h-4 w-4" />
                       </div>
-                      <span className="text-xs font-bold">📦 โปรโมชันเซ็ต (ลดอัตโนมัติ)</span>
+                      <span className="text-xs font-bold">โปรโมชันเซ็ต (ลดอัตโนมัติ)</span>
                     </div>
                     <p className="text-[11px] text-slate-500 font-normal leading-relaxed">
                       ลดราคาเป็นเปอร์เซ็นต์ (%) ทันทีเมื่อลูกค้าหยิบสินค้าครบทุกชิ้นในเซ็ต (ไม่ต้องกรอกโค้ด)
@@ -2825,7 +3387,7 @@ export default function DiscountHubClient({
                       <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-600 text-white">
                         <Ticket className="h-4 w-4" />
                       </div>
-                      <span className="text-xs font-bold">🎟️ คูปองส่วนลดทั้งร้าน (Global)</span>
+                      <span className="text-xs font-bold">คูปองส่วนลดทั้งร้าน (Global)</span>
                     </div>
                     <p className="text-[11px] text-slate-500 font-normal leading-relaxed">
                       ลดราคาทั้งตะกร้าเมื่อลูกค้ากรอกโค้ดคูปอง (กำหนดเป็น % หรือ บาท พร้อมยอดซื้อขั้นต่ำ)
@@ -3150,7 +3712,10 @@ export default function DiscountHubClient({
                         />
                         <div className="flex-1 text-left">
                           <div className="flex items-center gap-2">
-                            <span className="text-xs font-bold text-amber-950">⚡ ส่วนลดแบบ Top-up (ลด On-top ร่วมกับสินค้าที่มีส่วนลดแล้วได้)</span>
+                            <span className="text-xs font-bold text-amber-950 flex items-center gap-1">
+                              <Zap className="w-3.5 h-3.5 text-amber-700" />
+                              <span>ส่วนลดแบบ Top-up (ลด On-top ร่วมกับสินค้าที่มีส่วนลดแล้วได้)</span>
+                            </span>
                             <span className="text-[10px] bg-amber-200 text-amber-900 font-bold px-1.5 py-0.5 rounded">TOP-UP</span>
                           </div>
                           <p className="text-[11px] text-amber-800/80 mt-0.5 leading-relaxed">
@@ -3840,7 +4405,10 @@ export default function DiscountHubClient({
                         />
                         <div className="flex-1 text-left">
                           <div className="flex items-center gap-2">
-                            <span className="text-xs font-bold text-amber-950">⚡ ส่วนลดแบบ Top-up (ลด On-top ร่วมกับสินค้าที่มีส่วนลดแล้วได้)</span>
+                            <span className="text-xs font-bold text-amber-950 flex items-center gap-1">
+                              <Zap className="w-3.5 h-3.5 text-amber-700" />
+                              <span>ส่วนลดแบบ Top-up (ลด On-top ร่วมกับสินค้าที่มีส่วนลดแล้วได้)</span>
+                            </span>
                             <span className="text-[10px] bg-amber-200 text-amber-900 font-bold px-1.5 py-0.5 rounded">TOP-UP</span>
                           </div>
                           <p className="text-[11px] text-amber-800/80 mt-0.5 leading-relaxed">
