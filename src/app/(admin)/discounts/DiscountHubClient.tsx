@@ -6,7 +6,7 @@
  * contrast: pass (46–50) · zero gradients · crisp solid surfaces
  */
 
-import { useState, useTransition, useMemo } from "react";
+import { useState, useTransition, useMemo, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import {
   Tag,
@@ -37,6 +37,7 @@ import {
   Sparkles,
   Share2,
   FileText,
+  Filter,
 } from "lucide-react";
 
 import {
@@ -72,22 +73,100 @@ function ProductPicker({
   products,
   selectedProductIds,
   onSelectionChange,
+  selectedBranchId,
 }: {
   products: any[];
   selectedProductIds: string[];
   onSelectionChange: (ids: string[]) => void;
+  selectedBranchId?: string;
 }) {
   const [query, setQuery] = useState("");
+  const [selectedMainCat, setSelectedMainCat] = useState<string>("ALL");
+  const [selectedSubCat, setSelectedSubCat] = useState<string>("");
+  const [stockFilter, setStockFilter] = useState<"ALL" | "IN_STOCK" | "OUT_OF_STOCK" | "NEGATIVE">("ALL");
+  const [displayLimit, setDisplayLimit] = useState(120);
 
+  // รีเซ็ตการโหลดเพิ่มเมื่อเปลี่ยนเงื่อนไข
+  useEffect(() => {
+    setDisplayLimit(120);
+  }, [query, selectedMainCat, selectedSubCat, stockFilter, selectedBranchId]);
+
+  const MAIN_CATEGORIES = [
+    { key: "ALL", label: "ทั้งหมด", icon: "🌐" },
+    { key: "furniture", label: "เฟอร์นิเจอร์", icon: "🛋️" },
+    { key: "prop", label: "พร็อพ & ตกแต่ง", icon: "🏺" },
+    { key: "SLABS", label: "แผ่นไม้", icon: "🪵" },
+    { key: "rough_wood", label: "ไม้ดิบ", icon: "🌲" },
+  ];
+
+  // หมวดย่อยที่มีอยู่จริงตามหมวดหมู่หลักที่เลือก
+  const availableSubCats = useMemo(() => {
+    let source = products;
+    if (selectedMainCat !== "ALL") {
+      source = source.filter((p) => p.category_id === selectedMainCat);
+    }
+    const set = new Set<string>();
+    source.forEach((p) => {
+      if (p.sub_category && typeof p.sub_category === "string" && p.sub_category.trim()) {
+        set.add(p.sub_category.trim());
+      }
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [products, selectedMainCat]);
+
+  // ฟิลเตอร์สินค้าตามเงื่อนไขทั้งหมด
   const filtered = useMemo(() => {
-    if (!query.trim()) return products;
-    const q = query.toLowerCase();
-    return products.filter(
-      (p) =>
-        p.name?.toLowerCase().includes(q) ||
-        p.sku?.toLowerCase().includes(q)
-    );
-  }, [products, query]);
+    let result = products;
+
+    // 1. หมวดหมู่หลัก
+    if (selectedMainCat !== "ALL") {
+      result = result.filter((p) => p.category_id === selectedMainCat);
+    }
+
+    // 2. หมวดย่อย
+    if (selectedSubCat) {
+      result = result.filter(
+        (p) => (p.sub_category || "").toLowerCase() === selectedSubCat.toLowerCase()
+      );
+    }
+
+    // 3. กรองตามสต็อก
+    if (stockFilter === "IN_STOCK") {
+      result = result.filter((p) => {
+        const qty = selectedBranchId
+          ? (p.stock?.find((s: any) => String(s.branch_id) === String(selectedBranchId))?.qty ?? 0)
+          : (p.total_stock ?? 0);
+        return qty > 0;
+      });
+    } else if (stockFilter === "OUT_OF_STOCK") {
+      result = result.filter((p) => {
+        const qty = selectedBranchId
+          ? (p.stock?.find((s: any) => String(s.branch_id) === String(selectedBranchId))?.qty ?? 0)
+          : (p.total_stock ?? 0);
+        return qty === 0;
+      });
+    } else if (stockFilter === "NEGATIVE") {
+      result = result.filter((p) => {
+        const qty = selectedBranchId
+          ? (p.stock?.find((s: any) => String(s.branch_id) === String(selectedBranchId))?.qty ?? 0)
+          : (p.total_stock ?? 0);
+        return qty < 0;
+      });
+    }
+
+    // 4. ค้นหาข้อความ (ชื่อ, SKU, หมวดย่อย)
+    if (query.trim()) {
+      const q = query.toLowerCase();
+      result = result.filter(
+        (p) =>
+          p.name?.toLowerCase().includes(q) ||
+          p.sku?.toLowerCase().includes(q) ||
+          (p.sub_category && p.sub_category.toLowerCase().includes(q))
+      );
+    }
+
+    return result;
+  }, [products, selectedMainCat, selectedSubCat, stockFilter, query, selectedBranchId]);
 
   const toggle = (id: string) => {
     if (selectedProductIds.includes(id)) {
@@ -102,26 +181,93 @@ function ProductPicker({
   };
 
   const clearAll = () => onSelectionChange([]);
+
   const selectAllFiltered = () => {
     const allFilteredIds = filtered.map((p) => String(p.id));
     const merged = Array.from(new Set([...selectedProductIds, ...allFilteredIds]));
     onSelectionChange(merged);
   };
 
+  const clearFilters = () => {
+    setQuery("");
+    setSelectedMainCat("ALL");
+    setSelectedSubCat("");
+    setStockFilter("ALL");
+  };
+
+  const hasActiveFilters =
+    query.trim() !== "" ||
+    selectedMainCat !== "ALL" ||
+    selectedSubCat !== "" ||
+    stockFilter !== "ALL";
+
   const selectedProducts = useMemo(() => {
     const set = new Set(selectedProductIds.map(String));
     return products.filter((p) => set.has(String(p.id)));
   }, [products, selectedProductIds]);
 
+  const renderStockBadge = (p: any) => {
+    const branchStock = selectedBranchId
+      ? p.stock?.find((s: any) => String(s.branch_id) === String(selectedBranchId))?.qty ?? 0
+      : null;
+    const totalStock = p.total_stock ?? 0;
+
+    if (selectedBranchId) {
+      if (branchStock > 0) {
+        return (
+          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+            สาขานี้: {branchStock} <span className="font-normal text-emerald-600/70 ml-1">(รวม {totalStock})</span>
+          </span>
+        );
+      }
+      if (branchStock === 0) {
+        return (
+          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 text-slate-400 border border-slate-200">
+            สาขานี้หมด <span className="text-slate-400/80 ml-1">(รวม {totalStock})</span>
+          </span>
+        );
+      }
+      return (
+        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-rose-50 text-rose-600 border border-rose-200">
+          ติดลบ {branchStock} <span className="font-normal text-rose-500/70 ml-1">(รวม {totalStock})</span>
+        </span>
+      );
+    }
+
+    if (totalStock > 0) {
+      return (
+        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+          สต็อก: {totalStock}
+        </span>
+      );
+    }
+    if (totalStock === 0) {
+      return (
+        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 text-slate-400 border border-slate-200">
+          หมด (0)
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-rose-50 text-rose-600 border border-rose-200">
+        ติดลบ {totalStock}
+      </span>
+    );
+  };
+
+  const displayedList = useMemo(() => {
+    return filtered.slice(0, displayLimit);
+  }, [filtered, displayLimit]);
+
   return (
-    <div className="flex flex-col h-full gap-3">
-      {/* Search & Action Rail */}
+    <div className="flex flex-col h-full gap-2.5">
+      {/* ── Search & Action Rail ── */}
       <div className="flex items-center gap-2 flex-shrink-0">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
           <input
             type="text"
-            placeholder="ค้นหาชื่อสินค้า หรือ SKU..."
+            placeholder="ค้นหาชื่อสินค้า, SKU, หมวดหมู่ย่อย..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-8 py-2 text-xs font-medium text-slate-800 placeholder-slate-400 outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900 transition"
@@ -140,7 +286,8 @@ function ProductPicker({
         <button
           type="button"
           onClick={selectAllFiltered}
-          className="px-3 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 hover:border-slate-300 active:bg-slate-100 transition whitespace-nowrap"
+          disabled={filtered.length === 0}
+          className="px-3 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 hover:border-slate-300 active:bg-slate-100 transition whitespace-nowrap disabled:opacity-40"
         >
           เลือกตามค้นหา ({filtered.length})
         </button>
@@ -151,15 +298,86 @@ function ProductPicker({
             onClick={clearAll}
             className="px-3 py-2 text-xs font-semibold text-rose-600 bg-rose-50 border border-rose-200 rounded-xl hover:bg-rose-100 active:bg-rose-200 transition whitespace-nowrap"
           >
-            ล้าง
+            ล้างที่เลือก
           </button>
         )}
       </div>
 
-      {/* Selected Items Tray */}
+      {/* ── Main Category Pills ── */}
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 flex-shrink-0 no-scrollbar">
+        {MAIN_CATEGORIES.map((cat) => {
+          const isActive = selectedMainCat === cat.key;
+          return (
+            <button
+              key={cat.key}
+              type="button"
+              onClick={() => {
+                setSelectedMainCat(cat.key);
+                setSelectedSubCat("");
+              }}
+              className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition whitespace-nowrap flex items-center gap-1.5 ${
+                isActive
+                  ? "bg-slate-900 text-white shadow-xs"
+                  : "bg-slate-100/80 text-slate-600 hover:bg-slate-200/80 hover:text-slate-900"
+              }`}
+            >
+              <span>{cat.icon}</span>
+              <span>{cat.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ── Sub-Category & Stock Dropdowns ── */}
+      <div className="flex items-center gap-2 flex-shrink-0">
+        {/* Dropdown หมวดย่อย */}
+        <div className="flex-1 min-w-0">
+          <select
+            value={selectedSubCat}
+            onChange={(e) => setSelectedSubCat(e.target.value)}
+            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 font-medium outline-none focus:border-slate-900 focus:bg-white transition"
+          >
+            <option value="">📁 ทุกหมวดย่อย ({availableSubCats.length})</option>
+            {availableSubCats.map((sub) => (
+              <option key={sub} value={sub}>
+                {sub}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Dropdown สต็อก */}
+        <div className="w-44 flex-shrink-0">
+          <select
+            value={stockFilter}
+            onChange={(e) => setStockFilter(e.target.value as any)}
+            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 font-medium outline-none focus:border-slate-900 focus:bg-white transition"
+          >
+            <option value="ALL">📦 สต็อกทั้งหมด</option>
+            <option value="IN_STOCK">🟢 มีสต็อก (&gt; 0)</option>
+            <option value="OUT_OF_STOCK">⚪ สต็อกหมด (= 0)</option>
+            <option value="NEGATIVE">🔴 สต็อกติดลบ (&lt; 0)</option>
+          </select>
+        </div>
+
+        {/* ปุ่มล้างฟิลเตอร์ */}
+        {hasActiveFilters && (
+          <button
+            type="button"
+            onClick={clearFilters}
+            className="px-2 py-1.5 text-xs text-slate-500 hover:text-rose-600 transition flex items-center gap-1 flex-shrink-0 hover:bg-slate-100 rounded-lg"
+            title="ล้างตัวกรองทั้งหมด"
+          >
+            <X className="w-3.5 h-3.5" />
+            <span>รีเซ็ต</span>
+          </button>
+        )}
+      </div>
+
+      {/* ── Selected Items Tray ── */}
       {selectedProducts.length > 0 && (
-        <div className="flex-shrink-0 bg-slate-100/80 border border-slate-200 rounded-xl p-3">
-          <div className="flex items-center justify-between mb-2">
+        <div className="flex-shrink-0 bg-slate-100/80 border border-slate-200 rounded-xl p-2.5">
+          <div className="flex items-center justify-between mb-1.5">
             <span className="text-xs font-bold text-slate-800">
               เลือกแล้ว {selectedProducts.length} รายการ
             </span>
@@ -171,7 +389,7 @@ function ProductPicker({
               ล้างทั้งหมด
             </button>
           </div>
-          <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+          <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto">
             {selectedProducts.map((p) => (
               <div
                 key={p.id}
@@ -204,64 +422,114 @@ function ProductPicker({
         </div>
       )}
 
-      {/* Scrollable Product List */}
-      <div className="flex-1 overflow-y-auto rounded-xl border border-slate-200 bg-white min-h-0 divide-y divide-slate-100">
+      {/* ── Scrollable Product List with Virtual Pagination ── */}
+      <div
+        onScroll={(e) => {
+          const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+          if (scrollHeight - scrollTop - clientHeight < 300) {
+            if (displayLimit < filtered.length) {
+              setDisplayLimit((prev) => Math.min(prev + 100, filtered.length));
+            }
+          }
+        }}
+        className="flex-1 overflow-y-auto rounded-xl border border-slate-200 bg-white min-h-0 divide-y divide-slate-100"
+      >
         {filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full py-8 text-center">
             <Package className="w-8 h-8 text-slate-300 mb-2" />
             <p className="text-xs text-slate-500 font-medium">
-              ไม่พบสินค้าที่ตรงกับ &quot;{query}&quot;
+              ไม่พบสินค้าที่ตรงกับเงื่อนไขการค้นหา
             </p>
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="mt-2 text-xs font-semibold text-slate-900 underline"
+              >
+                ล้างตัวกรองทั้งหมด
+              </button>
+            )}
           </div>
         ) : (
-          filtered.map((p) => {
-            const isSel = selectedProductIds.includes(String(p.id));
-            const imgUrl = getImageUrl(p.image_url);
-            return (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => toggle(String(p.id))}
-                className={`w-full flex items-center gap-3 px-3 py-2 text-left transition ${isSel ? "bg-slate-50" : "hover:bg-slate-50/60"
+          <>
+            {displayedList.map((p) => {
+              const isSel = selectedProductIds.includes(String(p.id));
+              const imgUrl = getImageUrl(p.image_url);
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => toggle(String(p.id))}
+                  className={`w-full flex items-center gap-3 px-3 py-2 text-left transition ${
+                    isSel ? "bg-slate-50" : "hover:bg-slate-50/60"
                   }`}
-              >
-                <div
-                  className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition ${isSel
-                    ? "bg-slate-900 border-slate-900"
-                    : "border-slate-300 bg-white"
-                    }`}
                 >
-                  {isSel && <Check className="w-3 h-3 text-white stroke-[3]" />}
-                </div>
-
-                <div className="w-8 h-8 rounded-lg overflow-hidden shrink-0 border border-slate-200 bg-slate-50 flex items-center justify-center">
-                  {imgUrl ? (
-                    <img src={imgUrl} alt="" className="w-full h-full object-cover" />
-                  ) : (
-                    <Package className="w-4 h-4 text-slate-300" />
-                  )}
-                </div>
-
-                <div className="flex-1 min-w-0">
-                  <p
-                    className={`text-xs font-bold truncate ${isSel ? "text-slate-900" : "text-slate-700"
-                      }`}
+                  <div
+                    className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition ${
+                      isSel
+                        ? "bg-slate-900 border-slate-900"
+                        : "border-slate-300 bg-white"
+                    }`}
                   >
-                    {p.name || "—"}
-                  </p>
-                  <p className="text-[10px] text-slate-400 font-mono">{p.sku}</p>
-                </div>
-              </button>
-            );
-          })
+                    {isSel && <Check className="w-3 h-3 text-white stroke-[3]" />}
+                  </div>
+
+                  <div className="w-9 h-9 rounded-lg overflow-hidden shrink-0 border border-slate-200 bg-slate-50 flex items-center justify-center">
+                    {imgUrl ? (
+                      <img src={imgUrl} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <Package className="w-4 h-4 text-slate-300" />
+                    )}
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p
+                        className={`text-xs font-bold truncate ${
+                          isSel ? "text-slate-900" : "text-slate-700"
+                        }`}
+                      >
+                        {p.name || "—"}
+                      </p>
+                      {p.sub_category && (
+                        <span className="px-1.5 py-0.2 rounded text-[10px] bg-slate-100 text-slate-600 font-medium shrink-0">
+                          {p.sub_category}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-slate-400 font-mono mt-0.5">{p.sku}</p>
+                  </div>
+
+                  {/* Stock Display Badge */}
+                  <div className="shrink-0 text-right">
+                    {renderStockBadge(p)}
+                  </div>
+                </button>
+              );
+            })}
+
+            {displayLimit < filtered.length && (
+              <div className="p-3 text-center text-xs text-slate-400 bg-slate-50/50">
+                แสดงแล้ว {displayLimit} จาก {filtered.length} รายการ (เลื่อนลงเพื่อดูเพิ่ม)
+              </div>
+            )}
+          </>
         )}
       </div>
 
-      <p className="text-[11px] text-slate-400 flex-shrink-0">
-        {selectedProductIds.length > 0
-          ? `เลือก ${selectedProductIds.length} จาก ${products.length} รายการ · เว้นว่าง = ใช้ได้กับทุกสินค้า`
-          : `${filtered.length} รายการ · ไม่เลือก = ใช้ได้กับทุกสินค้าในระบบ`}
-      </p>
+      {/* ── Footer Status Rail ── */}
+      <div className="flex items-center justify-between text-[11px] text-slate-400 flex-shrink-0 pt-0.5">
+        <span>
+          กรองพบ <strong className="text-slate-700">{filtered.length}</strong> จาก {products.length} รายการ
+        </span>
+        {selectedProductIds.length > 0 ? (
+          <span className="font-semibold text-slate-700">
+            เลือกไว้ {selectedProductIds.length} รายการ
+          </span>
+        ) : (
+          <span className="text-slate-400 italic">ไม่เลือก = ใช้ได้กับทุกสินค้าในระบบ</span>
+        )}
+      </div>
     </div>
   );
 }
@@ -302,6 +570,7 @@ export default function DiscountHubClient({
   const [isPosEditOpen, setIsPosEditOpen] = useState(false);
   const [editingPosDiscount, setEditingPosDiscount] = useState<any | null>(null);
   const [posSelectedProductIds, setPosSelectedProductIds] = useState<string[]>([]);
+  const [posCreateBranchId, setPosCreateBranchId] = useState<string>("");
   const [removingRuleId, setRemovingRuleId] = useState<number | null>(null);
 
   // State: Terra
@@ -1902,6 +2171,8 @@ export default function DiscountHubClient({
                       <label className="block text-xs font-bold text-slate-700 mb-1">ใช้กับสาขา</label>
                       <select
                         name="branch_id"
+                        value={posCreateBranchId}
+                        onChange={(e) => setPosCreateBranchId(e.target.value)}
                         className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs outline-none focus:border-slate-900 focus:bg-white transition"
                       >
                         <option value="">ทุกสาขา</option>
@@ -1918,7 +2189,11 @@ export default function DiscountHubClient({
                 <div className="px-6 py-4 border-t border-slate-100 flex gap-2 flex-shrink-0 bg-slate-50/50">
                   <button
                     type="button"
-                    onClick={() => setIsPosCreateOpen(false)}
+                    onClick={() => {
+                      setIsPosCreateOpen(false);
+                      setPosCreateBranchId("");
+                      setPosSelectedProductIds([]);
+                    }}
                     className="flex-1 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition"
                   >
                     ยกเลิก
@@ -1944,6 +2219,7 @@ export default function DiscountHubClient({
                     products={products}
                     selectedProductIds={posSelectedProductIds}
                     onSelectionChange={setPosSelectedProductIds}
+                    selectedBranchId={posCreateBranchId}
                   />
                 </div>
               </div>
