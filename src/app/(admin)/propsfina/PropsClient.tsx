@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState, useTransition, useMemo, useCallback
 import Link from "next/link";
 import JsBarcode from "jsbarcode";
 import QRCode from "qrcode";
-import { updatePropImageUrl } from "@/actions/props";
+import { updatePropImageUrl, getPropsBatch, getPropsBySkus } from "@/actions/props";
 import PropBoxCalculator from "./PropBoxCalculator";
 import { 
   Search, X, Check, Edit, Printer, FileDown, FileUp, 
@@ -73,6 +73,19 @@ const ProductCard = React.memo(function ProductCard({
 
       <div className="px-2.5 pb-3 pt-1">
         <div className="flex items-center gap-1 mb-1.5 flex-wrap">
+          {item.category_id && (
+            <span className="text-[9px] bg-slate-900 text-white px-1.5 py-0.5 rounded font-bold">
+              {item.category_id === "prop"
+                ? "พร็อพ"
+                : item.category_id === "furniture"
+                ? "เฟอร์ฯ"
+                : item.category_id === "SLABS"
+                ? "แผ่นไม้"
+                : item.category_id === "rough_wood"
+                ? "ไม้ดิบ"
+                : item.category_id}
+            </span>
+          )}
           <span className="text-[9px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-bold uppercase">{item.color || '–'}</span>
           {sizeStr && (
             <span className="text-[9px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-bold">{sizeStr}</span>
@@ -90,25 +103,115 @@ const ProductCard = React.memo(function ProductCard({
   );
 });
 
-interface Props { products: any[] }
+interface Props {
+  initialProducts: any[];
+  initialTotalCount: number;
+  initialCategoryCounts: Record<string, number>;
+}
 
-export default function PropsClient({ products }: Props) {
+const CATEGORY_OPTIONS = [
+  { key: "prop", label: "พร็อพ & ตกแต่ง", icon: "🏺" },
+  { key: "furniture", label: "เฟอร์นิเจอร์", icon: "🛋️" },
+  { key: "SLABS", label: "แผ่นไม้", icon: "🪵" },
+  { key: "rough_wood", label: "ไม้ดิบ", icon: "🌲" },
+  { key: "ALL", label: "ทั้งหมด", icon: "🌟" },
+];
+
+export default function PropsClient({ initialProducts, initialTotalCount, initialCategoryCounts }: Props) {
+  const [products, setProducts] = useState<any[]>(initialProducts);
+  const [totalCount, setTotalCount] = useState<number>(initialTotalCount);
+  const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>(initialCategoryCounts);
+  const [selectedCategory, setSelectedCategory] = useState<string>("prop");
+  const [batchSize, setBatchSize] = useState<number>(100);
+  const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
+  const [isChangingCategory, setIsChangingCategory] = useState<boolean>(false);
+  const [isSearching, setIsSearching] = useState<boolean>(false);
+  const [isImporting, setIsImporting] = useState<boolean>(false);
+  const [showCalculator, setShowCalculator] = useState<boolean>(true);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [showModal, setShowModal] = useState(false);
   const [printTargets, setPrintTargets] = useState<any[]>([]);
   const [quantities, setQuantities] = useState<Record<number, number>>({});
   const [showImportModal, setShowImportModal] = useState(false);
   const [importText, setImportText] = useState("");
-  const [displayLimit, setDisplayLimit] = useState(100);
   const loadMoreRef = useRef<HTMLDivElement>(null);
 
-  // Search
+  // Search state
   const [searchQuery, setSearchQuery] = useState("");
 
-  // Reset display limit when search changes
+  // Category Switch Handler
+  const handleCategoryChange = async (catKey: string) => {
+    if (catKey === selectedCategory && !isChangingCategory) return;
+    setSelectedCategory(catKey);
+    setIsChangingCategory(true);
+    try {
+      const res = await getPropsBatch({
+        category: catKey,
+        offset: 0,
+        limit: batchSize,
+        search: searchQuery,
+      });
+      setProducts(res.products);
+      setTotalCount(res.totalCount);
+    } catch (err) {
+      console.error("Error switching category:", err);
+    } finally {
+      setIsChangingCategory(false);
+    }
+  };
+
+  // Debounced search on server
   useEffect(() => {
-    setDisplayLimit(100);
-  }, [searchQuery]);
+    let isCancelled = false;
+    const timer = setTimeout(async () => {
+      setIsSearching(true);
+      try {
+        const res = await getPropsBatch({
+          category: selectedCategory,
+          offset: 0,
+          limit: batchSize,
+          search: searchQuery,
+        });
+        if (!isCancelled) {
+          setProducts(res.products);
+          setTotalCount(res.totalCount);
+        }
+      } catch (err) {
+        console.error("Error searching props:", err);
+      } finally {
+        if (!isCancelled) setIsSearching(false);
+      }
+    }, 300);
+
+    return () => {
+      isCancelled = true;
+      clearTimeout(timer);
+    };
+  }, [searchQuery, selectedCategory, batchSize]);
+
+  // Infinite Scroll / Load Next Batch
+  const loadNextBatch = useCallback(async () => {
+    if (isLoadingMore || products.length >= totalCount) return;
+    setIsLoadingMore(true);
+    try {
+      const res = await getPropsBatch({
+        category: selectedCategory,
+        offset: products.length,
+        limit: batchSize,
+        search: searchQuery,
+      });
+      setProducts((prev) => {
+        const existingIds = new Set(prev.map((p) => p.id));
+        const newItems = res.products.filter((p: any) => !existingIds.has(p.id));
+        return [...prev, ...newItems];
+      });
+      setTotalCount(res.totalCount);
+    } catch (err) {
+      console.error("Failed to load more products:", err);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [isLoadingMore, products.length, totalCount, selectedCategory, batchSize, searchQuery]);
 
   // Image edit
   const [editImageItem, setEditImageItem] = useState<any | null>(null);
@@ -117,20 +220,8 @@ export default function PropsClient({ products }: Props) {
   const [isPending, startTransition] = useTransition();
   const [imageError, setImageError] = useState("");
 
-  const filteredProducts = useMemo(() => {
-    if (!searchQuery.trim()) return products;
-    const q = searchQuery.toLowerCase().trim();
-    return products.filter(p => (
-      (p.name || "").toLowerCase().includes(q) ||
-      (p.sku || "").toLowerCase().includes(q) ||
-      (p.barcode || "").toLowerCase().includes(q) ||
-      (p.color || "").toLowerCase().includes(q) ||
-      (p.item_no || "").toLowerCase().includes(q)
-    ));
-  }, [products, searchQuery]);
-
   const toggleSelect = useCallback((id: number) => {
-    setSelected(prev => {
+    setSelected((prev) => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
       return next;
@@ -138,14 +229,17 @@ export default function PropsClient({ products }: Props) {
   }, []);
 
   const toggleAll = () =>
-    setSelected(selected.size === filteredProducts.length ? new Set() : new Set(filteredProducts.map(p => p.id)));
+    setSelected(selected.size === products.length ? new Set() : new Set(products.map((p) => p.id)));
 
-  const openEditImage = useCallback((e: React.MouseEvent, item: any) => {
-    e.stopPropagation();
-    setEditImageItem(item);
-    setEditImageUrl(localImages[item.id] ?? item.image_url ?? "");
-    setImageError("");
-  }, [localImages]);
+  const openEditImage = useCallback(
+    (e: React.MouseEvent, item: any) => {
+      e.stopPropagation();
+      setEditImageItem(item);
+      setEditImageUrl(localImages[item.id] ?? item.image_url ?? "");
+      setImageError("");
+    },
+    [localImages]
+  );
 
   const saveImage = () => {
     if (!editImageItem) return;
@@ -153,7 +247,7 @@ export default function PropsClient({ products }: Props) {
     startTransition(async () => {
       try {
         await updatePropImageUrl(editImageItem.id, url);
-        setLocalImages(prev => ({ ...prev, [editImageItem.id]: url }));
+        setLocalImages((prev) => ({ ...prev, [editImageItem.id]: url }));
         setEditImageItem(null);
       } catch {
         setImageError("บันทึกไม่สำเร็จ กรุณาลองใหม่");
@@ -163,7 +257,9 @@ export default function PropsClient({ products }: Props) {
 
   const openModal = (targets: any[]) => {
     const q: Record<number, number> = {};
-    targets.forEach(p => { q[p.id] = 1; });
+    targets.forEach((p) => {
+      q[p.id] = 1;
+    });
     setQuantities(q);
     setPrintTargets(targets);
     setShowModal(true);
@@ -171,53 +267,73 @@ export default function PropsClient({ products }: Props) {
 
   const totalSets = printTargets.reduce((s, p) => s + (quantities[p.id] || 1), 0);
 
-  // ฟังก์ชันจัดการข้อมูลที่ Paste มาจาก Google Sheets
-  const handleImport = () => {
-    const lines = importText.split('\n');
-    const newQuantities: Record<number, number> = {};
-    const targets: any[] = [];
-    const notFound: string[] = [];
+  // ฟังก์ชันจัดการข้อมูลที่ Paste มาจาก Google Sheets (ค้นหาข้ามฐานข้อมูล 9,095 รายการโดยตรง)
+  const handleImport = async () => {
+    const lines = importText.split("\n");
+    const skuQtyMap: Record<string, number> = {};
+    const skusToLookup: string[] = [];
 
-    lines.forEach(line => {
+    lines.forEach((line) => {
       if (!line.trim()) return;
-      const parts = line.split('\t');
+      const parts = line.split("\t");
       if (parts.length >= 2) {
         const qty = parseInt(parts[0].trim());
         const skuOrCode = parts[1].trim();
 
-        if (!isNaN(qty) && qty > 0) {
-          const product = products.find(p => 
-            p.sku === skuOrCode || 
-            p.barcode === skuOrCode || 
-            p.item_no === skuOrCode
-          );
-
-          if (product) {
-            newQuantities[product.id] = qty;
-            targets.push(product);
-          } else {
-            notFound.push(skuOrCode);
-          }
+        if (!isNaN(qty) && qty > 0 && skuOrCode) {
+          skuQtyMap[skuOrCode.toLowerCase()] = qty;
+          skusToLookup.push(skuOrCode);
         }
       }
     });
 
-    if (targets.length > 0) {
-      setQuantities(newQuantities);
-      setPrintTargets(targets);
-      setSelected(new Set(targets.map(p => p.id)));
-      
-      setShowImportModal(false);
-      setImportText("");
-      setShowModal(true);
+    if (skusToLookup.length === 0) {
+      alert("ไม่พบข้อมูล กรุณาตรวจสอบว่า Copy มาถูกคอลัมน์ไหม (จำนวน [Tab] รหัสสินค้า)");
+      return;
+    }
 
-      if (notFound.length > 0) {
-        alert(`ดึงข้อมูลสำเร็จ ${targets.length} รายการ\nแต่ไม่พบรหัสเหล่านี้ในระบบ:\n${notFound.join(', ')}`);
+    setIsImporting(true);
+    try {
+      const serverMatched = await getPropsBySkus(skusToLookup);
+      const newQuantities: Record<number, number> = {};
+      const targets: any[] = [];
+      const matchedSkuSet = new Set<string>();
+
+      serverMatched.forEach((p) => {
+        const q =
+          skuQtyMap[(p.sku || "").toLowerCase()] ||
+          skuQtyMap[(p.barcode || "").toLowerCase()] ||
+          skuQtyMap[(p.name || "").toLowerCase()] ||
+          1;
+        newQuantities[p.id] = q;
+        targets.push(p);
+        if (p.sku) matchedSkuSet.add(p.sku.toLowerCase());
+        if (p.barcode) matchedSkuSet.add(p.barcode.toLowerCase());
+      });
+
+      const notFound = skusToLookup.filter((s) => !matchedSkuSet.has(s.toLowerCase()));
+
+      if (targets.length > 0) {
+        setQuantities(newQuantities);
+        setPrintTargets(targets);
+        setSelected(new Set(targets.map((p) => p.id)));
+        setShowImportModal(false);
+        setImportText("");
+        setShowModal(true);
+
+        if (notFound.length > 0) {
+          alert(`ดึงข้อมูลสำเร็จ ${targets.length} รายการ\nแต่ไม่พบรหัสเหล่านี้ในระบบ:\n${notFound.join(", ")}`);
+        }
+      } else {
+        alert("ไม่พบข้อมูลรหัสสินค้าที่ตรงกับในระบบเลยครับนาย");
       }
-    } else {
-      alert("ไม่พบข้อมูลที่ตรงกับในระบบเลยครับนาย กรุณาตรวจสอบว่า Copy มาถูกคอลัมน์ไหม (จำนวน [Tab] รหัสสินค้า)");
+    } catch (err) {
+      alert("เกิดข้อผิดพลาดในการค้นหารหัสสินค้าจากฐานข้อมูล");
+    } finally {
+      setIsImporting(false);
     }
   };
+
 
   const printQrPhoto = async () => {
     const win = window.open("", "_blank", "width=900,height=700");
@@ -408,136 +524,245 @@ export default function PropsClient({ products }: Props) {
   };
 
   const allSelected = useMemo(() => {
-    if (filteredProducts.length === 0) return false;
-    if (selected.size < filteredProducts.length) return false;
-    return filteredProducts.every(p => selected.has(p.id));
-  }, [filteredProducts, selected]);
+    if (products.length === 0) return false;
+    if (selected.size < products.length) return false;
+    return products.every((p) => selected.has(p.id));
+  }, [products, selected]);
 
   const selectedProducts = useMemo(() => {
     if (selected.size === 0) return [];
-    return products.filter(p => selected.has(p.id));
+    return products.filter((p) => selected.has(p.id));
   }, [products, selected]);
 
   useEffect(() => {
-    const observer = new IntersectionObserver((entries) => {
-      if (entries[0].isIntersecting) {
-        setDisplayLimit(prev => Math.min(prev + 100, filteredProducts.length));
-      }
-    }, { rootMargin: "600px" });
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && !isLoadingMore && products.length < totalCount) {
+          loadNextBatch();
+        }
+      },
+      { rootMargin: "600px" }
+    );
 
     if (loadMoreRef.current) {
       observer.observe(loadMoreRef.current);
     }
     return () => observer.disconnect();
-  }, [filteredProducts.length]);
+  }, [products.length, totalCount, isLoadingMore, loadNextBatch]);
 
   return (
     <>
       <div className="p-4 md:p-6 bg-slate-50 min-h-screen font-sans text-slate-800">
         
         {/* Header */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 border-b border-slate-200 pb-4">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4 border-b border-slate-200 pb-4">
           <div>
             <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
               <Package className="w-6 h-6 text-indigo-600" />
-              <span>Props Inventory</span>
+              <span>Inventory & Tag Printing</span>
             </h1>
-            <p className="text-slate-500 text-xs mt-0.5">จัดการรายการสินค้าประกอบฉากทั้งหมด {products.length} รายการ</p>
+            <p className="text-slate-500 text-xs mt-0.5">
+              พิมพ์ป้ายราคา QR Barcode และตรวจขนาดกล่องพัสดุ (โหลดแล้ว {products.length.toLocaleString()} จากทั้งหมด {totalCount.toLocaleString()} รายการ)
+            </p>
           </div>
-          <Link href="/props/upload" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-semibold text-sm transition">
-            + Add New Prop
-          </Link>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowCalculator(!showCalculator)}
+              className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-semibold transition"
+            >
+              {showCalculator ? "ซ่อนเครื่องคำนวณกล่อง" : "เปิดเครื่องคำนวณกล่อง"}
+            </button>
+            <Link href="/props/upload" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-semibold text-xs transition">
+              + Add New Prop
+            </Link>
+          </div>
         </div>
 
-        {/* Search Bar */}
-        <div className="mb-4">
-          <div className="relative">
+        {/* Category Tabs Bar */}
+        <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-1">
+          {CATEGORY_OPTIONS.map((cat) => {
+            const count = categoryCounts[cat.key] || 0;
+            const isActive = selectedCategory === cat.key;
+            return (
+              <button
+                key={cat.key}
+                type="button"
+                disabled={isChangingCategory}
+                onClick={() => handleCategoryChange(cat.key)}
+                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition shrink-0 ${
+                  isActive
+                    ? "bg-slate-900 text-white shadow-xs"
+                    : "bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200"
+                }`}
+              >
+                <span>{cat.icon}</span>
+                <span>{cat.label}</span>
+                <span
+                  className={`text-[10px] font-mono px-1.5 py-0.5 rounded-full ${
+                    isActive ? "bg-white/20 text-white" : "bg-slate-100 text-slate-500"
+                  }`}
+                >
+                  {count.toLocaleString()}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Search & Batch Size Controls Bar */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 mb-4">
+          <div className="relative flex-1">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
               value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
+              onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="ค้นหาชื่อ, SKU, บาร์โค้ด, สี..."
-              className="w-full pl-9 pr-8 py-2 text-sm border border-slate-200 rounded outline-none focus:border-indigo-500 bg-white"
+              className="w-full pl-9 pr-8 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-indigo-500 bg-white"
             />
-            {searchQuery && (
-              <button onClick={() => setSearchQuery("")}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+            {isSearching && (
+              <Loader2 className="w-4 h-4 animate-spin text-indigo-500 absolute right-3 top-1/2 -translate-y-1/2" />
+            )}
+            {!isSearching && searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              >
                 <X className="w-4 h-4" />
               </button>
             )}
           </div>
-          {searchQuery && (
-            <p className="text-xs text-slate-400 mt-1 ml-1">พบ {filteredProducts.length} รายการ จาก {products.length} ทั้งหมด</p>
-          )}
+
+          {/* Batch Size Selector (โหลดทีละเท่าไหร่) */}
+          <div className="flex items-center gap-1.5 bg-white border border-slate-200 px-3 py-1.5 rounded-lg flex-shrink-0">
+            <span className="text-xs text-slate-500 font-medium">โหลดทีละ:</span>
+            {[50, 100, 200].map((sz) => (
+              <button
+                key={sz}
+                type="button"
+                onClick={() => setBatchSize(sz)}
+                className={`px-2 py-0.5 rounded-md text-xs font-bold transition ${
+                  batchSize === sz
+                    ? "bg-slate-900 text-white"
+                    : "text-slate-600 hover:bg-slate-100"
+                }`}
+              >
+                {sz}
+              </button>
+            ))}
+            <span className="text-[11px] text-slate-400">รายการ</span>
+          </div>
         </div>
 
-        <PropBoxCalculator
-          products={products}
-          filteredProducts={filteredProducts}
-          selectedProducts={selectedProducts}
-        />
+        {showCalculator && (
+          <PropBoxCalculator
+            products={products}
+            filteredProducts={products}
+            selectedProducts={selectedProducts}
+          />
+        )}
 
         {/* Action Bar */}
         <div className="flex items-center gap-2 mb-6 bg-white p-3 rounded border border-slate-200 flex-wrap">
-          <button onClick={toggleAll}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition">
-            <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center ${allSelected ? 'bg-slate-800 border-slate-800' : 'border-slate-300 bg-white'}`}>
+          <button
+            onClick={toggleAll}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition"
+          >
+            <span
+              className={`w-3.5 h-3.5 rounded border flex items-center justify-center ${
+                allSelected ? "bg-slate-800 border-slate-800" : "border-slate-300 bg-white"
+              }`}
+            >
               {allSelected && <Check className="text-white w-2.5 h-2.5" />}
             </span>
-            <span>{allSelected ? 'ยกเลิกทั้งหมด' : 'เลือกทั้งหมด'}</span>
+            <span>{allSelected ? "ยกเลิกที่แสดงทั้งหมด" : "เลือกที่แสดงทั้งหมด"}</span>
           </button>
 
-          <button onClick={() => setShowImportModal(true)}
-            className="flex items-center gap-1 px-3 py-1.5 rounded border border-green-200 bg-green-50/50 text-green-600 text-xs font-semibold hover:bg-green-50 transition">
-            <FileUp className="w-3.5 h-3.5" />
-            <span>นำเข้าจาก Sheets</span>
+          <button
+            onClick={() => setShowImportModal(true)}
+            disabled={isImporting}
+            className="flex items-center gap-1 px-3 py-1.5 rounded border border-green-200 bg-green-50/50 text-green-600 text-xs font-semibold hover:bg-green-50 transition disabled:opacity-50"
+          >
+            {isImporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileUp className="w-3.5 h-3.5" />}
+            <span>{isImporting ? "กำลังค้นหา..." : "นำเข้าจาก Sheets"}</span>
           </button>
 
           {selected.size > 0 && (
-            <button onClick={() => openModal(selectedProducts)}
-              className="flex items-center gap-1 px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition">
+            <button
+              onClick={() => openModal(selectedProducts)}
+              className="flex items-center gap-1 px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition"
+            >
               <Printer className="w-3.5 h-3.5" />
               <span>พิมพ์ที่เลือก ({selected.size})</span>
             </button>
           )}
-          <button onClick={() => openModal(products)}
-            className="flex items-center gap-1 px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold transition">
-            <Printer className="w-3.5 h-3.5" />
-            <span>พิมพ์ทั้งหมด</span>
-          </button>
-          {selected.size > 0 && <span className="ml-auto text-xs text-slate-500">เลือก {selected.size} รายการ</span>}
+
+          {selected.size > 0 && (
+            <span className="ml-auto text-xs text-slate-500 font-medium">
+              เลือก {selected.size} รายการ (จากที่โหลดอยู่ {products.length})
+            </span>
+          )}
         </div>
 
         {/* Product Grid */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-          {filteredProducts.length === 0 && (
+          {products.length === 0 && !isChangingCategory && !isSearching && (
             <div className="col-span-full text-center py-16 border border-slate-200 border-dashed rounded bg-white text-slate-400">
-              <p className="font-semibold">ไม่พบสินค้าที่ตรงกับ &quot;{searchQuery}&quot;</p>
+              <p className="font-semibold">ไม่พบสินค้าในหมวดหมู่นี้ {searchQuery ? `ที่ตรงกับ "${searchQuery}"` : ""}</p>
             </div>
           )}
-          {filteredProducts.slice(0, displayLimit).map((item) => (
-            <ProductCard
-              key={item.id}
-              item={item}
-              isSelected={selected.has(item.id)}
-              displayImage={localImages[item.id] ?? item.image_url}
-              onToggle={toggleSelect}
-              onEditImage={openEditImage}
-            />
-          ))}
+
+          {(isChangingCategory || isSearching) && products.length === 0 ? (
+            <div className="col-span-full text-center py-16 bg-white rounded border border-slate-200 flex flex-col items-center justify-center gap-2 text-slate-500">
+              <Loader2 className="w-6 h-6 animate-spin text-indigo-600" />
+              <span className="text-xs font-medium">กำลังโหลดรายการสินค้า...</span>
+            </div>
+          ) : (
+            products.map((item) => (
+              <ProductCard
+                key={item.id}
+                item={item}
+                isSelected={selected.has(item.id)}
+                displayImage={localImages[item.id] ?? item.image_url}
+                onToggle={toggleSelect}
+                onEditImage={openEditImage}
+              />
+            ))
+          )}
         </div>
 
-        {displayLimit < filteredProducts.length && (
-          <div ref={loadMoreRef} className="py-6 text-center text-xs text-slate-400 flex flex-col items-center gap-2">
-            <span>กำลังแสดง {Math.min(displayLimit, filteredProducts.length)} จากทั้งหมด {filteredProducts.length} รายการ</span>
-            <button
-              onClick={() => setDisplayLimit(prev => Math.min(prev + 100, filteredProducts.length))}
-              className="px-4 py-2 bg-white border border-slate-200 rounded text-slate-600 font-semibold hover:bg-slate-50 transition shadow-sm">
-              โหลดเพิ่มอีก 100 รายการ
-            </button>
-          </div>
-        )}
+        {/* Loading Indicator & Load More Controls */}
+        <div className="py-6 text-center text-xs text-slate-500 flex flex-col items-center gap-2">
+          {products.length < totalCount ? (
+            <div ref={loadMoreRef} className="flex flex-col items-center gap-2">
+              <span className="text-slate-400">
+                กำลังแสดง <b>{products.length.toLocaleString()}</b> จากทั้งหมด <b>{totalCount.toLocaleString()}</b> รายการ
+              </span>
+              <button
+                type="button"
+                disabled={isLoadingMore}
+                onClick={loadNextBatch}
+                className="px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold rounded-xl transition shadow-2xs flex items-center gap-2 disabled:opacity-50"
+              >
+                {isLoadingMore ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
+                    <span>กำลังโหลด {Math.min(batchSize, totalCount - products.length)} รายการถัดไป...</span>
+                  </>
+                ) : (
+                  <span>โหลดเพิ่มอีก {Math.min(batchSize, totalCount - products.length)} รายการ</span>
+                )}
+              </button>
+            </div>
+          ) : (
+            products.length > 0 && (
+              <span className="text-slate-400">
+                แสดงสินค้าครบทั้งหมด <b>{totalCount.toLocaleString()}</b> รายการแล้ว
+              </span>
+            )
+          )}
+        </div>
       </div>
 
       {/* Print Modal */}
