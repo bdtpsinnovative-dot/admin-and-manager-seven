@@ -411,11 +411,25 @@ function ProductPicker({
     const set = new Set<string>();
     source.forEach((p) => {
       if (p.sub_category && typeof p.sub_category === "string" && p.sub_category.trim()) {
-        set.add(p.sub_category.trim());
+        const val = p.sub_category.trim();
+        if (!val.includes("à") && !val.includes("Ã")) {
+          set.add(val);
+        }
       }
     });
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [products, selectedMainCat]);
+
+  // จำนวนสินค้าในแต่ละหมวดย่อยทั่วไป
+  const subCatCountMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    products.forEach((p) => {
+      if (p.sub_category) {
+        map[p.sub_category] = (map[p.sub_category] || 0) + 1;
+      }
+    });
+    return map;
+  }, [products]);
 
   // ตัวเลือกสีพร้อม Color Swatches (Beige, Black, Blue, Brown, Gold, Green, Grey, Orange, Pink, Purple, Red, Silver, White, Yellow)
   const colorOptions = useMemo(() => {
@@ -1305,6 +1319,9 @@ function ProductPicker({
                           </span>
                         )}
                       </div>
+                      <span className={`text-[10px] font-mono shrink-0 ml-1 ${isScActive ? "text-slate-300" : "text-slate-400"}`}>
+                        {subCatCountMap[sc] || 0}
+                      </span>
                     </button>
                   );
                 })}
@@ -1641,9 +1658,9 @@ function ProductPicker({
 
       {/* ── Column 3: Product Picker List & Search ── */}
       <div className="flex-1 flex flex-col min-w-0 bg-white p-5 space-y-3">
-        {/* View Mode & Selection Tabs */}
-        <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 flex-shrink-0">
-          <div className="flex items-center gap-2">
+        {/* View Mode, Category, Price & Selection Tabs (Header Bar) */}
+        <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 flex-shrink-0 flex-wrap gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <button
               type="button"
               onClick={() => setShowSpecPanel(!showSpecPanel)}
@@ -1655,10 +1672,10 @@ function ProductPicker({
               title="สลับซ่อน/แสดงแผงตัวกรองสเปกละเอียดด้านซ้าย"
             >
               <SlidersHorizontal className="w-3.5 h-3.5 text-slate-500" />
-              <span>{showSpecPanel ? "ซ่อนตัวกรองสเปก" : "เปิดตัวกรองสเปก"}</span>
+              <span>{showSpecPanel ? "ซ่อนสเปก" : "เปิดสเปก"}</span>
             </button>
 
-            <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl">
+            <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl">
               <button
                 type="button"
                 onClick={() => setViewMode("all")}
@@ -1684,6 +1701,85 @@ function ProductPicker({
                 <span>รายการที่เลือกแล้ว ({selectedProductIds.length.toLocaleString()})</span>
               </button>
             </div>
+
+            {/* Dropdown 1: หมวดหมู่ (ข้าง ๆ ข้างบน) */}
+            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-xl px-2.5 py-1.5 transition">
+              <Layers className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+              <select
+                value={selectedMainCat}
+                onChange={(e) => {
+                  setSelectedMainCat(e.target.value);
+                  setSelectedSubCats([]);
+                }}
+                className="bg-transparent text-xs font-semibold text-slate-700 outline-none cursor-pointer"
+              >
+                {MAIN_CATEGORIES.map((cat) => {
+                  const count =
+                    cat.key === "ALL"
+                      ? products.length
+                      : products.filter((p) => p.category_id === cat.key).length;
+                  return (
+                    <option key={cat.key} value={cat.key}>
+                      หมวดหมู่: {cat.label} ({count.toLocaleString()})
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+
+            {/* Dropdown 2: จากราคา (ข้าง ๆ ข้างบน) */}
+            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-xl px-2.5 py-1.5 transition">
+              <Coins className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+              <select
+                value={priceFilter}
+                onChange={(e) => {
+                  setPriceFilter(e.target.value as any);
+                  setMinPrice("");
+                  setMaxPrice("");
+                }}
+                className="bg-transparent text-xs font-semibold text-slate-700 outline-none cursor-pointer"
+              >
+                <option value="ALL">ราคา: ทุกราคา ({products.length.toLocaleString()})</option>
+                <option value="HAS_PRICE">ราคา: เฉพาะที่มีราคา ({priceStats.hasPrice.toLocaleString()})</option>
+                <option value="UNDER_1K">ราคา: &lt; 1,000 ฿ ({priceStats.under1k.toLocaleString()})</option>
+                <option value="1K_3K">ราคา: 1,000 - 3,000 ฿ ({priceStats.between1k3k.toLocaleString()})</option>
+                <option value="3K_10K">ราคา: 3,000 - 10,000 ฿ ({priceStats.between3k10k.toLocaleString()})</option>
+                <option value="OVER_10K">ราคา: &gt; 10,000 ฿ ({priceStats.over10k.toLocaleString()})</option>
+              </select>
+            </div>
+
+            {/* Dropdown 3: สถานะสต็อก */}
+            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-xl px-2.5 py-1.5 transition">
+              <Package className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+              <select
+                value={stockFilter}
+                onChange={(e) => setStockFilter(e.target.value as any)}
+                className="bg-transparent text-xs font-semibold text-slate-700 outline-none cursor-pointer"
+              >
+                <option value="ALL">สต็อก: ทั้งหมด</option>
+                <option value="IN_STOCK">สต็อก: มีสต็อกพร้อมขาย (&gt; 0)</option>
+                <option value="OUT_OF_STOCK">สต็อก: หมด (0)</option>
+                <option value="NEGATIVE">สต็อก: ติดลบ (&lt; 0)</option>
+              </select>
+            </div>
+
+            {(minPrice !== "" || maxPrice !== "") && (
+              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-100 text-amber-900 border border-amber-300 text-xs font-mono font-bold">
+                {minPrice ? `${Number(minPrice).toLocaleString()}฿` : "0฿"} -{" "}
+                {maxPrice ? `${Number(maxPrice).toLocaleString()}฿` : "ไม่จำกัด"}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMinPrice("");
+                    setMaxPrice("");
+                  }}
+                  className="hover:text-rose-600 ml-0.5"
+                  title="ล้างช่วงราคา"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
           </div>
 
           {selectedProductIds.length > 0 && (
@@ -1700,150 +1796,6 @@ function ProductPicker({
               </button>
             </div>
           )}
-        </div>
-
-        {/* Notice if viewing 'all' but there are items selected from other filters */}
-        {viewMode === "all" && selectedProductIds.length > 0 && (() => {
-          const visibleSelectedCount = filtered.filter((p) => selectedProductIds.includes(String(p.id))).length;
-          const otherSelectedCount = selectedProductIds.length - visibleSelectedCount;
-          if (otherSelectedCount > 0) {
-            return (
-              <div className="flex items-center justify-between bg-amber-50/80 border border-amber-200/90 rounded-xl px-3.5 py-2 text-xs text-amber-900 flex-shrink-0">
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
-                  <span>
-                    มีสินค้าที่เลือกไว้จากหมวดหมู่อื่นอีก <strong>{otherSelectedCount}</strong> รายการ (ในหน้านี้เลือกไว้ {visibleSelectedCount} รายการ)
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setViewMode("selected")}
-                  className="text-amber-900 font-bold hover:underline underline ml-2 shrink-0 text-xs"
-                >
-                  ดูสินค้าที่เลือกทั้งหมด ({selectedProductIds.length})
-                </button>
-              </div>
-            );
-          }
-          return null;
-        })()}
-
-        {/* ── Quick Selection Bar (ทางลัดเลือกหมวดหมู่ & ช่วงราคาด่วนตรงนี้ได้เลย) ── */}
-        <div className="flex-shrink-0 space-y-2 bg-slate-50/80 border border-slate-200/80 rounded-2xl p-3">
-          {/* Row 1: Quick Categories + In-Stock Toggle */}
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-xs font-bold text-slate-700 mr-1 flex items-center gap-1">
-                <Layers className="w-3.5 h-3.5 text-slate-500" />
-                <span>หมวดหมู่:</span>
-              </span>
-              {MAIN_CATEGORIES.map((cat) => {
-                const isActive = selectedMainCat === cat.key;
-                const count =
-                  cat.key === "ALL"
-                    ? products.length
-                    : products.filter((p) => p.category_id === cat.key).length;
-                return (
-                  <button
-                    key={cat.key}
-                    type="button"
-                    onClick={() => {
-                      setSelectedMainCat(cat.key);
-                      setSelectedSubCats([]);
-                    }}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition flex items-center gap-1 ${
-                      isActive
-                        ? "bg-slate-900 text-white shadow-xs"
-                        : "bg-white text-slate-700 hover:bg-slate-100 border border-slate-200"
-                    }`}
-                  >
-                    <span>{cat.label}</span>
-                    <span
-                      className={`text-[10px] font-mono px-1 rounded ${
-                        isActive ? "bg-white/20 text-white" : "bg-slate-100 text-slate-500"
-                      }`}
-                    >
-                      {count.toLocaleString()}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Quick in-stock toggle */}
-            <button
-              type="button"
-              onClick={() => setStockFilter(stockFilter === "IN_STOCK" ? "ALL" : "IN_STOCK")}
-              className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition border flex items-center gap-1 shrink-0 ${
-                stockFilter === "IN_STOCK"
-                  ? "bg-emerald-600 text-white border-emerald-600 shadow-xs"
-                  : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
-              }`}
-            >
-              <Package className="w-3.5 h-3.5" />
-              <span>มีสต็อกพร้อมขาย (&gt; 0)</span>
-            </button>
-          </div>
-
-          {/* Row 2: Quick Price Selection Chips ("จากราคามาให้เลือก") */}
-          <div className="flex items-center gap-1.5 flex-wrap pt-1.5 border-t border-slate-200/60">
-            <span className="text-xs font-bold text-slate-700 mr-1 flex items-center gap-1">
-              <Coins className="w-3.5 h-3.5 text-amber-600" />
-              <span>จากราคา:</span>
-            </span>
-            {[
-              { key: "ALL", label: "ทุกราคา", count: products.length },
-              { key: "HAS_PRICE", label: "เฉพาะที่มีราคา", count: priceStats.hasPrice },
-              { key: "UNDER_1K", label: "< 1,000 ฿", count: priceStats.under1k },
-              { key: "1K_3K", label: "1,000 - 3,000 ฿", count: priceStats.between1k3k },
-              { key: "3K_10K", label: "3,000 - 10,000 ฿", count: priceStats.between3k10k },
-              { key: "OVER_10K", label: "> 10,000 ฿", count: priceStats.over10k },
-            ].map((pOpt) => {
-              const isPActive = priceFilter === pOpt.key && minPrice === "" && maxPrice === "";
-              return (
-                <button
-                  key={pOpt.key}
-                  type="button"
-                  onClick={() => {
-                    setPriceFilter(pOpt.key as any);
-                    setMinPrice("");
-                    setMaxPrice("");
-                  }}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition flex items-center gap-1 ${
-                    isPActive
-                      ? "bg-amber-500 text-slate-950 font-bold shadow-xs"
-                      : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200"
-                  }`}
-                >
-                  <span>{pOpt.label}</span>
-                  <span
-                    className={`text-[10px] font-mono px-1 rounded ${
-                      isPActive ? "bg-amber-600/30 text-slate-950" : "bg-slate-100 text-slate-500"
-                    }`}
-                  >
-                    {pOpt.count.toLocaleString()}
-                  </span>
-                </button>
-              );
-            })}
-
-            {(minPrice !== "" || maxPrice !== "") && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-amber-100 text-amber-900 border border-amber-300 text-xs font-mono font-bold">
-                {minPrice ? `${Number(minPrice).toLocaleString()}฿` : "0฿"} -{" "}
-                {maxPrice ? `${Number(maxPrice).toLocaleString()}฿` : "ไม่จำกัด"}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMinPrice("");
-                    setMaxPrice("");
-                  }}
-                  className="hover:text-rose-600 ml-0.5"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              </span>
-            )}
-          </div>
         </div>
 
         {/* Top search & batch action bar */}
