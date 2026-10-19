@@ -42,6 +42,8 @@ import {
   ChevronDown,
   ChevronRight,
   ArrowUpDown,
+  Ruler,
+  Palette,
 } from "lucide-react";
 
 import {
@@ -249,6 +251,32 @@ function ProductPicker({
   const [maxLength, setMaxLength] = useState<string>("");
   const [displayLimit, setDisplayLimit] = useState(100);
 
+  // Accordion state for main spec filter panel sections
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({
+    cat: true,
+    dimensions: true,
+    styling: false,
+    commerce: false,
+  });
+  const [subCatSearch, setSubCatSearch] = useState<string>("");
+
+  const toggleSection = (key: string) => {
+    setOpenSections((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const allExpanded = Boolean(
+    openSections.cat && openSections.dimensions && openSections.styling && openSections.commerce
+  );
+
+  const toggleAllSections = (expand: boolean) => {
+    setOpenSections({
+      cat: expand,
+      dimensions: expand,
+      styling: expand,
+      commerce: expand,
+    });
+  };
+
   // สลับการเลือกหมวดย่อยหลายอันพร้อมกัน
   const toggleSubCat = (val: string) => {
     setSelectedSubCats((prev) =>
@@ -430,6 +458,52 @@ function ProductPicker({
     });
     return map;
   }, [products]);
+
+  // ตัวกรองหมวดย่อยผ่านช่องค้นหา mini search
+  const filteredPropGroups = useMemo(() => {
+    if (!subCatSearch.trim()) return propCategoryItems;
+    const q = subCatSearch.toLowerCase().trim();
+    return propCategoryItems
+      .map((item) => {
+        const matchesGroup =
+          item.label.toLowerCase().includes(q) ||
+          (item.thaiLabel && item.thaiLabel.toLowerCase().includes(q));
+        const matchedChildren = (item.items || []).filter(
+          (c) =>
+            c.displayLabel.toLowerCase().includes(q) ||
+            (c.thaiLabel && c.thaiLabel.toLowerCase().includes(q))
+        );
+        if (matchesGroup || matchedChildren.length > 0) {
+          return { ...item, items: matchesGroup ? item.items : matchedChildren };
+        }
+        return null;
+      })
+      .filter(Boolean) as typeof propCategoryItems;
+  }, [propCategoryItems, subCatSearch]);
+
+  const filteredFurnGroups = useMemo(() => {
+    if (!subCatSearch.trim()) return FURNITURE_CATEGORY_GROUPS;
+    const q = subCatSearch.toLowerCase().trim();
+    return FURNITURE_CATEGORY_GROUPS
+      .map((g) => {
+        const matchesGroup =
+          g.label.toLowerCase().includes(q) || g.thaiLabel.toLowerCase().includes(q);
+        const matchedItems = g.items.filter(
+          (i) => i.name.toLowerCase().includes(q) || i.thaiLabel.toLowerCase().includes(q)
+        );
+        if (matchesGroup || matchedItems.length > 0) {
+          return { ...g, items: matchesGroup ? g.items : matchedItems };
+        }
+        return null;
+      })
+      .filter(Boolean) as typeof FURNITURE_CATEGORY_GROUPS;
+  }, [subCatSearch]);
+
+  const filteredAllSubCats = useMemo(() => {
+    if (!subCatSearch.trim()) return availableSubCats;
+    const q = subCatSearch.toLowerCase().trim();
+    return availableSubCats.filter((sc) => sc.toLowerCase().includes(q));
+  }, [availableSubCats, subCatSearch]);
 
   // ตัวเลือกสีพร้อม Color Swatches (Beige, Black, Blue, Brown, Gold, Green, Grey, Orange, Pink, Purple, Red, Silver, White, Yellow)
   const colorOptions = useMemo(() => {
@@ -879,6 +953,7 @@ function ProductPicker({
     setMaxWidth("");
     setMinLength("");
     setMaxLength("");
+    setSubCatSearch("");
   };
 
   const formatDimensions = (p: any) => {
@@ -946,714 +1021,1088 @@ function ProductPicker({
     <>
       {/* ── Middle Column: Spec Filters Panel (แยกออกมาต่างหากอย่างละเอียด) ── */}
       {showSpecPanel && (
-        <div className="w-72 sm:w-80 border-r border-slate-100 flex flex-col flex-shrink-0 bg-slate-50/70">
-        {/* Header */}
-        <div className="px-4 py-3.5 border-b border-slate-200/80 flex items-center justify-between bg-white flex-shrink-0">
-          <div className="flex items-center gap-2">
-            <SlidersHorizontal className="w-4 h-4 text-slate-700" />
-            <span className="text-xs font-bold text-slate-800">ตัวกรองสเปกละเอียด</span>
+        <div className="w-72 sm:w-80 border-r border-slate-200/80 flex flex-col flex-shrink-0 bg-slate-50/70">
+          {/* Header */}
+          <div className="px-3.5 py-3 border-b border-slate-200/80 flex items-center justify-between bg-white flex-shrink-0">
+            <div className="flex items-center gap-2">
+              <SlidersHorizontal className="w-4 h-4 text-slate-700" />
+              <span className="text-xs font-bold text-slate-800">ตัวกรองสเปกละเอียด</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => toggleAllSections(!allExpanded)}
+                className="text-[11px] font-medium text-slate-500 hover:text-slate-800 transition"
+                title={allExpanded ? "ย่อทุกหมวดหมู่" : "ขยายทุกหมวดหมู่"}
+              >
+                {allExpanded ? "ย่อทั้งหมด" : "ขยายทั้งหมด"}
+              </button>
+              {hasActiveFilters && (
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="text-[11px] font-bold text-rose-600 hover:text-rose-700 transition flex items-center gap-0.5 ml-1"
+                  title="ล้างตัวกรองทั้งหมด"
+                >
+                  <X className="w-3 h-3" />
+                  <span>ล้าง</span>
+                </button>
+              )}
+            </div>
           </div>
-          {hasActiveFilters && (
-            <button
-              type="button"
-              onClick={clearFilters}
-              className="text-[11px] font-semibold text-rose-600 hover:text-rose-700 transition flex items-center gap-1"
-            >
-              <X className="w-3 h-3" />
-              <span>ล้างตัวกรอง</span>
-            </button>
-          )}
-        </div>
 
-        {/* Scrollable Filters */}
-        <div className="flex-1 overflow-y-auto px-4 py-3.5 space-y-4 text-xs">
-          {/* 1. Main Categories */}
-          <div>
-            <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-              หมวดหมู่หลัก
-            </label>
-            <div className="space-y-1">
-              {MAIN_CATEGORIES.map((cat) => {
-                const isActive = selectedMainCat === cat.key;
-                const count =
-                  cat.key === "ALL"
-                    ? products.length
-                    : products.filter((p) => p.category_id === cat.key).length;
-                const chosenCount = selectedCounts.mainCounts[cat.key] || 0;
-                return (
+          {/* Active Filter Chips Tray (สรุปตัวกรองที่เปิดอยู่ทั้งหมด ให้ลบออกได้ในคลิกเดียว) */}
+          {hasActiveFilters && (
+            <div className="px-3 py-2 bg-amber-50/70 border-b border-amber-200/60 flex flex-wrap gap-1 items-center flex-shrink-0 max-h-24 overflow-y-auto">
+              <span className="text-[10px] font-bold text-amber-900 mr-0.5 flex items-center gap-0.5">
+                <Filter className="w-3 h-3 text-amber-700" />
+                <span>กรอง:</span>
+              </span>
+
+              {selectedMainCat !== "ALL" && (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-white border border-amber-300 text-[10px] font-semibold text-slate-800 shadow-2xs">
+                  {MAIN_CATEGORIES.find((c) => c.key === selectedMainCat)?.label}
                   <button
-                    key={cat.key}
                     type="button"
                     onClick={() => {
-                      setSelectedMainCat(cat.key);
+                      setSelectedMainCat("ALL");
                       setSelectedSubCats([]);
                     }}
-                    className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition ${
-                      isActive
-                        ? "bg-slate-900 text-white font-bold shadow-xs"
-                        : "bg-white hover:bg-slate-100 text-slate-700 border border-slate-200/60 font-medium"
-                    }`}
+                    className="hover:text-rose-600 ml-0.5 font-bold"
                   >
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <span className="truncate">{cat.label}</span>
-                      {chosenCount > 0 && (
-                        <span
-                          className={`px-1.5 py-0.2 rounded-full text-[9px] font-bold shrink-0 ${
-                            isActive
-                              ? "bg-emerald-500 text-white"
-                              : "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                          }`}
-                        >
-                          เลือก {chosenCount}
-                        </span>
-                      )}
-                    </div>
-                    <span
-                      className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono shrink-0 ml-1 ${
-                        isActive ? "bg-white/20 text-white" : "bg-slate-100 text-slate-500"
-                      }`}
-                    >
-                      {count.toLocaleString()}
-                    </span>
+                    ×
                   </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* 2. Category Hierarchy Accordion (โครงสร้างหมวดหมู่ย่อยแบบมีระดับ) */}
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
-                {selectedMainCat === "furniture"
-                  ? "หมวดหมู่เฟอร์นิเจอร์"
-                  : selectedMainCat === "prop"
-                  ? "หมวดหมู่พร็อพ (Terra Home)"
-                  : selectedMainCat === "SLABS"
-                  ? "ประเภทแผ่นไม้"
-                  : selectedMainCat === "rough_wood"
-                  ? "ประเภทไม้ดิบ"
-                  : "หมวดหมู่ย่อยทั้งหมด"}
-              </label>
-              {selectedSubCats.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setSelectedSubCats([])}
-                  className="text-[10px] text-rose-600 hover:underline font-medium"
-                >
-                  รีเซ็ตหมวดย่อย ({selectedSubCats.length})
-                </button>
+                </span>
               )}
-            </div>
 
-            {/* If Furniture selected */}
-            {selectedMainCat === "furniture" && (
-              <div className="space-y-1 bg-white rounded-lg border border-slate-200/80 p-1.5 max-h-56 overflow-y-auto">
-                {FURNITURE_CATEGORY_GROUPS.map((group) => {
-                  const isGroupActive = selectedSubCats.includes(group.label);
-                  const isOpen = !!openCatGroups[group.label];
-                  const groupCount = furnitureCounts[group.label] || 0;
-                  const groupChosen = selectedCounts.subCounts[group.label] || 0;
-
-                  return (
-                    <div key={group.label} className="border-b border-slate-100 last:border-0 pb-0.5">
-                      <div className="flex items-center justify-between py-1 px-1.5 rounded hover:bg-slate-50 transition">
-                        <button
-                          type="button"
-                          onClick={() => toggleSubCat(group.label)}
-                          className={`flex-1 text-left flex items-center justify-between text-xs ${
-                            isGroupActive ? "text-slate-900 font-bold" : "text-slate-700 font-medium"
-                          }`}
-                        >
-                          <div className="flex flex-col text-left">
-                            <div className="flex items-center gap-1.5">
-                              <span>{group.label}</span>
-                              {groupChosen > 0 && (
-                                <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
-                                  เลือก {groupChosen}
-                                </span>
-                              )}
-                            </div>
-                            <span className="text-[10px] text-slate-400 font-normal">{group.thaiLabel}</span>
-                          </div>
-                          <span className="text-[10px] text-slate-400 font-mono ml-1 shrink-0">({groupCount})</span>
-                        </button>
-                        {group.items.length > 0 && (
-                          <button
-                            type="button"
-                            onClick={() => toggleAccordion(group.label)}
-                            className="p-1 text-slate-400 hover:text-slate-600 rounded ml-1 shrink-0"
-                          >
-                            {isOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-                          </button>
-                        )}
-                      </div>
-
-                      {isOpen && group.items.length > 0 && (
-                        <div className="pl-3 pr-1 py-1 space-y-0.5 border-l-2 border-slate-100 ml-2 mb-1">
-                          {group.items.map((item) => {
-                            const isItemActive = selectedSubCats.includes(item.name);
-                            const itemCount = furnitureCounts[item.name] || 0;
-                            const itemChosen = selectedCounts.subCounts[item.name] || 0;
-                            return (
-                              <button
-                                key={item.name}
-                                type="button"
-                                onClick={() => toggleSubCat(item.name)}
-                                className={`w-full flex items-center justify-between px-2 py-1 rounded text-[11px] transition ${
-                                  isItemActive
-                                    ? "bg-slate-900 text-white font-semibold"
-                                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                                }`}
-                              >
-                                <div className="flex items-center gap-1.5 min-w-0">
-                                  <span className="truncate">{item.name}</span>
-                                  {itemChosen > 0 && (
-                                    <span className={`px-1 py-0.2 rounded text-[9px] font-bold shrink-0 ${isItemActive ? "bg-emerald-500 text-white" : "bg-emerald-50 text-emerald-700 border border-emerald-200"}`}>
-                                      เลือก {itemChosen}
-                                    </span>
-                                  )}
-                                </div>
-                                <span className={`text-[10px] font-mono shrink-0 ml-1 ${isItemActive ? "text-slate-300" : "text-slate-400"}`}>
-                                  {itemCount}
-                                </span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* If Prop selected */}
-            {selectedMainCat === "prop" && (
-              <div className="space-y-1 bg-white rounded-lg border border-slate-200/80 p-1.5 max-h-56 overflow-y-auto">
-                {propCategoryItems.map((item) => {
-                  const isGroupActive = selectedSubCats.includes(item.label);
-                  const isOpen = !!openCatGroups[item.label];
-                  const groupCount = propCounts[item.label] || 0;
-                  const groupChosen = selectedCounts.subCounts[item.label] || 0;
-                  const hasChildren = item.items && item.items.length > 0;
-
-                  return (
-                    <div key={item.label} className="border-b border-slate-100 last:border-0 pb-0.5">
-                      <div className="flex items-center justify-between py-1 px-1.5 rounded hover:bg-slate-50 transition">
-                        <button
-                          type="button"
-                          onClick={() => toggleSubCat(item.label)}
-                          className={`flex-1 text-left flex items-center justify-between text-xs ${
-                            isGroupActive ? "text-slate-900 font-bold" : "text-slate-700 font-medium"
-                          }`}
-                        >
-                          <div className="flex flex-col text-left">
-                            <div className="flex items-center gap-1.5">
-                              <span>{item.displayLabel || item.label}</span>
-                              {groupChosen > 0 && (
-                                <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
-                                  เลือก {groupChosen}
-                                </span>
-                              )}
-                            </div>
-                            {item.thaiLabel && <span className="text-[10px] text-slate-400 font-normal">{item.thaiLabel}</span>}
-                          </div>
-                          <span className="text-[10px] text-slate-400 font-mono ml-1 shrink-0">({groupCount})</span>
-                        </button>
-                        {hasChildren && (
-                          <button
-                            type="button"
-                            onClick={() => toggleAccordion(item.label)}
-                            className="p-1 text-slate-400 hover:text-slate-600 rounded ml-1 shrink-0"
-                          >
-                            {isOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-                          </button>
-                        )}
-                      </div>
-
-                      {isOpen && hasChildren && (
-                        <div className="pl-3 pr-1 py-1 space-y-0.5 border-l-2 border-slate-100 ml-2 mb-1">
-                          {item.items?.map((child) => {
-                            const isChildActive = selectedSubCats.includes(child.fullValue);
-                            const childCount = propCounts[child.fullValue] || 0;
-                            const childChosen = selectedCounts.subCounts[child.fullValue] || 0;
-                            return (
-                              <button
-                                key={child.fullValue}
-                                type="button"
-                                onClick={() => toggleSubCat(child.fullValue)}
-                                className={`w-full flex items-center justify-between px-2 py-1 rounded text-[11px] transition ${
-                                  isChildActive
-                                    ? "bg-slate-900 text-white font-semibold"
-                                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                                }`}
-                              >
-                                <div className="flex flex-col text-left">
-                                  <div className="flex items-center gap-1.5">
-                                    <span>{child.displayLabel}</span>
-                                    {childChosen > 0 && (
-                                      <span className={`px-1 py-0.2 rounded text-[9px] font-bold shrink-0 ${isChildActive ? "bg-emerald-500 text-white" : "bg-emerald-50 text-emerald-700 border border-emerald-200"}`}>
-                                        เลือก {childChosen}
-                                      </span>
-                                    )}
-                                  </div>
-                                  {child.thaiLabel && (
-                                    <span className={`text-[9px] ${isChildActive ? "text-slate-300" : "text-slate-400"}`}>
-                                      {child.thaiLabel}
-                                    </span>
-                                  )}
-                                </div>
-                                <span className={`text-[10px] font-mono shrink-0 ml-1 ${isChildActive ? "text-slate-300" : "text-slate-400"}`}>
-                                  {childCount}
-                                </span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* If SLABS selected */}
-            {selectedMainCat === "SLABS" && (
-              <div className="space-y-1 bg-white rounded-lg border border-slate-200/80 p-1.5">
-                {SLAB_CATEGORY_GROUPS.map((slab) => {
-                  const isActive = selectedSubCats.includes(slab.name);
-                  const count = slabCounts[slab.name] || 0;
-                  const slabChosen = selectedCounts.subCounts[slab.name] || 0;
-                  return (
-                    <button
-                      key={slab.name}
-                      type="button"
-                      onClick={() => toggleSubCat(slab.name)}
-                      className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition ${
-                        isActive
-                          ? "bg-slate-900 text-white font-bold"
-                          : "bg-white hover:bg-slate-50 text-slate-700 font-medium"
-                      }`}
-                    >
-                      <div className="flex flex-col text-left">
-                        <div className="flex items-center gap-1.5">
-                          <span>{slab.name}</span>
-                          {slabChosen > 0 && (
-                            <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
-                              เลือก {slabChosen}
-                            </span>
-                          )}
-                        </div>
-                        <span className={`text-[10px] ${isActive ? "text-slate-300" : "text-slate-400"}`}>{slab.thaiLabel}</span>
-                      </div>
-                      <span className={`text-[10px] font-mono ${isActive ? "text-slate-300" : "text-slate-500"}`}>
-                        {count}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* If rough_wood selected */}
-            {selectedMainCat === "rough_wood" && (
-              <div className="space-y-1 bg-white rounded-lg border border-slate-200/80 p-1.5">
-                {ROUGH_WOOD_GROUPS.map((rw) => {
-                  const isActive = selectedSubCats.includes(rw.name);
-                  const count = products.filter((p) => p.category_id === "rough_wood").length;
-                  const rwChosen = selectedCounts.subCounts[rw.name] || 0;
-                  return (
-                    <button
-                      key={rw.name}
-                      type="button"
-                      onClick={() => toggleSubCat(rw.name)}
-                      className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition ${
-                        isActive
-                          ? "bg-slate-900 text-white font-bold"
-                          : "bg-white hover:bg-slate-50 text-slate-700 font-medium"
-                      }`}
-                    >
-                      <div className="flex flex-col text-left">
-                        <div className="flex items-center gap-1.5">
-                          <span>{rw.name}</span>
-                          {rwChosen > 0 && (
-                            <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
-                              เลือก {rwChosen}
-                            </span>
-                          )}
-                        </div>
-                        <span className={`text-[10px] ${isActive ? "text-slate-300" : "text-slate-400"}`}>{rw.thaiLabel}</span>
-                      </div>
-                      <span className={`text-[10px] font-mono ${isActive ? "text-slate-300" : "text-slate-500"}`}>
-                        {count}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* If ALL selected */}
-            {selectedMainCat === "ALL" && availableSubCats.length > 0 && (
-              <div className="space-y-1 bg-white rounded-lg border border-slate-200/80 p-1.5 max-h-40 overflow-y-auto">
-                {availableSubCats.map((sc) => {
-                  const isScActive = selectedSubCats.includes(sc);
-                  const scChosen = selectedCounts.subCounts[sc] || 0;
-                  return (
-                    <button
-                      key={sc}
-                      type="button"
-                      onClick={() => toggleSubCat(sc)}
-                      className={`w-full flex items-center justify-between px-2 py-1 rounded text-[11px] transition ${
-                        isScActive
-                          ? "bg-slate-900 text-white font-semibold"
-                          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                      }`}
-                    >
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        <span className="truncate">{sc}</span>
-                        {scChosen > 0 && (
-                          <span className={`px-1 py-0.2 rounded text-[9px] font-bold shrink-0 ${isScActive ? "bg-emerald-500 text-white" : "bg-emerald-50 text-emerald-700 border border-emerald-200"}`}>
-                            เลือก {scChosen}
-                          </span>
-                        )}
-                      </div>
-                      <span className={`text-[10px] font-mono shrink-0 ml-1 ${isScActive ? "text-slate-300" : "text-slate-400"}`}>
-                        {subCatCountMap[sc] || 0}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* 3. Stock Filter */}
-          <div>
-            <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-              สถานะสต็อก
-            </label>
-            <div className="grid grid-cols-2 gap-1 bg-white rounded-lg border border-slate-200/80 p-1">
-              {[
-                { key: "ALL", label: "ทั้งหมด" },
-                { key: "IN_STOCK", label: "มีสต็อก (> 0)" },
-                { key: "OUT_OF_STOCK", label: "สต็อกหมด (0)" },
-                { key: "NEGATIVE", label: "สต็อกติดลบ (< 0)" },
-              ].map((item) => {
-                const isActive = stockFilter === item.key;
-                return (
+              {selectedSubCats.map((sc) => (
+                <span
+                  key={sc}
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-white border border-amber-300 text-[10px] font-semibold text-slate-800 shadow-2xs"
+                >
+                  <span className="truncate max-w-[90px]">{sc}</span>
                   <button
-                    key={item.key}
                     type="button"
-                    onClick={() => setStockFilter(item.key as any)}
-                    className={`px-2 py-1.5 rounded text-[11px] font-medium transition text-center ${
-                      isActive
-                        ? "bg-slate-900 text-white font-bold shadow-xs"
-                        : "hover:bg-slate-100 text-slate-600"
-                    }`}
+                    onClick={() => toggleSubCat(sc)}
+                    className="hover:text-rose-600 ml-0.5 font-bold"
                   >
-                    {item.label}
+                    ×
                   </button>
-                );
-              })}
-            </div>
-          </div>
+                </span>
+              ))}
 
-          {/* 3.1. Promo Status Filter */}
-          <div>
-            <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-              สถานะโปรโมชันปัจจุบัน
-            </label>
-            <div className="grid grid-cols-3 gap-1 bg-white rounded-lg border border-slate-200/80 p-1">
-              {[
-                { key: "ALL", label: "ทั้งหมด" },
-                { key: "NO_PROMO", label: "ยังไม่มีโปร" },
-                { key: "HAS_PROMO", label: "มีโปรแล้ว" },
-              ].map((item) => {
-                const isActive = promoStatusFilter === item.key;
-                return (
+              {stockFilter !== "ALL" && (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-white border border-amber-300 text-[10px] font-semibold text-slate-800 shadow-2xs">
+                  {stockFilter === "IN_STOCK"
+                    ? "มีสต็อกพร้อมขาย"
+                    : stockFilter === "OUT_OF_STOCK"
+                    ? "สต็อกหมด"
+                    : "สต็อกติดลบ"}
                   <button
-                    key={item.key}
                     type="button"
-                    onClick={() => setPromoStatusFilter(item.key as any)}
-                    className={`px-1 py-1.5 rounded text-[11px] font-medium transition text-center ${
-                      isActive
-                        ? "bg-slate-900 text-white font-bold shadow-xs"
-                        : "hover:bg-slate-100 text-slate-600"
-                    }`}
+                    onClick={() => setStockFilter("ALL")}
+                    className="hover:text-rose-600 ml-0.5 font-bold"
                   >
-                    {item.label}
+                    ×
                   </button>
-                );
-              })}
-            </div>
-          </div>
+                </span>
+              )}
 
-          {/* 3.2. ช่วงราคา (Price Range Filter) */}
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1">
-                <Coins className="w-3 h-3 text-amber-600" />
-                <span>ช่วงราคา</span>
-              </label>
+              {promoStatusFilter !== "ALL" && (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-white border border-amber-300 text-[10px] font-semibold text-slate-800 shadow-2xs">
+                  {promoStatusFilter === "NO_PROMO" ? "ยังไม่มีโปร" : "มีโปรแล้ว"}
+                  <button
+                    type="button"
+                    onClick={() => setPromoStatusFilter("ALL")}
+                    className="hover:text-rose-600 ml-0.5 font-bold"
+                  >
+                    ×
+                  </button>
+                </span>
+              )}
+
               {(priceFilter !== "ALL" || minPrice !== "" || maxPrice !== "") && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPriceFilter("ALL");
-                    setMinPrice("");
-                    setMaxPrice("");
-                  }}
-                  className="text-[10px] text-rose-600 hover:underline font-medium"
-                >
-                  รีเซ็ตราคา
-                </button>
-              )}
-            </div>
-
-            {/* Quick Price Buttons */}
-            <div className="grid grid-cols-2 gap-1 mb-2 bg-white rounded-lg border border-slate-200/80 p-1">
-              {[
-                { key: "ALL", label: "ทุกราคา", count: products.length },
-                { key: "HAS_PRICE", label: "เฉพาะมีราคา", count: priceStats.hasPrice },
-                { key: "UNDER_1K", label: "< 1,000 ฿", count: priceStats.under1k },
-                { key: "1K_3K", label: "1k - 3k ฿", count: priceStats.between1k3k },
-                { key: "3K_10K", label: "3k - 10k ฿", count: priceStats.between3k10k },
-                { key: "OVER_10K", label: "> 10,000 ฿", count: priceStats.over10k },
-              ].map((item) => {
-                const isActive = priceFilter === item.key && minPrice === "" && maxPrice === "";
-                return (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-white border border-amber-300 text-[10px] font-semibold text-slate-800 shadow-2xs">
+                  ราคา:{" "}
+                  {minPrice || maxPrice
+                    ? `${minPrice || 0}-${maxPrice || "∞"}฿`
+                    : priceFilter === "HAS_PRICE"
+                    ? "เฉพาะมีราคา"
+                    : priceFilter === "UNDER_1K"
+                    ? "< 1k฿"
+                    : priceFilter === "1K_3K"
+                    ? "1k-3k฿"
+                    : priceFilter === "3K_10K"
+                    ? "3k-10k฿"
+                    : "> 10k฿"}
                   <button
-                    key={item.key}
                     type="button"
                     onClick={() => {
-                      setPriceFilter(item.key as any);
+                      setPriceFilter("ALL");
                       setMinPrice("");
                       setMaxPrice("");
                     }}
-                    className={`flex items-center justify-between px-2 py-1.5 rounded text-[11px] font-medium transition ${
-                      isActive
-                        ? "bg-slate-900 text-white font-bold shadow-xs"
-                        : "hover:bg-slate-100 text-slate-600"
-                    }`}
+                    className="hover:text-rose-600 ml-0.5 font-bold"
                   >
-                    <span>{item.label}</span>
-                    <span className={`text-[10px] font-mono ${isActive ? "text-slate-300" : "text-slate-400"}`}>
-                      {item.count.toLocaleString()}
-                    </span>
+                    ×
                   </button>
-                );
-              })}
-            </div>
-
-            {/* Custom Min / Max Price Inputs */}
-            <div className="grid grid-cols-2 gap-1.5">
-              <input
-                type="number"
-                placeholder="ต่ำสุด ฿"
-                value={minPrice}
-                onChange={(e) => {
-                  setMinPrice(e.target.value);
-                  setPriceFilter("ALL");
-                }}
-                className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs outline-none focus:border-slate-900 font-mono"
-              />
-              <input
-                type="number"
-                placeholder="สูงสุด ฿"
-                value={maxPrice}
-                onChange={(e) => {
-                  setMaxPrice(e.target.value);
-                  setPriceFilter("ALL");
-                }}
-                className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs outline-none focus:border-slate-900 font-mono"
-              />
-            </div>
-          </div>
-
-          {/* 4. Color Filter with Real Hex Swatches */}
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
-                สี ({colorOptions.filter((c) => c.count > 0).length})
-              </label>
-              {selectedColors.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setSelectedColors([])}
-                  className="text-[10px] text-rose-600 hover:underline font-medium"
-                >
-                  รีเซ็ตสี ({selectedColors.length})
-                </button>
+                </span>
               )}
-            </div>
-            <div className="grid grid-cols-2 gap-1 max-h-48 overflow-y-auto p-1 bg-white rounded-lg border border-slate-200/80">
-              {colorOptions.map((opt) => {
-                const isSelected = selectedColors.includes(opt.value.toLowerCase());
-                const disabled = opt.count === 0;
-                return (
+
+              {(minHeight || maxHeight) && (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-white border border-amber-300 text-[10px] font-semibold text-slate-800 shadow-2xs">
+                  หนา/สูง: {minHeight || 0}-{maxHeight || "∞"}cm
                   <button
-                    key={opt.value}
                     type="button"
-                    disabled={disabled}
-                    onClick={() => toggleColor(opt.value)}
-                    className={`flex items-center gap-1.5 px-2 py-1 rounded text-left transition select-none ${
-                      isSelected
-                        ? "bg-slate-900 text-white font-bold shadow-xs"
-                        : disabled
-                        ? "opacity-35 cursor-not-allowed text-slate-400"
-                        : "hover:bg-slate-50 text-slate-700 font-medium"
-                    }`}
+                    onClick={() => {
+                      setMinHeight("");
+                      setMaxHeight("");
+                    }}
+                    className="hover:text-rose-600 ml-0.5 font-bold"
                   >
-                    <span
-                      className="w-3.5 h-3.5 rounded-full shrink-0 border border-slate-300 shadow-xs"
-                      style={opt.swatch ? { backgroundColor: opt.swatch } : { backgroundColor: "#cbd5e1" }}
-                    />
-                    <span className="text-[11px] truncate flex-1">{opt.label}</span>
-                    <span className={`text-[10px] font-mono shrink-0 ${isSelected ? "text-slate-300" : "text-slate-400"}`}>
-                      {opt.count}
-                    </span>
+                    ×
                   </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* 5. Materials Filter */}
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
-                วัสดุ ({materialOptions.length})
-              </label>
-              {selectedMaterials.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setSelectedMaterials([])}
-                  className="text-[10px] text-rose-600 hover:underline font-medium"
-                >
-                  รีเซ็ตวัสดุ ({selectedMaterials.length})
-                </button>
+                </span>
               )}
-            </div>
-            <div className="flex flex-wrap gap-1 max-h-40 overflow-y-auto p-1 bg-white rounded-lg border border-slate-200/80">
-              {materialOptions.map((mat) => {
-                const isSelected = selectedMaterials.includes(mat.value.toLowerCase());
-                return (
+
+              {(minWidth || maxWidth) && (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-white border border-amber-300 text-[10px] font-semibold text-slate-800 shadow-2xs">
+                  กว้าง: {minWidth || 0}-{maxWidth || "∞"}cm
                   <button
-                    key={mat.value}
                     type="button"
-                    onClick={() => toggleMaterial(mat.value)}
-                    className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] transition ${
-                      isSelected
-                        ? "bg-slate-900 text-white font-bold shadow-xs"
-                        : "bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200/60 font-medium"
-                    }`}
+                    onClick={() => {
+                      setMinWidth("");
+                      setMaxWidth("");
+                    }}
+                    className="hover:text-rose-600 ml-0.5 font-bold"
                   >
-                    <span>{mat.label}</span>
-                    <span className={`text-[10px] font-mono ${isSelected ? "text-slate-300" : "text-slate-400"}`}>
-                      {mat.count}
-                    </span>
+                    ×
                   </button>
-                );
-              })}
-            </div>
-          </div>
+                </span>
+              )}
 
-          {/* 6. Dimensions Filter (ความสูง / ความหนา, ความกว้าง, ความยาว / ลึก) */}
-          <div className="pt-2 border-t border-slate-200/80 space-y-2.5">
-            <div className="flex items-center justify-between">
-              <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
-                มิติและขนาด (cm)
-              </label>
-              {(minHeight || maxHeight || minWidth || maxWidth || minLength || maxLength) && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMinHeight("");
-                    setMaxHeight("");
-                    setMinWidth("");
-                    setMaxWidth("");
-                    setMinLength("");
-                    setMaxLength("");
-                  }}
-                  className="text-[10px] text-rose-600 hover:underline font-medium"
+              {(minLength || maxLength) && (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-white border border-amber-300 text-[10px] font-semibold text-slate-800 shadow-2xs">
+                  ยาว: {minLength || 0}-{maxLength || "∞"}cm
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMinLength("");
+                      setMaxLength("");
+                    }}
+                    className="hover:text-rose-600 ml-0.5 font-bold"
+                  >
+                    ×
+                  </button>
+                </span>
+              )}
+
+              {selectedColors.map((col) => (
+                <span
+                  key={col}
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-white border border-amber-300 text-[10px] font-semibold text-slate-800 shadow-2xs capitalize"
                 >
-                  ล้างขนาด
-                </button>
+                  สี: {col}
+                  <button
+                    type="button"
+                    onClick={() => toggleColor(col)}
+                    className="hover:text-rose-600 ml-0.5 font-bold"
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+
+              {selectedMaterials.map((mat) => (
+                <span
+                  key={mat}
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-white border border-amber-300 text-[10px] font-semibold text-slate-800 shadow-2xs capitalize"
+                >
+                  วัสดุ: {mat}
+                  <button
+                    type="button"
+                    onClick={() => toggleMaterial(mat)}
+                    className="hover:text-rose-600 ml-0.5 font-bold"
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="text-[10px] text-rose-600 hover:underline font-bold ml-auto"
+              >
+                ล้างทั้งหมด
+              </button>
+            </div>
+          )}
+
+          {/* Scrollable Filters Accordion Container */}
+          <div className="flex-1 overflow-y-auto px-3.5 py-3 space-y-2.5 text-xs">
+            {/* ── Section 1: หมวดหมู่ & ชนิดสินค้า ── */}
+            <div className="bg-white rounded-xl border border-slate-200/80 shadow-2xs overflow-hidden transition">
+              <button
+                type="button"
+                onClick={() => toggleSection("cat")}
+                className="w-full px-3 py-2.5 flex items-center justify-between text-left hover:bg-slate-50 transition"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <Layers className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+                  <span className="font-bold text-slate-800 text-xs truncate">หมวดหมู่ & ชนิดสินค้า</span>
+                  {(selectedMainCat !== "ALL" || selectedSubCats.length > 0) && (
+                    <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-slate-900 text-white shrink-0">
+                      {selectedMainCat !== "ALL"
+                        ? MAIN_CATEGORIES.find((c) => c.key === selectedMainCat)?.label
+                        : ""}
+                      {selectedSubCats.length > 0 ? ` (${selectedSubCats.length})` : ""}
+                    </span>
+                  )}
+                </div>
+                {openSections.cat ? (
+                  <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                ) : (
+                  <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                )}
+              </button>
+
+              {openSections.cat && (
+                <div className="p-3 pt-0 border-t border-slate-100 space-y-2.5 mt-1">
+                  {/* Main Category Compact Grid */}
+                  <div>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {MAIN_CATEGORIES.map((cat, idx) => {
+                        const isActive = selectedMainCat === cat.key;
+                        const count =
+                          cat.key === "ALL"
+                            ? products.length
+                            : products.filter((p) => p.category_id === cat.key).length;
+                        const chosenCount = selectedCounts.mainCounts[cat.key] || 0;
+                        return (
+                          <button
+                            key={cat.key}
+                            type="button"
+                            onClick={() => {
+                              setSelectedMainCat(cat.key);
+                              setSelectedSubCats([]);
+                            }}
+                            className={`flex items-center justify-between px-2 py-1.5 rounded-lg text-xs transition border ${
+                              idx === 0 ? "col-span-2" : ""
+                            } ${
+                              isActive
+                                ? "bg-slate-900 text-white border-slate-900 font-bold shadow-xs"
+                                : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200/80 font-medium"
+                            }`}
+                          >
+                            <div className="flex items-center gap-1 min-w-0">
+                              <span className="truncate">{cat.label}</span>
+                              {chosenCount > 0 && (
+                                <span
+                                  className={`px-1 rounded text-[9px] font-bold shrink-0 ${
+                                    isActive
+                                      ? "bg-emerald-500 text-white"
+                                      : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                  }`}
+                                >
+                                  {chosenCount}
+                                </span>
+                              )}
+                            </div>
+                            <span
+                              className={`text-[10px] font-mono px-1 rounded shrink-0 ml-1 ${
+                                isActive ? "bg-white/20 text-white" : "text-slate-400"
+                              }`}
+                            >
+                              {count.toLocaleString()}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Subcategories (หมวดหมู่ย่อย) */}
+                  <div className="pt-2 border-t border-slate-100">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-[11px] font-bold text-slate-700">
+                        {selectedMainCat === "furniture"
+                          ? "หมวดย่อยเฟอร์นิเจอร์"
+                          : selectedMainCat === "prop"
+                          ? "หมวดย่อยพร็อพ (Terra Home)"
+                          : selectedMainCat === "SLABS"
+                          ? "ประเภทแผ่นไม้"
+                          : selectedMainCat === "rough_wood"
+                          ? "ประเภทไม้ดิบ"
+                          : "หมวดหมู่ย่อย"}
+                      </span>
+                      {selectedSubCats.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedSubCats([])}
+                          className="text-[10px] text-rose-600 hover:underline font-semibold"
+                        >
+                          ล้างย่อย ({selectedSubCats.length})
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Quick Search if more than 4 subcategories */}
+                    {(selectedMainCat === "prop" ||
+                      selectedMainCat === "furniture" ||
+                      selectedMainCat === "ALL") && (
+                      <div className="relative mb-2">
+                        <Search className="w-3 h-3 text-slate-400 absolute left-2 top-1/2 -translate-y-1/2" />
+                        <input
+                          type="text"
+                          value={subCatSearch}
+                          onChange={(e) => setSubCatSearch(e.target.value)}
+                          placeholder="ค้นหาหมวดย่อย..."
+                          className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-6 pr-6 py-1 text-[11px] outline-none focus:border-slate-800 focus:bg-white transition"
+                        />
+                        {subCatSearch && (
+                          <button
+                            type="button"
+                            onClick={() => setSubCatSearch("")}
+                            className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {/* If Furniture selected */}
+                    {selectedMainCat === "furniture" && (
+                      <div className="space-y-1 max-h-52 overflow-y-auto pr-0.5">
+                        {filteredFurnGroups.map((group) => {
+                          const isGroupActive = selectedSubCats.includes(group.label);
+                          const isOpen = !!openCatGroups[group.label];
+                          const groupCount = furnitureCounts[group.label] || 0;
+                          const groupChosen = selectedCounts.subCounts[group.label] || 0;
+
+                          return (
+                            <div key={group.label} className="border-b border-slate-100 last:border-0 pb-0.5">
+                              <div className="flex items-center justify-between py-1 px-1.5 rounded hover:bg-slate-50 transition">
+                                <button
+                                  type="button"
+                                  onClick={() => toggleSubCat(group.label)}
+                                  className={`flex-1 text-left flex items-center justify-between text-xs ${
+                                    isGroupActive ? "text-slate-900 font-bold" : "text-slate-700 font-medium"
+                                  }`}
+                                >
+                                  <div className="flex flex-col text-left">
+                                    <div className="flex items-center gap-1.5">
+                                      <span>{group.label}</span>
+                                      {groupChosen > 0 && (
+                                        <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
+                                          เลือก {groupChosen}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <span className="text-[10px] text-slate-400 font-normal">{group.thaiLabel}</span>
+                                  </div>
+                                  <span className="text-[10px] text-slate-400 font-mono ml-1 shrink-0">({groupCount})</span>
+                                </button>
+                                {group.items.length > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleAccordion(group.label)}
+                                    className="p-1 text-slate-400 hover:text-slate-600 rounded ml-1 shrink-0"
+                                  >
+                                    {isOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                                  </button>
+                                )}
+                              </div>
+
+                              {isOpen && group.items.length > 0 && (
+                                <div className="pl-3 pr-1 py-1 space-y-0.5 border-l-2 border-slate-100 ml-2 mb-1">
+                                  {group.items.map((item) => {
+                                    const isItemActive = selectedSubCats.includes(item.name);
+                                    const itemCount = furnitureCounts[item.name] || 0;
+                                    const itemChosen = selectedCounts.subCounts[item.name] || 0;
+                                    return (
+                                      <button
+                                        key={item.name}
+                                        type="button"
+                                        onClick={() => toggleSubCat(item.name)}
+                                        className={`w-full flex items-center justify-between px-2 py-1 rounded text-[11px] transition ${
+                                          isItemActive
+                                            ? "bg-slate-900 text-white font-semibold"
+                                            : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                                        }`}
+                                      >
+                                        <div className="flex items-center gap-1.5 min-w-0">
+                                          <span className="truncate">{item.name}</span>
+                                          {itemChosen > 0 && (
+                                            <span className={`px-1 py-0.2 rounded text-[9px] font-bold shrink-0 ${isItemActive ? "bg-emerald-500 text-white" : "bg-emerald-50 text-emerald-700 border border-emerald-200"}`}>
+                                              เลือก {itemChosen}
+                                            </span>
+                                          )}
+                                        </div>
+                                        <span className={`text-[10px] font-mono shrink-0 ml-1 ${isItemActive ? "text-slate-300" : "text-slate-400"}`}>
+                                          {itemCount}
+                                        </span>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* If Prop selected */}
+                    {selectedMainCat === "prop" && (
+                      <div className="space-y-1 max-h-52 overflow-y-auto pr-0.5">
+                        {filteredPropGroups.map((item) => {
+                          const isGroupActive = selectedSubCats.includes(item.label);
+                          const isOpen = !!openCatGroups[item.label];
+                          const groupCount = propCounts[item.label] || 0;
+                          const groupChosen = selectedCounts.subCounts[item.label] || 0;
+                          const hasChildren = item.items && item.items.length > 0;
+
+                          return (
+                            <div key={item.label} className="border-b border-slate-100 last:border-0 pb-0.5">
+                              <div className="flex items-center justify-between py-1 px-1.5 rounded hover:bg-slate-50 transition">
+                                <button
+                                  type="button"
+                                  onClick={() => toggleSubCat(item.label)}
+                                  className={`flex-1 text-left flex items-center justify-between text-xs ${
+                                    isGroupActive ? "text-slate-900 font-bold" : "text-slate-700 font-medium"
+                                  }`}
+                                >
+                                  <div className="flex flex-col text-left">
+                                    <div className="flex items-center gap-1.5">
+                                      <span>{item.displayLabel || item.label}</span>
+                                      {groupChosen > 0 && (
+                                        <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
+                                          เลือก {groupChosen}
+                                        </span>
+                                      )}
+                                    </div>
+                                    {item.thaiLabel && <span className="text-[10px] text-slate-400 font-normal">{item.thaiLabel}</span>}
+                                  </div>
+                                  <span className="text-[10px] text-slate-400 font-mono ml-1 shrink-0">({groupCount})</span>
+                                </button>
+                                {hasChildren && (
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleAccordion(item.label)}
+                                    className="p-1 text-slate-400 hover:text-slate-600 rounded ml-1 shrink-0"
+                                  >
+                                    {isOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                                  </button>
+                                )}
+                              </div>
+
+                              {isOpen && hasChildren && (
+                                <div className="pl-3 pr-1 py-1 space-y-0.5 border-l-2 border-slate-100 ml-2 mb-1">
+                                  {item.items?.map((child) => {
+                                    const isChildActive = selectedSubCats.includes(child.fullValue);
+                                    const childCount = propCounts[child.fullValue] || 0;
+                                    const childChosen = selectedCounts.subCounts[child.fullValue] || 0;
+                                    return (
+                                      <button
+                                        key={child.fullValue}
+                                        type="button"
+                                        onClick={() => toggleSubCat(child.fullValue)}
+                                        className={`w-full flex items-center justify-between px-2 py-1 rounded text-[11px] transition ${
+                                          isChildActive
+                                            ? "bg-slate-900 text-white font-semibold"
+                                            : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                                        }`}
+                                      >
+                                        <div className="flex flex-col text-left">
+                                          <div className="flex items-center gap-1.5">
+                                            <span>{child.displayLabel}</span>
+                                            {childChosen > 0 && (
+                                              <span className={`px-1 py-0.2 rounded text-[9px] font-bold shrink-0 ${isChildActive ? "bg-emerald-500 text-white" : "bg-emerald-50 text-emerald-700 border border-emerald-200"}`}>
+                                                เลือก {childChosen}
+                                              </span>
+                                            )}
+                                          </div>
+                                          {child.thaiLabel && (
+                                            <span className={`text-[9px] ${isChildActive ? "text-slate-300" : "text-slate-400"}`}>
+                                              {child.thaiLabel}
+                                            </span>
+                                          )}
+                                        </div>
+                                        <span className={`text-[10px] font-mono shrink-0 ml-1 ${isChildActive ? "text-slate-300" : "text-slate-400"}`}>
+                                          {childCount}
+                                        </span>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* If SLABS selected */}
+                    {selectedMainCat === "SLABS" && (
+                      <div className="space-y-1.5">
+                        {SLAB_CATEGORY_GROUPS.map((slab) => {
+                          const isActive = selectedSubCats.includes(slab.name);
+                          const count = slabCounts[slab.name] || 0;
+                          const slabChosen = selectedCounts.subCounts[slab.name] || 0;
+                          return (
+                            <button
+                              key={slab.name}
+                              type="button"
+                              onClick={() => toggleSubCat(slab.name)}
+                              className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs transition border ${
+                                isActive
+                                  ? "bg-slate-900 text-white border-slate-900 font-bold shadow-xs"
+                                  : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200 font-medium"
+                              }`}
+                            >
+                              <div className="flex flex-col text-left">
+                                <div className="flex items-center gap-1.5">
+                                  <span>{slab.name}</span>
+                                  {slabChosen > 0 && (
+                                    <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
+                                      เลือก {slabChosen}
+                                    </span>
+                                  )}
+                                </div>
+                                <span className={`text-[10px] ${isActive ? "text-slate-300" : "text-slate-400"}`}>
+                                  {slab.thaiLabel}
+                                </span>
+                              </div>
+                              <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${isActive ? "bg-white/20 text-white" : "bg-slate-100 text-slate-600"}`}>
+                                {count}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* If rough_wood selected */}
+                    {selectedMainCat === "rough_wood" && (
+                      <div className="space-y-1.5">
+                        {ROUGH_WOOD_GROUPS.map((rw) => {
+                          const isActive = selectedSubCats.includes(rw.name);
+                          const count = products.filter((p) => p.category_id === "rough_wood").length;
+                          const rwChosen = selectedCounts.subCounts[rw.name] || 0;
+                          return (
+                            <button
+                              key={rw.name}
+                              type="button"
+                              onClick={() => toggleSubCat(rw.name)}
+                              className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs transition border ${
+                                isActive
+                                  ? "bg-slate-900 text-white border-slate-900 font-bold shadow-xs"
+                                  : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200 font-medium"
+                              }`}
+                            >
+                              <div className="flex flex-col text-left">
+                                <div className="flex items-center gap-1.5">
+                                  <span>{rw.name}</span>
+                                  {rwChosen > 0 && (
+                                    <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
+                                      เลือก {rwChosen}
+                                    </span>
+                                  )}
+                                </div>
+                                <span className={`text-[10px] ${isActive ? "text-slate-300" : "text-slate-400"}`}>
+                                  {rw.thaiLabel}
+                                </span>
+                              </div>
+                              <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${isActive ? "bg-white/20 text-white" : "bg-slate-100 text-slate-600"}`}>
+                                {count}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* If ALL selected */}
+                    {selectedMainCat === "ALL" && (
+                      <div className="space-y-1 max-h-48 overflow-y-auto pr-0.5">
+                        {filteredAllSubCats.map((sc) => {
+                          const isScActive = selectedSubCats.includes(sc);
+                          const scChosen = selectedCounts.subCounts[sc] || 0;
+                          return (
+                            <button
+                              key={sc}
+                              type="button"
+                              onClick={() => toggleSubCat(sc)}
+                              className={`w-full flex items-center justify-between px-2 py-1 rounded text-[11px] transition ${
+                                isScActive
+                                  ? "bg-slate-900 text-white font-semibold"
+                                  : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                              }`}
+                            >
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <span className="truncate">{sc}</span>
+                                {scChosen > 0 && (
+                                  <span className={`px-1 py-0.2 rounded text-[9px] font-bold shrink-0 ${isScActive ? "bg-emerald-500 text-white" : "bg-emerald-50 text-emerald-700 border border-emerald-200"}`}>
+                                    เลือก {scChosen}
+                                  </span>
+                                )}
+                              </div>
+                              <span className={`text-[10px] font-mono shrink-0 ml-1 ${isScActive ? "text-slate-300" : "text-slate-400"}`}>
+                                {subCatCountMap[sc] || 0}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
               )}
             </div>
 
-            {/* ความสูง / หนา */}
-            <div>
-              <span className="text-[10px] text-slate-600 font-semibold mb-1 block">ความสูง / ความหนา (Height / Thickness)</span>
-              <div className="grid grid-cols-2 gap-1.5">
-                <input
-                  type="number"
-                  placeholder="ต่ำสุด cm"
-                  value={minHeight}
-                  onChange={(e) => setMinHeight(e.target.value)}
-                  className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs outline-none focus:border-slate-900 font-mono"
-                />
-                <input
-                  type="number"
-                  placeholder="สูงสุด cm"
-                  value={maxHeight}
-                  onChange={(e) => setMaxHeight(e.target.value)}
-                  className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs outline-none focus:border-slate-900 font-mono"
-                />
-              </div>
+            {/* ── Section 2: มิติและขนาด (cm) ── */}
+            <div className="bg-white rounded-xl border border-slate-200/80 shadow-2xs overflow-hidden transition">
+              <button
+                type="button"
+                onClick={() => toggleSection("dimensions")}
+                className="w-full px-3 py-2.5 flex items-center justify-between text-left hover:bg-slate-50 transition"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <Ruler className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+                  <span className="font-bold text-slate-800 text-xs truncate">มิติและขนาด (cm)</span>
+                  {(minHeight || maxHeight || minWidth || maxWidth || minLength || maxLength) && (
+                    <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-amber-500 text-slate-950 shrink-0">
+                      กำลังกรอง
+                    </span>
+                  )}
+                </div>
+                {openSections.dimensions ? (
+                  <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                ) : (
+                  <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                )}
+              </button>
+
+              {openSections.dimensions && (
+                <div className="p-3 pt-0 border-t border-slate-100 space-y-2.5 mt-1">
+                  {/* Quick dimension presets for wood slabs */}
+                  <div className="flex flex-wrap gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setMinHeight(minHeight === "5" ? "" : "5")}
+                      className={`px-2 py-0.5 rounded text-[10px] font-semibold border transition ${
+                        minHeight === "5"
+                          ? "bg-slate-900 text-white border-slate-900"
+                          : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                      }`}
+                    >
+                      หนา ≥ 5cm
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMinWidth(minWidth === "80" ? "" : "80")}
+                      className={`px-2 py-0.5 rounded text-[10px] font-semibold border transition ${
+                        minWidth === "80"
+                          ? "bg-slate-900 text-white border-slate-900"
+                          : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                      }`}
+                    >
+                      กว้าง ≥ 80cm
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMinLength(minLength === "200" ? "" : "200")}
+                      className={`px-2 py-0.5 rounded text-[10px] font-semibold border transition ${
+                        minLength === "200"
+                          ? "bg-slate-900 text-white border-slate-900"
+                          : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                      }`}
+                    >
+                      ยาว ≥ 2m
+                    </button>
+                    {(minHeight || maxHeight || minWidth || maxWidth || minLength || maxLength) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMinHeight("");
+                          setMaxHeight("");
+                          setMinWidth("");
+                          setMaxWidth("");
+                          setMinLength("");
+                          setMaxLength("");
+                        }}
+                        className="text-[10px] text-rose-600 hover:underline font-semibold ml-auto"
+                      >
+                        ล้างขนาด
+                      </button>
+                    )}
+                  </div>
+
+                  {/* ความสูง / หนา */}
+                  <div>
+                    <span className="text-[10px] text-slate-600 font-semibold mb-1 block">
+                      ความสูง / ความหนา (Height / Thickness)
+                    </span>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <input
+                        type="number"
+                        placeholder="ต่ำสุด cm"
+                        value={minHeight}
+                        onChange={(e) => setMinHeight(e.target.value)}
+                        className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs outline-none focus:border-slate-800 focus:bg-white font-mono"
+                      />
+                      <input
+                        type="number"
+                        placeholder="สูงสุด cm"
+                        value={maxHeight}
+                        onChange={(e) => setMaxHeight(e.target.value)}
+                        className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs outline-none focus:border-slate-800 focus:bg-white font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  {/* ความกว้าง */}
+                  <div>
+                    <span className="text-[10px] text-slate-600 font-semibold mb-1 block">
+                      ความกว้าง (Width)
+                    </span>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <input
+                        type="number"
+                        placeholder="ต่ำสุด cm"
+                        value={minWidth}
+                        onChange={(e) => setMinWidth(e.target.value)}
+                        className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs outline-none focus:border-slate-800 focus:bg-white font-mono"
+                      />
+                      <input
+                        type="number"
+                        placeholder="สูงสุด cm"
+                        value={maxWidth}
+                        onChange={(e) => setMaxWidth(e.target.value)}
+                        className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs outline-none focus:border-slate-800 focus:bg-white font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  {/* ความยาว / ลึก */}
+                  <div>
+                    <span className="text-[10px] text-slate-600 font-semibold mb-1 block">
+                      ความยาว / ลึก (Length / Depth)
+                    </span>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <input
+                        type="number"
+                        placeholder="ต่ำสุด cm"
+                        value={minLength}
+                        onChange={(e) => setMinLength(e.target.value)}
+                        className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs outline-none focus:border-slate-800 focus:bg-white font-mono"
+                      />
+                      <input
+                        type="number"
+                        placeholder="สูงสุด cm"
+                        value={maxLength}
+                        onChange={(e) => setMaxLength(e.target.value)}
+                        className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs outline-none focus:border-slate-800 focus:bg-white font-mono"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* ความกว้าง */}
-            <div>
-              <span className="text-[10px] text-slate-600 font-semibold mb-1 block">ความกว้าง (Width)</span>
-              <div className="grid grid-cols-2 gap-1.5">
-                <input
-                  type="number"
-                  placeholder="ต่ำสุด cm"
-                  value={minWidth}
-                  onChange={(e) => setMinWidth(e.target.value)}
-                  className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs outline-none focus:border-slate-900 font-mono"
-                />
-                <input
-                  type="number"
-                  placeholder="สูงสุด cm"
-                  value={maxWidth}
-                  onChange={(e) => setMaxWidth(e.target.value)}
-                  className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs outline-none focus:border-slate-900 font-mono"
-                />
-              </div>
+            {/* ── Section 3: สี & วัสดุ ── */}
+            <div className="bg-white rounded-xl border border-slate-200/80 shadow-2xs overflow-hidden transition">
+              <button
+                type="button"
+                onClick={() => toggleSection("styling")}
+                className="w-full px-3 py-2.5 flex items-center justify-between text-left hover:bg-slate-50 transition"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <Palette className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+                  <span className="font-bold text-slate-800 text-xs truncate">สี & วัสดุ</span>
+                  {(selectedColors.length > 0 || selectedMaterials.length > 0) && (
+                    <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-slate-900 text-white shrink-0">
+                      เลือก {selectedColors.length + selectedMaterials.length}
+                    </span>
+                  )}
+                </div>
+                {openSections.styling ? (
+                  <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                ) : (
+                  <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                )}
+              </button>
+
+              {openSections.styling && (
+                <div className="p-3 pt-0 border-t border-slate-100 space-y-3 mt-1">
+                  {/* สี (Color) */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-[11px] font-bold text-slate-700">
+                        สี ({colorOptions.filter((c) => c.count > 0).length})
+                      </span>
+                      {selectedColors.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedColors([])}
+                          className="text-[10px] text-rose-600 hover:underline font-semibold"
+                        >
+                          ล้างสี ({selectedColors.length})
+                        </button>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-1 max-h-40 overflow-y-auto pr-0.5">
+                      {colorOptions.map((opt) => {
+                        const isSelected = selectedColors.includes(opt.value.toLowerCase());
+                        const disabled = opt.count === 0;
+                        return (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            disabled={disabled}
+                            onClick={() => toggleColor(opt.value)}
+                            className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-left transition select-none ${
+                              isSelected
+                                ? "bg-slate-900 text-white font-bold shadow-xs"
+                                : disabled
+                                ? "opacity-35 cursor-not-allowed text-slate-400"
+                                : "hover:bg-slate-50 text-slate-700 font-medium"
+                            }`}
+                          >
+                            <span
+                              className="w-3 h-3 rounded-full shrink-0 border border-slate-300"
+                              style={opt.swatch ? { backgroundColor: opt.swatch } : { backgroundColor: "#cbd5e1" }}
+                            />
+                            <span className="text-[11px] truncate flex-1">{opt.label}</span>
+                            <span className={`text-[10px] font-mono shrink-0 ${isSelected ? "text-slate-300" : "text-slate-400"}`}>
+                              {opt.count}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* วัสดุ (Material) */}
+                  <div className="pt-2 border-t border-slate-100">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-[11px] font-bold text-slate-700">
+                        วัสดุ ({materialOptions.length})
+                      </span>
+                      {selectedMaterials.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedMaterials([])}
+                          className="text-[10px] text-rose-600 hover:underline font-semibold"
+                        >
+                          ล้างวัสดุ ({selectedMaterials.length})
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-1 max-h-36 overflow-y-auto pr-0.5">
+                      {materialOptions.map((mat) => {
+                        const isSelected = selectedMaterials.includes(mat.value.toLowerCase());
+                        return (
+                          <button
+                            key={mat.value}
+                            type="button"
+                            onClick={() => toggleMaterial(mat.value)}
+                            className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] transition ${
+                              isSelected
+                                ? "bg-slate-900 text-white font-bold shadow-xs"
+                                : "bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200/80 font-medium"
+                            }`}
+                          >
+                            <span>{mat.label}</span>
+                            <span className={`text-[10px] font-mono ${isSelected ? "text-slate-300" : "text-slate-400"}`}>
+                              {mat.count}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* ความยาว / ลึก */}
-            <div>
-              <span className="text-[10px] text-slate-600 font-semibold mb-1 block">ความยาว / ลึก (Length / Depth)</span>
-              <div className="grid grid-cols-2 gap-1.5">
-                <input
-                  type="number"
-                  placeholder="ต่ำสุด cm"
-                  value={minLength}
-                  onChange={(e) => setMinLength(e.target.value)}
-                  className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs outline-none focus:border-slate-900 font-mono"
-                />
-                <input
-                  type="number"
-                  placeholder="สูงสุด cm"
-                  value={maxLength}
-                  onChange={(e) => setMaxLength(e.target.value)}
-                  className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs outline-none focus:border-slate-900 font-mono"
-                />
-              </div>
+            {/* ── Section 4: ราคา, สต็อก & โปรโมชัน ── */}
+            <div className="bg-white rounded-xl border border-slate-200/80 shadow-2xs overflow-hidden transition">
+              <button
+                type="button"
+                onClick={() => toggleSection("commerce")}
+                className="w-full px-3 py-2.5 flex items-center justify-between text-left hover:bg-slate-50 transition"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <Coins className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                  <span className="font-bold text-slate-800 text-xs truncate">ราคา, สต็อก & โปรโมชัน</span>
+                  {(stockFilter !== "ALL" || promoStatusFilter !== "ALL" || priceFilter !== "ALL" || minPrice || maxPrice) && (
+                    <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-amber-500 text-slate-950 shrink-0">
+                      กำลังกรอง
+                    </span>
+                  )}
+                </div>
+                {openSections.commerce ? (
+                  <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                ) : (
+                  <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                )}
+              </button>
+
+              {openSections.commerce && (
+                <div className="p-3 pt-0 border-t border-slate-100 space-y-3 mt-1">
+                  {/* สถานะสต็อก */}
+                  <div>
+                    <span className="text-[11px] font-bold text-slate-700 block mb-1">
+                      สถานะสต็อก
+                    </span>
+                    <div className="grid grid-cols-2 gap-1 bg-slate-50 rounded-lg p-1 border border-slate-200/60">
+                      {[
+                        { key: "ALL", label: "ทั้งหมด" },
+                        { key: "IN_STOCK", label: "มีสต็อก (> 0)" },
+                        { key: "OUT_OF_STOCK", label: "สต็อกหมด (0)" },
+                        { key: "NEGATIVE", label: "สต็อกติดลบ (< 0)" },
+                      ].map((item) => {
+                        const isActive = stockFilter === item.key;
+                        return (
+                          <button
+                            key={item.key}
+                            type="button"
+                            onClick={() => setStockFilter(item.key as any)}
+                            className={`px-2 py-1 rounded text-[11px] font-medium transition text-center ${
+                              isActive
+                                ? "bg-slate-900 text-white font-bold shadow-xs"
+                                : "hover:bg-slate-200/60 text-slate-600"
+                            }`}
+                          >
+                            {item.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* สถานะโปรโมชันปัจจุบัน */}
+                  <div>
+                    <span className="text-[11px] font-bold text-slate-700 block mb-1">
+                      สถานะโปรโมชันปัจจุบัน
+                    </span>
+                    <div className="grid grid-cols-3 gap-1 bg-slate-50 rounded-lg p-1 border border-slate-200/60">
+                      {[
+                        { key: "ALL", label: "ทั้งหมด" },
+                        { key: "NO_PROMO", label: "ยังไม่มีโปร" },
+                        { key: "HAS_PROMO", label: "มีโปรแล้ว" },
+                      ].map((item) => {
+                        const isActive = promoStatusFilter === item.key;
+                        return (
+                          <button
+                            key={item.key}
+                            type="button"
+                            onClick={() => setPromoStatusFilter(item.key as any)}
+                            className={`px-1 py-1 rounded text-[11px] font-medium transition text-center ${
+                              isActive
+                                ? "bg-slate-900 text-white font-bold shadow-xs"
+                                : "hover:bg-slate-200/60 text-slate-600"
+                            }`}
+                          >
+                            {item.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* ช่วงราคา */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[11px] font-bold text-slate-700">
+                        ช่วงราคา
+                      </span>
+                      {(priceFilter !== "ALL" || minPrice !== "" || maxPrice !== "") && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPriceFilter("ALL");
+                            setMinPrice("");
+                            setMaxPrice("");
+                          }}
+                          className="text-[10px] text-rose-600 hover:underline font-semibold"
+                        >
+                          รีเซ็ตราคา
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-1 mb-2 bg-slate-50 rounded-lg p-1 border border-slate-200/60">
+                      {[
+                        { key: "ALL", label: "ทุกราคา", count: products.length },
+                        { key: "HAS_PRICE", label: "เฉพาะมีราคา", count: priceStats.hasPrice },
+                        { key: "UNDER_1K", label: "< 1,000 ฿", count: priceStats.under1k },
+                        { key: "1K_3K", label: "1k - 3k ฿", count: priceStats.between1k3k },
+                        { key: "3K_10K", label: "3k - 10k ฿", count: priceStats.between3k10k },
+                        { key: "OVER_10K", label: "> 10,000 ฿", count: priceStats.over10k },
+                      ].map((item) => {
+                        const isActive = priceFilter === item.key && minPrice === "" && maxPrice === "";
+                        return (
+                          <button
+                            key={item.key}
+                            type="button"
+                            onClick={() => {
+                              setPriceFilter(item.key as any);
+                              setMinPrice("");
+                              setMaxPrice("");
+                            }}
+                            className={`flex items-center justify-between px-2 py-1 rounded text-[11px] font-medium transition ${
+                              isActive
+                                ? "bg-slate-900 text-white font-bold shadow-xs"
+                                : "hover:bg-slate-200/60 text-slate-600"
+                            }`}
+                          >
+                            <span>{item.label}</span>
+                            <span className={`text-[10px] font-mono ${isActive ? "text-slate-300" : "text-slate-400"}`}>
+                              {item.count.toLocaleString()}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Custom Min / Max Price Inputs */}
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <input
+                        type="number"
+                        placeholder="ต่ำสุด ฿"
+                        value={minPrice}
+                        onChange={(e) => {
+                          setMinPrice(e.target.value);
+                          setPriceFilter("ALL");
+                        }}
+                        className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs outline-none focus:border-slate-800 focus:bg-white font-mono"
+                      />
+                      <input
+                        type="number"
+                        placeholder="สูงสุด ฿"
+                        value={maxPrice}
+                        onChange={(e) => {
+                          setMaxPrice(e.target.value);
+                          setPriceFilter("ALL");
+                        }}
+                        className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs outline-none focus:border-slate-800 focus:bg-white font-mono"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
+          </div>
+
+          {/* Footer info box */}
+          <div className="p-3 bg-white border-t border-slate-200/80 flex-shrink-0 text-center text-[11px] text-slate-600 font-medium">
+            ตรงตามสเปก <strong className="text-slate-900 font-bold">{filtered.length.toLocaleString()}</strong> จาก {products.length.toLocaleString()} รายการ
           </div>
         </div>
-
-        {/* Footer info box */}
-        <div className="p-3 bg-white border-t border-slate-200/80 flex-shrink-0 text-center text-[11px] text-slate-500 font-medium">
-          ตรงตามสเปก <strong className="text-slate-900 font-bold">{filtered.length.toLocaleString()}</strong> จาก {products.length.toLocaleString()} รายการ
-        </div>
-      </div>
       )}
 
       {/* ── Column 3: Product Picker List & Search ── */}
