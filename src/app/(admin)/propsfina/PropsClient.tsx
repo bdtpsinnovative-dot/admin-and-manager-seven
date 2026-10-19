@@ -30,6 +30,49 @@ const BarcodeSvg = React.memo(function BarcodeSvg({ value }: { value: string }) 
   return <svg ref={ref} className="w-full" />;
 });
 
+export function getProductDisplaySize(item: any): string {
+  if (!item) return "";
+  const specs = item.specs || {};
+  const cat = item.category_id;
+
+  // 1. หมวด prop: แสดงเป็น cm
+  if (cat === "prop") {
+    const L = item.length_cm ?? specs.length_cm;
+    const W = item.width_cm ?? specs.width_cm;
+    const T = item.thickness_cm ?? specs.thickness_cm;
+    const parts = [L, W, T].filter((v) => v != null && v !== "");
+    if (parts.length > 0) {
+      return `${parts.join("×")} cm`;
+    }
+    return specs.size || "";
+  }
+
+  // 2. หมวดแผ่นไม้ (SLABS), ไม้ดิบ (rough_wood), เฟอร์นิเจอร์ (furniture)
+  if (specs.dimensions) {
+    const clean = String(specs.dimensions).replace(/-/g, "×");
+    return clean.toUpperCase().includes("MM") ? clean : `${clean} MM`;
+  }
+
+  if (specs.size && (specs.size.includes("-") || specs.size.includes("×") || specs.size.toUpperCase().includes("MM"))) {
+    const clean = String(specs.size).replace(/-/g, "×");
+    return clean.toUpperCase().includes("MM") ? clean : `${clean} MM`;
+  }
+
+  const L = specs.length_cm ?? item.length_cm;
+  const W = specs.width_cm ?? item.width_cm;
+  const T = specs.thickness_cm ?? item.thickness_cm;
+  const parts = [L, W, T].filter((v) => v != null && v !== "");
+  if (parts.length > 0) {
+    return `${parts.join("×")} mm`;
+  }
+
+  if (specs.size) {
+    return `Size ${specs.size}`;
+  }
+
+  return "";
+}
+
 interface ProductCardProps {
   item: any;
   isSelected: boolean;
@@ -45,11 +88,7 @@ const ProductCard = React.memo(function ProductCard({
   onToggle,
   onEditImage,
 }: ProductCardProps) {
-  const specs = item.specs || {};
-  const L = item.length_cm ?? specs.length_cm ?? '';
-  const W = item.width_cm ?? specs.width_cm ?? '';
-  const T = item.thickness_cm ?? specs.thickness_cm ?? '';
-  const sizeStr = (L || W || T) ? `${L}×${W}×${T}` : (specs.size || '');
+  const sizeStr = getProductDisplaySize(item);
 
   return (
     <div onClick={() => onToggle(item.id)}
@@ -354,7 +393,7 @@ export default function PropsClient({ initialProducts, initialTotalCount, initia
       const W = p.width_cm ?? specs.width_cm ?? '';
       const T = p.thickness_cm ?? specs.thickness_cm ?? '';
       
-      const sizeStr = (L || W || T) ? `${L}×${W}×${T} CM` : (specs.size || '');
+      const sizeStr = getProductDisplaySize(p);
       const colorStr = p.color || '';
       const materialStr = p.material || specs.material || '';
       const priceVal = Number(p.price);
@@ -379,6 +418,7 @@ export default function PropsClient({ initialProducts, initialTotalCount, initia
                     <img src="/logo.terra.home.png" alt="Logo" class="logo-img" />
                   </div>
                   <div class="sku-val">${p.sku || '—'}</div>
+                  ${sizeStr ? `<div class="size-val">${sizeStr}</div>` : ''}
                   ${priceStr ? `<div class="price-val">${priceStr}</div>` : ''}
                 </div>
               </div>
@@ -424,18 +464,20 @@ export default function PropsClient({ initialProducts, initialTotalCount, initia
       }
       
       .photo-sec {
-        height: 20mm;
+        height: 23mm;
         min-height: 0;
         display: flex;
         align-items: center;
         justify-content: center;
         overflow: hidden;
-        margin-bottom: 0.4mm;
+        margin-bottom: 0.2mm;
       }
       
       .photo-sec img {
-        max-width: 35mm;
-        max-height: 20mm;
+        max-width: 37mm;
+        max-height: 23mm;
+        width: 100%;
+        height: 100%;
         object-fit: contain;
         display: block;
       }
@@ -445,9 +487,9 @@ export default function PropsClient({ initialProducts, initialTotalCount, initia
         align-items: center;
         justify-content: space-between;
         border-top: 1px dashed #bbb;
-        height: 22.5mm;
+        height: 19.5mm;
         box-sizing: border-box;
-        padding: 0.8mm 0;
+        padding: 0.4mm 0;
         margin-top: auto;
         width: 100%;
       }
@@ -457,7 +499,7 @@ export default function PropsClient({ initialProducts, initialTotalCount, initia
         align-items: center;
         justify-content: space-between;
         width: 100%;
-        gap: 1.6mm;
+        gap: 1.2mm;
         height: 100%;
       }
       
@@ -469,8 +511,8 @@ export default function PropsClient({ initialProducts, initialTotalCount, initia
       }
       
       .qr-img {
-        width: 15mm;
-        height: 15mm;
+        width: 14mm;
+        height: 14mm;
         object-fit: contain;
         display: block;
       }
@@ -481,7 +523,7 @@ export default function PropsClient({ initialProducts, initialTotalCount, initia
         flex-direction: column;
         align-items: flex-end;
         justify-content: space-between;
-        height: 15mm;
+        height: 17mm;
         flex-grow: 1;
         min-width: 0;
       }
@@ -500,17 +542,27 @@ export default function PropsClient({ initialProducts, initialTotalCount, initia
       }
       
       .sku-val {
-        font-size: 5pt;
+        font-size: 4.8pt;
         line-height: 1.1;
         color: #475569;
         text-align: right;
         word-break: break-all;
-        font-weight: 600;
-        margin: 0.2mm 0;
+        font-weight: 700;
+        margin: 0.1mm 0;
+      }
+
+      .size-val {
+        font-size: 4.8pt;
+        line-height: 1.1;
+        color: #0f172a;
+        text-align: right;
+        word-break: break-all;
+        font-weight: 700;
+        margin: 0.1mm 0;
       }
       
       .price-val {
-        font-size: 11.5pt;
+        font-size: 11pt;
         font-weight: 900;
         color: #000;
         line-height: 1;
