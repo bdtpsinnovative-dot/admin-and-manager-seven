@@ -463,9 +463,14 @@ export default function PropsClient({ products }: Props) {
             </h1>
             <p className="text-slate-500 text-xs mt-0.5">จัดการรายการสินค้าประกอบฉากทั้งหมด {products.length} รายการ</p>
           </div>
-          <Link href="/props/upload" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-semibold text-sm transition">
-            + Add New Prop
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link href="/props2" className="px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded font-semibold text-xs transition">
+              🧪 ไปหน้าที่ 2 (ทดลอง)
+            </Link>
+            <Link href="/props/upload" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-semibold text-sm transition">
+              + Add New Prop
+            </Link>
+          </div>
         </div>
 
         {/* Search Bar */}

@@ -24,6 +24,7 @@ const primaryItems = [
   // { name: "Props / Decor",   href: "/props",        icon: Frame },
   // { name: "Props / Decor (ใหม่)", href: "/props-new",   icon: Frame },
   { name: "Props / Decor",   href: "/propsfina",    icon: Frame },
+  { name: "พิมพ์ป้ายราคา (หน้าที่ 2)", href: "/props2", icon: Tag },
   { name: "Algorithm",      href: "/algorithm",    icon: Activity },
   // { name: "จัดการลอต",       href: "/lots",         icon: Package },
 ];
@@ -68,6 +69,7 @@ export default function AdminSidebar({ user }: { user?: UserData }) {
     if (safeUser.allowedPages.includes(href)) return true;
     if (href === '/gallery' && safeUser.allowedPages.includes('/manager/gallery')) return true;
     if (href === '/manager/gallery' && safeUser.allowedPages.includes('/gallery')) return true;
+    if (href === '/props2' && (safeUser.allowedPages.includes('/propsfina') || safeUser.allowedPages.includes('/props'))) return true;
     return false;
   };
 
@@ -79,7 +81,7 @@ export default function AdminSidebar({ user }: { user?: UserData }) {
     visiblePrimary = primaryItems.filter(item => isPageAllowed(item.href));
     visibleSecondary = secondaryItems.filter(item => isPageAllowed(item.href));
   } else if (safeUser.role === 'data_entry' || safeUser.role === 'warehouse') {
-    visiblePrimary = primaryItems.filter(item => ['/inventory', '/propsfina', '/stock-in'].includes(item.href));
+    visiblePrimary = primaryItems.filter(item => ['/inventory', '/propsfina', '/props2', '/stock-in'].includes(item.href));
     visibleSecondary = [];
   } else if (safeUser.role === 'data_analyst') {
     visiblePrimary = primaryItems.filter(item => ['/dashboard', '/sales-history', '/inventory', '/algorithm', '/stock-in'].includes(item.href));

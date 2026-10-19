@@ -43,7 +43,7 @@ export async function addProp(formData: FormData) {
   }
 }
 
-export async function getAllProps(categoryId?: string) {
+export async function getAllProps(categoryId: string = "prop") {
   const supabase = await createClient();
   const productMap = new Map<number, any>();
   let page = 0;

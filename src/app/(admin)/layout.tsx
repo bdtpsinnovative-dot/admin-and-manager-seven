@@ -66,7 +66,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         path === allowed || 
         path.startsWith(`${allowed}/`) ||
         (allowed === '/gallery' && path.startsWith('/manager/gallery')) ||
-        (allowed === '/manager/gallery' && path.startsWith('/gallery'))
+        (allowed === '/manager/gallery' && path.startsWith('/gallery')) ||
+        (allowed === '/propsfina' && (path === '/props2' || path.startsWith('/props2/'))) ||
+        (allowed === '/props2' && (path === '/propsfina' || path.startsWith('/propsfina/')))
       );
     };
 
@@ -76,7 +78,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       redirect(targetPage);
     }
   } else if (profile?.role === 'data_entry' || profile?.role === 'warehouse') {
-    const defaultAllowed = ['/inventory', '/propsfina', '/stock-in', '/gallery', '/manager/gallery'];
+    const defaultAllowed = ['/inventory', '/propsfina', '/props2', '/stock-in', '/gallery', '/manager/gallery'];
     const isAllowed = (path: string) => {
       if (!path || path === '/') return true;
       return defaultAllowed.some(p => path === p || path.startsWith(`${p}/`));
