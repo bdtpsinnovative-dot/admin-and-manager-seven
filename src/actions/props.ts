@@ -1,5 +1,3 @@
-//src/actions/props.ts
-
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
@@ -108,7 +106,7 @@ export async function updatePropImageUrl(id: number, imageUrl: string) {
 }
 
 // ── Lightweight Select Fields to Avoid Vector/Heavy Payloads ──
-export const PROPS_SELECT_FIELDS =
+const PROPS_SELECT_FIELDS =
   "id, name, sku, color, barcode, price, category_id, image_url, status, specs, length_cm, width_cm, thickness_cm";
 
 // ── Fast Parallel Category Summary Counts (head: true) ──
