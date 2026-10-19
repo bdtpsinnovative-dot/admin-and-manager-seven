@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createInitialProduct, updateProduct, deleteProduct, uploadProductImage } from '../actions/woodslab'
+import FeedbackModal, { type FeedbackModalType } from './ui/FeedbackModal'
 import { 
   Loader2, UploadCloud, X, 
   PackagePlus, RotateCcw, Save, Image as ImageIcon, 
@@ -50,6 +51,23 @@ export default function WoodSlabForm({
   const mainInputRef = useRef<HTMLInputElement>(null)
   const extraInputRef = useRef<HTMLInputElement>(null)
   const formRef = useRef<HTMLFormElement>(null)
+
+  // 🌟 State สำหรับ FeedbackModal สวยๆ กลางจอ
+  const [feedbackModal, setFeedbackModal] = useState<{
+    isOpen: boolean
+    type?: FeedbackModalType
+    title: string
+    subtitle?: string
+    message?: string
+    details?: string | string[]
+    confirmText?: string
+    cancelText?: string
+    confirmVariant?: 'danger' | 'primary' | 'success'
+    onConfirm?: () => void
+  }>({
+    isOpen: false,
+    title: ''
+  })
 
   const colGroup = Array.isArray(initialData?.collection_groups)
     ? initialData?.collection_groups[0]
@@ -185,22 +203,71 @@ export default function WoodSlabForm({
     }
   }
 
-  const handleDelete = async () => {
-    if (!confirm("คุณแน่ใจหรือไม่ที่จะลบสินค้านี้?")) return
-    setLoading(true)
-    setLoadingText('กำลังลบข้อมูล...')
-    
-    try {
-      const res = await deleteProduct(initialData.id)
-      if (res.error) throw new Error(res.error)
-      
-      showToast('ลบสำเร็จ', 'ลบสินค้าเรียบร้อยแล้ว', 'success')
-      const tab = activeCategory === 'prop' ? 'PROP' : activeCategory === 'furniture' ? 'FURNITURE' : activeCategory === 'rough_wood' ? 'ROUGH' : 'SLABS'
-      window.location.href = `/inventory?tab=${tab}`
-    } catch (err: any) {
-      showToast('ผิดพลาด', err.message, 'error')
-      setLoading(false)
-    }
+  const handleDelete = () => {
+    setFeedbackModal({
+      isOpen: true,
+      type: 'danger',
+      title: 'ยืนยันการลบสินค้านี้',
+      subtitle: `รหัสสินค้า: ${initialData?.sku || initialData?.id || '-'}`,
+      message: `คุณแน่ใจหรือไม่ที่จะลบสินค้า "${initialData?.name || ''}" ออกจากระบบ?`,
+      details: [
+        'ระบบจะอนุญาตให้ลบได้เฉพาะสินค้าที่สต็อกเป็น 0 ทุกสาขาเท่านั้น',
+        'ต้องไม่มีประวัติการเคลื่อนไหวสต็อก (Movement) ในระบบ',
+        'ต้องไม่มีประวัติการขายในคำสั่งซื้อ (Order) และไม่มีแท็ก RFID ผูกค้างอยู่'
+      ],
+      confirmText: 'ยืนยันการลบสินค้า',
+      cancelText: 'ยกเลิก',
+      confirmVariant: 'danger',
+      onConfirm: async () => {
+        setLoading(true)
+        setLoadingText('กำลังลบข้อมูล...')
+        try {
+          const res = await deleteProduct(initialData.id)
+          if (res.error) {
+            setLoading(false)
+            // แยกหัวเรื่องและรายละเอียดหากข้อความมีหลายบรรทัด
+            const parts = res.error.split('\n\n')
+            const header = parts[0]
+            const rest = parts.slice(1).join('\n\n')
+
+            setFeedbackModal({
+              isOpen: true,
+              type: 'warning',
+              title: 'ไม่สามารถลบสินค้านี้ได้',
+              subtitle: 'ติดเงื่อนไขความปลอดภัยของระบบคลัง',
+              message: header,
+              details: rest || res.error,
+              confirmText: 'รับทราบ',
+              confirmVariant: 'primary'
+            })
+            return
+          }
+          
+          setFeedbackModal({
+            isOpen: true,
+            type: 'success',
+            title: 'ลบสินค้าสำเร็จ',
+            message: 'ระบบได้ทำการลบสินค้าออกจากระบบเรียบร้อยแล้วครับนาย',
+            confirmText: 'ตกลง',
+            confirmVariant: 'success',
+            onConfirm: () => {
+              const tab = activeCategory === 'prop' ? 'PROP' : activeCategory === 'furniture' ? 'FURNITURE' : activeCategory === 'rough_wood' ? 'ROUGH' : 'SLABS'
+              window.location.href = `/inventory?tab=${tab}`
+            }
+          })
+        } catch (err: any) {
+          setLoading(false)
+          setFeedbackModal({
+            isOpen: true,
+            type: 'error',
+            title: 'เกิดข้อผิดพลาดในการลบสินค้า',
+            message: err.message,
+            confirmText: 'ปิด',
+            confirmVariant: 'danger'
+          })
+        }
+      }
+    })
   }
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -1354,6 +1421,22 @@ export default function WoodSlabForm({
           </div>
         </div>
       </form>
+
+      {/* 🌟 ป๊อปอัปแจ้งเตือนและยืนยันการกระทำกลางจอ (FeedbackModal) */}
+      <FeedbackModal
+        isOpen={feedbackModal.isOpen}
+        type={feedbackModal.type}
+        title={feedbackModal.title}
+        subtitle={feedbackModal.subtitle}
+        message={feedbackModal.message}
+        details={feedbackModal.details}
+        confirmText={feedbackModal.confirmText}
+        cancelText={feedbackModal.cancelText}
+        confirmVariant={feedbackModal.confirmVariant}
+        isLoading={loading}
+        onConfirm={feedbackModal.onConfirm}
+        onClose={() => setFeedbackModal(prev => ({ ...prev, isOpen: false }))}
+      />
     </div>
   )
 }

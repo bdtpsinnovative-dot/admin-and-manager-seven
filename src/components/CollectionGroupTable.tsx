@@ -3,23 +3,55 @@
 import { useState, useEffect } from "react";
 import { Trash2, FolderOpen, AlertCircle, RefreshCw } from "lucide-react";
 import { getCollectionGroupsWithCounts, deleteCollectionGroup } from "../actions/woodslab";
+import FeedbackModal, { type FeedbackModalType } from "./ui/FeedbackModal";
 
 export default function CollectionGroupTable({ tag }: { tag: 'furniture' | 'prop' }) {
   const [groups, setGroups] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  // 🌟 State สำหรับ FeedbackModal สวยๆ กลางจอ
+  const [feedbackModal, setFeedbackModal] = useState<{
+    isOpen: boolean
+    type?: FeedbackModalType
+    title: string
+    subtitle?: string
+    message?: string
+    details?: string | string[]
+    confirmText?: string
+    cancelText?: string
+    confirmVariant?: 'danger' | 'primary' | 'success'
+    onConfirm?: () => void
+  }>({
+    isOpen: false,
+    title: ''
+  });
+
   const loadData = async () => {
     setLoading(true);
     try {
       const res = await getCollectionGroupsWithCounts(tag);
       if (res.error) {
-        alert(res.error);
+        setFeedbackModal({
+          isOpen: true,
+          type: 'error',
+          title: 'โหลดข้อมูลกลุ่มสินค้าไม่สำเร็จ',
+          message: res.error,
+          confirmText: 'รับทราบ',
+          confirmVariant: 'danger'
+        });
       } else {
         setGroups(res.data || []);
       }
     } catch (err: any) {
-      alert("เกิดข้อผิดพลาดในการโหลดข้อมูล: " + err.message);
+      setFeedbackModal({
+        isOpen: true,
+        type: 'error',
+        title: 'เกิดข้อผิดพลาดในการโหลดข้อมูล',
+        message: err.message,
+        confirmText: 'ปิด',
+        confirmVariant: 'danger'
+      });
     } finally {
       setLoading(false);
     }
@@ -29,24 +61,62 @@ export default function CollectionGroupTable({ tag }: { tag: 'furniture' | 'prop
     loadData();
   }, [tag]);
 
-  const handleDelete = async (groupId: string, itemCount: number) => {
-    const confirmMsg = `คุณแน่ใจหรือไม่ที่จะลบกลุ่มสินค้า "${groupId}"?\n\n⚠️ คำเตือน: การลบกลุ่มนี้จะทำการลบสินค้าที่อยู่ภายในกลุ่มจำนวน ${itemCount} ชิ้นออกไปด้วยทั้งหมดโดยถาวร! (แต่จะไม่แตะต้องข้อมูลสต็อก หากสินค้าชิ้นไหนมีข้อมูลสต็อกอยู่ ระบบจะแจ้งเตือนและยกเลิกการลบ)`;
-    if (!confirm(confirmMsg)) return;
-
-    setDeletingId(groupId);
-    try {
-      const res = await deleteCollectionGroup(groupId);
-      if (res.error) {
-        alert(`เกิดข้อผิดพลาด: ${res.error}`);
-      } else {
-        alert(`ลบกลุ่มสินค้า ${groupId} เรียบร้อยแล้วครับนาย`);
-        await loadData();
+  const handleDelete = (groupId: string, itemCount: number) => {
+    setFeedbackModal({
+      isOpen: true,
+      type: 'danger',
+      title: 'ยืนยันการลบกลุ่มสินค้า',
+      subtitle: `รหัสกลุ่ม: ${groupId}`,
+      message: `คุณแน่ใจหรือไม่ที่จะลบกลุ่มสินค้านี้ออกจากระบบ?`,
+      details: [
+        `การลบกลุ่มนี้จะทำการลบสินค้าที่อยู่ภายในกลุ่มจำนวน ${itemCount.toLocaleString()} ชิ้นไปด้วย`,
+        'ระบบจะอนุญาตให้ลบได้เฉพาะสินค้าที่สต็อกเป็น 0 ทุกสาขาเท่านั้น',
+        'หากมีสินค้าชิ้นใดเคยมีประวัติการเคลื่อนไหวสต็อกหรือมีประวัติการขาย ระบบจะบล็อกการลบเพื่อความปลอดภัย'
+      ],
+      confirmText: 'ยืนยันการลบกลุ่ม',
+      cancelText: 'ยกเลิก',
+      confirmVariant: 'danger',
+      onConfirm: async () => {
+        setDeletingId(groupId);
+        try {
+          const res = await deleteCollectionGroup(groupId);
+          if (res.error) {
+            setFeedbackModal({
+              isOpen: true,
+              type: 'warning',
+              title: 'ไม่สามารถลบกลุ่มสินค้านี้ได้',
+              subtitle: 'ติดเงื่อนไขความปลอดภัยของสินค้าภายในกลุ่ม',
+              message: res.error,
+              confirmText: 'รับทราบ',
+              confirmVariant: 'primary'
+            });
+          } else {
+            setFeedbackModal({
+              isOpen: true,
+              type: 'success',
+              title: 'ลบกลุ่มสินค้าสำเร็จ',
+              message: `ลบกลุ่มสินค้า "${groupId}" เรียบร้อยแล้วครับนาย`,
+              confirmText: 'ตกลง',
+              confirmVariant: 'success',
+              onConfirm: async () => {
+                await loadData();
+              }
+            });
+          }
+        } catch (err: any) {
+          setFeedbackModal({
+            isOpen: true,
+            type: 'error',
+            title: 'เกิดข้อผิดพลาด',
+            message: err.message || 'ไม่สามารถลบกลุ่มสินค้าได้',
+            confirmText: 'ปิด',
+            confirmVariant: 'danger'
+          });
+        } finally {
+          setDeletingId(null);
+        }
       }
-    } catch (err: any) {
-      alert(`ผิดพลาด: ${err.message}`);
-    } finally {
-      setDeletingId(null);
-    }
+    });
   };
 
   if (loading) {
@@ -130,6 +200,22 @@ export default function CollectionGroupTable({ tag }: { tag: 'furniture' | 'prop
         )}
         </tbody>
       </table>
+
+      {/* 🌟 ป๊อปอัปแจ้งเตือนและยืนยันการกระทำกลางจอ (FeedbackModal) */}
+      <FeedbackModal
+        isOpen={feedbackModal.isOpen}
+        type={feedbackModal.type}
+        title={feedbackModal.title}
+        subtitle={feedbackModal.subtitle}
+        message={feedbackModal.message}
+        details={feedbackModal.details}
+        confirmText={feedbackModal.confirmText}
+        cancelText={feedbackModal.cancelText}
+        confirmVariant={feedbackModal.confirmVariant}
+        isLoading={Boolean(deletingId)}
+        onConfirm={feedbackModal.onConfirm}
+        onClose={() => setFeedbackModal(prev => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 }

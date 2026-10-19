@@ -5,6 +5,7 @@ import Link from "next/link"
 import { Edit, Package, AlertCircle, Hammer, Layers, Box, Trash2, Plus, Loader2 } from "lucide-react"
 import RoughWoodForm from "./RoughWoodForm"
 import { deleteProductsBulk, loadMoreProducts, type ProductExtraFilters } from "../actions/woodslab"
+import FeedbackModal, { type FeedbackModalType } from "./ui/FeedbackModal"
 // 💡 ถอด CategoryBadge ออก แล้วใช้แบบ Inline ด้านล่างแทนเพื่อความแม่นยำครับ
 
 interface InventoryTableProps {
@@ -43,6 +44,23 @@ export default function InventoryTable({
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [isDeleting, setIsDeleting] = useState(false)
 
+  // 🌟 State สำหรับ FeedbackModal สวยๆ กลางจอ
+  const [feedbackModal, setFeedbackModal] = useState<{
+    isOpen: boolean
+    type?: FeedbackModalType
+    title: string
+    subtitle?: string
+    message?: string
+    details?: string | string[]
+    confirmText?: string
+    cancelText?: string
+    confirmVariant?: 'danger' | 'primary' | 'success'
+    onConfirm?: () => void
+  }>({
+    isOpen: false,
+    title: ''
+  })
+
   // ซิงค์เมื่อ props เปลี่ยน (เช่น เปลี่ยน tab หรือ filter)
   useEffect(() => {
     const list = products || []
@@ -75,7 +93,14 @@ export default function InventoryTable({
       })
 
       if (res.error) {
-        alert(`เกิดข้อผิดพลาดในการโหลดข้อมูลเพิ่ม: ${res.error}`)
+        setFeedbackModal({
+          isOpen: true,
+          type: 'error',
+          title: 'โหลดข้อมูลเพิ่มไม่สำเร็จ',
+          message: res.error,
+          confirmText: 'รับทราบ',
+          confirmVariant: 'danger'
+        })
       } else if (res.data && res.data.length > 0) {
         setItems(prev => [...prev, ...res.data])
         setOffset(prev => prev + res.data.length)
@@ -84,7 +109,14 @@ export default function InventoryTable({
         }
       }
     } catch (err: any) {
-      alert(`โหลดข้อมูลเพิ่มไม่สำเร็จ: ${err.message}`)
+      setFeedbackModal({
+        isOpen: true,
+        type: 'error',
+        title: 'เกิดข้อผิดพลาดในการโหลดข้อมูล',
+        message: err.message,
+        confirmText: 'ปิด',
+        confirmVariant: 'danger'
+      })
     } finally {
       setIsLoadingMore(false)
     }
@@ -102,23 +134,73 @@ export default function InventoryTable({
     return new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB' }).format(amount)
   }
 
-  const handleBulkDelete = async () => {
-    if (!confirm(`คุณแน่ใจหรือไม่ที่จะลบสินค้าที่เลือกจำนวน ${selectedIds.size} รายการ? (ระบบจะไม่ลบข้อมูลสต็อก หากติดการใช้งานอยู่จะแจ้งเตือน)`)) return
-    setIsDeleting(true)
-    try {
-      const res = await deleteProductsBulk(Array.from(selectedIds))
-      if (res.error) {
-        alert(`เกิดข้อผิดพลาดในการลบสินค้า: ${res.error}`)
-      } else {
-        alert("ลบสินค้าที่เลือกเรียบร้อยแล้วครับนาย")
-        setSelectedIds(new Set())
-        window.location.reload()
+  // 🗑️ ลบสินค้าแบบหลายรายการ (Bulk Delete) ผ่าน FeedbackModal กลางจอสวยๆ
+  const handleBulkDelete = () => {
+    if (selectedIds.size === 0) return
+
+    setFeedbackModal({
+      isOpen: true,
+      type: 'danger',
+      title: 'ยืนยันการลบสินค้าที่เลือก',
+      subtitle: `เลือกไว้ทั้งหมด ${selectedIds.size.toLocaleString()} รายการ`,
+      message: `คุณแน่ใจหรือไม่ที่จะลบสินค้าที่เลือกจำนวน ${selectedIds.size.toLocaleString()} รายการออกจากระบบ?`,
+      details: [
+        'ระบบจะอนุญาตให้ลบได้เฉพาะสินค้าที่สต็อกเป็น 0 ทุกสาขาเท่านั้น',
+        'ต้องไม่มีประวัติการเคลื่อนไหวสต็อก (Movement) ในระบบ',
+        'ต้องไม่มีประวัติการขายในคำสั่งซื้อ (Order) และไม่มีแท็ก RFID ผูกค้างอยู่'
+      ],
+      confirmText: `ยืนยันลบ ${selectedIds.size.toLocaleString()} รายการ`,
+      cancelText: 'ยกเลิก',
+      confirmVariant: 'danger',
+      onConfirm: async () => {
+        setIsDeleting(true)
+        try {
+          const res = await deleteProductsBulk(Array.from(selectedIds))
+          if (res.error) {
+            // แยกหัวเรื่องและรายละเอียดหากข้อความมีหลายบรรทัด
+            const parts = res.error.split('\n\n')
+            const header = parts[0]
+            const rest = parts.slice(1).join('\n\n')
+
+            setFeedbackModal({
+              isOpen: true,
+              type: 'warning',
+              title: 'ไม่สามารถลบสินค้าได้',
+              subtitle: 'ติดเงื่อนไขความปลอดภัยของระบบคลัง',
+              message: header,
+              details: rest || res.error,
+              confirmText: 'รับทราบ',
+              confirmVariant: 'primary'
+            })
+          } else {
+            setFeedbackModal({
+              isOpen: true,
+              type: 'success',
+              title: 'ลบสินค้าสำเร็จเรียบร้อย',
+              subtitle: 'ระบบได้ดำเนินการลบข้อมูลเรียบร้อยแล้ว',
+              message: `ลบสินค้าที่เลือกจำนวน ${selectedIds.size.toLocaleString()} รายการเรียบร้อยแล้วครับนาย`,
+              confirmText: 'ตกลง',
+              confirmVariant: 'success',
+              onConfirm: () => {
+                setSelectedIds(new Set())
+                window.location.reload()
+              }
+            })
+          }
+        } catch (err: any) {
+          setFeedbackModal({
+            isOpen: true,
+            type: 'error',
+            title: 'เกิดข้อผิดพลาดในการลบสินค้า',
+            message: err.message || 'ไม่สามารถลบสินค้าได้ กรุณาลองใหม่อีกครั้ง',
+            confirmText: 'ปิด',
+            confirmVariant: 'danger'
+          })
+        } finally {
+          setIsDeleting(false)
+        }
       }
-    } catch (err: any) {
-      alert(`ผิดพลาด: ${err.message}`)
-    } finally {
-      setIsDeleting(false)
-    }
+    })
   }
 
   const isSlab = activeTab === 'SLABS'
@@ -554,6 +636,22 @@ export default function InventoryTable({
         }}
         initialData={editingProduct}
         onSuccess={() => window.location.reload()}
+      />
+
+      {/* 🌟 ป๊อปอัปแจ้งเตือนและยืนยันการกระทำกลางจอ (FeedbackModal) */}
+      <FeedbackModal
+        isOpen={feedbackModal.isOpen}
+        type={feedbackModal.type}
+        title={feedbackModal.title}
+        subtitle={feedbackModal.subtitle}
+        message={feedbackModal.message}
+        details={feedbackModal.details}
+        confirmText={feedbackModal.confirmText}
+        cancelText={feedbackModal.cancelText}
+        confirmVariant={feedbackModal.confirmVariant}
+        isLoading={isDeleting}
+        onConfirm={feedbackModal.onConfirm}
+        onClose={() => setFeedbackModal(prev => ({ ...prev, isOpen: false }))}
       />
     </>
   )

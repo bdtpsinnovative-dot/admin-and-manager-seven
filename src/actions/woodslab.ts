@@ -814,31 +814,9 @@ export async function updateProduct(id: string | number, updateData: any) {
   return { success: true }
 }
 
-// ✅ 6. ลบสินค้า (แก้ไขให้ลบ Stock ก่อน)
+// ✅ 6. ลบสินค้าเดี่ยว (ผ่านการตรวจสอบเงื่อนไขความปลอดภัยและเคลียร์สต็อก)
 export async function deleteProduct(id: string | number) {
-    const supabase = await createClient()
-    await checkAuth(supabase) // 🔒 บังคับล็อกอิน
-
-    // 1. ลบรายการใน Stock ที่ผูกกับสินค้านี้ก่อน (ตารางลูก)
-    const { error: stockError } = await supabase
-        .from('stock') 
-        .delete()
-        .eq('product_id', id)
-
-    if (stockError) {
-        console.warn("ลบ Stock ไม่สำเร็จ หรือไม่มีข้อมูล:", stockError.message)
-    }
-
-    // 2. ลบสินค้า (ตารางแม่)
-    const { error } = await supabase
-        .from(TABLE_NAME)
-        .delete()
-        .eq('id', id)
-
-    if (error) return { error: error.message }
-
-    revalidatePath('/inventory')
-    return { success: true }
+  return await deleteProductsBulk([id])
 }
 
 export async function bulkCreateProducts(productsArray: any[]) {
@@ -1034,19 +1012,174 @@ export async function checkExistingGroups(groupIds: string[]): Promise<{ existin
   }
 }
 
-// ✅ ฟังก์ชันลบสินค้าหลายรายการพร้อมกัน (Bulk Delete)
+// 🛡️ ฟังก์ชันตรวจสอบเงื่อนไขความปลอดภัยก่อนลบสินค้า
+// 1. ยอดสต็อกต้องเป็น 0 ทุกสาขา (หากมีสต็อก != 0 ไม่ว่าบวกหรือลบ ห้ามลบเด็ดขาด)
+// 2. ต้องไม่มีประวัติการเคลื่อนไหวสต็อก (stock_movements)
+// 3. ต้องไม่มีประวัติการขายในคำสั่งซื้อ (order_items)
+// 4. ต้องไม่มีแท็ก RFID ผูกค้างอยู่ (product_rfid_tags)
+export async function validateProductsBeforeDelete(supabase: any, ids: (string | number)[]) {
+  const numericIds = Array.from(new Set(ids.map(id => Number(id)).filter(id => !isNaN(id) && id > 0)))
+  if (numericIds.length === 0) {
+    return { canDelete: false, error: 'ไม่พบรายการสินค้าที่ระบุ' }
+  }
+
+  // 1. ดึงข้อมูลสินค้าที่ต้องการลบ
+  const { data: products, error: pError } = await supabase
+    .from(TABLE_NAME)
+    .select('id, name, sku')
+    .in('id', numericIds)
+
+  if (pError) {
+    return { canDelete: false, error: `ไม่สามารถดึงข้อมูลสินค้าเพื่อตรวจสอบได้: ${pError.message}` }
+  }
+
+  const productMap = new Map<number, { id: number; name: string; sku: string }>()
+  products?.forEach((p: any) => productMap.set(p.id, { id: p.id, name: p.name || 'ไม่มีชื่อสินค้า', sku: p.sku || '-' }))
+
+  // เก็บข้อผิดพลาดของแต่ละสินค้า: productId -> string[]
+  const errorsByProduct = new Map<number, string[]>()
+  const addError = (pId: number, msg: string) => {
+    if (!errorsByProduct.has(pId)) errorsByProduct.set(pId, [])
+    errorsByProduct.get(pId)!.push(msg)
+  }
+
+  // 2. ตรวจสอบสต็อก (Stock) - ถ้าสต็อกไม่ใช่ 0 (ไม่ว่าจะเป็นบวกหรือลบ เช่น 1 หรือ -1) ห้ามลบเด็ดขาด!
+  const { data: stockRows, error: sError } = await supabase
+    .from('stock')
+    .select('product_id, branch_id, qty')
+    .in('product_id', numericIds)
+
+  if (!sError && stockRows) {
+    for (const s of stockRows) {
+      const qty = Number(s.qty) || 0
+      if (qty !== 0) {
+        addError(s.product_id, `มียอดสต็อกคงเหลือ ${qty} ชิ้น (ต้องมียอดสต็อกเป็น 0 ทุกสาขาเท่านั้นจึงจะลบได้)`)
+      }
+    }
+  }
+
+  // 3. ตรวจสอบประวัติการเคลื่อนไหวสต็อก (stock_movements)
+  const [movementsBigint, movementsId] = await Promise.all([
+    supabase.from('stock_movements').select('product_id_bigint').in('product_id_bigint', numericIds),
+    supabase.from('stock_movements').select('product_id').in('product_id', numericIds)
+  ])
+
+  const movementCounts = new Map<number, number>()
+  if (!movementsBigint.error && movementsBigint.data) {
+    for (const m of movementsBigint.data) {
+      const pId = Number(m.product_id_bigint)
+      if (pId) movementCounts.set(pId, (movementCounts.get(pId) || 0) + 1)
+    }
+  }
+  if (!movementsId.error && movementsId.data) {
+    for (const m of movementsId.data) {
+      const pId = Number(m.product_id)
+      if (pId) movementCounts.set(pId, (movementCounts.get(pId) || 0) + 1)
+    }
+  }
+  for (const [pId, count] of movementCounts.entries()) {
+    addError(pId, `มีประวัติการเคลื่อนไหวสต็อก (Movement) ในระบบแล้ว ${count} รายการ เพื่อป้องกันประวัติคลังเสียหายจึงไม่อนุญาตให้ลบ`)
+  }
+
+  // 4. ตรวจสอบประวัติการขายใน Order (order_items)
+  const { data: orderItems, error: oError } = await supabase
+    .from('order_items')
+    .select('product_id')
+    .in('product_id', numericIds)
+
+  if (!oError && orderItems && orderItems.length > 0) {
+    const orderCounts = new Map<number, number>()
+    for (const item of orderItems) {
+      const pId = Number(item.product_id)
+      if (pId) orderCounts.set(pId, (orderCounts.get(pId) || 0) + 1)
+    }
+    for (const [pId, count] of orderCounts.entries()) {
+      addError(pId, `มีประวัติการขายในคำสั่งซื้อแล้ว ${count} รายการ`)
+    }
+  }
+
+  // 5. ตรวจสอบแท็ก RFID (product_rfid_tags)
+  const { data: rfidTags, error: rError } = await supabase
+    .from('product_rfid_tags')
+    .select('product_id')
+    .in('product_id', numericIds)
+
+  if (!rError && rfidTags && rfidTags.length > 0) {
+    const rfidCounts = new Map<number, number>()
+    for (const t of rfidTags) {
+      const pId = Number(t.product_id)
+      if (pId) rfidCounts.set(pId, (rfidCounts.get(pId) || 0) + 1)
+    }
+    for (const [pId, count] of rfidCounts.entries()) {
+      addError(pId, `มีแท็ก RFID ผูกค้างอยู่ ${count} แท็ก`)
+    }
+  }
+
+  // หากมีรายการใดติดเงื่อนไข ส่งข้อความแจ้งเตือนอย่างละเอียด
+  if (errorsByProduct.size > 0) {
+    const blockedCount = errorsByProduct.size
+    if (numericIds.length === 1) {
+      const pId = numericIds[0]
+      const p = productMap.get(pId)
+      const reasons = errorsByProduct.get(pId) || []
+      return {
+        canDelete: false,
+        error: `ไม่สามารถลบสินค้าได้:\nสินค้า: "${p?.name || 'ไม่มีชื่อสินค้า'}" (SKU: ${p?.sku || '-'})\nสาเหตุ:\n${reasons.map(r => `• ${r}`).join('\n')}`
+      }
+    } else {
+      const lines: string[] = []
+      for (const [pId, reasons] of errorsByProduct.entries()) {
+        const p = productMap.get(pId)
+        lines.push(`• [${p?.sku || '-'}] ${p?.name || 'สินค้า'}: ${reasons.join(', ')}`)
+      }
+      return {
+        canDelete: false,
+        error: `ไม่สามารถลบสินค้าที่เลือกได้ (${blockedCount} จาก ${numericIds.length} รายการ ติดเงื่อนไขความปลอดภัย):\n\n${lines.join('\n')}\n\nกรุณาตรวจสอบข้อมูลก่อนดำเนินการอีกครั้งครับ`
+      }
+    }
+  }
+
+  return { canDelete: true, numericIds }
+}
+
+// ✅ ฟังก์ชันลบสินค้าหลายรายการพร้อมกัน (Bulk Delete ปลอดภัย เคลียร์ stock ที่เป็น 0 ก่อนลบ)
 export async function deleteProductsBulk(ids: (string | number)[]) {
   const supabase = await createClient()
   await checkAuth(supabase)
 
+  // 1. ตรวจสอบเงื่อนไขความปลอดภัยก่อนลบ
+  const validation = await validateProductsBeforeDelete(supabase, ids)
+  if (!validation.canDelete || !validation.numericIds) {
+    return { error: validation.error }
+  }
+
+  const { numericIds } = validation
+
+  // 2. เคลียร์แถวในตาราง stock ของสินค้าเหล่านี้ก่อน (ยอดสต็อกเป็น 0 ทุกสาขาเรียบร้อยแล้ว)
+  const { error: stockDelError } = await supabase
+    .from('stock')
+    .delete()
+    .in('product_id', numericIds)
+
+  if (stockDelError) {
+    console.error("Stock delete error before product deletion:", stockDelError.message)
+    return { error: `เกิดข้อผิดพลาดในการเคลียร์ข้อมูลสต็อก: ${stockDelError.message}` }
+  }
+
+  // 3. ลบสินค้าออกจากตาราง products
   const { error } = await supabase
     .from(TABLE_NAME)
     .delete()
-    .in('id', ids)
+    .in('id', numericIds)
 
   if (error) {
     console.error("Bulk delete error:", error.message)
-    return { error: error.message }
+    return { error: `เกิดข้อผิดพลาดในการลบสินค้า: ${error.message}` }
+  }
+
+  // 4. ล้างแคชตัวเลือกฟิลเตอร์
+  for (const key of Object.keys(filterOptionsCache)) {
+    delete filterOptionsCache[key]
   }
 
   revalidatePath('/inventory')
@@ -1082,7 +1215,7 @@ export async function getCollectionGroupsWithCounts(tag: 'furniture' | 'prop') {
   return { data: processed, error: null }
 }
 
-// ✅ ลบกลุ่มสินค้า (Cascade ลบสินค้าภายในผ่านทางโค้ดเท่านั้น โดยไม่ยุ่งกับสต็อก)
+// ✅ ลบกลุ่มสินค้า (Cascade ลบสินค้าภายในผ่านทางโค้ดเท่านั้น โดยผ่านเงื่อนไขความปลอดภัย)
 export async function deleteCollectionGroup(groupId: string) {
   const supabase = await createClient()
   await checkAuth(supabase)
@@ -1098,14 +1231,10 @@ export async function deleteCollectionGroup(groupId: string) {
   if (productsInGroup && productsInGroup.length > 0) {
     const productIds = productsInGroup.map((p: any) => p.id)
     
-    // 2. พยายามลบสินค้าตรงๆ (โดยไม่ลบสต็อก ตามคำสั่งเจ้านาย)
-    const { error: productsDeleteError } = await supabase
-      .from(TABLE_NAME)
-      .delete()
-      .in('id', productIds)
-
-    if (productsDeleteError) {
-      return { error: `ไม่สามารถลบกลุ่มสินค้าได้ เนื่องจากติดการอ้างอิงของสินค้าภายในกลุ่ม: ${productsDeleteError.message}` }
+    // 2. ลบสินค้าภายในกลุ่มด้วย bulk delete ที่มี validation
+    const deleteRes = await deleteProductsBulk(productIds)
+    if (deleteRes.error) {
+      return { error: `ไม่สามารถลบกลุ่มสินค้าได้ เนื่องจากติดเงื่อนไขของสินค้าภายในกลุ่ม:\n${deleteRes.error}` }
     }
   }
 

@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 // ✅ เพิ่ม deleteProduct เข้ามา
 import { createInitialProduct, updateProduct, uploadFile, deleteProduct } from '../actions/woodslab'
+import FeedbackModal, { type FeedbackModalType } from './ui/FeedbackModal'
 import { 
   X, UploadCloud, Loader2, Save, Plus, Trash2 
 } from 'lucide-react'
@@ -63,6 +64,23 @@ export default function RoughWoodForm({ isOpen, onClose, onSuccess, initialData 
 
   const [loading, setLoading] = useState(false)
   const [loadingText, setLoadingText] = useState('')
+
+  // 🌟 State สำหรับ FeedbackModal สวยๆ กลางจอ
+  const [feedbackModal, setFeedbackModal] = useState<{
+    isOpen: boolean
+    type?: FeedbackModalType
+    title: string
+    subtitle?: string
+    message?: string
+    details?: string | string[]
+    confirmText?: string
+    cancelText?: string
+    confirmVariant?: 'danger' | 'primary' | 'success'
+    onConfirm?: () => void
+  }>({
+    isOpen: false,
+    title: ''
+  })
   
   // State รูปภาพ
   const [mainFile, setMainFile] = useState<File | null>(null)
@@ -102,32 +120,77 @@ export default function RoughWoodForm({ isOpen, onClose, onSuccess, initialData 
     setExistingExtraImages(prev => prev.filter((_, i) => i !== index))
   }
 
-  // ✅ ฟังก์ชันลบสินค้า
-  const handleDelete = async () => {
+  // ✅ ฟังก์ชันลบสินค้าผ่าน FeedbackModal กลางจอสวยๆ
+  const handleDelete = () => {
     if (!initialData?.id) return
     
-    // ถามยืนยันก่อนลบ
-    if (!confirm(`⚠️ ยืนยันการลบสินค้า "${initialData.name}"?\nการกระทำนี้ไม่สามารถกู้คืนได้`)) {
-      return
-    }
+    setFeedbackModal({
+      isOpen: true,
+      type: 'danger',
+      title: 'ยืนยันการลบสินค้า',
+      subtitle: `รหัสสินค้า: ${initialData?.sku || initialData?.id || '-'}`,
+      message: `คุณแน่ใจหรือไม่ที่จะลบสินค้า "${initialData.name}" ออกจากระบบ?`,
+      details: [
+        'ระบบจะอนุญาตให้ลบได้เฉพาะสินค้าที่สต็อกเป็น 0 ทุกสาขาเท่านั้น',
+        'ต้องไม่มีประวัติการเคลื่อนไหวสต็อก (Movement) ในระบบ',
+        'ต้องไม่มีประวัติการขายในคำสั่งซื้อ (Order) และไม่มีแท็ก RFID ผูกค้างอยู่'
+      ],
+      confirmText: 'ยืนยันการลบสินค้า',
+      cancelText: 'ยกเลิก',
+      confirmVariant: 'danger',
+      onConfirm: async () => {
+        setLoading(true)
+        setLoadingText('กำลังลบสินค้า...')
 
-    setLoading(true)
-    setLoadingText('กำลังลบสินค้า...')
+        try {
+          const res = await deleteProduct(initialData.id)
+          if (res.error) {
+            setLoading(false)
+            // แยกหัวเรื่องและรายละเอียดหากข้อความมีหลายบรรทัด
+            const parts = res.error.split('\n\n')
+            const header = parts[0]
+            const rest = parts.slice(1).join('\n\n')
 
-    try {
-       const res = await deleteProduct(initialData.id)
-       if (res.error) throw new Error(res.error)
+            setFeedbackModal({
+              isOpen: true,
+              type: 'warning',
+              title: 'ไม่สามารถลบสินค้านี้ได้',
+              subtitle: 'ติดเงื่อนไขความปลอดภัยของระบบคลัง',
+              message: header,
+              details: rest || res.error,
+              confirmText: 'รับทราบ',
+              confirmVariant: 'primary'
+            })
+            return
+          }
 
-       // ลบสำเร็จ
-       setLoading(false)
-       if (onSuccess) onSuccess()
-       onClose()
-       router.refresh()
-    } catch (err: any) {
-       console.error(err)
-       alert("ลบสินค้าไม่สำเร็จ: " + err.message)
-       setLoading(false)
-    }
+          setFeedbackModal({
+            isOpen: true,
+            type: 'success',
+            title: 'ลบสินค้าสำเร็จ',
+            message: `ลบสินค้า "${initialData.name}" เรียบร้อยแล้วครับนาย`,
+            confirmText: 'ตกลง',
+            confirmVariant: 'success',
+            onConfirm: () => {
+              setLoading(false)
+              if (onSuccess) onSuccess()
+              onClose()
+              router.refresh()
+            }
+          })
+        } catch (err: any) {
+          setLoading(false)
+          setFeedbackModal({
+            isOpen: true,
+            type: 'error',
+            title: 'เกิดข้อผิดพลาดในการลบสินค้า',
+            message: err.message,
+            confirmText: 'ปิด',
+            confirmVariant: 'danger'
+          })
+        }
+      }
+    })
   }
 
   const uploadToStorage = async (file: File, productId: string | number, prefix: string) => {
@@ -380,6 +443,22 @@ export default function RoughWoodForm({ isOpen, onClose, onSuccess, initialData 
           </div>
         </div>
       </div>
+
+      {/* 🌟 ป๊อปอัปแจ้งเตือนและยืนยันการกระทำกลางจอ (FeedbackModal) */}
+      <FeedbackModal
+        isOpen={feedbackModal.isOpen}
+        type={feedbackModal.type}
+        title={feedbackModal.title}
+        subtitle={feedbackModal.subtitle}
+        message={feedbackModal.message}
+        details={feedbackModal.details}
+        confirmText={feedbackModal.confirmText}
+        cancelText={feedbackModal.cancelText}
+        confirmVariant={feedbackModal.confirmVariant}
+        isLoading={loading}
+        onConfirm={feedbackModal.onConfirm}
+        onClose={() => setFeedbackModal(prev => ({ ...prev, isOpen: false }))}
+      />
     </div>
   )
 }
