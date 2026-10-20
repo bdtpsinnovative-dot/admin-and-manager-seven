@@ -280,6 +280,7 @@ export default function PropsClient({ initialProducts, initialTotalCount, initia
   const [showCalculator, setShowCalculator] = useState<boolean>(true);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [showModal, setShowModal] = useState(false);
+  const [printLogoMode, setPrintLogoMode] = useState<"auto" | "woodslabs" | "terra" | "zenslab">("auto");
   const [printTargets, setPrintTargets] = useState<any[]>([]);
   const [quantities, setQuantities] = useState<Record<number, number>>({});
   const [showImportModal, setShowImportModal] = useState(false);
@@ -532,6 +533,19 @@ export default function PropsClient({ initialProducts, initialTotalCount, initia
       }
 
       for (let i = 0; i < sets; i++) {
+        let logoSrc = "/logo.terra.home.png";
+        let logoClass = "logo-img logo-terra";
+
+        const isSlabItem = p.category_id === "SLABS" || selectedCategory === "SLABS";
+
+        if (printLogoMode === "woodslabs" || (printLogoMode === "auto" && isSlabItem)) {
+          logoSrc = "/logo.woodslabs.png";
+          logoClass = "logo-img logo-woodslabs";
+        } else if (printLogoMode === "zenslab") {
+          logoSrc = "/logo.zenslab.png";
+          logoClass = "logo-img logo-zenslab";
+        }
+
         groups.push(`
           <div class="group">
             <div class="hole"></div>
@@ -548,7 +562,7 @@ export default function PropsClient({ initialProducts, initialTotalCount, initia
                 <div class="price-box">
                   <div class="price-top">
                     <div class="price-logo">
-                      <img src="/logo.terra.home.png" alt="Logo" class="logo-img" />
+                      <img src="${logoSrc}" alt="Logo" class="${logoClass}" />
                     </div>
                     <div class="sku-val">${p.sku || '—'}</div>
                     ${materialStr ? `<div class="mat-val">${materialStr}</div>` : ''}
@@ -694,8 +708,17 @@ export default function PropsClient({ initialProducts, initialTotalCount, initia
       
       .price-logo .logo-img {
         height: 3.2mm;
+        max-width: 16mm;
         object-fit: contain;
         display: block;
+      }
+      
+      .price-logo .logo-img.logo-woodslabs {
+        height: 3.8mm;
+      }
+
+      .price-logo .logo-img.logo-zenslab {
+        height: 3.0mm;
       }
       
       .sku-val {
@@ -1111,14 +1134,58 @@ export default function PropsClient({ initialProducts, initialTotalCount, initia
               })}
             </div>
 
-            <div className="p-4 border-t border-slate-200 flex flex-col gap-2 bg-white">
+            <div className="p-4 border-t border-slate-200 flex flex-col gap-2.5 bg-white">
+              {/* Logo Selection Toolbar */}
+              <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 bg-slate-50 rounded-lg border border-slate-200 text-xs">
+                <span className="font-bold text-slate-700 flex items-center gap-1.5">
+                  🏷️ โลโก้บนป้าย:
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setPrintLogoMode("auto")}
+                    className={`px-2.5 py-1 rounded text-xs font-semibold transition ${
+                      printLogoMode === "auto"
+                        ? "bg-slate-900 text-white shadow-xs"
+                        : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"
+                    }`}
+                  >
+                    อัตโนมัติตามหมวด {selectedCategory === "SLABS" ? "(🪵 Wood Slabs)" : "(Terra Home)"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPrintLogoMode("woodslabs")}
+                    className={`px-2.5 py-1 rounded text-xs font-semibold transition ${
+                      printLogoMode === "woodslabs"
+                        ? "bg-amber-800 text-white shadow-xs"
+                        : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"
+                    }`}
+                  >
+                    🪵 Wood Slabs
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPrintLogoMode("terra")}
+                    className={`px-2.5 py-1 rounded text-xs font-semibold transition ${
+                      printLogoMode === "terra"
+                        ? "bg-stone-800 text-white shadow-xs"
+                        : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"
+                    }`}
+                  >
+                    Terra Home
+                  </button>
+                </div>
+              </div>
+
               <button onClick={printQrPhoto}
-                className="flex flex-col items-center gap-1 py-4 rounded border border-orange-200 bg-orange-50 hover:bg-orange-100 transition text-slate-700 text-sm">
+                className="flex flex-col items-center gap-1 py-3.5 rounded-lg border border-orange-200 bg-orange-50 hover:bg-orange-100 transition text-slate-700 text-sm">
                 <span className="font-bold text-sm">พิมพ์ QR + รูป + ข้อมูล (Final Layout)</span>
-                <span className="text-[11px] text-slate-500">รูปสินค้าบน · ข้อมูลสินค้า · โลโก้เหนือราคา · QR ย่อ 20% ชิดราคา</span>
+                <span className="text-[11px] text-slate-500">
+                  รูปสินค้าบน · ข้อมูลสินค้า · โลโก้ {printLogoMode === "woodslabs" || (printLogoMode === "auto" && selectedCategory === "SLABS") ? "Wood Slabs 🪵" : "Terra Home Studio"} · QR ชิดราคา
+                </span>
               </button>
               <button onClick={() => setShowModal(false)}
-                className="w-full py-2 rounded border border-slate-200 font-semibold text-slate-500 hover:bg-slate-50 transition text-sm">
+                className="w-full py-2 rounded-lg border border-slate-200 font-semibold text-slate-500 hover:bg-slate-50 transition text-sm">
                 ยกเลิก
               </button>
             </div>
