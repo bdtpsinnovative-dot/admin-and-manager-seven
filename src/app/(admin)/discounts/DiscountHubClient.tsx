@@ -247,10 +247,10 @@ function ProductPicker({
   const [viewMode, setViewMode] = useState<"all" | "selected">("all");
   const [displayLimit, setDisplayLimit] = useState(100);
 
-  // Accordion state for main spec filter panel sections
+  // Accordion state for main spec filter panel sections (ปิดไว้เริ่มต้น ค่อยเปิดเมื่อต้องการ)
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
-    cat: true,
-    suppliers: true,
+    cat: false,
+    suppliers: false,
     styling: false,
     commerce: false,
   });
