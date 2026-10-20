@@ -16,6 +16,7 @@ import {
   Plus,
   Search,
   Check,
+  CheckCheck,
   X,
   Edit2,
   Trash2,
@@ -44,6 +45,10 @@ import {
   ArrowUpDown,
   Ruler,
   Palette,
+  Maximize2,
+  Minimize2,
+  LayoutGrid,
+  LayoutList,
 } from "lucide-react";
 
 import {
@@ -245,11 +250,12 @@ function ProductPicker({
   const [selectedSuppliers, setSelectedSuppliers] = useState<string[]>([]);
   const [supplierSearch, setSupplierSearch] = useState<string>("");
   const [viewMode, setViewMode] = useState<"all" | "selected">("all");
+  const [displayFormat, setDisplayFormat] = useState<"list" | "grid">("grid");
   const [displayLimit, setDisplayLimit] = useState(100);
 
-  // Accordion state for main spec filter panel sections (ปิดไว้เริ่มต้น ค่อยเปิดเมื่อต้องการ)
+  // Accordion state for main spec filter panel sections (เปิดหมวดหมู่เริ่มต้น เพื่อไม่ให้มีพื้นที่ว่างโล่ง)
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
-    cat: false,
+    cat: true,
     suppliers: false,
     styling: false,
     commerce: false,
@@ -988,42 +994,51 @@ function ProductPicker({
     if (selectedBranchId) {
       if (branchStock > 0) {
         return (
-          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-            สาขา: {branchStock} <span className="font-normal text-emerald-600/70 ml-1">(รวม {totalStock})</span>
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+            <Package className="w-2.5 h-2.5 shrink-0" />
+            <span>{branchStock}</span>
+            <span className="font-normal text-emerald-600/70">({totalStock})</span>
           </span>
         );
       }
       if (branchStock === 0) {
         return (
-          <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-slate-100 text-slate-500 border border-slate-200">
-            สาขาหมด <span className="text-slate-400/80 ml-1">(รวม {totalStock})</span>
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-400 border border-slate-200">
+            <Package className="w-2.5 h-2.5 text-slate-300 shrink-0" />
+            <span>0</span>
+            <span className="text-slate-400/80">({totalStock})</span>
           </span>
         );
       }
       return (
-        <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-rose-50 text-rose-600 border border-rose-200">
-          ติดลบ {branchStock} <span className="font-normal text-rose-500/70 ml-1">(รวม {totalStock})</span>
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-600 border border-rose-200">
+          <AlertCircle className="w-2.5 h-2.5 shrink-0" />
+          <span>{branchStock}</span>
+          <span className="font-normal text-rose-500/70">({totalStock})</span>
         </span>
       );
     }
 
     if (totalStock > 0) {
       return (
-        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-          สต็อก: {totalStock.toLocaleString()}
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+          <Package className="w-2.5 h-2.5 shrink-0" />
+          <span>{totalStock.toLocaleString()}</span>
         </span>
       );
     }
     if (totalStock === 0) {
       return (
-        <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-slate-100 text-slate-500 border border-slate-200">
-          หมด (0)
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-400 border border-slate-200">
+          <Package className="w-2.5 h-2.5 text-slate-300 shrink-0" />
+          <span>0</span>
         </span>
       );
     }
     return (
-      <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-rose-50 text-rose-600 border border-rose-200">
-        ติดลบ {totalStock}
+      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-600 border border-rose-200">
+        <AlertCircle className="w-2.5 h-2.5 shrink-0" />
+        <span>{totalStock}</span>
       </span>
     );
   };
@@ -1036,7 +1051,7 @@ function ProductPicker({
     <>
       {/* ── Middle Column: Spec Filters Panel (แยกออกมาต่างหากอย่างละเอียด) ── */}
       {showSpecPanel && (
-        <div className="w-72 sm:w-80 border-r border-slate-200/80 flex flex-col flex-shrink-0 bg-slate-50/70">
+        <div className="w-64 sm:w-72 border-r border-slate-200/80 flex flex-col flex-shrink-0 bg-slate-50/70">
           {/* Header */}
           <div className="px-3.5 py-3 border-b border-slate-200/80 flex items-center justify-between bg-white flex-shrink-0">
             <div className="flex items-center gap-2">
@@ -2046,179 +2061,137 @@ function ProductPicker({
       )}
 
       {/* ── Column 3: Product Picker List & Search ── */}
-      <div className="flex-1 flex flex-col min-w-0 bg-white p-5 space-y-3">
-        {/* View Mode, Category, Price & Selection Tabs (Header Bar) */}
-        <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 flex-shrink-0 flex-wrap gap-2">
-          <div className="flex items-center gap-2 flex-wrap">
+      <div className="flex-1 flex flex-col min-w-0 bg-white p-3.5 space-y-2">
+        {/* Row 1: Header Action & View Mode Toolbar */}
+        <div className="flex items-center justify-between gap-2 flex-shrink-0">
+          <div className="flex items-center gap-2">
+            {/* Spec Panel Toggle Button */}
             <button
               type="button"
               onClick={() => setShowSpecPanel(!showSpecPanel)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition flex items-center gap-1.5 ${
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition flex items-center gap-1.5 ${
                 showSpecPanel
                   ? "bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200"
-                  : "bg-amber-50 border-amber-300 text-amber-900 hover:bg-amber-100 shadow-2xs"
+                  : "bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100 shadow-2xs"
               }`}
-              title="สลับซ่อน/แสดงแผงตัวกรองสเปกละเอียดด้านซ้าย"
+              title={showSpecPanel ? "ซ่อนแผงตัวกรองสเปกละเอียด" : "เปิดแผงตัวกรองสเปกละเอียด"}
             >
-              <SlidersHorizontal className="w-3.5 h-3.5 text-slate-500" />
-              <span>{showSpecPanel ? "ซ่อนสเปก" : "เปิดสเปก"}</span>
+              <SlidersHorizontal className="w-3.5 h-3.5" />
+              <span>{showSpecPanel ? "ซ่อนสเปก" : "กรองสเปก"}</span>
+              {hasActiveFilters && (
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+              )}
             </button>
 
-            <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl">
+            {/* View Mode Tabs (Compact Segmented Control) */}
+            <div className="flex items-center p-0.5 bg-slate-100 rounded-lg">
               <button
                 type="button"
                 onClick={() => setViewMode("all")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+                className={`px-2.5 py-1 rounded-md text-xs font-bold transition flex items-center gap-1.5 ${
                   viewMode === "all"
-                    ? "bg-white text-slate-900 shadow-xs"
+                    ? "bg-white text-slate-900 shadow-2xs"
                     : "text-slate-500 hover:text-slate-800"
                 }`}
+                title="แสดงสินค้าทั้งหมดตามตัวกรอง"
               >
                 <Package className="w-3.5 h-3.5" />
-                <span>สินค้าตามตัวกรอง ({filtered.length.toLocaleString()})</span>
+                <span>ทั้งหมด</span>
+                <span
+                  className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                    viewMode === "all"
+                      ? "bg-slate-100 text-slate-800"
+                      : "bg-slate-200/70 text-slate-600"
+                  }`}
+                >
+                  {filtered.length.toLocaleString()}
+                </span>
               </button>
               <button
                 type="button"
                 onClick={() => setViewMode("selected")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+                className={`px-2.5 py-1 rounded-md text-xs font-bold transition flex items-center gap-1.5 ${
                   viewMode === "selected"
-                    ? "bg-slate-900 text-white shadow-xs"
+                    ? "bg-slate-900 text-white shadow-2xs"
                     : "text-slate-500 hover:text-slate-800"
                 }`}
+                title="แสดงเฉพาะรายการที่เลือกแล้ว"
               >
-                <Check className="w-3.5 h-3.5" />
-                <span>รายการที่เลือกแล้ว ({selectedProductIds.length.toLocaleString()})</span>
-              </button>
-            </div>
-
-            {/* Dropdown 1: หมวดหมู่ (ข้าง ๆ ข้างบน) */}
-            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-xl px-2.5 py-1.5 transition">
-              <Layers className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-              <select
-                value={selectedMainCat}
-                onChange={(e) => {
-                  setSelectedMainCat(e.target.value);
-                  setSelectedSubCats([]);
-                }}
-                className="bg-transparent text-xs font-semibold text-slate-700 outline-none cursor-pointer"
-              >
-                {MAIN_CATEGORIES.map((cat) => {
-                  const count =
-                    cat.key === "ALL"
-                      ? products.length
-                      : products.filter((p) => p.category_id === cat.key).length;
-                  return (
-                    <option key={cat.key} value={cat.key}>
-                      หมวดหมู่: {cat.label} ({count.toLocaleString()})
-                    </option>
-                  );
-                })}
-              </select>
-            </div>
-
-            {/* Dropdown 2: ซัพพลายเออร์ */}
-            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-xl px-2.5 py-1.5 transition">
-              <Store className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-              <select
-                value={selectedSuppliers.length === 1 ? selectedSuppliers[0] : selectedSuppliers.length > 1 ? "__MULTI__" : "ALL"}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  if (val === "ALL") {
-                    setSelectedSuppliers([]);
-                  } else if (val !== "__MULTI__") {
-                    setSelectedSuppliers([val]);
-                  }
-                }}
-                className="bg-transparent text-xs font-semibold text-slate-700 outline-none cursor-pointer max-w-[170px] truncate"
-              >
-                <option value="ALL">ซัพพลายเออร์: ทั้งหมด</option>
-                {selectedSuppliers.length > 1 && (
-                  <option value="__MULTI__">เลือกแล้ว ({selectedSuppliers.length})</option>
-                )}
-                {supplierOptions.map((s) => (
-                  <option key={s.name} value={s.name}>
-                    {s.name} ({s.count.toLocaleString()})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Control 3: กรองราคาเอง (ต่ำสุด - สูงสุด) */}
-            <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-xl px-2.5 py-1 transition">
-              <Coins className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-              <span className="text-xs font-semibold text-slate-600 mr-0.5">ราคา:</span>
-              <input
-                type="number"
-                placeholder="ต่ำสุด ฿"
-                value={minPrice}
-                onChange={(e) => {
-                  setMinPrice(e.target.value);
-                  setPriceFilter("ALL");
-                }}
-                className="w-16 sm:w-20 bg-white border border-slate-200 rounded px-1.5 py-0.5 text-xs font-mono outline-none focus:border-slate-800"
-              />
-              <span className="text-slate-400 text-xs">-</span>
-              <input
-                type="number"
-                placeholder="สูงสุด ฿"
-                value={maxPrice}
-                onChange={(e) => {
-                  setMaxPrice(e.target.value);
-                  setPriceFilter("ALL");
-                }}
-                className="w-16 sm:w-20 bg-white border border-slate-200 rounded px-1.5 py-0.5 text-xs font-mono outline-none focus:border-slate-800"
-              />
-              {(minPrice !== "" || maxPrice !== "") && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMinPrice("");
-                    setMaxPrice("");
-                  }}
-                  className="p-0.5 text-slate-400 hover:text-rose-600 rounded transition"
-                  title="ล้างช่วงราคา"
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                <span>เลือกแล้ว</span>
+                <span
+                  className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                    viewMode === "selected"
+                      ? "bg-white/20 text-white"
+                      : "bg-emerald-100 text-emerald-800"
+                  }`}
                 >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
-
-            {/* Dropdown 4: สถานะสต็อก */}
-            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-xl px-2.5 py-1.5 transition">
-              <Package className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-              <select
-                value={stockFilter}
-                onChange={(e) => setStockFilter(e.target.value as any)}
-                className="bg-transparent text-xs font-semibold text-slate-700 outline-none cursor-pointer"
-              >
-                <option value="ALL">สต็อก: ทั้งหมด</option>
-                <option value="IN_STOCK">สต็อก: มีสต็อกพร้อมขาย (&gt; 0)</option>
-                <option value="OUT_OF_STOCK">สต็อก: หมด (0)</option>
-                <option value="NEGATIVE">สต็อก: ติดลบ (&lt; 0)</option>
-              </select>
+                  {selectedProductIds.length.toLocaleString()}
+                </span>
+              </button>
             </div>
           </div>
 
-          {selectedProductIds.length > 0 && (
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] text-emerald-700 font-semibold bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg">
-                เลือกสะสมไว้ {selectedProductIds.length} รายการ
-              </span>
+          {/* Right Action Buttons */}
+          <div className="flex items-center gap-1.5">
+            {viewMode === "all" ? (
+              <button
+                type="button"
+                onClick={handleToggleSelectAllFiltered}
+                disabled={sortedList.length === 0}
+                className={`px-3 py-1.5 text-xs font-bold rounded-lg transition flex items-center gap-1.5 flex-shrink-0 disabled:opacity-40 shadow-2xs ${
+                  areAllFilteredSelected
+                    ? "bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100"
+                    : "bg-slate-900 hover:bg-slate-800 text-white"
+                }`}
+                title={
+                  areAllFilteredSelected
+                    ? "ยกเลิกเลือกเฉพาะสินค้าในตัวกรองนี้"
+                    : "เลือกสินค้าที่กรองอยู่ทั้งหมดเข้าสู่โปรโมชั่น"
+                }
+              >
+                {areAllFilteredSelected ? (
+                  <>
+                    <X className="w-3.5 h-3.5" />
+                    <span>ยกเลิกที่กรอง ({sortedList.length.toLocaleString()})</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCheck className="w-3.5 h-3.5" />
+                    <span>เลือกที่กรอง ({sortedList.length.toLocaleString()})</span>
+                  </>
+                )}
+              </button>
+            ) : (
               <button
                 type="button"
                 onClick={clearAll}
-                className="text-xs font-semibold text-rose-600 hover:bg-rose-50 px-2.5 py-1 rounded-lg border border-rose-200 transition"
+                disabled={selectedProductIds.length === 0}
+                className="px-3 py-1.5 text-xs font-bold rounded-lg bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 transition flex items-center gap-1.5 flex-shrink-0 disabled:opacity-40"
               >
-                ล้างที่เลือกทั้งหมด
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>ล้างที่เลือก ({selectedProductIds.length.toLocaleString()})</span>
               </button>
-            </div>
-          )}
+            )}
+
+            {selectedProductIds.length > 0 && viewMode === "all" && (
+              <button
+                type="button"
+                onClick={clearAll}
+                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg border border-transparent hover:border-rose-200 transition"
+                title={`ล้างสินค้าที่เลือกทั้งหมด (${selectedProductIds.length.toLocaleString()} รายการ)`}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* Top search & batch action bar */}
+        {/* Row 2: Search + Quick Category + Sort Bar */}
         <div className="flex items-center gap-2 flex-shrink-0">
+          {/* Search Input */}
           <div className="relative flex-1">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               value={query}
@@ -2226,129 +2199,127 @@ function ProductPicker({
               placeholder={
                 viewMode === "selected"
                   ? "ค้นหาภายในสินค้าที่เลือกไว้..."
-                  : "ค้นหาชื่อสินค้า, SKU, สี, วัสดุ, หมวดย่อย..."
+                  : "ค้นหาชื่อสินค้า, SKU, สี, แบรนด์..."
               }
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-8 py-2 text-xs font-medium outline-none focus:border-slate-900 focus:bg-white transition"
+              className="w-full bg-slate-50 hover:bg-slate-100/70 focus:bg-white border border-slate-200 rounded-lg pl-8 pr-7 py-1.5 text-xs font-medium outline-none focus:border-slate-900 transition"
             />
             {query && (
               <button
                 type="button"
                 onClick={() => setQuery("")}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
               >
-                <X className="w-3.5 h-3.5" />
+                <X className="w-3 h-3" />
               </button>
             )}
           </div>
 
+          {/* Quick Category Selector (shown when spec panel is hidden) */}
+          {!showSpecPanel && (
+            <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 flex-shrink-0">
+              <Layers className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+              <select
+                value={selectedMainCat}
+                onChange={(e) => {
+                  setSelectedMainCat(e.target.value);
+                  setSelectedSubCats([]);
+                }}
+                className="bg-transparent text-xs font-semibold text-slate-700 outline-none cursor-pointer max-w-[120px] truncate"
+              >
+                {MAIN_CATEGORIES.map((cat) => (
+                  <option key={cat.key} value={cat.key}>
+                    {cat.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {/* Sort Selector */}
-          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 flex-shrink-0">
+          <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 flex-shrink-0">
             <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 shrink-0" />
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as any)}
               className="bg-transparent text-xs font-semibold text-slate-700 outline-none cursor-pointer"
             >
-              <option value="default">เรียงลำดับ: ค่าเริ่มต้น (SKU)</option>
-              <option value="price_asc">ราคา: ต่ำสุด ไป สูงสุด (มีราคาขึ้นก่อน)</option>
-              <option value="price_desc">ราคา: สูงสุด ไป ต่ำสุด</option>
-              <option value="stock_desc">สต็อก: มากสุด ไป น้อยสุด</option>
-              <option value="stock_asc">สต็อก: น้อยสุด ไป มากสุด</option>
-              <option value="name_asc">ชื่อสินค้า: ก-ฮ / A-Z</option>
-              <option value="sku_asc">รหัสสินค้า SKU</option>
+              <option value="default">เรียง: SKU</option>
+              <option value="price_asc">ราคา: ต่ำ → สูง</option>
+              <option value="price_desc">ราคา: สูง → ต่ำ</option>
+              <option value="stock_desc">สต็อก: มาก → น้อย</option>
+              <option value="stock_asc">สต็อก: น้อย → มาก</option>
+              <option value="name_asc">ชื่อ: ก-ฮ / A-Z</option>
             </select>
           </div>
 
-          {viewMode === "all" ? (
+          {/* Format Toggle (List vs Grid) */}
+          <div className="flex items-center p-0.5 bg-slate-100 rounded-lg flex-shrink-0 border border-slate-200">
             <button
               type="button"
-              onClick={handleToggleSelectAllFiltered}
-              disabled={sortedList.length === 0}
-              className={`px-3 py-2 text-xs font-bold rounded-xl transition flex items-center gap-1.5 flex-shrink-0 disabled:opacity-40 ${
-                areAllFilteredSelected
-                  ? "bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100"
-                  : "bg-slate-900 hover:bg-slate-800 text-white"
+              onClick={() => setDisplayFormat("grid")}
+              className={`px-2 py-1 rounded-md text-xs font-semibold flex items-center gap-1 transition ${
+                displayFormat === "grid"
+                  ? "bg-white text-slate-900 shadow-2xs"
+                  : "text-slate-500 hover:text-slate-800"
               }`}
-              title={areAllFilteredSelected ? "ยกเลิกเลือกเฉพาะสินค้าในตัวกรองนี้" : "เลือกสินค้าที่กรองอยู่ทั้งหมดเข้าสู่โปรโมชั่น"}
+              title="แสดงแบบกริดการ์ดรูปภาพ (Grid)"
             >
-              <Check className="w-3.5 h-3.5" />
-              <span>
-                {areAllFilteredSelected
-                  ? `ยกเลิกที่กรอง (${sortedList.length})`
-                  : `เลือกที่กรองทั้งหมด (${sortedList.length})`}
-              </span>
+              <LayoutGrid className="w-3.5 h-3.5" />
+              <span>กริด</span>
             </button>
-          ) : (
             <button
               type="button"
-              onClick={clearAll}
-              disabled={selectedProductIds.length === 0}
-              className="px-3 py-2 text-xs font-bold rounded-xl bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 transition flex items-center gap-1.5 flex-shrink-0 disabled:opacity-40"
+              onClick={() => setDisplayFormat("list")}
+              className={`px-2 py-1 rounded-md text-xs font-semibold flex items-center gap-1 transition ${
+                displayFormat === "list"
+                  ? "bg-white text-slate-900 shadow-2xs"
+                  : "text-slate-500 hover:text-slate-800"
+              }`}
+              title="แสดงแบบรายการ (List)"
             >
-              <X className="w-3.5 h-3.5" />
-              <span>ล้างรายการทั้งหมด ({selectedProductIds.length})</span>
+              <LayoutList className="w-3.5 h-3.5" />
+              <span>รายการ</span>
             </button>
-          )}
+          </div>
         </div>
 
-        {/* Selected Items Tray (only shown when in 'all' mode so user can see quick chips) */}
+        {/* Row 3: Single-line Selected Items Banner (Clean notification replacing bulky chips) */}
         {viewMode === "all" && selectedProducts.length > 0 && (
-          <div className="flex-shrink-0 bg-slate-50 border border-slate-200 rounded-xl p-2.5">
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="text-xs font-bold text-slate-800">
-                เลือกไว้ {selectedProducts.length} รายการ
+          <div className="flex items-center justify-between px-3 py-1.5 bg-emerald-50/90 border border-emerald-200/90 rounded-lg flex-shrink-0 text-xs animate-in fade-in duration-150">
+            <div className="flex items-center gap-2 min-w-0">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span className="font-semibold text-emerald-950 truncate">
+                เลือกสะสมไว้แล้ว <strong>{selectedProducts.length.toLocaleString()}</strong> รายการ
               </span>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setViewMode("selected")}
-                  className="text-[11px] font-semibold text-slate-700 hover:text-slate-900 underline"
-                >
-                  เปิดดูแบบการ์ด
-                </button>
-                <button
-                  type="button"
-                  onClick={clearAll}
-                  className="text-[11px] font-semibold text-slate-500 hover:text-rose-600 transition"
-                >
-                  ล้างทั้งหมด
-                </button>
-              </div>
+              {selectedProducts.length <= 3 && (
+                <span className="text-[11px] text-emerald-700 truncate hidden md:inline">
+                  ({selectedProducts.map((p) => p.name || p.sku).join(", ")})
+                </span>
+              )}
             </div>
-            <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto">
-              {selectedProducts.map((p) => (
-                <div
-                  key={p.id}
-                  className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-lg px-2 py-1 shadow-2xs"
-                >
-                  <div className="w-4 h-4 rounded overflow-hidden flex-shrink-0 bg-slate-100">
-                    {getImageUrl(p.image_url) ? (
-                      <img
-                        src={getImageUrl(p.image_url)!}
-                        alt=""
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <Package className="w-3 h-3 text-slate-300 mx-auto" />
-                    )}
-                  </div>
-                  <span className="text-xs text-slate-700 font-medium max-w-[130px] truncate">
-                    {p.name || p.sku}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => removeOne(String(p.id))}
-                    className="text-slate-300 hover:text-rose-500 transition flex-shrink-0"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ))}
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => setViewMode("selected")}
+                className="text-[11px] font-bold text-emerald-800 hover:text-emerald-950 hover:underline flex items-center gap-0.5"
+              >
+                <span>ตรวจดูรายการที่เลือก</span>
+                <ChevronRight className="w-3 h-3" />
+              </button>
+              <span className="text-emerald-300">|</span>
+              <button
+                type="button"
+                onClick={clearAll}
+                className="text-[11px] font-semibold text-rose-600 hover:text-rose-800 transition flex items-center gap-0.5"
+              >
+                <Trash2 className="w-3 h-3" />
+                <span>ล้าง</span>
+              </button>
             </div>
           </div>
         )}
 
-        {/* Product Cards List (Lazy Loaded Virtual Scroll) */}
+        {/* Product Cards List (Lazy Loaded Virtual Scroll with List / Grid modes) */}
         <div
           onScroll={(e) => {
             const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
@@ -2358,7 +2329,9 @@ function ProductPicker({
               }
             }
           }}
-          className="flex-1 overflow-y-auto rounded-xl border border-slate-200 divide-y divide-slate-100 bg-white min-h-0"
+          className={`flex-1 overflow-y-auto rounded-xl border border-slate-200 min-h-0 ${
+            displayFormat === "list" ? "bg-white divide-y divide-slate-100" : "bg-slate-50/50 p-3"
+          }`}
         >
           {activeBaseList.length === 0 ? (
             <div className="p-12 text-center text-xs text-slate-400">
@@ -2370,8 +2343,8 @@ function ProductPicker({
               </p>
               <p className="text-[11px] text-slate-400 mt-0.5">
                 {viewMode === "selected"
-                  ? "สามารถสลับไปที่แท็บ 'สินค้าตามตัวกรอง' เพื่อเลือกสินค้าได้เลย"
-                  : "ลองปรับขนาด สี หรือหมวดหมู่ในแผงตัวกรองด้านซ้าย"}
+                  ? "สามารถสลับไปที่แท็บ 'ทั้งหมด' เพื่อเลือกสินค้าได้เลย"
+                  : "ลองปรับขนาด สี หรือหมวดหมู่ในแผงตัวกรองสเปก"}
               </p>
               {viewMode === "selected" ? (
                 <button
@@ -2379,7 +2352,7 @@ function ProductPicker({
                   onClick={() => setViewMode("all")}
                   className="mt-3 px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-slate-800 transition"
                 >
-                  ไปเลือกสินค้าตามตัวกรอง
+                  ไปเลือกสินค้าทั้งหมด
                 </button>
               ) : hasActiveFilters ? (
                 <button
@@ -2391,18 +2364,135 @@ function ProductPicker({
                 </button>
               ) : null}
             </div>
+          ) : displayFormat === "grid" ? (
+            /* ── Grid View Format ── */
+            <>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2.5">
+                {displayedList.map((p) => {
+                  const isSel = selectedProductIds.includes(String(p.id));
+                  const imgUrl = getImageUrl(p.image_url);
+                  const activePromos = productPromoMap.get(String(p.id));
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => toggle(String(p.id))}
+                      className={`relative flex flex-col rounded-xl border text-left transition select-none overflow-hidden group bg-white shadow-2xs hover:shadow-md ${
+                        isSel
+                          ? "border-slate-900 ring-2 ring-slate-900 bg-slate-900/5"
+                          : "border-slate-200 hover:border-slate-300"
+                      }`}
+                    >
+                      {/* Image Frame */}
+                      <div className="aspect-square w-full bg-slate-100 relative overflow-hidden flex items-center justify-center">
+                        {imgUrl ? (
+                          <img
+                            src={imgUrl}
+                            alt=""
+                            className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                          />
+                        ) : (
+                          <Package className="w-8 h-8 text-slate-300" />
+                        )}
+
+                        {/* Floating Checkbox (Top Left) */}
+                        <div
+                          className={`absolute top-2 left-2 w-5 h-5 rounded-md flex items-center justify-center transition shadow-xs ${
+                            isSel
+                              ? "bg-slate-900 text-white"
+                              : "bg-white/90 backdrop-blur-xs border border-slate-300 hover:border-slate-400 text-transparent"
+                          }`}
+                        >
+                          <Check className="w-3.5 h-3.5 stroke-[3]" />
+                        </div>
+
+                        {/* Floating Price Tag (Top Right) */}
+                        {p.price > 0 ? (
+                          <div className="absolute top-2 right-2 text-[10px] font-bold font-mono text-emerald-800 bg-white/95 backdrop-blur-xs px-1.5 py-0.5 rounded shadow-2xs border border-emerald-200/80">
+                            {Number(p.price).toLocaleString()} ฿
+                          </div>
+                        ) : (
+                          <div className="absolute top-2 right-2 text-[10px] text-slate-400 font-mono bg-white/90 backdrop-blur-xs px-1.5 py-0.5 rounded shadow-2xs">
+                            ฿ —
+                          </div>
+                        )}
+
+                        {/* Active Promo Overlay (Bottom Right of Image) */}
+                        {activePromos && activePromos.length > 0 && (
+                          <div className="absolute bottom-1.5 right-1.5 text-[9px] font-bold text-amber-900 bg-amber-400/95 backdrop-blur-xs px-1.5 py-0.2 rounded shadow-2xs flex items-center gap-0.5">
+                            <Tag className="w-2.5 h-2.5" />
+                            <span>โปร ({activePromos.length})</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Card Body */}
+                      <div className="p-2 flex flex-col flex-1 justify-between gap-1">
+                        <div>
+                          <p
+                            className={`text-xs font-bold truncate ${
+                              isSel ? "text-slate-900" : "text-slate-800"
+                            }`}
+                            title={p.name}
+                          >
+                            {p.name || "—"}
+                          </p>
+                          <div className="flex items-center justify-between text-[10px] text-slate-400 mt-0.5">
+                            <span className="font-mono truncate max-w-[90px]">{p.sku}</span>
+                            {p.sub_category && (
+                              <span className="truncate max-w-[80px] text-slate-500 font-medium">
+                                {p.sub_category}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Specs & Stock Footer */}
+                        <div className="pt-1 border-t border-slate-100 flex items-center justify-between gap-1 text-[10px]">
+                          <div className="flex items-center gap-1 truncate">
+                            {p.color && (
+                              <span className="inline-flex items-center gap-0.5 truncate text-slate-600">
+                                {COLOR_PRESENTATION[p.color.toLowerCase()]?.swatch ? (
+                                  <span
+                                    className="w-2 h-2 rounded-full border border-slate-300 shrink-0"
+                                    style={{
+                                      backgroundColor:
+                                        COLOR_PRESENTATION[p.color.toLowerCase()].swatch,
+                                    }}
+                                  />
+                                ) : (
+                                  <Palette className="w-2.5 h-2.5 text-slate-400 shrink-0" />
+                                )}
+                                <span className="truncate max-w-[50px]">{p.color}</span>
+                              </span>
+                            )}
+                          </div>
+                          <div className="shrink-0">{renderStockBadge(p)}</div>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {displayLimit < activeBaseList.length && (
+                <div className="p-3 text-center text-xs text-slate-400 bg-white/80 rounded-xl mt-3 border border-slate-200">
+                  แสดงแล้ว {displayLimit} จาก {activeBaseList.length} รายการ (เลื่อนลงเพื่อดูเพิ่ม)
+                </div>
+              )}
+            </>
           ) : (
+            /* ── List View Format ── */
             <>
               {displayedList.map((p) => {
                 const isSel = selectedProductIds.includes(String(p.id));
                 const imgUrl = getImageUrl(p.image_url);
-                const dims = formatDimensions(p);
                 return (
                   <button
                     key={p.id}
                     type="button"
                     onClick={() => toggle(String(p.id))}
-                    className={`w-full flex items-center gap-3 px-3.5 py-2.5 text-left transition select-none ${
+                    className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-left transition select-none ${
                       isSel
                         ? "bg-slate-900/5 hover:bg-slate-900/10"
                         : "hover:bg-slate-50/80"
@@ -2420,20 +2510,20 @@ function ProductPicker({
                     </div>
 
                     {/* Image */}
-                    <div className="w-10 h-10 rounded-lg overflow-hidden shrink-0 border border-slate-200 bg-slate-50 flex items-center justify-center">
+                    <div className="w-9 h-9 rounded-lg overflow-hidden shrink-0 border border-slate-200 bg-slate-50 flex items-center justify-center">
                       {imgUrl ? (
                         <img src={imgUrl} alt="" className="w-full h-full object-cover" />
                       ) : (
-                        <Package className="w-4 h-4 text-slate-300" />
+                        <Package className="w-3.5 h-3.5 text-slate-300" />
                       )}
                     </div>
 
                     {/* Main Details */}
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5">
                         <p
                           className={`text-xs font-bold truncate ${
-                            isSel ? "text-slate-900" : "text-slate-700"
+                            isSel ? "text-slate-900" : "text-slate-800"
                           }`}
                         >
                           {p.name || "—"}
@@ -2446,28 +2536,44 @@ function ProductPicker({
                       </div>
 
                       {/* Specs badges line */}
-                      <div className="flex items-center gap-2 mt-1 flex-wrap text-[10px]">
-                        <span className="text-slate-400 font-mono">{p.sku}</span>
-                        {(p.supplier || p.specs?.brand || p.specs?.supplier || p.specs?.factory || p.factory_name) && (
+                      <div className="flex items-center gap-1.5 mt-0.5 flex-wrap text-[10px]">
+                        <span className="text-slate-400 font-mono text-[10px]">{p.sku}</span>
+                        {(p.supplier ||
+                          p.specs?.brand ||
+                          p.specs?.supplier ||
+                          p.specs?.factory ||
+                          p.factory_name) && (
                           <span className="px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-700 border border-indigo-200/80 font-medium inline-flex items-center gap-1">
-                            <Store className="w-2.5 h-2.5" />
-                            {p.supplier || p.specs?.brand || p.specs?.supplier || p.specs?.factory || p.factory_name}
+                            <Store className="w-2.5 h-2.5 shrink-0" />
+                            <span className="truncate max-w-[100px]">
+                              {p.supplier ||
+                                p.specs?.brand ||
+                                p.specs?.supplier ||
+                                p.specs?.factory ||
+                                p.factory_name}
+                            </span>
                           </span>
                         )}
                         {p.color && (
                           <span className="px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 font-medium inline-flex items-center gap-1">
-                            {COLOR_PRESENTATION[p.color.toLowerCase()]?.swatch && (
+                            {COLOR_PRESENTATION[p.color.toLowerCase()]?.swatch ? (
                               <span
                                 className="w-2 h-2 rounded-full border border-slate-300 shrink-0"
-                                style={{ backgroundColor: COLOR_PRESENTATION[p.color.toLowerCase()].swatch }}
+                                style={{
+                                  backgroundColor:
+                                    COLOR_PRESENTATION[p.color.toLowerCase()].swatch,
+                                }}
                               />
+                            ) : (
+                              <Palette className="w-2.5 h-2.5 text-slate-400 shrink-0" />
                             )}
-                            สี: {p.color}
+                            <span>{p.color}</span>
                           </span>
                         )}
                         {p.material && (
-                          <span className="px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 font-medium">
-                            วัสดุ: {p.material}
+                          <span className="px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 font-medium inline-flex items-center gap-1">
+                            <Layers className="w-2.5 h-2.5 text-slate-400 shrink-0" />
+                            <span>{p.material}</span>
                           </span>
                         )}
                         {(() => {
@@ -2479,23 +2585,16 @@ function ProductPicker({
                                 .map(
                                   (pr) =>
                                     `${pr.name} (${
-                                      pr.discount_type === "PERCENT" ? `${pr.value}%` : `${pr.value}฿`
+                                      pr.discount_type === "PERCENT"
+                                        ? `${pr.value}%`
+                                        : `${pr.value}฿`
                                     })`
                                 )
                                 .join(", ")}
-                              className="px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200 font-semibold inline-flex items-center gap-1 text-[10px]"
+                              className="px-1.5 py-0.2 rounded bg-amber-50 text-amber-800 border border-amber-200 font-semibold inline-flex items-center gap-1 text-[10px]"
                             >
                               <Tag className="w-2.5 h-2.5 text-amber-600 shrink-0" />
-                              <span>
-                                มีโปร:{" "}
-                                {activePromos
-                                  .map(
-                                    (pr) =>
-                                      pr.name ||
-                                      (pr.discount_type === "PERCENT" ? `${pr.value}%` : `${pr.value}฿`)
-                                  )
-                                  .join(", ")}
-                              </span>
+                              <span>มีโปร ({activePromos.length})</span>
                             </span>
                           );
                         })()}
@@ -2503,15 +2602,13 @@ function ProductPicker({
                     </div>
 
                     {/* Price & Stock Display Badge */}
-                    <div className="shrink-0 text-right space-y-1">
+                    <div className="shrink-0 text-right space-y-0.5">
                       {p.price > 0 ? (
-                        <div className="text-xs font-bold font-mono text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                        <div className="text-xs font-bold font-mono text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 inline-block">
                           {Number(p.price).toLocaleString()} ฿
                         </div>
                       ) : (
-                        <div className="text-[10px] text-slate-400 font-medium bg-slate-100 px-1.5 py-0.5 rounded">
-                          ไม่ระบุราคา
-                        </div>
+                        <div className="text-[10px] text-slate-400 font-mono">฿ —</div>
                       )}
                       <div>{renderStockBadge(p)}</div>
                     </div>
@@ -2529,16 +2626,20 @@ function ProductPicker({
         </div>
 
         {/* Footer Status Bar */}
-        <div className="flex items-center justify-between text-[11px] text-slate-400 flex-shrink-0 pt-0.5">
-          <span>
-            {viewMode === "selected" ? "สินค้าที่เลือกไว้" : "กรองพบ"}{" "}
-            <strong className="text-slate-700">{activeBaseList.length.toLocaleString()}</strong> จาก{" "}
-            {products.length.toLocaleString()} รายการ
-          </span>
-          {selectedProductIds.length > 0 ? (
-            <span className="font-semibold text-slate-700">
-              เลือกไว้ {selectedProductIds.length} รายการ
+        <div className="flex items-center justify-between text-[11px] text-slate-500 flex-shrink-0 pt-1 border-t border-slate-100">
+          <div className="flex items-center gap-1.5">
+            <Package className="w-3.5 h-3.5 text-slate-400" />
+            <span>
+              {viewMode === "selected" ? "แสดงที่เลือก" : "กรองพบ"}{" "}
+              <strong className="text-slate-800 font-bold">{activeBaseList.length.toLocaleString()}</strong> /{" "}
+              {products.length.toLocaleString()} รายการ
             </span>
+          </div>
+          {selectedProductIds.length > 0 ? (
+            <div className="flex items-center gap-1.5 text-emerald-700 font-semibold">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+              <span>เลือกไว้ {selectedProductIds.length.toLocaleString()} รายการ</span>
+            </div>
           ) : (
             <span className="text-slate-400 italic">ไม่เลือก = ใช้ได้กับทุกสินค้าในระบบ</span>
           )}
@@ -2585,6 +2686,7 @@ export default function DiscountHubClient({
   const [posSearch, setPosSearch] = useState("");
   const [posFilterStatus, setPosFilterStatus] = useState<"all" | "active" | "inactive">("all");
   const [isPosCreateOpen, setIsPosCreateOpen] = useState(false);
+  const [isPosCreateFullscreen, setIsPosCreateFullscreen] = useState(true);
   const [isPosEditOpen, setIsPosEditOpen] = useState(false);
   const [editingPosDiscount, setEditingPosDiscount] = useState<any | null>(null);
   const [posCreateDiscountType, setPosCreateDiscountType] = useState<"PERCENT" | "FIXED">("PERCENT");
@@ -4177,25 +4279,52 @@ export default function DiscountHubClient({
       {/* MODAL: CREATE POS DISCOUNT                                            */}
       {/* ===================================================================== */}
       {isPosCreateOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[1440px] h-[92vh] flex flex-col overflow-hidden border border-slate-200">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 flex-shrink-0 bg-slate-50/50">
+        <div
+          className={
+            isPosCreateFullscreen
+              ? "fixed inset-0 z-50 flex flex-col bg-white overflow-hidden animate-in fade-in duration-150"
+              : "fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-200"
+          }
+        >
+          <div
+            className={
+              isPosCreateFullscreen
+                ? "w-full h-full flex flex-col overflow-hidden bg-white"
+                : "bg-white rounded-2xl shadow-2xl w-full max-w-[1440px] h-[92vh] flex flex-col overflow-hidden border border-slate-200"
+            }
+          >
+            <div className="flex items-center justify-between px-6 py-3 border-b border-slate-100 flex-shrink-0 bg-slate-50/50">
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-slate-900 text-white flex items-center justify-center shadow-xs">
+                <div className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center shadow-xs">
                   <Store className="w-4 h-4" />
                 </div>
                 <div>
                   <h3 className="font-bold text-slate-900 text-sm">สร้างส่วนลด POS หน้าร้าน</h3>
-                  <p className="text-xs text-slate-500">สำหรับระบบคิดเงินและแคชเชียร์หน้าร้าน</p>
+                  <p className="text-[11px] text-slate-500">สำหรับระบบคิดเงินและแคชเชียร์หน้าร้าน</p>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setIsPosCreateOpen(false)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setIsPosCreateFullscreen(!isPosCreateFullscreen)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition"
+                  title={isPosCreateFullscreen ? "ย่อหน้าต่างลง" : "ขยายเต็มจอ (Fullscreen)"}
+                >
+                  {isPosCreateFullscreen ? (
+                    <Minimize2 className="w-4 h-4" />
+                  ) : (
+                    <Maximize2 className="w-4 h-4" />
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsPosCreateOpen(false)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition"
+                  title="ปิดหน้าต่าง"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             {formInlineError && (
@@ -4213,7 +4342,7 @@ export default function DiscountHubClient({
               className="flex flex-1 min-h-0"
             >
               {/* Left Column: Promotion Settings */}
-              <div className="w-72 sm:w-80 flex-shrink-0 border-r border-slate-100 flex flex-col bg-white">
+              <div className="w-64 sm:w-72 flex-shrink-0 border-r border-slate-100 flex flex-col bg-white">
                 <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4">
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1">

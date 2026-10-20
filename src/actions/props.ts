@@ -234,7 +234,7 @@ export async function getActiveDiscounts() {
         discount_rules ( id, product_id, branch_id )
       `)
       .eq("active", true);
-    data = fallback.data;
+    data = (fallback.data?.map((d: any) => ({ ...d, max_discount: null })) ?? null) as typeof data;
     error = fallback.error;
   }
 
