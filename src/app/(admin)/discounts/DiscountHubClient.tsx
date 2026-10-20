@@ -242,19 +242,15 @@ function ProductPicker({
   >("default");
   const [selectedColors, setSelectedColors] = useState<string[]>([]);
   const [selectedMaterials, setSelectedMaterials] = useState<string[]>([]);
+  const [selectedSuppliers, setSelectedSuppliers] = useState<string[]>([]);
+  const [supplierSearch, setSupplierSearch] = useState<string>("");
   const [viewMode, setViewMode] = useState<"all" | "selected">("all");
-  const [minHeight, setMinHeight] = useState<string>("");
-  const [maxHeight, setMaxHeight] = useState<string>("");
-  const [minWidth, setMinWidth] = useState<string>("");
-  const [maxWidth, setMaxWidth] = useState<string>("");
-  const [minLength, setMinLength] = useState<string>("");
-  const [maxLength, setMaxLength] = useState<string>("");
   const [displayLimit, setDisplayLimit] = useState(100);
 
   // Accordion state for main spec filter panel sections
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
     cat: true,
-    dimensions: true,
+    suppliers: true,
     styling: false,
     commerce: false,
   });
@@ -265,16 +261,23 @@ function ProductPicker({
   };
 
   const allExpanded = Boolean(
-    openSections.cat && openSections.dimensions && openSections.styling && openSections.commerce
+    openSections.cat && openSections.suppliers && openSections.styling && openSections.commerce
   );
 
   const toggleAllSections = (expand: boolean) => {
     setOpenSections({
       cat: expand,
-      dimensions: expand,
+      suppliers: expand,
       styling: expand,
       commerce: expand,
     });
+  };
+
+  // สลับการเลือกซัพพลายเออร์หลายเจ้าพร้อมกัน
+  const toggleSupplier = (val: string) => {
+    setSelectedSuppliers((prev) =>
+      prev.includes(val) ? prev.filter((item) => item !== val) : [...prev, val]
+    );
   };
 
   // สลับการเลือกหมวดย่อยหลายอันพร้อมกัน
@@ -342,6 +345,7 @@ function ProductPicker({
     query,
     selectedMainCat,
     selectedSubCats,
+    selectedSuppliers,
     stockFilter,
     promoStatusFilter,
     priceFilter,
@@ -351,12 +355,6 @@ function ProductPicker({
     selectedColors,
     selectedMaterials,
     viewMode,
-    minHeight,
-    maxHeight,
-    minWidth,
-    maxWidth,
-    minLength,
-    maxLength,
     selectedBranchId,
   ]);
 
@@ -614,6 +612,38 @@ function ProductPicker({
     return list;
   }, [products, selectedMainCat, selectedSubCats]);
 
+  // ตัวเลือกซัพพลายเออร์ / โรงงาน (สกัดจาก specs.brand / supplier / factory_name)
+  const supplierOptions = useMemo(() => {
+    let source = products;
+    if (selectedMainCat !== "ALL") {
+      source = source.filter((p) => p.category_id === selectedMainCat);
+    }
+    if (selectedSubCats.length > 0) {
+      source = source.filter((p) =>
+        selectedSubCats.some((sub) => checkProductCategoryMatch(p, selectedMainCat, sub))
+      );
+    }
+
+    const countMap = new Map<string, number>();
+    source.forEach((p) => {
+      const raw = p.supplier || p.specs?.brand || p.specs?.supplier || p.specs?.factory || p.factory_name;
+      if (raw && typeof raw === "string" && raw.trim()) {
+        const val = raw.trim();
+        countMap.set(val, (countMap.get(val) || 0) + 1);
+      }
+    });
+
+    return Array.from(countMap.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
+  }, [products, selectedMainCat, selectedSubCats]);
+
+  const filteredSuppliers = useMemo(() => {
+    if (!supplierSearch.trim()) return supplierOptions;
+    const q = supplierSearch.toLowerCase().trim();
+    return supplierOptions.filter((opt) => opt.name.toLowerCase().includes(q));
+  }, [supplierOptions, supplierSearch]);
+
   // รายการสินค้าที่ถูกเลือกไว้ทั้งหมด
   const selectedProducts = useMemo(() => {
     const set = new Set(selectedProductIds.map(String));
@@ -692,6 +722,14 @@ function ProductPicker({
       );
     }
 
+    // 2.1 ซัพพลายเออร์ / โรงงาน
+    if (selectedSuppliers.length > 0) {
+      result = result.filter((p) => {
+        const sup = p.supplier || p.specs?.brand || p.specs?.supplier || p.specs?.factory || p.factory_name;
+        return sup && selectedSuppliers.includes(String(sup).trim());
+      });
+    }
+
     // 3. กรองตามสต็อก
     if (stockFilter === "IN_STOCK") {
       result = result.filter((p) => {
@@ -767,29 +805,20 @@ function ProductPicker({
       });
     }
 
-    // 6. มิติและขนาด (Height / Thickness, Width, Length / Depth)
-    result = result.filter((p) =>
-      productMatchesDimensions(p, {
-        minHeight,
-        maxHeight,
-        minWidth,
-        maxWidth,
-        minDepth: minLength,
-        maxDepth: maxLength,
-      })
-    );
-
-    // 7. ค้นหาข้อความ (ชื่อ, SKU, หมวดย่อย, สี, วัสดุ)
+    // 6. ค้นหาข้อความ (ชื่อ, SKU, หมวดย่อย, ซัพพลายเออร์, สี, วัสดุ)
     if (query.trim()) {
       const q = query.toLowerCase();
-      result = result.filter(
-        (p) =>
+      result = result.filter((p) => {
+        const sup = p.supplier || p.specs?.brand || p.specs?.supplier || p.specs?.factory || p.factory_name;
+        return (
           p.name?.toLowerCase().includes(q) ||
           p.sku?.toLowerCase().includes(q) ||
           (p.sub_category && p.sub_category.toLowerCase().includes(q)) ||
+          (sup && String(sup).toLowerCase().includes(q)) ||
           (p.color && p.color.toLowerCase().includes(q)) ||
           (p.material && p.material.toLowerCase().includes(q))
-      );
+        );
+      });
     }
 
     return result;
@@ -797,6 +826,7 @@ function ProductPicker({
     products,
     selectedMainCat,
     selectedSubCats,
+    selectedSuppliers,
     stockFilter,
     promoStatusFilter,
     priceFilter,
@@ -804,12 +834,6 @@ function ProductPicker({
     maxPrice,
     selectedColors,
     selectedMaterials,
-    minHeight,
-    maxHeight,
-    minWidth,
-    maxWidth,
-    minLength,
-    maxLength,
     query,
     selectedBranchId,
     productPromoMap,
@@ -918,6 +942,7 @@ function ProductPicker({
   const hasActiveFilters = Boolean(
     selectedMainCat !== "ALL" ||
     selectedSubCats.length > 0 ||
+    selectedSuppliers.length > 0 ||
     stockFilter !== "ALL" ||
     promoStatusFilter !== "ALL" ||
     priceFilter !== "ALL" ||
@@ -926,12 +951,6 @@ function ProductPicker({
     sortBy !== "default" ||
     selectedColors.length > 0 ||
     selectedMaterials.length > 0 ||
-    minHeight !== "" ||
-    maxHeight !== "" ||
-    minWidth !== "" ||
-    maxWidth !== "" ||
-    minLength !== "" ||
-    maxLength !== "" ||
     query.trim() !== ""
   );
 
@@ -939,6 +958,8 @@ function ProductPicker({
     setQuery("");
     setSelectedMainCat("ALL");
     setSelectedSubCats([]);
+    setSelectedSuppliers([]);
+    setSupplierSearch("");
     setStockFilter("ALL");
     setPromoStatusFilter("ALL");
     setPriceFilter("ALL");
@@ -947,12 +968,6 @@ function ProductPicker({
     setSortBy("default");
     setSelectedColors([]);
     setSelectedMaterials([]);
-    setMinHeight("");
-    setMaxHeight("");
-    setMinWidth("");
-    setMaxWidth("");
-    setMinLength("");
-    setMaxLength("");
     setSubCatSearch("");
   };
 
@@ -1149,53 +1164,21 @@ function ProductPicker({
                 </span>
               )}
 
-              {(minHeight || maxHeight) && (
-                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-white border border-amber-300 text-[10px] font-semibold text-slate-800 shadow-2xs">
-                  หนา/สูง: {minHeight || 0}-{maxHeight || "∞"}cm
+              {selectedSuppliers.map((sup) => (
+                <span
+                  key={sup}
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-white border border-amber-300 text-[10px] font-semibold text-slate-800 shadow-2xs"
+                >
+                  <span className="truncate max-w-[120px]">🏢 {sup}</span>
                   <button
                     type="button"
-                    onClick={() => {
-                      setMinHeight("");
-                      setMaxHeight("");
-                    }}
+                    onClick={() => toggleSupplier(sup)}
                     className="hover:text-rose-600 ml-0.5 font-bold"
                   >
                     ×
                   </button>
                 </span>
-              )}
-
-              {(minWidth || maxWidth) && (
-                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-white border border-amber-300 text-[10px] font-semibold text-slate-800 shadow-2xs">
-                  กว้าง: {minWidth || 0}-{maxWidth || "∞"}cm
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMinWidth("");
-                      setMaxWidth("");
-                    }}
-                    className="hover:text-rose-600 ml-0.5 font-bold"
-                  >
-                    ×
-                  </button>
-                </span>
-              )}
-
-              {(minLength || maxLength) && (
-                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-white border border-amber-300 text-[10px] font-semibold text-slate-800 shadow-2xs">
-                  ยาว: {minLength || 0}-{maxLength || "∞"}cm
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMinLength("");
-                      setMaxLength("");
-                    }}
-                    className="hover:text-rose-600 ml-0.5 font-bold"
-                  >
-                    ×
-                  </button>
-                </span>
-              )}
+              ))}
 
               {selectedColors.map((col) => (
                 <span
@@ -1662,151 +1645,101 @@ function ProductPicker({
               )}
             </div>
 
-            {/* ── Section 2: มิติและขนาด (cm) ── */}
+            {/* ── Section 2: ซัพพลายเออร์ / โรงงาน (Supplier) ── */}
             <div className="bg-white rounded-xl border border-slate-200/80 shadow-2xs overflow-hidden transition">
               <button
                 type="button"
-                onClick={() => toggleSection("dimensions")}
+                onClick={() => toggleSection("suppliers")}
                 className="w-full px-3 py-2.5 flex items-center justify-between text-left hover:bg-slate-50 transition"
               >
                 <div className="flex items-center gap-2 min-w-0">
-                  <Ruler className="w-3.5 h-3.5 text-slate-600 shrink-0" />
-                  <span className="font-bold text-slate-800 text-xs truncate">มิติและขนาด (cm)</span>
-                  {(minHeight || maxHeight || minWidth || maxWidth || minLength || maxLength) && (
-                    <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-amber-500 text-slate-950 shrink-0">
-                      กำลังกรอง
+                  <Store className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+                  <span className="font-bold text-slate-800 text-xs truncate">ซัพพลายเออร์ / โรงงาน</span>
+                  {selectedSuppliers.length > 0 && (
+                    <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-slate-900 text-white shrink-0">
+                      เลือก {selectedSuppliers.length}
                     </span>
                   )}
                 </div>
-                {openSections.dimensions ? (
+                {openSections.suppliers ? (
                   <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                 ) : (
                   <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                 )}
               </button>
 
-              {openSections.dimensions && (
+              {openSections.suppliers && (
                 <div className="p-3 pt-0 border-t border-slate-100 space-y-2.5 mt-1">
-                  {/* Quick dimension presets for wood slabs */}
-                  <div className="flex flex-wrap gap-1">
-                    <button
-                      type="button"
-                      onClick={() => setMinHeight(minHeight === "5" ? "" : "5")}
-                      className={`px-2 py-0.5 rounded text-[10px] font-semibold border transition ${
-                        minHeight === "5"
-                          ? "bg-slate-900 text-white border-slate-900"
-                          : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
-                      }`}
-                    >
-                      หนา ≥ 5cm
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setMinWidth(minWidth === "80" ? "" : "80")}
-                      className={`px-2 py-0.5 rounded text-[10px] font-semibold border transition ${
-                        minWidth === "80"
-                          ? "bg-slate-900 text-white border-slate-900"
-                          : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
-                      }`}
-                    >
-                      กว้าง ≥ 80cm
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setMinLength(minLength === "200" ? "" : "200")}
-                      className={`px-2 py-0.5 rounded text-[10px] font-semibold border transition ${
-                        minLength === "200"
-                          ? "bg-slate-900 text-white border-slate-900"
-                          : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
-                      }`}
-                    >
-                      ยาว ≥ 2m
-                    </button>
-                    {(minHeight || maxHeight || minWidth || maxWidth || minLength || maxLength) && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-700">
+                      รายชื่อ ({supplierOptions.length})
+                    </span>
+                    {selectedSuppliers.length > 0 && (
                       <button
                         type="button"
-                        onClick={() => {
-                          setMinHeight("");
-                          setMaxHeight("");
-                          setMinWidth("");
-                          setMaxWidth("");
-                          setMinLength("");
-                          setMaxLength("");
-                        }}
-                        className="text-[10px] text-rose-600 hover:underline font-semibold ml-auto"
+                        onClick={() => setSelectedSuppliers([])}
+                        className="text-[10px] text-rose-600 hover:underline font-semibold"
                       >
-                        ล้างขนาด
+                        ล้าง ({selectedSuppliers.length})
                       </button>
                     )}
                   </div>
 
-                  {/* ความสูง / หนา */}
-                  <div>
-                    <span className="text-[10px] text-slate-600 font-semibold mb-1 block">
-                      ความสูง / ความหนา (Height / Thickness)
-                    </span>
-                    <div className="grid grid-cols-2 gap-1.5">
-                      <input
-                        type="number"
-                        placeholder="ต่ำสุด cm"
-                        value={minHeight}
-                        onChange={(e) => setMinHeight(e.target.value)}
-                        className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs outline-none focus:border-slate-800 focus:bg-white font-mono"
-                      />
-                      <input
-                        type="number"
-                        placeholder="สูงสุด cm"
-                        value={maxHeight}
-                        onChange={(e) => setMaxHeight(e.target.value)}
-                        className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs outline-none focus:border-slate-800 focus:bg-white font-mono"
-                      />
-                    </div>
+                  {/* Search Supplier */}
+                  <div className="relative">
+                    <Search className="w-3 h-3 text-slate-400 absolute left-2 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      value={supplierSearch}
+                      onChange={(e) => setSupplierSearch(e.target.value)}
+                      placeholder="ค้นหาซัพพลายเออร์..."
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-6 pr-6 py-1 text-[11px] outline-none focus:border-slate-800 focus:bg-white transition"
+                    />
+                    {supplierSearch && (
+                      <button
+                        type="button"
+                        onClick={() => setSupplierSearch("")}
+                        className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
                   </div>
 
-                  {/* ความกว้าง */}
-                  <div>
-                    <span className="text-[10px] text-slate-600 font-semibold mb-1 block">
-                      ความกว้าง (Width)
-                    </span>
-                    <div className="grid grid-cols-2 gap-1.5">
-                      <input
-                        type="number"
-                        placeholder="ต่ำสุด cm"
-                        value={minWidth}
-                        onChange={(e) => setMinWidth(e.target.value)}
-                        className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs outline-none focus:border-slate-800 focus:bg-white font-mono"
-                      />
-                      <input
-                        type="number"
-                        placeholder="สูงสุด cm"
-                        value={maxWidth}
-                        onChange={(e) => setMaxWidth(e.target.value)}
-                        className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs outline-none focus:border-slate-800 focus:bg-white font-mono"
-                      />
-                    </div>
-                  </div>
-
-                  {/* ความยาว / ลึก */}
-                  <div>
-                    <span className="text-[10px] text-slate-600 font-semibold mb-1 block">
-                      ความยาว / ลึก (Length / Depth)
-                    </span>
-                    <div className="grid grid-cols-2 gap-1.5">
-                      <input
-                        type="number"
-                        placeholder="ต่ำสุด cm"
-                        value={minLength}
-                        onChange={(e) => setMinLength(e.target.value)}
-                        className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs outline-none focus:border-slate-800 focus:bg-white font-mono"
-                      />
-                      <input
-                        type="number"
-                        placeholder="สูงสุด cm"
-                        value={maxLength}
-                        onChange={(e) => setMaxLength(e.target.value)}
-                        className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs outline-none focus:border-slate-800 focus:bg-white font-mono"
-                      />
-                    </div>
+                  {/* Supplier list with checkboxes & counts */}
+                  <div className="space-y-1 max-h-56 overflow-y-auto pr-0.5">
+                    {filteredSuppliers.length === 0 ? (
+                      <p className="text-[11px] text-slate-400 text-center py-3">
+                        ไม่พบซัพพลายเออร์ที่ตรงกัน
+                      </p>
+                    ) : (
+                      filteredSuppliers.map((opt) => {
+                        const isSelected = selectedSuppliers.includes(opt.name);
+                        return (
+                          <button
+                            key={opt.name}
+                            type="button"
+                            onClick={() => toggleSupplier(opt.name)}
+                            className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition border ${
+                              isSelected
+                                ? "bg-slate-900 text-white border-slate-900 font-bold shadow-xs"
+                                : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200/80 font-medium"
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="truncate">{opt.name}</span>
+                            </div>
+                            <span
+                              className={`text-[10px] font-mono px-1 rounded shrink-0 ml-1 ${
+                                isSelected ? "bg-white/20 text-white" : "text-slate-400"
+                              }`}
+                            >
+                              {opt.count.toLocaleString()}
+                            </span>
+                          </button>
+                        );
+                      })
+                    )}
                   </div>
                 </div>
               )}
@@ -2016,9 +1949,9 @@ function ProductPicker({
 
                   {/* ช่วงราคา */}
                   <div>
-                    <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center justify-between mb-1.5">
                       <span className="text-[11px] font-bold text-slate-700">
-                        ช่วงราคา
+                        กรองราคาเอง (กำหนดต่ำสุด - สูงสุด)
                       </span>
                       {(priceFilter !== "ALL" || minPrice !== "" || maxPrice !== "") && (
                         <button
@@ -2035,7 +1968,38 @@ function ProductPicker({
                       )}
                     </div>
 
-                    <div className="grid grid-cols-2 gap-1 mb-2 bg-slate-50 rounded-lg p-1 border border-slate-200/60">
+                    {/* Custom Min / Max Price Inputs */}
+                    <div className="grid grid-cols-2 gap-1.5 mb-2">
+                      <div>
+                        <span className="text-[10px] text-slate-500 font-medium block mb-0.5">ราคาต่ำสุด</span>
+                        <input
+                          type="number"
+                          placeholder="0 ฿"
+                          value={minPrice}
+                          onChange={(e) => {
+                            setMinPrice(e.target.value);
+                            setPriceFilter("ALL");
+                          }}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs outline-none focus:border-slate-800 focus:bg-white font-mono"
+                        />
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-500 font-medium block mb-0.5">ราคาสูงสุด</span>
+                        <input
+                          type="number"
+                          placeholder="ไม่จำกัด ฿"
+                          value={maxPrice}
+                          onChange={(e) => {
+                            setMaxPrice(e.target.value);
+                            setPriceFilter("ALL");
+                          }}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs outline-none focus:border-slate-800 focus:bg-white font-mono"
+                        />
+                      </div>
+                    </div>
+
+                    <span className="text-[10px] text-slate-400 block mb-1">หรือเลือกช่วงราคาสำเร็จรูป:</span>
+                    <div className="grid grid-cols-2 gap-1 bg-slate-50 rounded-lg p-1 border border-slate-200/60">
                       {[
                         { key: "ALL", label: "ทุกราคา", count: products.length },
                         { key: "HAS_PRICE", label: "เฉพาะมีราคา", count: priceStats.hasPrice },
@@ -2067,30 +2031,6 @@ function ProductPicker({
                           </button>
                         );
                       })}
-                    </div>
-
-                    {/* Custom Min / Max Price Inputs */}
-                    <div className="grid grid-cols-2 gap-1.5">
-                      <input
-                        type="number"
-                        placeholder="ต่ำสุด ฿"
-                        value={minPrice}
-                        onChange={(e) => {
-                          setMinPrice(e.target.value);
-                          setPriceFilter("ALL");
-                        }}
-                        className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs outline-none focus:border-slate-800 focus:bg-white font-mono"
-                      />
-                      <input
-                        type="number"
-                        placeholder="สูงสุด ฿"
-                        value={maxPrice}
-                        onChange={(e) => {
-                          setMaxPrice(e.target.value);
-                          setPriceFilter("ALL");
-                        }}
-                        className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs outline-none focus:border-slate-800 focus:bg-white font-mono"
-                      />
                     </div>
                   </div>
                 </div>
@@ -2176,28 +2116,74 @@ function ProductPicker({
               </select>
             </div>
 
-            {/* Dropdown 2: จากราคา (ข้าง ๆ ข้างบน) */}
+            {/* Dropdown 2: ซัพพลายเออร์ */}
             <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-xl px-2.5 py-1.5 transition">
-              <Coins className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+              <Store className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
               <select
-                value={priceFilter}
+                value={selectedSuppliers.length === 1 ? selectedSuppliers[0] : selectedSuppliers.length > 1 ? "__MULTI__" : "ALL"}
                 onChange={(e) => {
-                  setPriceFilter(e.target.value as any);
-                  setMinPrice("");
-                  setMaxPrice("");
+                  const val = e.target.value;
+                  if (val === "ALL") {
+                    setSelectedSuppliers([]);
+                  } else if (val !== "__MULTI__") {
+                    setSelectedSuppliers([val]);
+                  }
                 }}
-                className="bg-transparent text-xs font-semibold text-slate-700 outline-none cursor-pointer"
+                className="bg-transparent text-xs font-semibold text-slate-700 outline-none cursor-pointer max-w-[170px] truncate"
               >
-                <option value="ALL">ราคา: ทุกราคา ({products.length.toLocaleString()})</option>
-                <option value="HAS_PRICE">ราคา: เฉพาะที่มีราคา ({priceStats.hasPrice.toLocaleString()})</option>
-                <option value="UNDER_1K">ราคา: &lt; 1,000 ฿ ({priceStats.under1k.toLocaleString()})</option>
-                <option value="1K_3K">ราคา: 1,000 - 3,000 ฿ ({priceStats.between1k3k.toLocaleString()})</option>
-                <option value="3K_10K">ราคา: 3,000 - 10,000 ฿ ({priceStats.between3k10k.toLocaleString()})</option>
-                <option value="OVER_10K">ราคา: &gt; 10,000 ฿ ({priceStats.over10k.toLocaleString()})</option>
+                <option value="ALL">ซัพพลายเออร์: ทั้งหมด</option>
+                {selectedSuppliers.length > 1 && (
+                  <option value="__MULTI__">เลือกแล้ว ({selectedSuppliers.length})</option>
+                )}
+                {supplierOptions.map((s) => (
+                  <option key={s.name} value={s.name}>
+                    {s.name} ({s.count.toLocaleString()})
+                  </option>
+                ))}
               </select>
             </div>
 
-            {/* Dropdown 3: สถานะสต็อก */}
+            {/* Control 3: กรองราคาเอง (ต่ำสุด - สูงสุด) */}
+            <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-xl px-2.5 py-1 transition">
+              <Coins className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+              <span className="text-xs font-semibold text-slate-600 mr-0.5">ราคา:</span>
+              <input
+                type="number"
+                placeholder="ต่ำสุด ฿"
+                value={minPrice}
+                onChange={(e) => {
+                  setMinPrice(e.target.value);
+                  setPriceFilter("ALL");
+                }}
+                className="w-16 sm:w-20 bg-white border border-slate-200 rounded px-1.5 py-0.5 text-xs font-mono outline-none focus:border-slate-800"
+              />
+              <span className="text-slate-400 text-xs">-</span>
+              <input
+                type="number"
+                placeholder="สูงสุด ฿"
+                value={maxPrice}
+                onChange={(e) => {
+                  setMaxPrice(e.target.value);
+                  setPriceFilter("ALL");
+                }}
+                className="w-16 sm:w-20 bg-white border border-slate-200 rounded px-1.5 py-0.5 text-xs font-mono outline-none focus:border-slate-800"
+              />
+              {(minPrice !== "" || maxPrice !== "") && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMinPrice("");
+                    setMaxPrice("");
+                  }}
+                  className="p-0.5 text-slate-400 hover:text-rose-600 rounded transition"
+                  title="ล้างช่วงราคา"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Dropdown 4: สถานะสต็อก */}
             <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-xl px-2.5 py-1.5 transition">
               <Package className="w-3.5 h-3.5 text-slate-500 shrink-0" />
               <select
@@ -2211,24 +2197,6 @@ function ProductPicker({
                 <option value="NEGATIVE">สต็อก: ติดลบ (&lt; 0)</option>
               </select>
             </div>
-
-            {(minPrice !== "" || maxPrice !== "") && (
-              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-100 text-amber-900 border border-amber-300 text-xs font-mono font-bold">
-                {minPrice ? `${Number(minPrice).toLocaleString()}฿` : "0฿"} -{" "}
-                {maxPrice ? `${Number(maxPrice).toLocaleString()}฿` : "ไม่จำกัด"}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMinPrice("");
-                    setMaxPrice("");
-                  }}
-                  className="hover:text-rose-600 ml-0.5"
-                  title="ล้างช่วงราคา"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              </span>
-            )}
           </div>
 
           {selectedProductIds.length > 0 && (
@@ -2480,9 +2448,10 @@ function ProductPicker({
                       {/* Specs badges line */}
                       <div className="flex items-center gap-2 mt-1 flex-wrap text-[10px]">
                         <span className="text-slate-400 font-mono">{p.sku}</span>
-                        {dims && (
-                          <span className="px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 font-mono">
-                            {dims}
+                        {(p.supplier || p.specs?.brand || p.specs?.supplier || p.specs?.factory || p.factory_name) && (
+                          <span className="px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-700 border border-indigo-200/80 font-medium inline-flex items-center gap-1">
+                            <Store className="w-2.5 h-2.5" />
+                            {p.supplier || p.specs?.brand || p.specs?.supplier || p.specs?.factory || p.factory_name}
                           </span>
                         )}
                         {p.color && (
@@ -2618,6 +2587,8 @@ export default function DiscountHubClient({
   const [isPosCreateOpen, setIsPosCreateOpen] = useState(false);
   const [isPosEditOpen, setIsPosEditOpen] = useState(false);
   const [editingPosDiscount, setEditingPosDiscount] = useState<any | null>(null);
+  const [posCreateDiscountType, setPosCreateDiscountType] = useState<"PERCENT" | "FIXED">("PERCENT");
+  const [posEditDiscountType, setPosEditDiscountType] = useState<"PERCENT" | "FIXED">("PERCENT");
   const [posSelectedProductIds, setPosSelectedProductIds] = useState<string[]>([]);
   const [posCreateBranchId, setPosCreateBranchId] = useState<string>("");
   const [removingRuleId, setRemovingRuleId] = useState<number | null>(null);
@@ -3477,6 +3448,7 @@ export default function DiscountHubClient({
               <button
                 type="button"
                 onClick={() => {
+                  setPosCreateDiscountType("PERCENT");
                   setFormInlineError(null);
                   setIsPosCreateOpen(true);
                 }}
@@ -3719,6 +3691,18 @@ export default function DiscountHubClient({
                           <span className="inline-flex items-center gap-1 bg-slate-100 text-slate-900 px-2.5 py-1 rounded-md text-xs font-bold font-mono border border-slate-200">
                             {item.discount_type === "PERCENT" ? `${item.value}%` : `฿${Number(item.value).toLocaleString()}`}
                           </span>
+                          {item.max_discount && Number(item.max_discount) > 0 && (
+                            <p className="text-[10px] text-indigo-600 font-semibold mt-1">
+                              สูงสุด ฿{Number(item.max_discount).toLocaleString()}
+                            </p>
+                          )}
+                          {(item.start_date || item.end_date) && (
+                            <p className="text-[10px] text-slate-400 mt-0.5">
+                              {item.start_date ? new Date(item.start_date).toLocaleDateString("th-TH") : "ทันที"}
+                              {" - "}
+                              {item.end_date ? new Date(item.end_date).toLocaleDateString("th-TH") : "ไม่จำกัด"}
+                            </p>
+                          )}
                         </td>
 
                         <td className="px-6 py-4">
@@ -3791,6 +3775,7 @@ export default function DiscountHubClient({
                               type="button"
                               onClick={() => {
                                 setEditingPosDiscount(item);
+                                setPosEditDiscountType(item.discount_type === "FIXED" ? "FIXED" : "PERCENT");
                                 setFormInlineError(null);
                                 setIsPosEditOpen(true);
                               }}
@@ -4254,29 +4239,118 @@ export default function DiscountHubClient({
                   </div>
 
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">ประเภทส่วนลด</label>
-                    <select
-                      name="discount_type"
-                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs outline-none focus:border-slate-900 focus:bg-white transition"
-                    >
-                      <option value="PERCENT">เปอร์เซ็นต์ (%)</option>
-                      <option value="FIXED">จำนวนเงิน (฿)</option>
-                    </select>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-bold text-slate-700">
+                        ประเภท & มูลค่าส่วนลด <span className="text-rose-500">*</span>
+                      </label>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${
+                        posCreateDiscountType === "PERCENT"
+                          ? "bg-indigo-50 text-indigo-700 border-indigo-200"
+                          : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                      }`}>
+                        หน่วย: {posCreateDiscountType === "PERCENT" ? "เปอร์เซ็นต์ (%)" : "จำนวนเงิน (฿ บาท)"}
+                      </span>
+                    </div>
+
+                    {/* Attached Input Group: Dropdown ต่อท้ายด้วย ช่องกรอกมูลค่า */}
+                    <div className="flex rounded-lg border border-slate-200 bg-slate-50 focus-within:border-slate-900 focus-within:bg-white focus-within:ring-1 focus-within:ring-slate-900 transition overflow-hidden">
+                      {/* ประเภทส่วนลด */}
+                      <div className="w-[45%] shrink-0 border-r border-slate-200 bg-slate-100/70">
+                        <select
+                          name="discount_type"
+                          value={posCreateDiscountType}
+                          onChange={(e) => setPosCreateDiscountType(e.target.value as "PERCENT" | "FIXED")}
+                          className="w-full h-full bg-transparent px-2.5 py-2 text-xs font-semibold text-slate-800 outline-none cursor-pointer"
+                        >
+                          <option value="PERCENT">% เปอร์เซ็นต์</option>
+                          <option value="FIXED">฿ จำนวนเงิน</option>
+                        </select>
+                      </div>
+
+                      {/* ช่องกรอกมูลค่า ต่อท้ายกัน */}
+                      <div className="relative flex-1 flex items-center">
+                        <input
+                          name="value"
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          required
+                          placeholder={posCreateDiscountType === "PERCENT" ? "กรอก % เช่น 10" : "กรอกเงิน เช่น 100"}
+                          className="w-full bg-transparent pl-3 pr-12 py-2 text-xs font-mono font-bold text-slate-900 outline-none placeholder:text-slate-400 placeholder:font-normal"
+                        />
+                        <span className={`absolute right-2 text-[11px] font-bold font-mono px-1.5 py-0.5 rounded ${
+                          posCreateDiscountType === "PERCENT"
+                            ? "bg-indigo-100 text-indigo-700"
+                            : "bg-emerald-100 text-emerald-700"
+                        }`}>
+                          {posCreateDiscountType === "PERCENT" ? "%" : "บาท"}
+                        </span>
+                      </div>
+                    </div>
+
+                    <p className="text-[10px] text-slate-500 mt-1 flex items-center gap-1">
+                      <span>💡</span>
+                      {posCreateDiscountType === "PERCENT" ? (
+                        <span>หน่วยเป็น <strong>เปอร์เซ็นต์ (%)</strong> เช่น 10 คือลด 10% ของราคา</span>
+                      ) : (
+                        <span>หน่วยเป็น <strong>จำนวนเงิน (บาท)</strong> เช่น 100 คือลดทันที 100 บาท</span>
+                      )}
+                    </p>
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">
-                      มูลค่า <span className="text-rose-500">*</span>
-                    </label>
-                    <input
-                      name="value"
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      required
-                      placeholder="เช่น 10 หรือ 500"
-                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono outline-none focus:border-slate-900 focus:bg-white transition"
-                    />
+                  {posCreateDiscountType === "PERCENT" ? (
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-xs font-bold text-slate-700">
+                          ส่วนลดสูงสุด (บาท)
+                        </label>
+                        <span className="text-[10px] text-slate-400">ถ้ามี / เว้นว่างหากไม่จำกัด</span>
+                      </div>
+                      <div className="relative">
+                        <input
+                          name="max_discount"
+                          type="number"
+                          step="1"
+                          min="0"
+                          placeholder="เช่น 500 (เว้นว่าง = ไม่จำกัด)"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-3 pr-12 py-2 text-xs font-mono outline-none focus:border-slate-900 focus:bg-white transition"
+                        />
+                        <span className="absolute right-3 top-2 text-xs font-medium text-slate-400">บาท</span>
+                      </div>
+                      <p className="text-[10px] text-slate-400 mt-1">
+                        * ใช้จำกัดเพดานยอดลด เช่น ลด 20% สูงสุดไม่เกิน 500 บาท
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="rounded-lg bg-slate-50 border border-dashed border-slate-200 p-2 text-[10px] text-slate-500 flex items-center gap-1.5">
+                      <input type="hidden" name="max_discount" value="" />
+                      <span>ℹ️</span>
+                      <span>ส่วนลดแบบจำนวนเงิน (บาท) จะลดตรงตามมูลค่า ไม่จำเป็นต้องระบุส่วนลดสูงสุด</span>
+                    </div>
+                  )}
+
+                  {/* วันเริ่มต้น และ วันสิ้นสุด */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        วันเริ่มต้น <span className="text-slate-400 font-normal">(ถ้ามี)</span>
+                      </label>
+                      <input
+                        name="start_date"
+                        type="date"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs outline-none focus:border-slate-900 focus:bg-white transition"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        วันสิ้นสุด <span className="text-slate-400 font-normal">(ถ้ามี)</span>
+                      </label>
+                      <input
+                        name="end_date"
+                        type="date"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs outline-none focus:border-slate-900 focus:bg-white transition"
+                      />
+                    </div>
                   </div>
 
                   {branches.length > 0 && (
@@ -4415,28 +4489,120 @@ export default function DiscountHubClient({
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold text-slate-700">
+                      ประเภท & มูลค่าส่วนลด <span className="text-rose-500">*</span>
+                    </label>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${
+                      posEditDiscountType === "PERCENT"
+                        ? "bg-indigo-50 text-indigo-700 border-indigo-200"
+                        : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                    }`}>
+                      หน่วย: {posEditDiscountType === "PERCENT" ? "เปอร์เซ็นต์ (%)" : "จำนวนเงิน (฿ บาท)"}
+                    </span>
+                  </div>
+
+                  {/* Attached Input Group: Dropdown ต่อท้ายด้วย ช่องกรอกมูลค่า */}
+                  <div className="flex rounded-lg border border-slate-200 bg-slate-50 focus-within:border-slate-900 focus-within:bg-white focus-within:ring-1 focus-within:ring-slate-900 transition overflow-hidden">
+                    {/* ประเภทส่วนลด */}
+                    <div className="w-[45%] shrink-0 border-r border-slate-200 bg-slate-100/70">
+                      <select
+                        name="discount_type"
+                        value={posEditDiscountType}
+                        onChange={(e) => setPosEditDiscountType(e.target.value as "PERCENT" | "FIXED")}
+                        className="w-full h-full bg-transparent px-2.5 py-2 text-xs font-semibold text-slate-800 outline-none cursor-pointer"
+                      >
+                        <option value="PERCENT">% เปอร์เซ็นต์</option>
+                        <option value="FIXED">฿ จำนวนเงิน</option>
+                      </select>
+                    </div>
+
+                    {/* ช่องกรอกมูลค่า ต่อท้ายกัน */}
+                    <div className="relative flex-1 flex items-center">
+                      <input
+                        name="value"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        defaultValue={editingPosDiscount.value}
+                        required
+                        placeholder={posEditDiscountType === "PERCENT" ? "กรอก % เช่น 10" : "กรอกเงิน เช่น 100"}
+                        className="w-full bg-transparent pl-3 pr-12 py-2 text-xs font-mono font-bold text-slate-900 outline-none placeholder:text-slate-400 placeholder:font-normal"
+                      />
+                      <span className={`absolute right-2 text-[11px] font-bold font-mono px-1.5 py-0.5 rounded ${
+                        posEditDiscountType === "PERCENT"
+                          ? "bg-indigo-100 text-indigo-700"
+                          : "bg-emerald-100 text-emerald-700"
+                      }`}>
+                        {posEditDiscountType === "PERCENT" ? "%" : "บาท"}
+                      </span>
+                    </div>
+                  </div>
+
+                  <p className="text-[10px] text-slate-500 mt-1 flex items-center gap-1">
+                    <span>💡</span>
+                    {posEditDiscountType === "PERCENT" ? (
+                      <span>หน่วยเป็น <strong>เปอร์เซ็นต์ (%)</strong> เช่น 10 คือลด 10% ของราคา</span>
+                    ) : (
+                      <span>หน่วยเป็น <strong>จำนวนเงิน (บาท)</strong> เช่น 100 คือลดทันที 100 บาท</span>
+                    )}
+                  </p>
+                </div>
+
+                {posEditDiscountType === "PERCENT" ? (
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">ประเภท</label>
-                    <select
-                      name="discount_type"
-                      defaultValue={editingPosDiscount.discount_type}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs outline-none focus:border-slate-900 transition"
-                    >
-                      <option value="PERCENT">เปอร์เซ็นต์ (%)</option>
-                      <option value="FIXED">จำนวนเงิน (฿)</option>
-                    </select>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-bold text-slate-700">
+                        ส่วนลดสูงสุด (บาท)
+                      </label>
+                      <span className="text-[10px] text-slate-400">ถ้ามี / เว้นว่างหากไม่จำกัด</span>
+                    </div>
+                    <div className="relative">
+                      <input
+                        name="max_discount"
+                        type="number"
+                        step="1"
+                        min="0"
+                        defaultValue={editingPosDiscount.max_discount ?? ""}
+                        placeholder="เช่น 500 (เว้นว่าง = ไม่จำกัด)"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-3 pr-12 py-2 text-xs font-mono outline-none focus:border-slate-900 focus:bg-white transition"
+                      />
+                      <span className="absolute right-3 top-2 text-xs font-medium text-slate-400">บาท</span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      * ใช้จำกัดเพดานยอดลด เช่น ลด 20% สูงสุดไม่เกิน 500 บาท
+                    </p>
+                  </div>
+                ) : (
+                  <div className="rounded-lg bg-slate-50 border border-dashed border-slate-200 p-2 text-[10px] text-slate-500 flex items-center gap-1.5">
+                    <input type="hidden" name="max_discount" value="" />
+                    <span>ℹ️</span>
+                    <span>ส่วนลดแบบจำนวนเงิน (บาท) จะลดตรงตามมูลค่า ไม่จำเป็นต้องระบุส่วนลดสูงสุด</span>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      วันเริ่มต้น <span className="text-slate-400 font-normal">(ถ้ามี)</span>
+                    </label>
+                    <input
+                      name="start_date"
+                      type="date"
+                      defaultValue={editingPosDiscount.start_date ? editingPosDiscount.start_date.substring(0, 10) : ""}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs outline-none focus:border-slate-900 transition"
+                    />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">มูลค่า</label>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      วันสิ้นสุด <span className="text-slate-400 font-normal">(ถ้ามี)</span>
+                    </label>
                     <input
-                      name="value"
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      defaultValue={editingPosDiscount.value}
-                      required
-                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono outline-none focus:border-slate-900 transition"
+                      name="end_date"
+                      type="date"
+                      defaultValue={editingPosDiscount.end_date ? editingPosDiscount.end_date.substring(0, 10) : ""}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs outline-none focus:border-slate-900 transition"
                     />
                   </div>
                 </div>

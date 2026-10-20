@@ -36,7 +36,7 @@ export default async function DiscountsPage() {
       .from("products")
       .select(`
         id, name, sku, price, image_url, category_id,
-        color, length_cm, width_cm, thickness_cm, specs,
+        color, length_cm, width_cm, thickness_cm, specs, factory_name,
         collection_groups ( id, name, product_sup, tag ),
         stock ( branch_id, qty )
       `)
@@ -61,6 +61,8 @@ export default async function DiscountsPage() {
       null;
     const color = p.color || s.color || s.colour || s.color_craft || s.tone || null;
     const material = s.material || null;
+    const rawSup = s.brand || s.supplier || s.factory || p.factory_name || null;
+    const supplier = rawSup ? String(rawSup).trim() : null;
 
     const height = Number(p.thickness_cm ?? s.thickness_cm ?? s.height_cm ?? s.H ?? 0) || null;
     const width = Number(p.width_cm ?? s.width_cm ?? s.W ?? 0) || null;
@@ -74,6 +76,7 @@ export default async function DiscountsPage() {
       image_url: p.image_url,
       category_id: p.category_id || "prop",
       sub_category: subCategory ? String(subCategory).trim() : null,
+      supplier,
       color: color ? String(color).trim() : null,
       material: material ? String(material).trim() : null,
       height_cm: height,

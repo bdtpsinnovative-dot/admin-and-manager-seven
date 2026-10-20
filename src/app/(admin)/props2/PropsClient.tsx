@@ -73,10 +73,89 @@ export function getProductDisplaySize(item: any): string {
   return "";
 }
 
+export interface DiscountInfo {
+  hasDiscount: boolean;
+  originalPrice: number;
+  finalPrice: number;
+  discountType: "PERCENT" | "FIXED";
+  discountValue: number;
+  discountName: string;
+  badgeText: string;
+}
+
+export function getProductDiscountInfo(
+  product: any,
+  activeDiscounts: any[]
+): DiscountInfo | null {
+  if (!product || !activeDiscounts || !Array.isArray(activeDiscounts) || activeDiscounts.length === 0) {
+    return null;
+  }
+
+  const originalPrice = Number(product.price) || 0;
+  if (originalPrice <= 0) return null;
+
+  const prodId = String(product.id);
+  const now = new Date();
+
+  let bestDiscount: any = null;
+  let maxDiscountAmount = 0;
+
+  for (const disc of activeDiscounts) {
+    if (!disc.active) continue;
+
+    // Check date bounds if configured
+    if (disc.start_date && new Date(disc.start_date) > now) continue;
+    if (disc.end_date && new Date(disc.end_date) < now) continue;
+
+    const rules = disc.discount_rules;
+    if (!Array.isArray(rules)) continue;
+
+    const isMatch = rules.some((r: any) => String(r.product_id) === prodId);
+    if (!isMatch) continue;
+
+    const val = Number(disc.value) || 0;
+    if (val <= 0) continue;
+
+    let discountAmount = 0;
+    if (disc.discount_type === "PERCENT") {
+      discountAmount = originalPrice * (val / 100);
+      if (disc.max_discount && Number(disc.max_discount) > 0) {
+        discountAmount = Math.min(discountAmount, Number(disc.max_discount));
+      }
+    } else {
+      discountAmount = val;
+    }
+
+    if (discountAmount > maxDiscountAmount) {
+      maxDiscountAmount = discountAmount;
+      bestDiscount = disc;
+    }
+  }
+
+  if (!bestDiscount || maxDiscountAmount <= 0) return null;
+
+  const finalPrice = Math.max(0, originalPrice - maxDiscountAmount);
+  const badgeText =
+    bestDiscount.discount_type === "PERCENT"
+      ? `-${bestDiscount.value}%`
+      : `-฿${Number(bestDiscount.value).toLocaleString()}`;
+
+  return {
+    hasDiscount: true,
+    originalPrice,
+    finalPrice: Math.round(finalPrice),
+    discountType: bestDiscount.discount_type,
+    discountValue: bestDiscount.value,
+    discountName: bestDiscount.name,
+    badgeText,
+  };
+}
+
 interface ProductCardProps {
   item: any;
   isSelected: boolean;
   displayImage?: string;
+  discountInfo?: DiscountInfo | null;
   onToggle: (id: number) => void;
   onEditImage: (e: React.MouseEvent, item: any) => void;
 }
@@ -85,6 +164,7 @@ const ProductCard = React.memo(function ProductCard({
   item,
   isSelected,
   displayImage,
+  discountInfo,
   onToggle,
   onEditImage,
 }: ProductCardProps) {
@@ -126,6 +206,11 @@ const ProductCard = React.memo(function ProductCard({
                 : item.category_id}
             </span>
           )}
+          {discountInfo && (
+            <span className="text-[9px] bg-rose-600 text-white px-1.5 py-0.5 rounded font-black shadow-2xs">
+              ลด {discountInfo.badgeText}
+            </span>
+          )}
           {materialStr && (
             <span className="text-[9px] bg-amber-50 text-amber-700 border border-amber-200/60 px-1.5 py-0.5 rounded font-bold">{materialStr}</span>
           )}
@@ -134,12 +219,32 @@ const ProductCard = React.memo(function ProductCard({
             <span className="text-[9px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-bold">{sizeStr}</span>
           )}
         </div>
-        <h3 className="text-xs font-bold text-slate-800 mb-2 line-clamp-1">{item.name}</h3>
+        <h3 className="text-xs font-bold text-slate-800 mb-1.5 line-clamp-1">{item.name}</h3>
 
         <div className="bg-slate-50 rounded p-1 border border-slate-100">
           {item.barcode
             ? <BarcodeSvg value={item.barcode} />
             : <p className="text-center text-[10px] text-slate-400 py-2">ไม่มีบาร์โค้ด</p>}
+        </div>
+
+        {/* Price Display */}
+        <div className="mt-1.5 pt-1 border-t border-slate-100 flex items-baseline justify-between">
+          {discountInfo ? (
+            <>
+              <span className="text-[10px] text-slate-400 line-through font-mono">
+                ฿{Number(discountInfo.originalPrice).toLocaleString()}
+              </span>
+              <span className="text-xs font-black text-rose-600 font-mono">
+                ฿{Number(discountInfo.finalPrice).toLocaleString()}
+              </span>
+            </>
+          ) : item.price > 0 ? (
+            <span className="text-xs font-bold text-slate-800 font-mono ml-auto">
+              ฿{Number(item.price).toLocaleString()}
+            </span>
+          ) : (
+            <span className="text-[10px] text-slate-400 ml-auto">ไม่ระบุราคา</span>
+          )}
         </div>
       </div>
     </div>
@@ -150,6 +255,7 @@ interface Props {
   initialProducts: any[];
   initialTotalCount: number;
   initialCategoryCounts: Record<string, number>;
+  initialActiveDiscounts?: any[];
 }
 
 const CATEGORY_OPTIONS = [
@@ -160,10 +266,11 @@ const CATEGORY_OPTIONS = [
   { key: "ALL", label: "ทั้งหมด", icon: "🌟" },
 ];
 
-export default function PropsClient({ initialProducts, initialTotalCount, initialCategoryCounts }: Props) {
+export default function PropsClient({ initialProducts, initialTotalCount, initialCategoryCounts, initialActiveDiscounts = [] }: Props) {
   const [products, setProducts] = useState<any[]>(initialProducts);
   const [totalCount, setTotalCount] = useState<number>(initialTotalCount);
   const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>(initialCategoryCounts);
+  const [activeDiscounts] = useState<any[]>(initialActiveDiscounts);
   const [selectedCategory, setSelectedCategory] = useState<string>("prop");
   const [batchSize, setBatchSize] = useState<number>(100);
   const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
@@ -400,8 +507,29 @@ export default function PropsClient({ initialProducts, initialTotalCount, initia
       const sizeStr = getProductDisplaySize(p);
       const colorStr = p.color || '';
       const materialStr = p.material || specs.material || '';
-      const priceVal = Number(p.price);
-      const priceStr = priceVal > 0 ? new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB', minimumFractionDigits: 0 }).format(priceVal) : '';
+
+      // Check discount
+      const discInfo = getProductDiscountInfo(p, activeDiscounts);
+      const originalPriceVal = Number(p.price);
+      const originalPriceStr = originalPriceVal > 0 
+        ? new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB', minimumFractionDigits: 0 }).format(originalPriceVal) 
+        : '';
+
+      let priceHtml = '';
+      if (discInfo && discInfo.finalPrice > 0) {
+        const finalPriceStr = new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB', minimumFractionDigits: 0 }).format(discInfo.finalPrice);
+        priceHtml = `
+          <div class="price-discount-wrap">
+            <div class="price-strike-line">
+              <span class="price-old">${originalPriceStr}</span>
+              <span class="price-disc-badge">${discInfo.badgeText}</span>
+            </div>
+            <div class="price-val price-val-discounted">${finalPriceStr}</div>
+          </div>
+        `;
+      } else if (originalPriceStr) {
+        priceHtml = `<div class="price-val">${originalPriceStr}</div>`;
+      }
 
       for (let i = 0; i < sets; i++) {
         groups.push(`
@@ -418,13 +546,17 @@ export default function PropsClient({ initialProducts, initialTotalCount, initia
                   <img src="${qrImg}" class="qr-img" />
                 </div>
                 <div class="price-box">
-                  <div class="price-logo">
-                    <img src="/logo.terra.home.png" alt="Logo" class="logo-img" />
+                  <div class="price-top">
+                    <div class="price-logo">
+                      <img src="/logo.terra.home.png" alt="Logo" class="logo-img" />
+                    </div>
+                    <div class="sku-val">${p.sku || '—'}</div>
+                    ${materialStr ? `<div class="mat-val">${materialStr}</div>` : ''}
+                    ${sizeStr ? `<div class="size-val">${sizeStr}</div>` : ''}
                   </div>
-                  <div class="sku-val">${p.sku || '—'}</div>
-                  ${materialStr ? `<div class="mat-val">${materialStr}</div>` : ''}
-                  ${sizeStr ? `<div class="size-val">${sizeStr}</div>` : ''}
-                  ${priceStr ? `<div class="price-val">${priceStr}</div>` : ''}
+                  <div class="price-bottom">
+                    ${priceHtml}
+                  </div>
                 </div>
               </div>
             </div>
@@ -439,8 +571,8 @@ export default function PropsClient({ initialProducts, initialTotalCount, initia
     win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title></title>
     <style>
       @page{size:A4;margin:8mm}
-      *{margin:0;padding:0;box-sizing:border-box}
-      body{margin:0;padding:0;font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;}
+      *{margin:0;padding:0;box-sizing:border-box;-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important}
+      body{margin:0;padding:0;font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important}
       .page{width:calc(210mm - 16mm);height:calc(297mm - 16mm);overflow:hidden;page-break-after:always}
       .page:last-child{page-break-after:auto}
       
@@ -453,8 +585,9 @@ export default function PropsClient({ initialProducts, initialTotalCount, initia
         border-right: 1px solid #bbb; 
         border-bottom: 1px solid #bbb; 
         background: #fff; 
-        padding: 0.8mm 1.4mm 0.8mm 1.4mm;
+        padding: 0.6mm 1.2mm 0.6mm 1.2mm;
         height: 56mm;
+        box-sizing: border-box;
         overflow: hidden;
         position: relative;
       }
@@ -464,12 +597,12 @@ export default function PropsClient({ initialProducts, initialTotalCount, initia
         height: 1.6mm;
         border: none;
         background: transparent;
-        margin: 0.3mm auto 0.4mm auto;
+        margin: 0.2mm auto 0.2mm auto;
         flex-shrink: 0;
       }
       
       .photo-sec {
-        height: 29mm;
+        height: 26.5mm;
         min-height: 0;
         display: flex;
         align-items: center;
@@ -480,7 +613,7 @@ export default function PropsClient({ initialProducts, initialTotalCount, initia
       
       .photo-sec img {
         max-width: 37mm;
-        max-height: 29mm;
+        max-height: 26.5mm;
         width: 100%;
         height: 100%;
         object-fit: contain;
@@ -489,22 +622,22 @@ export default function PropsClient({ initialProducts, initialTotalCount, initia
       
       .bottom-sec {
         display: flex;
-        align-items: center;
+        align-items: stretch;
         justify-content: space-between;
         border-top: 1px dashed #bbb;
-        height: 23.5mm;
+        height: 26mm;
         box-sizing: border-box;
-        padding: 0.5mm 0;
+        padding: 0.5mm 0 0.5mm 0;
         margin-top: auto;
         width: 100%;
       }
       
       .price-section-wrap {
         display: flex;
-        align-items: center;
+        align-items: stretch;
         justify-content: space-between;
         width: 100%;
-        gap: 1.4mm;
+        gap: 1.2mm;
         height: 100%;
       }
       
@@ -513,11 +646,12 @@ export default function PropsClient({ initialProducts, initialTotalCount, initia
         align-items: center;
         justify-content: center;
         flex-shrink: 0;
+        width: 15.5mm;
       }
       
       .qr-img {
-        width: 15mm;
-        height: 15mm;
+        width: 15.5mm;
+        height: 15.5mm;
         object-fit: contain;
         display: block;
       }
@@ -528,9 +662,26 @@ export default function PropsClient({ initialProducts, initialTotalCount, initia
         flex-direction: column;
         align-items: flex-end;
         justify-content: space-between;
-        height: 20mm;
+        height: 100%;
         flex-grow: 1;
         min-width: 0;
+      }
+
+      .price-top {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        text-align: right;
+        width: 100%;
+      }
+
+      .price-bottom {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        justify-content: flex-end;
+        width: 100%;
+        margin-top: auto;
       }
       
       .price-logo {
@@ -538,50 +689,99 @@ export default function PropsClient({ initialProducts, initialTotalCount, initia
         justify-content: flex-end;
         align-items: flex-start;
         line-height: 1;
+        margin-bottom: 0.15mm;
       }
       
       .price-logo .logo-img {
-        height: 3.4mm;
+        height: 3.2mm;
         object-fit: contain;
         display: block;
       }
       
       .sku-val {
-        font-size: 4.8pt;
-        line-height: 1.15;
-        color: #475569;
+        font-size: 4.2pt;
+        line-height: 1.1;
+        color: #000000;
         text-align: right;
         word-break: break-all;
-        font-weight: 700;
+        font-weight: 800;
         margin: 0.1mm 0;
       }
 
       .mat-val {
-        font-size: 5pt;
-        line-height: 1.15;
-        color: #78350f;
+        font-size: 4.8pt;
+        line-height: 1.1;
+        color: #000000;
         text-align: right;
         word-break: break-all;
         font-weight: 800;
-        margin: 0.15mm 0;
+        margin: 0.1mm 0;
       }
 
       .size-val {
-        font-size: 5pt;
-        line-height: 1.15;
-        color: #1e3a8a;
+        font-size: 4.8pt;
+        line-height: 1.1;
+        color: #000000;
         text-align: right;
         word-break: break-all;
         font-weight: 800;
-        margin: 0.15mm 0;
+        margin: 0.1mm 0;
       }
       
-      .price-val {
-        font-size: 11.5pt;
+      .price-discount-wrap {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        justify-content: flex-end;
+        line-height: 1;
+      }
+
+      .price-strike-line {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 0.6mm;
+        line-height: 1;
+        margin-bottom: 0.2mm;
+      }
+
+      .price-old {
+        font-size: 5pt;
+        line-height: 1;
+        color: #64748b;
+        text-decoration: line-through;
+        font-weight: 700;
+      }
+
+      .price-disc-badge {
+        font-size: 4.5pt;
+        line-height: 1;
+        background: #dc2626;
+        color: #ffffff;
         font-weight: 900;
-        color: #000;
+        padding: 0.1mm 0.5mm;
+        border-radius: 0.3mm;
+        letter-spacing: -0.2px;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+
+      .price-val {
+        font-size: 11pt;
+        font-weight: 900;
+        color: #000000;
         line-height: 1;
         white-space: nowrap;
+      }
+
+      .price-val-discounted {
+        font-size: 11pt;
+        font-weight: 900;
+        color: #dc2626 !important;
+        line-height: 1;
+        white-space: nowrap;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
       }
     </style></head><body>
     ${pages.join("")}
@@ -798,6 +998,7 @@ export default function PropsClient({ initialProducts, initialTotalCount, initia
                 item={item}
                 isSelected={selected.has(item.id)}
                 displayImage={localImages[item.id] ?? item.image_url}
+                discountInfo={getProductDiscountInfo(item, activeDiscounts)}
                 onToggle={toggleSelect}
                 onEditImage={openEditImage}
               />
@@ -869,6 +1070,31 @@ export default function PropsClient({ initialProducts, initialTotalCount, initia
                       <p className="text-sm font-bold text-slate-800 truncate">{p.name}</p>
                       <p className="text-xs font-mono text-slate-400 truncate">{p.barcode || p.sku}</p>
                       {sizeStr && <p className="text-xs text-blue-600 font-semibold">{sizeStr}</p>}
+                      {(() => {
+                        const disc = getProductDiscountInfo(p, activeDiscounts);
+                        if (disc && disc.finalPrice > 0) {
+                          return (
+                            <div className="flex items-center gap-1.5 text-xs font-mono mt-0.5">
+                              <span className="line-through text-slate-400">
+                                ฿{Number(disc.originalPrice).toLocaleString()}
+                              </span>
+                              <span className="font-bold text-rose-600">
+                                ฿{Number(disc.finalPrice).toLocaleString()}
+                              </span>
+                              <span className="bg-rose-100 text-rose-700 text-[10px] font-bold px-1.5 py-0.2 rounded">
+                                {disc.badgeText}
+                              </span>
+                            </div>
+                          );
+                        } else if (p.price > 0) {
+                          return (
+                            <p className="text-xs font-semibold text-slate-700 font-mono mt-0.5">
+                              ฿{Number(p.price).toLocaleString()}
+                            </p>
+                          );
+                        }
+                        return null;
+                      })()}
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
                       <span className="text-xs text-slate-500">ชุด:</span>

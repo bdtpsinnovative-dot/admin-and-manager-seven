@@ -6,25 +6,46 @@ import { revalidatePath } from "next/cache";
 const TABLE_DISCOUNTS = 'discounts'
 const TABLE_RULES = 'discount_rules'
 
-// 1. สร้างส่วนลดใหม่ (รองรับหลายสินค้า)
+// 1. สร้างส่วนลดใหม่ (รองรับหลายสินค้า, จำกัดส่วนลดสูงสุด, วันเริ่มต้น-สิ้นสุด)
 export async function createDiscount(formData: FormData) {
   const supabase = await createClient();
 
-  const discountData = {
+  const startDateRaw = formData.get('start_date') as string;
+  const endDateRaw = formData.get('end_date') as string;
+  const maxDiscountRaw = formData.get('max_discount') as string;
+  const maxDiscount = maxDiscountRaw && !isNaN(parseFloat(maxDiscountRaw)) ? parseFloat(maxDiscountRaw) : null;
+
+  const discountData: Record<string, any> = {
     name: formData.get('name') as string,
     code: formData.get('code') ? (formData.get('code') as string).toUpperCase() : null,
     discount_type: formData.get('discount_type') as string,
     value: parseFloat(formData.get('value') as string),
-    start_date: formData.get('start_date') || null,
-    end_date: formData.get('end_date') || null,
+    start_date: startDateRaw ? new Date(startDateRaw).toISOString() : null,
+    end_date: endDateRaw ? new Date(endDateRaw).toISOString() : null,
     active: true
+  };
+
+  if (maxDiscount !== null) {
+    discountData.max_discount = maxDiscount;
   }
 
-  const { data: discData, error: discErr } = await supabase
+  let { data: discData, error: discErr } = await supabase
     .from(TABLE_DISCOUNTS)
     .insert([discountData])
     .select()
-    .single()
+    .single();
+
+  // หากฐานข้อมูลยังไม่ได้เพิ่มคอลัมน์ max_discount ให้ retry โดยไม่ส่ง max_discount
+  if (discErr && (discErr.message?.includes('max_discount') || discErr.code === '42703')) {
+    delete discountData.max_discount;
+    const retry = await supabase
+      .from(TABLE_DISCOUNTS)
+      .insert([discountData])
+      .select()
+      .single();
+    discData = retry.data;
+    discErr = retry.error;
+  }
 
   if (discErr) return { error: discErr.message }
 
@@ -96,14 +117,38 @@ export async function updateDiscount(formData: FormData) {
   const value = formData.get('value')
   if (value) updateData.value = parseFloat(value as string)
 
+  const startDateRaw = formData.get('start_date') as string
+  if (startDateRaw !== undefined && startDateRaw !== null) {
+    updateData.start_date = startDateRaw ? new Date(startDateRaw).toISOString() : null
+  }
+
+  const endDateRaw = formData.get('end_date') as string
+  if (endDateRaw !== undefined && endDateRaw !== null) {
+    updateData.end_date = endDateRaw ? new Date(endDateRaw).toISOString() : null
+  }
+
+  const maxDiscountRaw = formData.get('max_discount') as string
+  if (maxDiscountRaw !== undefined && maxDiscountRaw !== null) {
+    updateData.max_discount = maxDiscountRaw && !isNaN(parseFloat(maxDiscountRaw)) ? parseFloat(maxDiscountRaw) : null
+  }
+
   if (Object.keys(updateData).length === 0) {
     return { error: "ไม่มีข้อมูลที่ต้องแก้ไข" }
   }
 
-  const { error } = await supabase
+  let { error } = await supabase
     .from(TABLE_DISCOUNTS)
     .update(updateData)
     .eq('id', id)
+
+  if (error && (error.message?.includes('max_discount') || error.code === '42703')) {
+    delete updateData.max_discount;
+    const retry = await supabase
+      .from(TABLE_DISCOUNTS)
+      .update(updateData)
+      .eq('id', id);
+    error = retry.error;
+  }
 
   if (error) return { error: error.message }
 

@@ -215,3 +215,33 @@ export async function getPropsBySkus(skusOrCodes: string[]) {
   return Array.from(foundMap.values());
 }
 
+// ── Fetch active discounts for discount badges and price calculations ──
+export async function getActiveDiscounts() {
+  const supabase = await createClient();
+  let { data, error } = await supabase
+    .from("discounts")
+    .select(`
+      id, name, code, discount_type, value, active, max_discount, start_date, end_date,
+      discount_rules ( id, product_id, branch_id )
+    `)
+    .eq("active", true);
+
+  if (error && (error.code === "42703" || error.message?.includes("max_discount"))) {
+    const fallback = await supabase
+      .from("discounts")
+      .select(`
+        id, name, code, discount_type, value, active, start_date, end_date,
+        discount_rules ( id, product_id, branch_id )
+      `)
+      .eq("active", true);
+    data = fallback.data;
+    error = fallback.error;
+  }
+
+  if (error) {
+    console.error("Error fetching active discounts:", error);
+    return [];
+  }
+  return data || [];
+}
+
