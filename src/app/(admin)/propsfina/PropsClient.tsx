@@ -264,7 +264,7 @@ export default function PropsClient({ products }: Props) {
                 </div>
                 <div class="price-box">
                   <div class="price-logo">
-                    <img src="/logo.terra.home.png" alt="Logo" class="logo-img" />
+                    <img src="${p.category_id === 'SLABS' ? '/logo.zenslab.png' : '/logo.terra.home.png'}" alt="Logo" class="logo-img" />
                   </div>
                   ${priceStr ? `<div class="price-val">${priceStr}</div>` : ''}
                 </div>

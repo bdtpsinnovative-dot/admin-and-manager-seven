@@ -280,7 +280,7 @@ export default function PropsClient({ initialProducts, initialTotalCount, initia
   const [showCalculator, setShowCalculator] = useState<boolean>(true);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [showModal, setShowModal] = useState(false);
-  const [printLogoMode, setPrintLogoMode] = useState<"auto" | "woodslabs" | "terra" | "zenslab">("auto");
+  const [printLogoMode, setPrintLogoMode] = useState<"auto" | "zenslab" | "terra" | "woodslabs">("auto");
   const [printTargets, setPrintTargets] = useState<any[]>([]);
   const [quantities, setQuantities] = useState<Record<number, number>>({});
   const [showImportModal, setShowImportModal] = useState(false);
@@ -538,10 +538,7 @@ export default function PropsClient({ initialProducts, initialTotalCount, initia
 
         const isSlabItem = p.category_id === "SLABS" || selectedCategory === "SLABS";
 
-        if (printLogoMode === "woodslabs" || (printLogoMode === "auto" && isSlabItem)) {
-          logoSrc = "/logo.woodslabs.png";
-          logoClass = "logo-img logo-woodslabs";
-        } else if (printLogoMode === "zenslab") {
+        if (printLogoMode === "zenslab" || printLogoMode === "woodslabs" || (printLogoMode === "auto" && isSlabItem)) {
           logoSrc = "/logo.zenslab.png";
           logoClass = "logo-img logo-zenslab";
         }
@@ -713,12 +710,9 @@ export default function PropsClient({ initialProducts, initialTotalCount, initia
         display: block;
       }
       
-      .price-logo .logo-img.logo-woodslabs {
-        height: 3.8mm;
-      }
-
+      .price-logo .logo-img.logo-woodslabs,
       .price-logo .logo-img.logo-zenslab {
-        height: 3.0mm;
+        height: 3.2mm;
       }
       
       .sku-val {
@@ -1150,18 +1144,18 @@ export default function PropsClient({ initialProducts, initialTotalCount, initia
                         : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"
                     }`}
                   >
-                    อัตโนมัติตามหมวด {selectedCategory === "SLABS" ? "(🪵 Wood Slabs)" : "(Terra Home)"}
+                    อัตโนมัติตามหมวด {selectedCategory === "SLABS" ? "(🪵 ZenSlab)" : "(Terra Home)"}
                   </button>
                   <button
                     type="button"
-                    onClick={() => setPrintLogoMode("woodslabs")}
+                    onClick={() => setPrintLogoMode("zenslab")}
                     className={`px-2.5 py-1 rounded text-xs font-semibold transition ${
-                      printLogoMode === "woodslabs"
+                      printLogoMode === "zenslab" || printLogoMode === "woodslabs"
                         ? "bg-amber-800 text-white shadow-xs"
                         : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"
                     }`}
                   >
-                    🪵 Wood Slabs
+                    🪵 ZenSlab
                   </button>
                   <button
                     type="button"
@@ -1181,7 +1175,7 @@ export default function PropsClient({ initialProducts, initialTotalCount, initia
                 className="flex flex-col items-center gap-1 py-3.5 rounded-lg border border-orange-200 bg-orange-50 hover:bg-orange-100 transition text-slate-700 text-sm">
                 <span className="font-bold text-sm">พิมพ์ QR + รูป + ข้อมูล (Final Layout)</span>
                 <span className="text-[11px] text-slate-500">
-                  รูปสินค้าบน · ข้อมูลสินค้า · โลโก้ {printLogoMode === "woodslabs" || (printLogoMode === "auto" && selectedCategory === "SLABS") ? "Wood Slabs 🪵" : "Terra Home Studio"} · QR ชิดราคา
+                  รูปสินค้าบน · ข้อมูลสินค้า · โลโก้ {printLogoMode === "zenslab" || printLogoMode === "woodslabs" || (printLogoMode === "auto" && selectedCategory === "SLABS") ? "ZenSlab 🪵" : "Terra Home Studio"} · QR ชิดราคา
                 </span>
               </button>
               <button onClick={() => setShowModal(false)}
