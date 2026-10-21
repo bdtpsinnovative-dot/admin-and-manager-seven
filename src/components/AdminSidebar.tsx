@@ -26,7 +26,7 @@ const primaryItems = [
   { name: "Props / Decor",   href: "/propsfina",    icon: Frame },
   { name: "พิมพ์ป้ายราคา (หน้าที่ 2)", href: "/props2", icon: Tag },
   { name: "Algorithm",      href: "/algorithm",    icon: Activity },
-  // { name: "จัดการลอต",       href: "/lots",         icon: Package },
+  { name: "จัดการลอต",       href: "/lots",         icon: Package },
 ];
 
 // 2. เมนูการจัดการและรายงาน
@@ -65,6 +65,7 @@ export default function AdminSidebar({ user }: { user?: UserData }) {
   };
 
   const isPageAllowed = (href: string) => {
+    if (safeUser.role === 'admin') return true;
     if (!safeUser.allowedPages || safeUser.allowedPages.length === 0) return true;
     if (safeUser.allowedPages.includes(href)) return true;
     if (href === '/gallery' && safeUser.allowedPages.includes('/manager/gallery')) return true;
@@ -77,7 +78,10 @@ export default function AdminSidebar({ user }: { user?: UserData }) {
   let visiblePrimary = primaryItems;
   let visibleSecondary = secondaryItems;
 
-  if (safeUser.allowedPages && safeUser.allowedPages.length > 0) {
+  if (safeUser.role === 'admin') {
+    visiblePrimary = primaryItems;
+    visibleSecondary = secondaryItems;
+  } else if (safeUser.allowedPages && safeUser.allowedPages.length > 0) {
     visiblePrimary = primaryItems.filter(item => isPageAllowed(item.href));
     visibleSecondary = secondaryItems.filter(item => isPageAllowed(item.href));
   } else if (safeUser.role === 'data_entry' || safeUser.role === 'warehouse') {

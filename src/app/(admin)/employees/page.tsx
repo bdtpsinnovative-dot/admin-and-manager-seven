@@ -40,7 +40,7 @@ export default async function EmployeesPage() {
     .order('id', { ascending: true });
 
   const ALL_ADMIN_PAGES = [
-    '/dashboard', '/sales-history', '/inventory', '/stock-in', '/propsfina', '/algorithm',
+    '/dashboard', '/sales-history', '/inventory', '/stock-in', '/lots', '/propsfina', '/algorithm',
     '/web-gallery', '/gallery', '/manager/gallery', '/discounts', '/branches', '/employees', '/balance-check', '/rfid-mismatch',
     '/stock-audit', '/manager/damage-history', '/filters', '/app-management', '/backup'
   ];

@@ -55,6 +55,7 @@ const PAGE_ITEMS = [
   { href: '/sales-history',          label: 'ประวัติการขายหน้าร้าน',      group: 'primary',   Icon: History },
   { href: '/inventory',              label: 'สินค้าทั้งหมด',              group: 'primary',   Icon: Box },
   { href: '/stock-in',               label: 'รับสินค้าเข้า (Stock In)',   group: 'primary',   Icon: PackagePlus },
+  { href: '/lots',                   label: 'จัดการลอต',                 group: 'primary',   Icon: Package },
   { href: '/propsfina',              label: 'Props / Decor',             group: 'primary',   Icon: Frame },
   { href: '/algorithm',              label: 'Algorithm',                 group: 'primary',   Icon: Activity },
   // 2. เมนูการจัดการและรายงาน (Management)

@@ -37,7 +37,7 @@ export default async function RootPage() {
   }
 
   // 2. ตำแหน่งที่ทำงานในฝั่ง Admin (เช่น data_entry, warehouse) หากมีกำหนดสิทธิ์หน้าเฉพาะบุคคล ให้พาไปยังหน้าแรกที่ได้รับสิทธิ์ทันที
-  if (customAllowedPages.length > 0) {
+  if (role !== 'admin' && customAllowedPages.length > 0) {
     redirect(customAllowedPages[0]);
   }
 

@@ -60,7 +60,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const headersList = await headers();
   const currentPath = headersList.get('x-pathname') || '';
 
-  if (customAllowedPages && customAllowedPages.length > 0) {
+  if (profile?.role !== 'admin' && customAllowedPages && customAllowedPages.length > 0) {
     const isAllowed = (path: string) => {
       if (!path || path === '/') return true;
       return customAllowedPages.some(allowed => 

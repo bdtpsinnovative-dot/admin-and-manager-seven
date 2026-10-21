@@ -3,6 +3,18 @@
 import { createServerClient } from '@supabase/ssr'
 import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
+import {
+  matchesStorefrontCategory,
+  productColorValues,
+  productMaterialValues,
+  productMatchesDimensions,
+  getPosColorOptions,
+  getPosMaterialOptions,
+  getStorefrontCategoryOrder,
+  DimensionFilter,
+  EMPTY_DIMENSION_FILTER,
+  hasActiveDimensions
+} from '@/lib/propFilterModel'
 
 export interface PosSetBundle {
   id: number;
@@ -28,7 +40,7 @@ interface PosCache {
 }
 
 let posCache: PosCache | null = null;
-const CACHE_TTL = 3 * 60 * 1000; // แคชไว้ 3 นาที
+const CACHE_TTL = 5 * 60 * 1000; // แคชไว้ 5 นาที
 
 interface FurnitureCache {
   timestamp: number;
@@ -43,33 +55,22 @@ export async function clearPosCache() {
   furnitureCache = null;
 }
 
-export async function getPosData(forceRefresh: boolean = false) {
+async function ensurePosCache(forceRefresh: boolean = false) {
   const cookieStore = await cookies() 
   const supabase = createServerClient(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!, {
     cookies: { getAll() { return cookieStore.getAll() } }
   })
 
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { success: false, error: "Unauthorized" }
-
-  const { data: profile } = await supabase.from('profiles').select('branch_id').eq('user_id', user.id).single()
-  const branchId = profile?.branch_id || 1 
-
-  // ✨ ถ้ามีแคชและยังไม่หมดอายุ คืนค่าจากแคชทันทีใน < 1ms! ไม่ยิง Supabase เลย
   const now = Date.now();
   if (!forceRefresh && posCache && (now - posCache.timestamp < CACHE_TTL)) {
-    return { 
-      success: true, 
-      products: posCache.products, 
-      branches: posCache.branches, 
-      categories: posCache.categories, 
-      sets: posCache.sets || [],
-      branchId,
-      fromCache: true 
-    }
+    return { success: true, fromCache: true }
   }
 
-  const { data: branches, error: branchError } = await supabase.from('branches').select('id, branch_name').order('id', { ascending: true })
+  const { data: branches, error: branchError } = await supabase
+    .from('branches')
+    .select('id, branch_name')
+    .order('id', { ascending: true })
+
   const { data: collections, error: colError } = await supabase
     .from('collection_groups')
     .select('product_sup')
@@ -79,40 +80,41 @@ export async function getPosData(forceRefresh: boolean = false) {
     return { success: false, error: "เกิดข้อผิดพลาดในการโหลดข้อมูลสาขาหรือหมวดหมู่" }
   }
 
-  // ✨ ดึงเฉพาะสินค้าหน้าเว็บ (category_id = 'prop') พร้อมบีบอัดฟิลด์ที่จำเป็น
+  // ✨ ดึงจำนวนรายการทั้งหมดเพื่อยิงแบบคู่ขนาน (Parallel Fetching) ลดเวลารอจาก 5 วิเหลือ < 1 วิ
+  const { count } = await supabase
+    .from('products')
+    .select('id', { count: 'exact', head: true })
+    .eq('category_id', 'prop')
+
+  const totalPropCount = count || 5000
+  const chunkSize = 1000
+  const numChunks = Math.ceil(totalPropCount / chunkSize)
+  const chunkPromises = []
+
+  for (let i = 0; i < numChunks; i++) {
+    const offset = i * chunkSize
+    chunkPromises.push(
+      supabase
+        .from('products')
+        .select(`
+          id, name, sku, price, image_url, barcode, specs,
+          collection_groups ( product_sup, tag, image_url, cover_image_url ),
+          stock ( branch_id, qty ),
+          discount_rules (
+            discounts ( id, name, discount_type, value, active )
+          )
+        `)
+        .eq('category_id', 'prop')
+        .order('id', { ascending: true })
+        .range(offset, offset + chunkSize - 1)
+    )
+  }
+
+  const chunkResults = await Promise.all(chunkPromises)
   let allProducts: any[] = []
-  let keepFetching = true
-  let offset = 0
-  const limit = 1000
-
-  while (keepFetching) {
-    const { data: productsChunk, error: productError } = await supabase
-      .from('products')
-      .select(`
-        id, name, sku, price, image_url, barcode, specs,
-        collection_groups ( product_sup, tag, image_url, cover_image_url ),
-        stock ( branch_id, qty ),
-        discount_rules (
-          discounts ( id, name, discount_type, value, active )
-        )
-      `)
-      .eq('category_id', 'prop')
-      .order('id', { ascending: true })
-      .range(offset, offset + limit - 1)
-
-    if (productError) {
-      return { success: false, error: "เกิดข้อผิดพลาดในการโหลดข้อมูลคลังสินค้า" }
-    }
-
-    if (productsChunk && productsChunk.length > 0) {
-      allProducts = [...allProducts, ...productsChunk]
-      offset += limit
-      
-      if (productsChunk.length < limit) {
-        keepFetching = false
-      }
-    } else {
-      keepFetching = false
+  for (const res of chunkResults) {
+    if (res.data && res.data.length > 0) {
+      allProducts.push(...res.data)
     }
   }
 
@@ -121,56 +123,55 @@ export async function getPosData(forceRefresh: boolean = false) {
   const formattedProducts = allProducts
     .filter(p => !p.collection_groups || !p.collection_groups.tag || p.collection_groups.tag.toLowerCase().includes('prop'))
     .map(p => {
-    const originalPrice = Number(p.price) || 0
-    let finalPrice = originalPrice
-    let discountPercentString = "" 
-    let appliedDiscountId = null
-    let appliedDiscountName = null
+      const originalPrice = Number(p.price) || 0
+      let finalPrice = originalPrice
+      let discountPercentString = "" 
+      let appliedDiscountId = null
+      let appliedDiscountName = null
 
-    const activeRule = p.discount_rules?.find((r: any) => r.discounts?.active === true)
+      const activeRule = p.discount_rules?.find((r: any) => r.discounts?.active === true)
 
-    if (activeRule && activeRule.discounts) {
-      const disc = activeRule.discounts
-      const discValue = Number(disc.value) || 0
-      
-      appliedDiscountId = disc.id
-      appliedDiscountName = disc.name
+      if (activeRule && activeRule.discounts) {
+        const disc = activeRule.discounts
+        const discValue = Number(disc.value) || 0
+        
+        appliedDiscountId = disc.id
+        appliedDiscountName = disc.name
 
-      if (disc.discount_type === 'FIXED') {
-        finalPrice = Math.max(0, originalPrice - discValue)
-        if (originalPrice > 0) discountPercentString = `-${Math.round((discValue / originalPrice) * 100)}%`
-      } else if (disc.discount_type === 'PERCENT') {
-        finalPrice = Math.max(0, originalPrice - (originalPrice * (discValue / 100)))
-        discountPercentString = `-${discValue}%`
+        if (disc.discount_type === 'FIXED') {
+          finalPrice = Math.max(0, originalPrice - discValue)
+          if (originalPrice > 0) discountPercentString = `-${Math.round((discValue / originalPrice) * 100)}%`
+        } else if (disc.discount_type === 'PERCENT') {
+          finalPrice = Math.max(0, originalPrice - (originalPrice * (discValue / 100)))
+          discountPercentString = `-${discValue}%`
+        }
       }
-    }
 
-    const colGroup = Array.isArray(p.collection_groups) ? p.collection_groups[0] : p.collection_groups
-    const resolvedImageUrl = p.image_url || colGroup?.image_url || colGroup?.cover_image_url || null
+      const colGroup = Array.isArray(p.collection_groups) ? p.collection_groups[0] : p.collection_groups
+      const resolvedImageUrl = p.image_url || colGroup?.image_url || colGroup?.cover_image_url || null
 
-    return {
-      id: p.id,
-      name: p.name,
-      sku: p.sku || '',
-      original_price: originalPrice, 
-      price: finalPrice,              
-      discount_label: discountPercentString, 
-      discount_id: appliedDiscountId,
-      discount_name: appliedDiscountName,
-      image_url: resolvedImageUrl,
-      barcode: p.barcode,
-      product_sup: colGroup ? colGroup.product_sup : null,
-      stocks: p.stock || [],
-      // ✨ ส่งข้อมูล material, color, และขนาด เพื่อให้ฟิลเตอร์หน้าบ้านทำงานได้ครบถ้วน
-      specs: p.specs ? {
-        material: p.specs.material || null,
-        color: p.specs.color || p.specs.colour || p.color || null,
-        width_cm: p.specs.width_cm || p.specs.W || null,
-        length_cm: p.specs.length_cm || p.specs.D || null,
-        thickness_cm: p.specs.thickness_cm || p.specs.H || null,
-      } : {}
-    }
-  })
+      return {
+        id: p.id,
+        name: p.name,
+        sku: p.sku || '',
+        original_price: originalPrice, 
+        price: finalPrice,              
+        discount_label: discountPercentString, 
+        discount_id: appliedDiscountId,
+        discount_name: appliedDiscountName,
+        image_url: resolvedImageUrl,
+        barcode: p.barcode,
+        product_sup: colGroup ? colGroup.product_sup : null,
+        stocks: p.stock || [],
+        specs: p.specs ? {
+          material: p.specs.material || null,
+          color: p.specs.color || p.specs.colour || p.color || null,
+          width_cm: p.specs.width_cm || p.specs.W || null,
+          length_cm: p.specs.length_cm || p.specs.D || null,
+          thickness_cm: p.specs.thickness_cm || p.specs.H || null,
+        } : {}
+      }
+    })
 
   // ✨ ดึงข้อมูลเซ็ตสินค้าที่ผูกไว้ใน Web Gallery (journal_images)
   const { data: linkedImages } = await supabase
@@ -185,7 +186,6 @@ export async function getPosData(forceRefresh: boolean = false) {
     `)
     .order('sort_order', { ascending: true })
 
-  // ดึงโปรโมชั่นเซ็ตที่ Active จาก terra_collection_promotions
   const nowIso = new Date().toISOString()
   const { data: activeSetPromos } = await supabase
     .from('terra_collection_promotions')
@@ -200,7 +200,6 @@ export async function getPosData(forceRefresh: boolean = false) {
     return true
   })
 
-  // Map สินค้าตาม ID เพื่อให้ค้นหาได้ไว O(1)
   const productMap = new Map<number, any>()
   formattedProducts.forEach(p => productMap.set(p.id, p))
 
@@ -210,8 +209,6 @@ export async function getPosData(forceRefresh: boolean = false) {
   for (const s of setsWithProducts) {
     const pIds: number[] = s.journal_image_products.map((p: any) => Number(p.product_id)).filter((id: number) => !isNaN(id))
     const setProducts = pIds.map(id => productMap.get(id)).filter(Boolean)
-    
-    // แสดงเฉพาะเซ็ตที่มีสินค้าอยู่ในระบบจริง
     if (setProducts.length === 0) continue
 
     const jCat: any = Array.isArray(s.journal_categories) ? s.journal_categories[0] : s.journal_categories
@@ -255,7 +252,6 @@ export async function getPosData(forceRefresh: boolean = false) {
     })
   }
 
-  // บันทึกลงแคชเพื่อไม่ให้ต้องยิงซ้ำ
   posCache = {
     timestamp: now,
     products: formattedProducts,
@@ -264,14 +260,205 @@ export async function getPosData(forceRefresh: boolean = false) {
     sets: setBundles
   }
 
+  return { success: true, fromCache: false }
+}
+
+function filterAndSortPosProducts(
+  products: any[],
+  options: {
+    searchQuery?: string;
+    selectedCategory?: string;
+    storefrontCategory?: string;
+    selectedColors?: string[];
+    selectedMaterials?: string[];
+    dimensionFilter?: DimensionFilter;
+    selectedLocation?: number | 'ALL';
+    myBranchId?: number;
+  }
+) {
+  const {
+    searchQuery = '',
+    selectedCategory = 'ALL',
+    storefrontCategory = 'All',
+    selectedColors = [],
+    selectedMaterials = [],
+    dimensionFilter = EMPTY_DIMENSION_FILTER,
+    selectedLocation = 'ALL',
+    myBranchId = 1,
+  } = options;
+
+  const query = searchQuery.trim().toLowerCase();
+
+  const filtered = products.filter(p => {
+    if (query) {
+      const matchSearch = (p.name || '').toLowerCase().includes(query) || (p.sku || '').toLowerCase().includes(query);
+      if (!matchSearch) return false;
+    }
+
+    if (selectedCategory !== 'ALL' && p.product_sup !== selectedCategory) return false;
+
+    if (storefrontCategory !== 'All' && storefrontCategory !== 'ALL') {
+      if (!matchesStorefrontCategory(p, storefrontCategory)) return false;
+    }
+
+    if (selectedColors.length > 0) {
+      const pColors = productColorValues(p);
+      const hasColor = selectedColors.some(c => pColors.includes(c));
+      if (!hasColor) return false;
+    }
+
+    if (selectedMaterials.length > 0) {
+      const pMats = productMaterialValues(p);
+      const hasMat = selectedMaterials.some(m => pMats.includes(m));
+      if (!hasMat) return false;
+    }
+
+    if (hasActiveDimensions(dimensionFilter)) {
+      if (!productMatchesDimensions(p, dimensionFilter)) return false;
+    }
+
+    if (storefrontCategory === 'PRE_ORDER') {
+      const checkStock = selectedLocation !== 'ALL'
+        ? (p.stocks?.find((s: any) => s.branch_id === selectedLocation)?.qty || 0)
+        : (p.stocks?.reduce((sum: number, s: any) => sum + Number(s.qty), 0) || 0);
+      if (Number(checkStock) > 0) return false;
+    }
+
+    return true;
+  });
+
+  filtered.sort((a, b) => {
+    const targetBranch = selectedLocation === 'ALL' ? myBranchId : selectedLocation;
+    const aLocStock = a.stocks?.find((s: any) => s.branch_id === targetBranch)?.qty || 0;
+    const bLocStock = b.stocks?.find((s: any) => s.branch_id === targetBranch)?.qty || 0;
+    const aTotalStock = a.stocks?.reduce((sum: number, s: any) => sum + Number(s.qty), 0) || 0;
+    const bTotalStock = b.stocks?.reduce((sum: number, s: any) => sum + Number(s.qty), 0) || 0;
+
+    const getStockTier = (locStock: number, totalStock: number) => {
+      if (selectedLocation === 'ALL') {
+        return totalStock > 0 ? 0 : 1;
+      }
+      if (locStock > 0) return 0;
+      if (totalStock > 0) return 1;
+      return 2;
+    };
+
+    const aTier = getStockTier(Number(aLocStock), Number(aTotalStock));
+    const bTier = getStockTier(Number(bLocStock), Number(bTotalStock));
+    if (aTier !== bTier) return aTier - bTier;
+
+    const aCatOrder = getStorefrontCategoryOrder(a.product_sup);
+    const bCatOrder = getStorefrontCategoryOrder(b.product_sup);
+    if (aCatOrder !== bCatOrder) return aCatOrder - bCatOrder;
+
+    const aHasDiscount = a.discount_label ? 0 : 1;
+    const bHasDiscount = b.discount_label ? 0 : 1;
+    if (aHasDiscount !== bHasDiscount) return aHasDiscount - bHasDiscount;
+
+    if (aTotalStock !== bTotalStock) {
+      return bTotalStock - aTotalStock;
+    }
+
+    return a.id - b.id;
+  });
+
+  return filtered;
+}
+
+export async function getPosProductsPage(params: {
+  page?: number;
+  pageSize?: number;
+  searchQuery?: string;
+  selectedCategory?: string;
+  storefrontCategory?: string;
+  selectedColors?: string[];
+  selectedMaterials?: string[];
+  dimensionFilter?: DimensionFilter;
+  selectedLocation?: number | 'ALL';
+  forceRefresh?: boolean;
+}) {
+  const cookieStore = await cookies();
+  const supabase = createServerClient(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!, {
+    cookies: { getAll() { return cookieStore.getAll(); } }
+  });
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: "Unauthorized" };
+
+  const { data: profile } = await supabase.from('profiles').select('branch_id').eq('user_id', user.id).single();
+  const branchId = profile?.branch_id || 1;
+
+  const cacheRes = await ensurePosCache(params.forceRefresh || false);
+  if (!cacheRes.success || !posCache) {
+    return { success: false, error: cacheRes.error || "เกิดข้อผิดพลาดในการโหลดสินค้า" };
+  }
+
+  const filtered = filterAndSortPosProducts(posCache.products, {
+    searchQuery: params.searchQuery,
+    selectedCategory: params.selectedCategory,
+    storefrontCategory: params.storefrontCategory,
+    selectedColors: params.selectedColors,
+    selectedMaterials: params.selectedMaterials,
+    dimensionFilter: params.dimensionFilter,
+    selectedLocation: params.selectedLocation,
+    myBranchId: branchId,
+  });
+
+  const page = Math.max(1, params.page || 1);
+  const pageSize = Math.max(1, params.pageSize || 48);
+  const startIndex = (page - 1) * pageSize;
+  const pagedProducts = filtered.slice(startIndex, startIndex + pageSize);
+
+  return {
+    success: true,
+    products: pagedProducts,
+    totalCount: filtered.length,
+    page,
+    pageSize,
+    hasMore: (startIndex + pageSize) < filtered.length,
+    colorOptions: getPosColorOptions(posCache.products, params.storefrontCategory || 'All'),
+    materialOptions: getPosMaterialOptions(posCache.products, params.storefrontCategory || 'All'),
+  };
+}
+
+export async function getPosData(forceRefresh: boolean = false) {
+  const cookieStore = await cookies();
+  const supabase = createServerClient(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!, {
+    cookies: { getAll() { return cookieStore.getAll(); } }
+  });
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: "Unauthorized" };
+
+  const { data: profile } = await supabase.from('profiles').select('branch_id').eq('user_id', user.id).single();
+  const branchId = profile?.branch_id || 1;
+
+  const cacheRes = await ensurePosCache(forceRefresh);
+  if (!cacheRes.success || !posCache) {
+    return { success: false, error: cacheRes.error || "เกิดข้อผิดพลาดในการโหลดข้อมูล" };
+  }
+
+  // ✨ ส่งสินค้า 48 ชิ้นแรกที่จัดลำดับตามสาขาของพนักงาน เพื่อให้เปิดหน้าเว็บได้เร็วเสี้ยววินาที (< 250ms)
+  const filtered = filterAndSortPosProducts(posCache.products, {
+    selectedLocation: branchId,
+    myBranchId: branchId,
+  });
+
+  const initialProducts = filtered.slice(0, 48);
+
   return { 
     success: true, 
-    products: formattedProducts, 
-    branches: branches || [], 
-    categories: uniqueCategories, 
-    sets: setBundles,
-    branchId 
-  }
+    products: initialProducts, 
+    totalCount: filtered.length,
+    hasMore: filtered.length > 48,
+    branches: posCache.branches, 
+    categories: posCache.categories, 
+    sets: posCache.sets || [],
+    branchId,
+    fromCache: cacheRes.fromCache,
+    colorOptions: getPosColorOptions(posCache.products, 'All'),
+    materialOptions: getPosMaterialOptions(posCache.products, 'All'),
+  };
 }
 
 export async function getFurnitureProducts(forceRefresh: boolean = false) {

@@ -1,9 +1,9 @@
 "use client"
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import dynamic from 'next/dynamic'
-import { getPosData, processCheckout, CheckoutPayload, getNearbyStock, getOrderForEdit, PosSetBundle, validatePosCoupon, updateProductPrice } from '@/actions/pos'
-import { FolderOpen, Store, Truck, Receipt, MapPin, Save, AlertTriangle, AlertCircle, Info, X, Plus, Minus, FileText, Trash2, Printer, RefreshCw, Clock, Menu, Sparkles, Ticket, SlidersHorizontal, Armchair, Tag, Edit3 } from 'lucide-react'
+import { getPosData, getPosProductsPage, processCheckout, CheckoutPayload, getNearbyStock, getOrderForEdit, PosSetBundle, validatePosCoupon, updateProductPrice } from '@/actions/pos'
+import { FolderOpen, Store, Truck, Receipt, MapPin, Save, AlertTriangle, AlertCircle, Info, X, Plus, Minus, FileText, Trash2, Printer, RefreshCw, Clock, Menu, Sparkles, Ticket, SlidersHorizontal, Armchair, Tag, Edit3, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import StorefrontFilterDrawer from '@/components/pos/StorefrontFilterDrawer'
 import StorefrontFilterBar from '@/components/pos/StorefrontFilterBar'
@@ -58,6 +58,15 @@ interface NestedCategory {
 export default function ManagerPOSPage() {
   const [branches, setBranches] = useState<Branch[]>([])
   const [products, setProducts] = useState<Product[]>([])
+  const [totalCount, setTotalCount] = useState<number>(0)
+  const [hasMore, setHasMore] = useState<boolean>(false)
+  const [currentPage, setCurrentPage] = useState<number>(1)
+  const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false)
+  const [isSearching, setIsSearching] = useState<boolean>(false)
+  const observerTargetRef = useRef<HTMLDivElement | null>(null)
+  const [serverColorOptions, setServerColorOptions] = useState<any[]>([])
+  const [serverMaterialOptions, setServerMaterialOptions] = useState<any[]>([])
+
   const [sets, setSets] = useState<PosSetBundle[]>([])
   const [loadingDb, setLoadingDb] = useState(true)
 
@@ -94,7 +103,6 @@ export default function ManagerPOSPage() {
   const [myBranchId, setMyBranchId] = useState<number>(1)
   const [selectedLocation, setSelectedLocation] = useState<number | 'ALL'>('ALL')
   const [selectedCategory, setSelectedCategory] = useState<string | 'ALL'>('ALL')
-  const [displayLimit, setDisplayLimit] = useState<number>(48)
 
   const [searchQuery, setSearchQuery] = useState('')
   const [cart, setCart] = useState<CartItem[]>([])
@@ -123,18 +131,17 @@ export default function ManagerPOSPage() {
   const [isValidatingCoupon, setIsValidatingCoupon] = useState(false)
   const [couponErrorMsg, setCouponErrorMsg] = useState<string | null>(null)
 
-  // ตัวเลือกสีและวัสดุที่คำนวณจากสินค้าจริงในหน้านี้
+  // ตัวเลือกสีและวัสดุจากเซิร์ฟเวอร์เพื่อให้ครอบคลุมสินค้าทั้งหมด 5,000 ชิ้น
   const storefrontColorOptions = useMemo(() => {
+    if (serverColorOptions.length > 0) return serverColorOptions
     return getPosColorOptions(products, storefrontCategory)
-  }, [products, storefrontCategory])
+  }, [serverColorOptions, products, storefrontCategory])
 
   const storefrontMaterialOptions = useMemo(() => {
+    if (serverMaterialOptions.length > 0) return serverMaterialOptions
     return getPosMaterialOptions(products, storefrontCategory)
-  }, [products, storefrontCategory])
+  }, [serverMaterialOptions, products, storefrontCategory])
 
-  useEffect(() => {
-    setDisplayLimit(48)
-  }, [searchQuery, selectedCategory, storefrontCategory, selectedColors, selectedMaterials, dimensionFilter, selectedLocation])
   const [submitting, setSubmitting] = useState(false)
   const [isConfirmingClear, setIsConfirmingClear] = useState(false)
   const [isMobileCartOpen, setIsMobileCartOpen] = useState(false)
@@ -397,9 +404,14 @@ export default function ManagerPOSPage() {
     const res = await getPosData(forceRefresh)
     if (res.success && res.products && res.branches) {
       setProducts(res.products)
+      setTotalCount(res.totalCount || res.products.length)
+      setHasMore(Boolean(res.hasMore))
+      setCurrentPage(1)
       setBranches(res.branches)
       if (res.sets) setSets(res.sets)
       if (res.categories) buildNestedMenu(res.categories)
+      if (res.colorOptions) setServerColorOptions(res.colorOptions)
+      if (res.materialOptions) setServerMaterialOptions(res.materialOptions)
       if (res.branchId) {
         setMyBranchId(res.branchId)
         if (isInitial) setSelectedLocation(res.branchId)
@@ -410,6 +422,96 @@ export default function ManagerPOSPage() {
     }
     if (isInitial) setLoadingDb(false)
   }
+
+  // 🚀 ฟังก์ชันดึงสินค้าหน้าถัดไปแบบ Infinite Scroll
+  const loadMoreProducts = async () => {
+    if (isLoadingMore || !hasMore || loadingDb || selectedCategory === 'SETS') return
+    setIsLoadingMore(true)
+    try {
+      const nextPage = currentPage + 1
+      const res = await getPosProductsPage({
+        page: nextPage,
+        pageSize: 48,
+        searchQuery,
+        selectedCategory,
+        storefrontCategory,
+        selectedColors,
+        selectedMaterials,
+        dimensionFilter,
+        selectedLocation,
+      })
+      if (res.success && res.products) {
+        setProducts(prev => {
+          const existingIds = new Set(prev.map(p => p.id))
+          const newOnes = res.products.filter(p => !existingIds.has(p.id))
+          return [...prev, ...newOnes]
+        })
+        setCurrentPage(nextPage)
+        setHasMore(Boolean(res.hasMore))
+        setTotalCount(res.totalCount)
+      }
+    } catch (err) {
+      console.error("Failed to load more products:", err)
+    } finally {
+      setIsLoadingMore(false)
+    }
+  }
+
+  // 🌀 ดักจับเมื่อผู้ใช้เลื่อนจอลงมาใกล้ล่างสุด แล้วโหลดเพิ่มอัตโนมัติ (Infinite Scroll)
+  useEffect(() => {
+    if (selectedCategory === 'SETS') return
+    const target = observerTargetRef.current
+    if (!target) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && hasMore && !isLoadingMore && !loadingDb) {
+          loadMoreProducts()
+        }
+      },
+      { rootMargin: '350px' }
+    )
+
+    observer.observe(target)
+    return () => observer.disconnect()
+  }, [hasMore, isLoadingMore, loadingDb, currentPage, searchQuery, selectedCategory, storefrontCategory, selectedColors, selectedMaterials, dimensionFilter, selectedLocation])
+
+  // ⚡ ค้นหาและกรองผ่าน Server แบบ Debounced (ค้นหาไวในเสี้ยววินาที ไม่กระตุก)
+  useEffect(() => {
+    if (loadingDb) return
+    if (selectedCategory === 'SETS') return
+
+    const timer = setTimeout(async () => {
+      setIsSearching(true)
+      try {
+        const res = await getPosProductsPage({
+          page: 1,
+          pageSize: 48,
+          searchQuery,
+          selectedCategory,
+          storefrontCategory,
+          selectedColors,
+          selectedMaterials,
+          dimensionFilter,
+          selectedLocation,
+        })
+        if (res.success && res.products) {
+          setProducts(res.products)
+          setCurrentPage(1)
+          setTotalCount(res.totalCount)
+          setHasMore(Boolean(res.hasMore))
+          if (res.colorOptions) setServerColorOptions(res.colorOptions)
+          if (res.materialOptions) setServerMaterialOptions(res.materialOptions)
+        }
+      } catch (err) {
+        console.error("Search/filter failed:", err)
+      } finally {
+        setIsSearching(false)
+      }
+    }, 220)
+
+    return () => clearTimeout(timer)
+  }, [searchQuery, selectedCategory, storefrontCategory, selectedColors, selectedMaterials, dimensionFilter, selectedLocation])
 
   const buildNestedMenu = (rawCategories: string[]) => {
     const groups: Record<string, { fullText: string; subText: string }[]> = {}
@@ -1170,89 +1272,8 @@ export default function ManagerPOSPage() {
     }
   }
 
+  // ⚡ ผลิตภัณฑ์ได้รับการกรองและจัดเรียงมาจาก Server Action แล้ว (Pagination & Server-side Filter)
   const filteredProducts = products
-    .filter(p => {
-      const matchSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) || p.sku.toLowerCase().includes(searchQuery.toLowerCase())
-      if (!matchSearch) return false
-
-      // 🧭 ฟิลเตอร์หมวดหมู่เดิม (ห้ามแตะต้อง คงไว้ 100%)
-      if (selectedCategory !== 'ALL' && p.product_sup !== selectedCategory) return false
-
-      // 🛍️ ฟิลเตอร์หน้าบ้าน (Storefront Category Filter)
-      if (storefrontCategory !== 'All' && storefrontCategory !== 'ALL') {
-        if (!matchesStorefrontCategory(p, storefrontCategory)) return false
-      }
-
-      // กรองตามสี
-      if (selectedColors.length > 0) {
-        const pColors = productColorValues(p)
-        const hasColor = selectedColors.some(c => pColors.includes(c))
-        if (!hasColor) return false
-      }
-
-      // กรองตามวัสดุ
-      if (selectedMaterials.length > 0) {
-        const pMats = productMaterialValues(p)
-        const hasMat = selectedMaterials.some(m => pMats.includes(m))
-        if (!hasMat) return false
-      }
-
-      // กรองตามขนาด
-      if (hasActiveDimensions(dimensionFilter)) {
-        if (!productMatchesDimensions(p, dimensionFilter)) return false
-      }
-      
-      // 🏢 กรองสต็อก: หากเลือกดูพรีออเดอร์ (PRE_ORDER) ให้แสดงเฉพาะสินค้าที่สต็อก 0
-      if (storefrontCategory === 'PRE_ORDER') {
-        const checkStock = selectedLocation !== 'ALL'
-          ? (p.stocks.find(s => s.branch_id === selectedLocation)?.qty || 0)
-          : p.stocks.reduce((sum, s) => sum + Number(s.qty), 0)
-        if (Number(checkStock) > 0) return false
-      }
-
-      return true
-    })
-    .sort((a, b) => {
-      // 🎨 อัลกอริทึมจัดลำดับแบบหน้าเว็บหน้าร้าน (Storefront Algorithm):
-      // 🏬 อันดับ 1: สินค้าที่มีสต็อกขึ้นก่อนเสมอ ตัวที่สต็อก 0 ให้ต่อท้าย
-      const targetBranch = selectedLocation === 'ALL' ? myBranchId : selectedLocation
-      const aLocStock = a.stocks.find(s => s.branch_id === targetBranch)?.qty || 0
-      const bLocStock = b.stocks.find(s => s.branch_id === targetBranch)?.qty || 0
-      const aTotalStock = a.stocks.reduce((sum, s) => sum + Number(s.qty), 0)
-      const bTotalStock = b.stocks.reduce((sum, s) => sum + Number(s.qty), 0)
-
-      const getStockTier = (locStock: number, totalStock: number) => {
-        if (selectedLocation === 'ALL') {
-          return totalStock > 0 ? 0 : 1
-        }
-        if (locStock > 0) return 0 // มีของในสาขาเรา (พร้อมขายทันที)
-        if (totalStock > 0) return 1 // มีของสาขาอื่น (ดึงสาขา)
-        return 2 // สต็อกเป็น 0 ทุกสาขา (เสนอราคา)
-      }
-
-      const aTier = getStockTier(Number(aLocStock), Number(aTotalStock))
-      const bTier = getStockTier(Number(bLocStock), Number(bTotalStock))
-
-      if (aTier !== bTier) return aTier - bTier
-
-      // 🏆 อันดับ 2: เรียงตามลำดับหมวดหมู่หน้าบ้าน (Storefront Category Hierarchy 1..9)
-      const aCatOrder = getStorefrontCategoryOrder(a.product_sup)
-      const bCatOrder = getStorefrontCategoryOrder(b.product_sup)
-      if (aCatOrder !== bCatOrder) return aCatOrder - bCatOrder
-
-      // 🏷️ อันดับ 3: สินค้าที่มีโปรโมชั่น/ส่วนลด ดันขึ้นมาก่อนในหมวด
-      const aHasDiscount = a.discount_label ? 0 : 1
-      const bHasDiscount = b.discount_label ? 0 : 1
-      if (aHasDiscount !== bHasDiscount) return aHasDiscount - bHasDiscount
-
-      // 📦 อันดับ 4: ชิ้นที่มีสต็อกเยอะกว่าขึ้นก่อน
-      if (aTotalStock !== bTotalStock) {
-        return bTotalStock - aTotalStock
-      }
-
-      // 🆕 อันดับ 5: สินค้าใหม่กว่า (ID มากกว่า) ขึ้นก่อน
-      return b.id - a.id
-    })
 
   if (loadingDb) return <div className="min-h-screen flex items-center justify-center font-bold text-slate-500 bg-[#F4F7F9]">กำลังโหลดข้อมูลคลังสินค้า...</div>
 
@@ -1448,14 +1469,19 @@ export default function ManagerPOSPage() {
                   </button>
                 )}
 
-                <div className="w-full xl:w-72 shrink-0">
+                <div className="w-full xl:w-72 shrink-0 relative">
                   <input
                     type="text"
                     placeholder={selectedCategory === 'SETS' ? "ค้นหาชื่อเซ็ต หรือหมวด..." : "ค้นหาชื่อสินค้าที่นี่..."}
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full px-5 py-2.5 bg-slate-50 rounded-full text-sm outline-none focus:bg-white focus:ring-2 focus:ring-amber-200 transition-all"
+                    className="w-full pl-5 pr-10 py-2.5 bg-slate-50 rounded-full text-sm outline-none focus:bg-white focus:ring-2 focus:ring-amber-200 transition-all"
                   />
+                  {isSearching && (
+                    <div className="absolute right-3.5 top-1/2 -translate-y-1/2 text-amber-500 pointer-events-none">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -1698,83 +1724,113 @@ export default function ManagerPOSPage() {
             /* 📦 ตารางแสดงสินค้าเดี่ยวปกติ */
             <>
               <div className="grid grid-cols-4 md:grid-cols-5 xl:grid-cols-6 gap-2 sm:gap-4 w-full">
-                {filteredProducts.slice(0, displayLimit).map((product) => {
-                  const targetBranch = selectedLocation === 'ALL' ? myBranchId : selectedLocation
-                  const branchStock = product.stocks.find(s => s.branch_id === targetBranch)
-                  const currentBranchQty = branchStock ? Number(branchStock.qty) : 0
-                  const totalStock = product.stocks.reduce((sum, s) => sum + Number(s.qty), 0)
-                  return (
-                    <div
-                      key={product.id}
-                      onClick={() => handleProductClick(product)}
-                      className="bg-white rounded-[20px] p-2 flex flex-col shadow-xs cursor-pointer border border-slate-100 hover:border-amber-400 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 group relative"
-                    >
-                      <div className="relative w-full aspect-square bg-slate-50 rounded-2xl overflow-hidden mb-2 flex items-center justify-center">
-                        {product.image_url ? (
-                          <img id={`product-img-${product.id}`} src={product.image_url} alt={product.name} className="object-cover w-full h-full transition-transform duration-500 group-hover:scale-110" />
-                        ) : (
-                          <span className="text-xs text-slate-300 font-medium">ไม่มีรูป</span>
-                        )}
-                        {currentBranchQty > 0 ? (
-                          <div className="absolute top-2 right-2 bg-slate-900/80 text-white text-[9px] px-1.5 py-0.5 rounded-md backdrop-blur-xs font-bold">
-                            เหลือ {currentBranchQty}
-                          </div>
-                        ) : totalStock > 0 ? (
-                          <div className="absolute top-2 right-2 bg-amber-600 text-white text-[9px] px-1.5 py-0.5 rounded-md backdrop-blur-xs font-bold shadow-xs flex items-center gap-0.5">
-                            <MapPin className="w-2.5 h-2.5" /> ดึงสาขา ({totalStock})
-                          </div>
-                        ) : (
-                          <div className="absolute top-2 right-2 bg-slate-700/80 text-white text-[9px] px-1.5 py-0.5 rounded-md backdrop-blur-xs font-bold shadow-xs">
-                            เสนอราคา (0)
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex flex-col shrink-0 px-1 pb-1">
-                        <h3 className="font-bold text-slate-800 text-[10px] sm:text-xs truncate w-full" title={product.name}>
-                          {product.name}
-                        </h3>
-                        {product.specs && product.specs.material && (
-                          <span className="text-[8px] text-slate-400 font-medium uppercase tracking-wider block mt-0.5 leading-none">
-                            {product.specs.material}
-                          </span>
-                        )}
-                        <div className="flex items-end justify-between mt-1">
-                          <div className="flex flex-col">
-                            {product.discount_label && (
-                              <div className="flex items-center gap-1 mb-0.5">
-                                <span className="text-[9px] text-slate-400 line-through">฿{product.original_price.toLocaleString()}</span>
-                                <span className="text-[8px] bg-orange-50 text-orange-600 px-1 rounded font-black">{product.discount_label}</span>
-                              </div>
-                            )}
-                            {Number(product.price) <= 0 ? (
-                              <div className="text-rose-600 font-bold text-[10px] bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200 w-fit">
-                                ยังไม่ตั้งราคา (0 ฿)
-                              </div>
-                            ) : (
-                              <div className="text-amber-700 font-black text-xs sm:text-sm">฿{product.price.toLocaleString()}</div>
-                            )}
+                {products.length === 0 && !loadingDb ? (
+                  <div className="col-span-full py-16 flex flex-col items-center justify-center text-center">
+                    <div className="w-14 h-14 bg-slate-100 rounded-full flex items-center justify-center text-slate-400 mb-3">
+                      <FolderOpen className="w-7 h-7" />
+                    </div>
+                    <p className="text-sm font-bold text-slate-600">ไม่พบสินค้าที่ตรงกับเงื่อนไขการค้นหา</p>
+                    <p className="text-xs text-slate-400 mt-1">ลองเปลี่ยนคำค้นหา หรือรีเซ็ตตัวกรอง</p>
+                  </div>
+                ) : (
+                  products.map((product) => {
+                    const targetBranch = selectedLocation === 'ALL' ? myBranchId : selectedLocation
+                    const branchStock = product.stocks.find(s => s.branch_id === targetBranch)
+                    const currentBranchQty = branchStock ? Number(branchStock.qty) : 0
+                    const totalStock = product.stocks.reduce((sum, s) => sum + Number(s.qty), 0)
+                    return (
+                      <div
+                        key={product.id}
+                        onClick={() => handleProductClick(product)}
+                        className="bg-white rounded-[20px] p-2 flex flex-col shadow-xs cursor-pointer border border-slate-100 hover:border-amber-400 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 group relative"
+                      >
+                        <div className="relative w-full aspect-square bg-slate-50 rounded-2xl overflow-hidden mb-2 flex items-center justify-center">
+                          {product.image_url ? (
+                            <img id={`product-img-${product.id}`} src={product.image_url} alt={product.name} className="object-cover w-full h-full transition-transform duration-500 group-hover:scale-110" />
+                          ) : (
+                            <span className="text-xs text-slate-300 font-medium">ไม่มีรูป</span>
+                          )}
+                          {currentBranchQty > 0 ? (
+                            <div className="absolute top-2 right-2 bg-slate-900/80 text-white text-[9px] px-1.5 py-0.5 rounded-md backdrop-blur-xs font-bold">
+                              เหลือ {currentBranchQty}
+                            </div>
+                          ) : totalStock > 0 ? (
+                            <div className="absolute top-2 right-2 bg-amber-600 text-white text-[9px] px-1.5 py-0.5 rounded-md backdrop-blur-xs font-bold shadow-xs flex items-center gap-0.5">
+                              <MapPin className="w-2.5 h-2.5" /> ดึงสาขา ({totalStock})
+                            </div>
+                          ) : (
+                            <div className="absolute top-2 right-2 bg-slate-700/80 text-white text-[9px] px-1.5 py-0.5 rounded-md backdrop-blur-xs font-bold shadow-xs">
+                              เสนอราคา (0)
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex flex-col shrink-0 px-1 pb-1">
+                          <h3 className="font-bold text-slate-800 text-[10px] sm:text-xs truncate w-full" title={product.name}>
+                            {product.name}
+                          </h3>
+                          {product.specs && product.specs.material && (
+                            <span className="text-[8px] text-slate-400 font-medium uppercase tracking-wider block mt-0.5 leading-none">
+                              {product.specs.material}
+                            </span>
+                          )}
+                          <div className="flex items-end justify-between mt-1">
+                            <div className="flex flex-col">
+                              {product.discount_label && (
+                                <div className="flex items-center gap-1 mb-0.5">
+                                  <span className="text-[9px] text-slate-400 line-through">฿{product.original_price.toLocaleString()}</span>
+                                  <span className="text-[8px] bg-orange-50 text-orange-600 px-1 rounded font-black">{product.discount_label}</span>
+                                </div>
+                              )}
+                              {Number(product.price) <= 0 ? (
+                                <div className="text-rose-600 font-bold text-[10px] bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200 w-fit">
+                                  ยังไม่ตั้งราคา (0 ฿)
+                                </div>
+                              ) : (
+                                <div className="text-amber-700 font-black text-xs sm:text-sm">฿{product.price.toLocaleString()}</div>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  )
-                })}
+                    )
+                  })
+                )}
               </div>
 
-              {/* ✨ แถบสถานะการโหลดและปุ่มโหลดเพิ่มเติมแบบประหยัด */}
-              <div className="w-full flex flex-col sm:flex-row items-center justify-between gap-3 p-4 bg-white rounded-2xl border border-slate-100 shadow-2xs mt-2 mb-24 lg:mb-4">
+              {/* 🌀 Sentinel element for Infinite Scroll */}
+              <div ref={observerTargetRef} className="h-6 w-full flex items-center justify-center my-3 pointer-events-none">
+                {isLoadingMore && (
+                  <div className="flex items-center gap-2 text-xs text-amber-700 font-bold py-2 bg-amber-50 px-4 rounded-full border border-amber-200/60 shadow-2xs">
+                    <Loader2 className="w-4 h-4 animate-spin text-amber-600" />
+                    กำลังโหลดสินค้าเพิ่มเติม...
+                  </div>
+                )}
+              </div>
+
+              {/* ✨ แถบสถานะการโหลดและปุ่มโหลดเพิ่มเติม */}
+              <div className="w-full flex flex-col sm:flex-row items-center justify-between gap-3 p-4 bg-white rounded-2xl border border-slate-100 shadow-2xs mt-1 mb-24 lg:mb-4">
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-slate-600 font-bold">
-                    แสดง {Math.min(displayLimit, filteredProducts.length)} จาก {filteredProducts.length} รายการ ({selectedLocation === 'ALL' ? 'พร้อมส่งทุกสาขา' : branches.find(b => b.id === selectedLocation)?.branch_name || 'สาขาที่เลือก'})
+                    แสดง {products.length} จาก {totalCount} รายการ ({selectedLocation === 'ALL' ? 'พร้อมส่งทุกสาขา' : branches.find(b => b.id === selectedLocation)?.branch_name || 'สาขาที่เลือก'})
                   </span>
                 </div>
-                {displayLimit < filteredProducts.length && (
+                {hasMore && (
                   <button
                     type="button"
-                    onClick={() => setDisplayLimit(prev => prev + 48)}
-                    className="px-6 py-2.5 bg-[#1E293B] hover:bg-slate-800 text-white rounded-xl font-bold text-xs shadow-xs cursor-pointer transition-all flex items-center gap-1.5 active:scale-95"
+                    disabled={isLoadingMore}
+                    onClick={loadMoreProducts}
+                    className="px-6 py-2.5 bg-[#1E293B] hover:bg-slate-800 disabled:opacity-50 text-white rounded-xl font-bold text-xs shadow-xs cursor-pointer transition-all flex items-center gap-1.5 active:scale-95"
                   >
-                    📦 โหลดแสดงเพิ่มอีก 48 รายการ (เหลือ {filteredProducts.length - displayLimit} รายการ)
+                    {isLoadingMore ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" />
+                        กำลังโหลด...
+                      </>
+                    ) : (
+                      <>
+                        📦 โหลดสินค้าเพิ่มอีก (เหลืออีก {Math.max(0, totalCount - products.length)} รายการ)
+                      </>
+                    )}
                   </button>
                 )}
               </div>
