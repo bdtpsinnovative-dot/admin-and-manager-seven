@@ -35,6 +35,7 @@ interface Product {
   category_id?: string;
   isExternal?: boolean;
   isFurniture?: boolean;
+  isSlab?: boolean;
 }
 
 interface CartItem extends Product {
@@ -45,6 +46,7 @@ interface CartItem extends Product {
   isOutOfStockError?: boolean;
   isExternal?: boolean;
   isFurniture?: boolean;
+  isSlab?: boolean;
 }
 
 interface NestedCategory {

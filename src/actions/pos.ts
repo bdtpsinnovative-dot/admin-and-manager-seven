@@ -684,6 +684,8 @@ export interface CheckoutPayload {
     discountAmountPerPiece: number;
     isExternal?: boolean;
     isFurniture?: boolean;
+    isSlab?: boolean;
+    category_id?: string | null;
   }[];
 }
 
