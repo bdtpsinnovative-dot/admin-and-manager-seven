@@ -220,7 +220,7 @@ export default function PropsClient({ products }: Props) {
     }
   };
 
-  const printQrPhoto = async () => {
+    const printQrPhoto = async () => {
     const win = window.open("", "_blank", "width=900,height=700");
     if (!win) return;
     const isLandscape = printOrientation === "landscape";
@@ -247,31 +247,376 @@ export default function PropsClient({ products }: Props) {
       const priceStr = priceVal > 0 ? new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB', minimumFractionDigits: 0 }).format(priceVal) : '';
 
       for (let i = 0; i < sets; i++) {
-        if (isLandscape) {
-          groups.push(`
-          <div class="group group-landscape">
-            <div class="photo-frame">
+        groups.push(`
+          <div class="tag-card">
+            <div class="tag-photo">
               <img src="${p.image_url || ''}" onerror="this.style.display='none'" />
             </div>
-            <div class="info-col">
-              <div class="top-row">
-                <img src="${p.category_id === 'SLABS' ? '/logo.zenslab.png' : '/logo.terra.home.png'}" alt="Logo" class="logo-img" />
+            <div class="tag-info">
+              <div class="tag-logo-row">
+                <img src="${p.category_id === 'SLABS' ? '/logo.zenslab.png' : '/logo.terra.home.png'}" alt="Logo" class="tag-logo" onerror="this.style.display='none'" />
               </div>
-              <div class="middle-info">
-                <div class="pname" title="${p.name || ''}">${p.name || ''}</div>
-                <div class="sku-line"><span class="label">SKU:</span>${p.sku || '—'}</div>
-                ${(sizeStr || colorStr || materialStr) ? `<div class="specs-line">${[sizeStr, colorStr, materialStr].filter(Boolean).join(' · ')}</div>` : ''}
+              <div class="tag-text-block">
+                <div class="tag-name" title="${p.name || ''}">${p.name || ''}</div>
+                <div class="tag-sku"><span class="sku-label">SKU:</span>${p.sku || '—'}</div>
               </div>
-              <div class="bottom-row">
-                <div class="qr-box">
-                  <img src="${qrImg}" class="qr-img" />
-                </div>
-                ${priceStr ? `<div class="price-val">${priceStr}</div>` : ''}
+              ${(sizeStr || colorStr || materialStr) ? `<div class="tag-specs">${[sizeStr, colorStr, materialStr].filter(Boolean).join(' · ')}</div>` : ''}
+            </div>
+            <div class="tag-qr-price">
+              <div class="tag-qr">
+                <img src="${qrImg}" />
               </div>
+              ${priceStr ? `<div class="tag-price">${priceStr}</div>` : ''}
             </div>
           </div>`);
-        } else {
-          groups.push(`
+      }
+    }
+    const pageSize = isLandscape ? 40 : 42;
+    const pages: string[] = [];
+    for (let i = 0; i < groups.length; i += pageSize) {
+      const chunk = groups.slice(i, i + pageSize);
+      pages.push(`<div class="page"><div class="grid">${chunk.join("")}</div></div>`);
+    }
+
+    const cssStyles = isLandscape
+      ? `
+      @page{size:A4 landscape;margin:5mm 28.5mm}
+      *{margin:0;padding:0;box-sizing:border-box}
+      body{margin:0;padding:0;font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;}
+      .page{width:calc(297mm - 57mm);height:calc(210mm - 10mm);overflow:hidden;page-break-after:always}
+      .page:last-child{page-break-after:auto}
+      .grid{display:grid;grid-template-columns:repeat(4,60mm);grid-template-rows:repeat(10,20mm);width:240mm;height:200mm;border-top:1px solid #bbb;border-left:1px solid #bbb;gap:0;}
+      
+      .tag-card { 
+        width: 60mm;
+        height: 20mm;
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        border-right: 1px solid #bbb; 
+        border-bottom: 1px solid #bbb; 
+        background: #fff; 
+        padding: 1.0mm 1.2mm;
+        overflow: hidden;
+        position: relative;
+        gap: 1.5mm;
+        box-sizing: border-box;
+      }
+      
+      .tag-photo {
+        width: 18mm;
+        height: 18mm;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        flex-shrink: 0;
+        border: 1px solid #e2e8f0;
+        border-radius: 2px;
+        background: #f8fafc;
+        padding: 0.5mm;
+        box-sizing: border-box;
+      }
+      
+      .tag-photo img {
+        max-width: 100%;
+        max-height: 100%;
+        object-fit: contain;
+        display: block;
+      }
+      
+      .tag-info {
+        flex: 1;
+        min-width: 0;
+        height: 18mm;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        overflow: hidden;
+      }
+      
+      .tag-logo-row {
+        display: flex;
+        align-items: center;
+        height: 2.8mm;
+        line-height: 1;
+      }
+      
+      .tag-logo {
+        height: 2.8mm;
+        max-width: 18mm;
+        object-fit: contain;
+        display: block;
+        opacity: 0.85;
+      }
+      
+      .tag-text-block {
+        display: flex;
+        flex-direction: column;
+        gap: 0.2mm;
+      }
+
+      .tag-name {
+        font-size: 5.4pt;
+        font-weight: 800;
+        color: #0f172a;
+        line-height: 1.15;
+        max-height: 2.3em;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        word-break: break-word;
+        letter-spacing: -0.15px;
+      }
+      
+      .tag-sku {
+        font-size: 4.8pt;
+        font-weight: 700;
+        color: #1e293b;
+        line-height: 1;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        letter-spacing: -0.1px;
+      }
+      
+      .tag-sku .sku-label {
+        color: #64748b;
+        font-weight: 600;
+        margin-right: 0.3mm;
+      }
+      
+      .tag-specs {
+        font-size: 4.2pt;
+        font-weight: 500;
+        color: #64748b;
+        line-height: 1;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      
+      .tag-qr-price {
+        width: 13.5mm;
+        height: 18mm;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: space-between;
+        flex-shrink: 0;
+      }
+      
+      .tag-qr {
+        width: 10.5mm;
+        height: 10.5mm;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #fff;
+      }
+      
+      .tag-qr img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        display: block;
+      }
+      
+      .tag-price {
+        font-size: 9.5pt;
+        font-weight: 900;
+        color: #000;
+        line-height: 1;
+        letter-spacing: -0.3px;
+        white-space: nowrap;
+        text-align: center;
+      }
+    `
+      : `
+      @page{size:A4 portrait;margin:8.5mm 15mm}
+      *{margin:0;padding:0;box-sizing:border-box}
+      body{margin:0;padding:0;font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;}
+      .page{width:calc(210mm - 30mm);height:calc(297mm - 17mm);overflow:hidden;page-break-after:always}
+      .page:last-child{page-break-after:auto}
+      .grid{display:grid;grid-template-columns:repeat(3,60mm);grid-template-rows:repeat(14,20mm);width:180mm;height:280mm;border-top:1px solid #bbb;border-left:1px solid #bbb;gap:0;}
+      
+      .tag-card { 
+        width: 60mm;
+        height: 20mm;
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        border-right: 1px solid #bbb; 
+        border-bottom: 1px solid #bbb; 
+        background: #fff; 
+        padding: 1.0mm 1.2mm;
+        overflow: hidden;
+        position: relative;
+        gap: 1.5mm;
+        box-sizing: border-box;
+      }
+      
+      .tag-photo {
+        width: 18mm;
+        height: 18mm;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        flex-shrink: 0;
+        border: 1px solid #e2e8f0;
+        border-radius: 2px;
+        background: #f8fafc;
+        padding: 0.5mm;
+        box-sizing: border-box;
+      }
+      
+      .tag-photo img {
+        max-width: 100%;
+        max-height: 100%;
+        object-fit: contain;
+        display: block;
+      }
+      
+      .tag-info {
+        flex: 1;
+        min-width: 0;
+        height: 18mm;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        overflow: hidden;
+      }
+      
+      .tag-logo-row {
+        display: flex;
+        align-items: center;
+        height: 2.8mm;
+        line-height: 1;
+      }
+      
+      .tag-logo {
+        height: 2.8mm;
+        max-width: 18mm;
+        object-fit: contain;
+        display: block;
+        opacity: 0.85;
+      }
+      
+      .tag-text-block {
+        display: flex;
+        flex-direction: column;
+        gap: 0.2mm;
+      }
+
+      .tag-name {
+        font-size: 5.4pt;
+        font-weight: 800;
+        color: #0f172a;
+        line-height: 1.15;
+        max-height: 2.3em;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        word-break: break-word;
+        letter-spacing: -0.15px;
+      }
+      
+      .tag-sku {
+        font-size: 4.8pt;
+        font-weight: 700;
+        color: #1e293b;
+        line-height: 1;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        letter-spacing: -0.1px;
+      }
+      
+      .tag-sku .sku-label {
+        color: #64748b;
+        font-weight: 600;
+        margin-right: 0.3mm;
+      }
+      
+      .tag-specs {
+        font-size: 4.2pt;
+        font-weight: 500;
+        color: #64748b;
+        line-height: 1;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      
+      .tag-qr-price {
+        width: 13.5mm;
+        height: 18mm;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: space-between;
+        flex-shrink: 0;
+      }
+      
+      .tag-qr {
+        width: 10.5mm;
+        height: 10.5mm;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #fff;
+      }
+      
+      .tag-qr img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        display: block;
+      }
+      
+      .tag-price {
+        font-size: 9.5pt;
+        font-weight: 900;
+        color: #000;
+        line-height: 1;
+        letter-spacing: -0.3px;
+        white-space: nowrap;
+        text-align: center;
+      }
+    `;
+
+    win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title></title>
+    <style>
+      ${cssStyles}
+    </style></head><body>
+    ${pages.join("")}
+    <script>window.onload=()=>{const imgs=Array.from(document.images);const d=()=>{window.print();window.onafterprint=()=>window.close();};const t=setTimeout(d,2500);Promise.all(imgs.map(img=>img.complete?Promise.resolve():new Promise(r=>{img.onload=r;img.onerror=r;}))).then(()=>{clearTimeout(t);setTimeout(d,100);});};<\/script>
+    </body></html>`);
+    win.document.close();
+  };
+
+  const printLegacyHanging = async () => {
+    const win = window.open("", "_blank", "width=900,height=700");
+    if (!win) return;
+    const groups: string[] = [];
+
+    for (const p of printTargets) {
+      const sets = quantities[p.id] || 1;
+      const val = p.barcode || p.sku || '';
+      
+      let qrImg = '';
+      try { 
+        qrImg = await QRCode.toDataURL(val, { width: 200, margin: 1, errorCorrectionLevel: 'M' }); 
+      } catch {}
+
+      const priceVal = Number(p.price);
+      const priceStr = priceVal > 0 ? new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB', minimumFractionDigits: 0 }).format(priceVal) : '';
+
+      for (let i = 0; i < sets; i++) {
+        groups.push(`
           <div class="group">
             <div class="hole"></div>
             
@@ -297,159 +642,16 @@ export default function PropsClient({ products }: Props) {
               </div>
             </div>
           </div>`);
-        }
       }
     }
-    const pageSize = isLandscape ? 20 : 30;
+    const pageSize = 30;
     const pages: string[] = [];
     for (let i = 0; i < groups.length; i += pageSize) {
       const chunk = groups.slice(i, i + pageSize);
       pages.push(`<div class="page"><div class="grid">${chunk.join("")}</div></div>`);
     }
 
-    const cssStyles = isLandscape
-      ? `
-      @page{size:A4 landscape;margin:8mm}
-      *{margin:0;padding:0;box-sizing:border-box}
-      body{margin:0;padding:0;font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;}
-      .page{width:calc(297mm - 16mm);height:calc(210mm - 16mm);overflow:hidden;page-break-after:always}
-      .page:last-child{page-break-after:auto}
-      
-      .grid{display:grid;grid-template-columns:repeat(4,1fr);grid-template-rows:repeat(5,38.8mm);gap:0; border-top:1px solid #bbb; border-left:1px solid #bbb;}
-      
-      .group-landscape { 
-        display: flex;
-        flex-direction: row;
-        align-items: stretch;
-        border-right: 1px solid #bbb; 
-        border-bottom: 1px solid #bbb; 
-        background: #fff; 
-        padding: 1.2mm 1.6mm;
-        height: 38.8mm;
-        overflow: hidden;
-        position: relative;
-        gap: 2mm;
-      }
-      
-      .photo-frame {
-        width: 32mm;
-        height: 100%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        overflow: hidden;
-        flex-shrink: 0;
-        border: 1px solid #ccc;
-        background: #fafafa;
-        padding: 0.6mm;
-      }
-      
-      .photo-frame img {
-        max-width: 100%;
-        max-height: 100%;
-        object-fit: contain;
-        display: block;
-      }
-      
-      .info-col {
-        flex: 1;
-        min-width: 0;
-        height: 100%;
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
-      }
-      
-      .top-row {
-        display: flex;
-        justify-content: flex-end;
-        align-items: flex-start;
-        width: 100%;
-        height: 3.8mm;
-      }
-      
-      .logo-img {
-        height: 3.5mm;
-        max-width: 18mm;
-        object-fit: contain;
-        display: block;
-      }
-      
-      .middle-info {
-        display: flex;
-        flex-direction: column;
-        gap: 0.3mm;
-      }
-      
-      .pname {
-        font-size: 6.2pt;
-        font-weight: 800;
-        color: #111;
-        line-height: 1.15;
-        max-height: 2.3em;
-        overflow: hidden;
-        word-break: break-word;
-        letter-spacing: -0.15px;
-      }
-      
-      .sku-line {
-        font-size: 5.6pt;
-        font-weight: 800;
-        color: #000;
-        line-height: 1.1;
-        word-break: break-all;
-        letter-spacing: -0.15px;
-      }
-      
-      .sku-line .label {
-        color: #777;
-        margin-right: 0.4mm;
-      }
-      
-      .specs-line {
-        font-size: 5pt;
-        font-weight: 600;
-        color: #666;
-        line-height: 1;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-      
-      .bottom-row {
-        display: flex;
-        align-items: flex-end;
-        gap: 2mm;
-        width: 100%;
-        margin-top: auto;
-      }
-      
-      .qr-box {
-        width: 12mm;
-        height: 12mm;
-        flex-shrink: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      }
-      
-      .qr-img {
-        width: 12mm;
-        height: 12mm;
-        object-fit: contain;
-        display: block;
-      }
-      
-      .price-val {
-        font-size: 13pt;
-        font-weight: 900;
-        color: #000;
-        line-height: 1;
-        white-space: nowrap;
-        padding-bottom: 0.2mm;
-      }
-    `
-      : `
+    const cssStyles = `
       @page{size:A4 portrait;margin:8mm}
       *{margin:0;padding:0;box-sizing:border-box}
       body{margin:0;padding:0;font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;}
@@ -596,7 +798,7 @@ export default function PropsClient({ products }: Props) {
       ${cssStyles}
     </style></head><body>
     ${pages.join("")}
-    <script>window.onload=()=>{window.print();window.onafterprint=()=>window.close()}<\/script>
+    <script>window.onload=()=>{const imgs=Array.from(document.images);const d=()=>{window.print();window.onafterprint=()=>window.close();};const t=setTimeout(d,2500);Promise.all(imgs.map(img=>img.complete?Promise.resolve():new Promise(r=>{img.onload=r;img.onerror=r;}))).then(()=>{clearTimeout(t);setTimeout(d,100);});};<\/script>
     </body></html>`);
     win.document.close();
   };
@@ -789,8 +991,8 @@ export default function PropsClient({ products }: Props) {
             <div className="p-4 border-t border-slate-200 flex flex-col gap-2.5 bg-white">
               {/* Orientation Mode Selector */}
               <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded p-2">
-                <span className="text-xs font-semibold text-slate-700">รูปแบบการพิมพ์:</span>
-                <div className="flex items-center gap-1">
+                <span className="text-xs font-semibold text-slate-700">แนวกระดาษพิมพ์ A4 (ป้าย 6×2 ซม.):</span>
+                <div className="flex items-center gap-1.5">
                   <button
                     type="button"
                     onClick={() => setPrintOrientation("portrait")}
@@ -801,7 +1003,7 @@ export default function PropsClient({ products }: Props) {
                     }`}
                   >
                     <span>📄</span>
-                    <span>แนวตั้ง (Portrait)</span>
+                    <span>A4 แนวตั้ง (42 ป้าย/แผ่น)</span>
                   </button>
                   <button
                     type="button"
@@ -813,21 +1015,28 @@ export default function PropsClient({ products }: Props) {
                     }`}
                   >
                     <span>📑</span>
-                    <span>แนวนอน (Landscape)</span>
+                    <span>A4 แนวนอน (40 ป้าย/แผ่น)</span>
                   </button>
                 </div>
               </div>
 
               <button onClick={printQrPhoto}
-                className="flex flex-col items-center gap-1 py-4 rounded border border-orange-200 bg-orange-50 hover:bg-orange-100 transition text-slate-700 text-sm">
-                <span className="font-bold text-sm">
-                  พิมพ์ QR + รูป + ข้อมูล ({printOrientation === "landscape" ? "แนวนอน - Landscape" : "Final Layout (แนวตั้ง)"})
+                className="flex flex-col items-center gap-1 py-3.5 rounded border border-orange-300 bg-gradient-to-r from-orange-50 to-amber-50 hover:from-orange-100 hover:to-amber-100 transition text-slate-800 text-sm shadow-sm">
+                <span className="font-bold text-sm text-orange-950 flex items-center gap-2">
+                  <span>🏷️</span>
+                  <span>พิมพ์ป้าย 6×2 ซม. ({printOrientation === "landscape" ? "A4 แนวนอน · 40 ป้าย/แผ่น" : "A4 แนวตั้ง · 42 ป้าย/แผ่น"})</span>
                 </span>
-                <span className="text-[11px] text-slate-500">
+                <span className="text-[11px] text-slate-600">
                   {printOrientation === "landscape"
-                    ? "A4 แนวนอน · 20 ป้าย/แผ่น (4×5) · รูปกรอบใหญ่ซ้าย · ข้อมูล โลโก้ และ QR+ราคาขวา"
-                    : "A4 แนวตั้ง · 30 ป้าย/แผ่น (5×6) · รูปสินค้าบน · QR ย่อ 20% ชิดราคา"}
+                    ? "A4 แนวนอน · 4 คอลัมน์ × 10 แถว (40 ป้าย/แผ่น) · สัดส่วน 3 ส่วน: รูปซ้าย · ข้อมูลกลาง · QR และราคาขวา"
+                    : "A4 แนวตั้ง · 3 คอลัมน์ × 14 แถว (42 ป้าย/แผ่น) · สัดส่วน 3 ส่วน: รูปซ้าย · ข้อมูลกลาง · QR และราคาขวา"}
                 </span>
+              </button>
+
+              <button onClick={printLegacyHanging}
+                className="w-full py-2 rounded border border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition text-xs font-medium flex items-center justify-center gap-1.5">
+                <span>🖨️</span>
+                <span>หรือ พิมพ์ป้ายแบบเดิม (A4 แนวตั้ง · 30 ป้าย/แผ่น แบบเจาะรูห้อย)</span>
               </button>
               <button onClick={() => setShowModal(false)}
                 className="w-full py-2 rounded border border-slate-200 font-semibold text-slate-500 hover:bg-slate-50 transition text-sm">
