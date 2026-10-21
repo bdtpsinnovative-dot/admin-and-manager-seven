@@ -300,17 +300,21 @@ export async function getFurnitureProducts(forceRefresh: boolean = false) {
       collection_groups ( product_sup, tag ),
       stock ( branch_id, qty )
     `)
-    .eq('category_id', 'furniture')
+    .in('category_id', ['furniture', 'SLABS'])
     .order('name', { ascending: true })
 
   if (furnError) {
-    return { success: false, error: "เกิดข้อผิดพลาดในการโหลดข้อมูลเฟอร์นิเจอร์: " + furnError.message }
+    return { success: false, error: "เกิดข้อผิดพลาดในการโหลดข้อมูลเฟอร์นิเจอร์และแผ่นไม้: " + furnError.message }
   }
 
   const subcatSet = new Set<string>()
   const formattedFurniture = (furnitureData || []).map(p => {
     const rawCol = Array.isArray(p.collection_groups) ? p.collection_groups[0] : p.collection_groups
-    const subcat = rawCol?.product_sup || 'ทั่วไป'
+    const isSlab = p.category_id === 'SLABS'
+    let subcat = rawCol?.product_sup
+    if (!subcat) {
+      subcat = isSlab ? 'แผ่นไม้ / Wood Slabs' : 'เฟอร์นิเจอร์ทั่วไป'
+    }
     subcatSet.add(subcat)
 
     return {
@@ -323,8 +327,9 @@ export async function getFurnitureProducts(forceRefresh: boolean = false) {
       image_url: p.image_url || null,
       barcode: p.barcode || null,
       product_sup: subcat,
-      category_id: 'furniture',
-      isFurniture: true,
+      category_id: p.category_id || (isSlab ? 'SLABS' : 'furniture'),
+      isFurniture: p.category_id === 'furniture',
+      isSlab,
       stocks: Array.isArray(p.stock) ? p.stock : [],
       specs: p.specs || {}
     }
@@ -724,6 +729,17 @@ export async function processCheckout(payload: CheckoutPayload): Promise<Checkou
       }
     }
 
+    // 🏷️ กฎธุรกิจ: สินค้าพรอพ (Prop) ไม่สามารถรวมกับเฟอร์นิเจอร์ (Furniture) หรือแผ่นไม้ (Wood Slabs) ในบิลเดียวกันได้
+    // แต่ เฟอร์นิเจอร์ กับ แผ่นไม้ สามารถรวมในบิลเดียวกันได้!
+    const hasProp = payload.items.some(i => !i.isFurniture && !i.isSlab && i.category_id !== 'furniture' && i.category_id !== 'SLABS')
+    const hasFurnOrWood = payload.items.some(i => i.isFurniture || i.isSlab || i.category_id === 'furniture' || i.category_id === 'SLABS')
+    if (hasProp && hasFurnOrWood) {
+      return {
+        success: false,
+        error: "ไม่สามารถรวมสินค้าพรอพ กับเฟอร์นิเจอร์หรือแผ่นไม้ในบิลเดียวกันได้ (กรุณาแยกบิลครับ)"
+      }
+    }
+
     const previousOrderCode = payload.orderCode?.trim()
     const requestedOrderCode = payload.customOrderCode?.trim()
     const orderCode = requestedOrderCode || previousOrderCode || `INV${Date.now()}`
@@ -761,8 +777,8 @@ export async function processCheckout(payload: CheckoutPayload): Promise<Checkou
     // ✨ 0. เช็คสต็อก (บันทึกข้อมูลสินค้าที่สต็อกไม่พอลง Snapshot แต่ไม่บล็อกการสร้างใบเสนอราคา)
     const outOfStockItems: string[] = []
     
-    // ดึงสต็อกเฉพาะสินค้าที่ต้องตรวจสต็อก (ไม่รวมสินค้านอกหรือเฟอร์นิเจอร์)
-    const stockCheckedItems = payload.items.filter(item => !item.isExternal && !item.isFurniture)
+    // ดึงสต็อกเฉพาะสินค้าที่ต้องตรวจสต็อก (ไม่รวมสินค้านอก, เฟอร์นิเจอร์ หรือแผ่นไม้)
+    const stockCheckedItems = payload.items.filter(item => !item.isExternal && !item.isFurniture && !item.isSlab && item.category_id !== 'furniture' && item.category_id !== 'SLABS')
     const productIds = stockCheckedItems.map(item => item.productId)
     
     if (productIds.length > 0) {

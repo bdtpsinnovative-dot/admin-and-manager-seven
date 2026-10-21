@@ -493,6 +493,44 @@ export default function ManagerPOSPage() {
       return
     }
 
+    // 🏷️ กฎธุรกิจ: พรอพ (Prop) ไม่สามารถรวมกับ เฟอร์นิเจอร์ (Furniture) หรือแผ่นไม้ (Wood Slabs) ได้
+    // แต่ เฟอร์นิเจอร์ กับ แผ่นไม้ รวมกันได้!
+    const isAddingWoodOrFurn = Boolean(
+      product.isFurniture || 
+      product.isSlab ||
+      product.category_id === 'furniture' || 
+      product.category_id === 'SLABS' ||
+      product.sku?.toUpperCase().startsWith('WOOD') ||
+      product.sku?.toUpperCase().startsWith('EMBER')
+    )
+    const isAddingProp = !isAddingWoodOrFurn
+
+    const cartHasProp = cart.some(item => 
+      !item.isFurniture && 
+      !item.isSlab &&
+      item.category_id !== 'furniture' && 
+      item.category_id !== 'SLABS' &&
+      !item.sku?.toUpperCase().startsWith('WOOD') &&
+      !item.sku?.toUpperCase().startsWith('EMBER')
+    )
+    const cartHasWoodOrFurn = cart.some(item => 
+      item.isFurniture || 
+      item.isSlab ||
+      item.category_id === 'furniture' || 
+      item.category_id === 'SLABS' ||
+      item.sku?.toUpperCase().startsWith('WOOD') ||
+      item.sku?.toUpperCase().startsWith('EMBER')
+    )
+
+    if (isAddingProp && cartHasWoodOrFurn) {
+      toast.error('ไม่สามารถรวมสินค้าพรอพ กับเฟอร์นิเจอร์หรือแผ่นไม้ในบิลเดียวกันได้ (กรุณาแยกบิลครับ)')
+      return
+    }
+    if (isAddingWoodOrFurn && cartHasProp) {
+      toast.error('บิลนี้มีสินค้าพรอพอยู่แล้ว ไม่สามารถรวมเฟอร์นิเจอร์หรือแผ่นไม้ในบิลเดียวกันได้ (กรุณาแยกบิลครับ)')
+      return
+    }
+
     const branchStock = product.stocks?.find(s => s.branch_id === targetBranchId)
     const availableQty = branchStock ? Number(branchStock.qty) : 0
     const totalStock = product.stocks ? product.stocks.reduce((sum, s) => sum + Number(s.qty), 0) : 0
@@ -501,8 +539,8 @@ export default function ManagerPOSPage() {
     const existing = cart.find((item) => item.cartItemId === cartItemId)
     const currentInCart = existing ? existing.quantity : 0
 
-    // ถ้าเป็นสินค้านอก หรือ เฟอร์นิเจอร์ ไม่ต้องบล็อกสต็อกหน้าร้าน
-    const isExemptStock = Boolean(product.isExternal || product.isFurniture || product.category_id === 'furniture')
+    // ถ้าเป็นสินค้านอก, เฟอร์นิเจอร์ หรือแผ่นไม้ ไม่ต้องบล็อกสต็อกหน้าร้าน
+    const isExemptStock = Boolean(product.isExternal || product.isFurniture || product.isSlab || product.category_id === 'furniture' || product.category_id === 'SLABS')
 
     // ถ้าสต็อกในสาขาหมด หรือหยิบจนเกินสต็อกที่มี (เฉพาะสินค้าทั่วไป)
     if (!forceAdd && !isExemptStock && (availableQty <= 0 || currentInCart >= availableQty)) {
@@ -536,7 +574,8 @@ export default function ManagerPOSPage() {
         fulfill_branch_id: targetBranchId,
         fulfill_branch_name: branchName,
         isExternal: Boolean(product.isExternal),
-        isFurniture: Boolean(product.isFurniture || product.category_id === 'furniture')
+        isFurniture: Boolean(product.isFurniture || product.category_id === 'furniture'),
+        isSlab: Boolean(product.isSlab || product.category_id === 'SLABS')
       }]
     })
   }

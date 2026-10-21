@@ -54,6 +54,22 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
   const vatAmount = vatAmountFromDb ?? (grandTotal - (grandTotal / 1.07));
   const subTotalWithoutVat = grandTotal - vatAmount;
 
+  // 🪵 ตรวจสอบว่าเป็นบิลไม้ (Wood Slabs) หรือไม้ร่วมกับเฟอร์นิเจอร์ (Wood + Furniture)
+  const isZenslabDoc = data?.order_items?.some((item: any) => {
+    const cat = (item.products?.category_id || '').toLowerCase();
+    const sku = (item.products?.sku || '').toUpperCase();
+    const name = (item.products?.name || '').toLowerCase();
+    const sup = (item.products?.collection_groups?.product_sup || '').toLowerCase();
+    const isFurn = Boolean(item.isFurniture || item.products?.isFurniture);
+    return isFurn || cat === 'furniture' || cat.includes('slab') || cat.includes('rough') ||
+           sku.startsWith('WOOD') || sku.startsWith('EMBER') ||
+           name.includes('slab') || name.includes('wood') || name.includes('ไม้') ||
+           sup.includes('wood') || sup.includes('slab') || sup.includes('furniture');
+  });
+
+  const logoSrc = isZenslabDoc ? '/logo.zenslab.png' : '/logo.terra.home.png';
+  const logoAlt = isZenslabDoc ? 'ZENSLAB Logo' : 'Terra Home Studio Logo';
+
   return (
     <div 
       id="print-section" 
@@ -64,12 +80,16 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
         <div>
           {logoError ? (
             <h1 className="text-2xl font-black tracking-tighter text-neutral-900 flex flex-col leading-none mb-2">
-              TERRA <span className="font-light tracking-wide text-sm text-neutral-500 mt-0.5">HOME STUDIO</span>
+              {isZenslabDoc ? (
+                'ZENSLAB'
+              ) : (
+                <>TERRA <span className="font-light tracking-wide text-sm text-neutral-500 mt-0.5">HOME STUDIO</span></>
+              )}
             </h1>
           ) : (
             <img 
-              src="/logo.terra.home.png" 
-              alt="Terra Home Studio Logo" 
+              src={logoSrc} 
+              alt={logoAlt} 
               className="h-10 w-auto object-contain mb-2 mix-blend-multiply" 
               onError={() => setLogoError(true)}
             />

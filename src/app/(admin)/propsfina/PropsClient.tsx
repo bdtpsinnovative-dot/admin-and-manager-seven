@@ -220,7 +220,7 @@ export default function PropsClient({ products }: Props) {
     }
   };
 
-    const printQrPhoto = async () => {
+      const printQrPhoto = async () => {
     const win = window.open("", "_blank", "width=900,height=700");
     if (!win) return;
     const isLandscape = printOrientation === "landscape";
@@ -243,6 +243,7 @@ export default function PropsClient({ products }: Props) {
       const sizeStr = (L || W || T) ? `${L}×${W}×${T} CM` : (specs.size || '');
       const colorStr = p.color || '';
       const materialStr = p.material || specs.material || '';
+      const detailStr = [colorStr, materialStr].filter(Boolean).join(' · ');
       const priceVal = Number(p.price);
       const priceStr = priceVal > 0 ? new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB', minimumFractionDigits: 0 }).format(priceVal) : '';
 
@@ -253,20 +254,19 @@ export default function PropsClient({ products }: Props) {
               <img src="${p.image_url || ''}" onerror="this.style.display='none'" />
             </div>
             <div class="tag-info">
-              <div class="tag-logo-row">
-                <img src="${p.category_id === 'SLABS' ? '/logo.zenslab.png' : '/logo.terra.home.png'}" alt="Logo" class="tag-logo" onerror="this.style.display='none'" />
-              </div>
-              <div class="tag-text-block">
-                <div class="tag-name" title="${p.name || ''}">${p.name || ''}</div>
-                <div class="tag-sku"><span class="sku-label">SKU:</span>${p.sku || '—'}</div>
-              </div>
-              ${(sizeStr || colorStr || materialStr) ? `<div class="tag-specs">${[sizeStr, colorStr, materialStr].filter(Boolean).join(' · ')}</div>` : ''}
+              <div class="pname" title="${p.name || ''}">${p.name || ''}</div>
+              <div class="sku-line"><span class="label">SKU:</span>${p.sku || '—'}</div>
+              ${sizeStr ? `<div class="spec-size">${sizeStr}</div>` : ''}
+              ${detailStr ? `<div class="spec-detail">${detailStr}</div>` : ''}
             </div>
-            <div class="tag-qr-price">
-              <div class="tag-qr">
-                <img src="${qrImg}" />
+            <div class="tag-right">
+              <div class="right-logo">
+                <img src="${p.category_id === 'SLABS' ? '/logo.zenslab.png' : '/logo.terra.home.png'}" alt="Logo" class="logo-img" onerror="this.style.display='none'" />
               </div>
-              ${priceStr ? `<div class="tag-price">${priceStr}</div>` : ''}
+              <div class="qr-box">
+                <img src="${qrImg}" class="qr-img" />
+              </div>
+              ${priceStr ? `<div class="price-val">${priceStr}</div>` : ''}
             </div>
           </div>`);
       }
@@ -299,12 +299,12 @@ export default function PropsClient({ products }: Props) {
         padding: 1.0mm 1.2mm;
         overflow: hidden;
         position: relative;
-        gap: 1.5mm;
+        gap: 1.2mm;
         box-sizing: border-box;
       }
       
       .tag-photo {
-        width: 18mm;
+        width: 16mm;
         height: 18mm;
         display: flex;
         align-items: center;
@@ -334,30 +334,9 @@ export default function PropsClient({ products }: Props) {
         justify-content: space-between;
         overflow: hidden;
       }
-      
-      .tag-logo-row {
-        display: flex;
-        align-items: center;
-        height: 2.8mm;
-        line-height: 1;
-      }
-      
-      .tag-logo {
-        height: 2.8mm;
-        max-width: 18mm;
-        object-fit: contain;
-        display: block;
-        opacity: 0.85;
-      }
-      
-      .tag-text-block {
-        display: flex;
-        flex-direction: column;
-        gap: 0.2mm;
-      }
 
-      .tag-name {
-        font-size: 5.4pt;
+      .pname {
+        font-size: 5.2pt;
         font-weight: 800;
         color: #0f172a;
         line-height: 1.15;
@@ -370,35 +349,39 @@ export default function PropsClient({ products }: Props) {
         letter-spacing: -0.15px;
       }
       
-      .tag-sku {
+      .sku-line {
         font-size: 4.8pt;
-        font-weight: 700;
-        color: #1e293b;
-        line-height: 1;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        letter-spacing: -0.1px;
+        font-weight: 800;
+        color: #000;
+        line-height: 1.1;
+        word-break: break-all;
+        letter-spacing: -0.15px;
       }
       
-      .tag-sku .sku-label {
-        color: #64748b;
-        font-weight: 600;
+      .sku-line .label {
+        color: #475569;
+        font-weight: 700;
         margin-right: 0.3mm;
       }
       
-      .tag-specs {
+      .spec-size {
+        font-size: 4.3pt;
+        font-weight: 600;
+        color: #334155;
+        line-height: 1;
+        word-break: break-word;
+      }
+
+      .spec-detail {
         font-size: 4.2pt;
         font-weight: 500;
         color: #64748b;
         line-height: 1;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
+        word-break: break-word;
       }
       
-      .tag-qr-price {
-        width: 13.5mm;
+      .tag-right {
+        width: 11.5mm;
         height: 18mm;
         display: flex;
         flex-direction: column;
@@ -406,24 +389,40 @@ export default function PropsClient({ products }: Props) {
         justify-content: space-between;
         flex-shrink: 0;
       }
+
+      .right-logo {
+        height: 2.6mm;
+        max-width: 11.5mm;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .right-logo .logo-img {
+        height: 2.6mm;
+        max-width: 11.5mm;
+        object-fit: contain;
+        display: block;
+        opacity: 0.85;
+      }
       
-      .tag-qr {
-        width: 10.5mm;
-        height: 10.5mm;
+      .qr-box {
+        width: 9.5mm;
+        height: 9.5mm;
         display: flex;
         align-items: center;
         justify-content: center;
         background: #fff;
       }
       
-      .tag-qr img {
+      .qr-img {
         width: 100%;
         height: 100%;
         object-fit: contain;
         display: block;
       }
       
-      .tag-price {
+      .price-val {
         font-size: 9.5pt;
         font-weight: 900;
         color: #000;
@@ -453,12 +452,12 @@ export default function PropsClient({ products }: Props) {
         padding: 1.0mm 1.2mm;
         overflow: hidden;
         position: relative;
-        gap: 1.5mm;
+        gap: 1.2mm;
         box-sizing: border-box;
       }
       
       .tag-photo {
-        width: 18mm;
+        width: 16mm;
         height: 18mm;
         display: flex;
         align-items: center;
@@ -488,30 +487,9 @@ export default function PropsClient({ products }: Props) {
         justify-content: space-between;
         overflow: hidden;
       }
-      
-      .tag-logo-row {
-        display: flex;
-        align-items: center;
-        height: 2.8mm;
-        line-height: 1;
-      }
-      
-      .tag-logo {
-        height: 2.8mm;
-        max-width: 18mm;
-        object-fit: contain;
-        display: block;
-        opacity: 0.85;
-      }
-      
-      .tag-text-block {
-        display: flex;
-        flex-direction: column;
-        gap: 0.2mm;
-      }
 
-      .tag-name {
-        font-size: 5.4pt;
+      .pname {
+        font-size: 5.2pt;
         font-weight: 800;
         color: #0f172a;
         line-height: 1.15;
@@ -524,35 +502,39 @@ export default function PropsClient({ products }: Props) {
         letter-spacing: -0.15px;
       }
       
-      .tag-sku {
+      .sku-line {
         font-size: 4.8pt;
-        font-weight: 700;
-        color: #1e293b;
-        line-height: 1;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        letter-spacing: -0.1px;
+        font-weight: 800;
+        color: #000;
+        line-height: 1.1;
+        word-break: break-all;
+        letter-spacing: -0.15px;
       }
       
-      .tag-sku .sku-label {
-        color: #64748b;
-        font-weight: 600;
+      .sku-line .label {
+        color: #475569;
+        font-weight: 700;
         margin-right: 0.3mm;
       }
       
-      .tag-specs {
+      .spec-size {
+        font-size: 4.3pt;
+        font-weight: 600;
+        color: #334155;
+        line-height: 1;
+        word-break: break-word;
+      }
+
+      .spec-detail {
         font-size: 4.2pt;
         font-weight: 500;
         color: #64748b;
         line-height: 1;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
+        word-break: break-word;
       }
       
-      .tag-qr-price {
-        width: 13.5mm;
+      .tag-right {
+        width: 11.5mm;
         height: 18mm;
         display: flex;
         flex-direction: column;
@@ -560,24 +542,40 @@ export default function PropsClient({ products }: Props) {
         justify-content: space-between;
         flex-shrink: 0;
       }
+
+      .right-logo {
+        height: 2.6mm;
+        max-width: 11.5mm;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .right-logo .logo-img {
+        height: 2.6mm;
+        max-width: 11.5mm;
+        object-fit: contain;
+        display: block;
+        opacity: 0.85;
+      }
       
-      .tag-qr {
-        width: 10.5mm;
-        height: 10.5mm;
+      .qr-box {
+        width: 9.5mm;
+        height: 9.5mm;
         display: flex;
         align-items: center;
         justify-content: center;
         background: #fff;
       }
       
-      .tag-qr img {
+      .qr-img {
         width: 100%;
         height: 100%;
         object-fit: contain;
         display: block;
       }
       
-      .tag-price {
+      .price-val {
         font-size: 9.5pt;
         font-weight: 900;
         color: #000;
