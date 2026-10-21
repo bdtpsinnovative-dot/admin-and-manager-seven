@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase/admin"
+import { getProductBrand } from "@/lib/propFilterModel"
 
 interface MobileUser {
   userId: string
@@ -66,6 +67,8 @@ interface ProductRow {
   barcode?: string | null
   price: number | null
   image_url?: string | null
+  category_id?: string | null
+  specs?: any | null
   collection_groups?: {
     product_sup?: string | null
     image_url?: string | null
@@ -178,16 +181,16 @@ export const MobilePosSalesController = {
         supabaseAdmin
           .from("products")
           .select(`
-            id, name, sku, price, image_url, barcode,
+            id, name, sku, price, image_url, barcode, specs, category_id,
             collection_groups ( product_sup, tag, image_url, cover_image_url ),
             stock ( branch_id, qty ),
             discount_rules (
               discounts ( id, name, discount_type, value, active )
             )
           `)
-          .eq("category_id", "prop")
+          .in("category_id", ["prop", "furniture", "SLABS"])
           .order("id", { ascending: true })
-          .range(0, 999),
+          .limit(2000),
         supabaseAdmin
           .from("branches")
           .select("id, branch_name")
@@ -255,22 +258,36 @@ export const MobilePosSalesController = {
           .reduce((sum, item) => sum + item.qty, 0)
         const totalStock = ownBranchQty + otherBranchQty
 
-        const rawCategory = (colGroup?.product_sup || "")
+        const brand = getProductBrand(product)
+        const isFurniture = product.category_id === 'furniture' || (product.sku ? product.sku.startsWith('EMBER-') : false)
+        const isSlab = product.category_id === 'SLABS' || (product.sku ? product.sku.startsWith('ZLB-') || product.sku.startsWith('WOOD-') : false)
+
+        let rawCategory = (colGroup?.product_sup || "")
           .replace(/\s*\([^)]*à[¸¹][^)]*\)/g, "")
           .trim()
+
+        if (!rawCategory) {
+          if (isFurniture) rawCategory = "เฟอร์นิเจอร์ทั่วไป"
+          else if (isSlab) rawCategory = "แผ่นไม้ / Wood Slabs"
+          else rawCategory = "อื่น ๆ"
+        }
 
         return {
           id: product.id,
           name: product.name,
           sku: product.sku || "",
           barcode: product.barcode || "",
+          brand: brand,
+          category_id: product.category_id || (isFurniture ? 'furniture' : (isSlab ? 'SLABS' : 'prop')),
+          is_furniture: isFurniture,
+          is_slab: isSlab,
           original_price: originalPrice,
           price: finalPrice,
           discount_label: discountLabel,
           discount_id: discountId,
           discount_name: discountName,
           image_url: resolvedImageUrl,
-          product_sup: rawCategory || "อื่น ๆ",
+          product_sup: rawCategory,
           available_qty: ownBranchQty,
           own_branch_qty: ownBranchQty,
           other_branch_qty: otherBranchQty,
@@ -280,10 +297,12 @@ export const MobilePosSalesController = {
       })
 
       const categories = [...new Set(products.map((product) => product.product_sup))].sort()
+      const brands = [...new Set(products.map((product) => product.brand).filter((b) => b && b !== 'ทั่วไป'))].sort()
       return NextResponse.json({
         success: true,
         products,
         categories,
+        brands,
         branches,
         branch_id: user.branchId,
         branch_name: branchMap.get(user.branchId) || "สาขาเรา",
