@@ -13,7 +13,10 @@ import {
   getStorefrontCategoryOrder,
   DimensionFilter,
   EMPTY_DIMENSION_FILTER,
-  hasActiveDimensions
+  hasActiveDimensions,
+  getProductBrand,
+  getPosBrandOptions,
+  ProductBrandOption
 } from '@/lib/propFilterModel'
 
 export interface PosSetBundle {
@@ -46,6 +49,7 @@ interface FurnitureCache {
   timestamp: number;
   products: any[];
   subcategories: string[];
+  brands: string[];
 }
 let furnitureCache: FurnitureCache | null = null;
 const FURNITURE_CACHE_TTL = 5 * 60 * 1000; // แคชเฟอร์นิเจอร์ไว้ 5 นาที
@@ -150,6 +154,8 @@ async function ensurePosCache(forceRefresh: boolean = false) {
       const colGroup = Array.isArray(p.collection_groups) ? p.collection_groups[0] : p.collection_groups
       const resolvedImageUrl = p.image_url || colGroup?.image_url || colGroup?.cover_image_url || null
 
+      const brand = getProductBrand(p)
+
       return {
         id: p.id,
         name: p.name,
@@ -162,14 +168,17 @@ async function ensurePosCache(forceRefresh: boolean = false) {
         image_url: resolvedImageUrl,
         barcode: p.barcode,
         product_sup: colGroup ? colGroup.product_sup : null,
+        category_id: 'prop',
+        brand,
         stocks: p.stock || [],
         specs: p.specs ? {
+          brand: p.specs.brand || p.specs.Brand || brand || null,
           material: p.specs.material || null,
           color: p.specs.color || p.specs.colour || p.color || null,
           width_cm: p.specs.width_cm || p.specs.W || null,
           length_cm: p.specs.length_cm || p.specs.D || null,
           thickness_cm: p.specs.thickness_cm || p.specs.H || null,
-        } : {}
+        } : { brand }
       }
     })
 
@@ -271,6 +280,7 @@ function filterAndSortPosProducts(
     storefrontCategory?: string;
     selectedColors?: string[];
     selectedMaterials?: string[];
+    selectedBrands?: string[];
     dimensionFilter?: DimensionFilter;
     selectedLocation?: number | 'ALL';
     myBranchId?: number;
@@ -282,6 +292,7 @@ function filterAndSortPosProducts(
     storefrontCategory = 'All',
     selectedColors = [],
     selectedMaterials = [],
+    selectedBrands = [],
     dimensionFilter = EMPTY_DIMENSION_FILTER,
     selectedLocation = 'ALL',
     myBranchId = 1,
@@ -311,6 +322,11 @@ function filterAndSortPosProducts(
       const pMats = productMaterialValues(p);
       const hasMat = selectedMaterials.some(m => pMats.includes(m));
       if (!hasMat) return false;
+    }
+
+    if (selectedBrands.length > 0) {
+      const pBrand = getProductBrand(p);
+      if (!selectedBrands.includes(pBrand)) return false;
     }
 
     if (hasActiveDimensions(dimensionFilter)) {
@@ -373,6 +389,7 @@ export async function getPosProductsPage(params: {
   storefrontCategory?: string;
   selectedColors?: string[];
   selectedMaterials?: string[];
+  selectedBrands?: string[];
   dimensionFilter?: DimensionFilter;
   selectedLocation?: number | 'ALL';
   forceRefresh?: boolean;
@@ -399,6 +416,7 @@ export async function getPosProductsPage(params: {
     storefrontCategory: params.storefrontCategory,
     selectedColors: params.selectedColors,
     selectedMaterials: params.selectedMaterials,
+    selectedBrands: params.selectedBrands,
     dimensionFilter: params.dimensionFilter,
     selectedLocation: params.selectedLocation,
     myBranchId: branchId,
@@ -418,6 +436,7 @@ export async function getPosProductsPage(params: {
     hasMore: (startIndex + pageSize) < filtered.length,
     colorOptions: getPosColorOptions(posCache.products, params.storefrontCategory || 'All'),
     materialOptions: getPosMaterialOptions(posCache.products, params.storefrontCategory || 'All'),
+    brandOptions: getPosBrandOptions(posCache.products, params.storefrontCategory || 'All'),
   };
 }
 
@@ -458,6 +477,7 @@ export async function getPosData(forceRefresh: boolean = false) {
     fromCache: cacheRes.fromCache,
     colorOptions: getPosColorOptions(posCache.products, 'All'),
     materialOptions: getPosMaterialOptions(posCache.products, 'All'),
+    brandOptions: getPosBrandOptions(posCache.products, 'All'),
   };
 }
 
@@ -476,6 +496,7 @@ export async function getFurnitureProducts(forceRefresh: boolean = false) {
       success: true,
       products: furnitureCache.products,
       subcategories: furnitureCache.subcategories,
+      brands: furnitureCache.brands,
       fromCache: true
     }
   }
@@ -495,14 +516,21 @@ export async function getFurnitureProducts(forceRefresh: boolean = false) {
   }
 
   const subcatSet = new Set<string>()
+  const brandSet = new Set<string>()
+
   const formattedFurniture = (furnitureData || []).map(p => {
     const rawCol = Array.isArray(p.collection_groups) ? p.collection_groups[0] : p.collection_groups
-    const isSlab = p.category_id === 'SLABS'
+    const isSlab = p.category_id === 'SLABS' || (p.sku && p.sku.startsWith('ZLB-'))
     let subcat = rawCol?.product_sup
     if (!subcat) {
       subcat = isSlab ? 'แผ่นไม้ / Wood Slabs' : 'เฟอร์นิเจอร์ทั่วไป'
     }
     subcatSet.add(subcat)
+
+    const brand = getProductBrand(p)
+    if (brand && brand !== 'ทั่วไป') {
+      brandSet.add(brand)
+    }
 
     return {
       id: p.id,
@@ -515,25 +543,37 @@ export async function getFurnitureProducts(forceRefresh: boolean = false) {
       barcode: p.barcode || null,
       product_sup: subcat,
       category_id: p.category_id || (isSlab ? 'SLABS' : 'furniture'),
-      isFurniture: p.category_id === 'furniture',
+      isFurniture: p.category_id === 'furniture' || (!isSlab && p.sku?.startsWith('EMBER-')),
       isSlab,
       stocks: Array.isArray(p.stock) ? p.stock : [],
-      specs: p.specs || {}
+      specs: p.specs || {},
+      brand: brand || (isSlab ? 'ZENSLABS' : 'Ember & Ash')
     }
   })
 
+  // รับประกันว่ามีชื่อแบรนด์หลักเสมอ
+  if (formattedFurniture.some(p => p.isFurniture || p.sku?.startsWith('EMBER-'))) {
+    brandSet.add('Ember & Ash')
+  }
+  if (formattedFurniture.some(p => p.isSlab || p.sku?.startsWith('ZLB-'))) {
+    brandSet.add('ZENSLABS')
+  }
+
   const subcategories = Array.from(subcatSet).sort()
+  const brands = Array.from(brandSet).sort()
 
   furnitureCache = {
     timestamp: now,
     products: formattedFurniture,
-    subcategories
+    subcategories,
+    brands
   }
 
   return {
     success: true,
     products: formattedFurniture,
-    subcategories
+    subcategories,
+    brands
   }
 }
 

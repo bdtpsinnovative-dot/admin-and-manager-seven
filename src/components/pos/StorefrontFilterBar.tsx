@@ -15,12 +15,14 @@ interface StorefrontFilterBarProps {
   onOpenColor: () => void
   onOpenMaterial: () => void
   onOpenSize: () => void
+  onOpenBrand?: () => void
   onClearFilters: () => void
   hasActiveFilters: boolean
   isFilterOpen?: boolean
   selectedCategory?: string
   selectedColorsCount?: number
   selectedMaterialsCount?: number
+  selectedBrandsCount?: number
   hasActiveDimensions?: boolean
   branches?: PosBranchOption[]
   selectedLocation: number | 'ALL'
@@ -33,12 +35,14 @@ export default function StorefrontFilterBar({
   onOpenColor,
   onOpenMaterial,
   onOpenSize,
+  onOpenBrand,
   onClearFilters,
   hasActiveFilters,
   isFilterOpen = false,
   selectedCategory = 'All',
   selectedColorsCount = 0,
   selectedMaterialsCount = 0,
+  selectedBrandsCount = 0,
   hasActiveDimensions = false,
   branches = [],
   selectedLocation,
@@ -282,6 +286,47 @@ export default function StorefrontFilterBar({
             <span className="h-1.5 w-1.5 rounded-full bg-[#84492C]" />
           )}
         </button>
+
+        {/* 5.5 BRAND BUTTON */}
+        {onOpenBrand && (
+          <button
+            type="button"
+            onClick={onOpenBrand}
+            aria-label="Open brand filter"
+            className={`flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-1 text-[10px] font-semibold uppercase tracking-[0.18em] transition-colors duration-300 hover:border-[#84492C]/40 hover:text-[#84492C] touch-manipulation cursor-pointer ${
+              selectedBrandsCount && selectedBrandsCount > 0
+                ? 'border-[#84492C] text-[#84492C]'
+                : 'border-transparent text-[#6F6861]'
+            }`}
+          >
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.35"
+              className="h-[15px] w-[15px]"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M9.568 3H5.25A2.25 2.25 0 0 0 3 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 0 0 5.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 0 0 9.568 3Z"
+              />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M6 6h.008v.008H6V6Z"
+              />
+            </svg>
+            <span>BRAND</span>
+            {Boolean(selectedBrandsCount && selectedBrandsCount > 0) && (
+              <span className="flex items-center gap-1">
+                <span className="h-1.5 w-1.5 rounded-full bg-[#84492C]" />
+                <span className="text-[9px] font-bold text-[#84492C]">({selectedBrandsCount})</span>
+              </span>
+            )}
+          </button>
+        )}
       </div>
 
       {/* 6. ALL / BRANCH SELECTOR (Location Pin) - Pinned on right on mobile, accessible immediately */}

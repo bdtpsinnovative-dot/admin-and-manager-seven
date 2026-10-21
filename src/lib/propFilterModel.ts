@@ -637,3 +637,57 @@ export function resolveCategoryInfo(product: any): ResolvedCategory {
     groupType: 'other',
   }
 }
+
+export type ProductBrandOption = {
+  value: string
+  label: string
+  count: number
+}
+
+// 🏷️ ฟังก์ชันดึงชื่อแบรนด์ของสินค้าอย่างแม่นยำ (รองรับทั้ง Specs, SKU Prefix, และ Category)
+export function getProductBrand(product: any): string {
+  if (!product) return 'ทั่วไป'
+
+  // 1. ตรวจสอบจาก specs.brand หรือ specs.Brand ก่อน
+  const specBrand = product.specs?.brand || product.specs?.Brand
+  if (specBrand && typeof specBrand === 'string' && specBrand.trim() && specBrand.trim().toLowerCase() !== 'null') {
+    return specBrand.trim()
+  }
+
+  // 2. ถ้าเป็นเฟอร์นิเจอร์ หรือ SKU ขึ้นต้นด้วย EMBER หรือรูปอยู่ในโฟลเดอร์ ember&ash
+  const sku = (product.sku || '').toUpperCase()
+  const cat = (product.category_id || '').toLowerCase()
+  const imgUrl = (product.image_url || '').toLowerCase()
+
+  if (sku.startsWith('EMBER') || cat === 'furniture' || imgUrl.includes('ember')) {
+    return 'Ember & Ash'
+  }
+
+  // 3. ถ้าเป็นแผ่นไม้ หรือ SKU ขึ้นต้นด้วย ZLB (ZENSLABS)
+  if (sku.startsWith('ZLB') || sku.startsWith('WOOD') || cat === 'slabs' || cat === 'slab') {
+    return 'ZENSLABS'
+  }
+
+  return 'ทั่วไป'
+}
+
+// 🏷️ คำนวณตัวเลือกแบรนด์สินค้าสำหรับหน้า POS
+export function getPosBrandOptions(products: any[], activeCategory?: string): ProductBrandOption[] {
+  const counts = new Map<string, number>()
+  for (const product of products) {
+    if (activeCategory && !matchesStorefrontCategory(product, activeCategory)) continue
+    const brand = getProductBrand(product)
+    if (brand && brand !== 'ทั่วไป') {
+      counts.set(brand, (counts.get(brand) || 0) + 1)
+    }
+  }
+
+  return Array.from(counts.entries())
+    .map(([value, count]) => ({
+      value,
+      count,
+      label: value,
+    }))
+    .sort((a, b) => b.count - a.count)
+}
+

@@ -15,6 +15,7 @@ import {
   productMatchesDimensions,
   getPosColorOptions,
   getPosMaterialOptions,
+  getPosBrandOptions,
   getStorefrontCategoryOrder,
   DimensionFilter,
   EMPTY_DIMENSION_FILTER,
@@ -66,6 +67,7 @@ export default function ManagerPOSPage() {
   const observerTargetRef = useRef<HTMLDivElement | null>(null)
   const [serverColorOptions, setServerColorOptions] = useState<any[]>([])
   const [serverMaterialOptions, setServerMaterialOptions] = useState<any[]>([])
+  const [serverBrandOptions, setServerBrandOptions] = useState<any[]>([])
 
   const [sets, setSets] = useState<PosSetBundle[]>([])
   const [loadingDb, setLoadingDb] = useState(true)
@@ -85,10 +87,11 @@ export default function ManagerPOSPage() {
 
   // 🛍️ State สำหรับฟิลเตอร์หน้าบ้าน (Storefront Filter)
   const [isStorefrontDrawerOpen, setIsStorefrontDrawerOpen] = useState(false)
-  const [storefrontDrawerPanel, setStorefrontDrawerPanel] = useState<'category' | 'color' | 'material' | 'size'>('category')
+  const [storefrontDrawerPanel, setStorefrontDrawerPanel] = useState<'category' | 'color' | 'material' | 'size' | 'brand'>('category')
   const [storefrontCategory, setStorefrontCategory] = useState<string>('All')
   const [selectedColors, setSelectedColors] = useState<string[]>([])
   const [selectedMaterials, setSelectedMaterials] = useState<string[]>([])
+  const [selectedBrands, setSelectedBrands] = useState<string[]>([])
   const [dimensionFilter, setDimensionFilter] = useState<DimensionFilter>(EMPTY_DIMENSION_FILTER)
 
   const hasActiveStorefrontFilters = useMemo(() => {
@@ -96,9 +99,10 @@ export default function ManagerPOSPage() {
       (storefrontCategory !== 'All' && storefrontCategory !== 'ALL') ||
       selectedColors.length > 0 ||
       selectedMaterials.length > 0 ||
+      selectedBrands.length > 0 ||
       hasActiveDimensions(dimensionFilter)
     )
-  }, [storefrontCategory, selectedColors, selectedMaterials, dimensionFilter])
+  }, [storefrontCategory, selectedColors, selectedMaterials, selectedBrands, dimensionFilter])
 
   const [myBranchId, setMyBranchId] = useState<number>(1)
   const [selectedLocation, setSelectedLocation] = useState<number | 'ALL'>('ALL')
@@ -141,6 +145,11 @@ export default function ManagerPOSPage() {
     if (serverMaterialOptions.length > 0) return serverMaterialOptions
     return getPosMaterialOptions(products, storefrontCategory)
   }, [serverMaterialOptions, products, storefrontCategory])
+
+  const storefrontBrandOptions = useMemo(() => {
+    if (serverBrandOptions.length > 0) return serverBrandOptions
+    return getPosBrandOptions(products, storefrontCategory)
+  }, [serverBrandOptions, products, storefrontCategory])
 
   const [submitting, setSubmitting] = useState(false)
   const [isConfirmingClear, setIsConfirmingClear] = useState(false)
@@ -412,6 +421,7 @@ export default function ManagerPOSPage() {
       if (res.categories) buildNestedMenu(res.categories)
       if (res.colorOptions) setServerColorOptions(res.colorOptions)
       if (res.materialOptions) setServerMaterialOptions(res.materialOptions)
+      if (res.brandOptions) setServerBrandOptions(res.brandOptions)
       if (res.branchId) {
         setMyBranchId(res.branchId)
         if (isInitial) setSelectedLocation(res.branchId)
@@ -437,6 +447,7 @@ export default function ManagerPOSPage() {
         storefrontCategory,
         selectedColors,
         selectedMaterials,
+        selectedBrands,
         dimensionFilter,
         selectedLocation,
       })
@@ -474,7 +485,7 @@ export default function ManagerPOSPage() {
 
     observer.observe(target)
     return () => observer.disconnect()
-  }, [hasMore, isLoadingMore, loadingDb, currentPage, searchQuery, selectedCategory, storefrontCategory, selectedColors, selectedMaterials, dimensionFilter, selectedLocation])
+  }, [hasMore, isLoadingMore, loadingDb, currentPage, searchQuery, selectedCategory, storefrontCategory, selectedColors, selectedMaterials, selectedBrands, dimensionFilter, selectedLocation])
 
   // ⚡ ค้นหาและกรองผ่าน Server แบบ Debounced (ค้นหาไวในเสี้ยววินาที ไม่กระตุก)
   useEffect(() => {
@@ -492,6 +503,7 @@ export default function ManagerPOSPage() {
           storefrontCategory,
           selectedColors,
           selectedMaterials,
+          selectedBrands,
           dimensionFilter,
           selectedLocation,
         })
@@ -502,6 +514,7 @@ export default function ManagerPOSPage() {
           setHasMore(Boolean(res.hasMore))
           if (res.colorOptions) setServerColorOptions(res.colorOptions)
           if (res.materialOptions) setServerMaterialOptions(res.materialOptions)
+          if (res.brandOptions) setServerBrandOptions(res.brandOptions)
         }
       } catch (err) {
         console.error("Search/filter failed:", err)
@@ -511,7 +524,7 @@ export default function ManagerPOSPage() {
     }, 220)
 
     return () => clearTimeout(timer)
-  }, [searchQuery, selectedCategory, storefrontCategory, selectedColors, selectedMaterials, dimensionFilter, selectedLocation])
+  }, [searchQuery, selectedCategory, storefrontCategory, selectedColors, selectedMaterials, selectedBrands, dimensionFilter, selectedLocation])
 
   const buildNestedMenu = (rawCategories: string[]) => {
     const groups: Record<string, { fullText: string; subText: string }[]> = {}
@@ -1366,18 +1379,22 @@ export default function ManagerPOSPage() {
         activeCategory={storefrontCategory}
         selectedColors={selectedColors}
         selectedMaterials={selectedMaterials}
+        selectedBrands={selectedBrands}
         dimensionFilter={dimensionFilter}
         colorOptions={storefrontColorOptions}
         materialOptions={storefrontMaterialOptions}
+        brandOptions={storefrontBrandOptions}
         onClose={() => setIsStorefrontDrawerOpen(false)}
         onCategoryChange={(cat) => setStorefrontCategory(cat)}
         onColorsChange={(colors) => setSelectedColors(colors)}
         onMaterialsChange={(mats) => setSelectedMaterials(mats)}
+        onBrandsChange={(b) => setSelectedBrands(b)}
         onDimensionFilterChange={(dims) => setDimensionFilter(dims)}
         onResetAll={() => {
           setStorefrontCategory('All')
           setSelectedColors([])
           setSelectedMaterials([])
+          setSelectedBrands([])
           setDimensionFilter(EMPTY_DIMENSION_FILTER)
         }}
       />
@@ -1505,10 +1522,15 @@ export default function ManagerPOSPage() {
                   setStorefrontDrawerPanel('size')
                   setIsStorefrontDrawerOpen(true)
                 }}
+                onOpenBrand={() => {
+                  setStorefrontDrawerPanel('brand')
+                  setIsStorefrontDrawerOpen(true)
+                }}
                 onClearFilters={() => {
                   setStorefrontCategory('All')
                   setSelectedColors([])
                   setSelectedMaterials([])
+                  setSelectedBrands([])
                   setDimensionFilter(EMPTY_DIMENSION_FILTER)
                 }}
                 hasActiveFilters={hasActiveStorefrontFilters}
@@ -1516,6 +1538,7 @@ export default function ManagerPOSPage() {
                 selectedCategory={storefrontCategory}
                 selectedColorsCount={selectedColors.length}
                 selectedMaterialsCount={selectedMaterials.length}
+                selectedBrandsCount={selectedBrands.length}
                 hasActiveDimensions={hasActiveDimensions(dimensionFilter)}
                 branches={branches}
                 selectedLocation={selectedLocation}
@@ -1532,6 +1555,11 @@ export default function ManagerPOSPage() {
                   {storefrontCategory !== 'All' && storefrontCategory !== 'ALL' && (
                     <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-bold rounded-full whitespace-nowrap">
                       หมวด: {storefrontCategory}
+                    </span>
+                  )}
+                  {selectedBrands.length > 0 && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-bold rounded-full whitespace-nowrap">
+                      แบรนด์ ({selectedBrands.length})
                     </span>
                   )}
                   {selectedColors.length > 0 && (

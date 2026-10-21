@@ -357,7 +357,7 @@ async function fetchScoreEvents(cutoff: string, until?: string) {
     let req = supabaseAdmin
       .from("algorithm_events")
       .select("product_id, identity_key, identity_type, user_id, visitor_id, metadata, view_bucket, created_at, traffic_type, is_countable, country_code, country, region, city")
-      .eq("source_tag", "prop")
+      .in("source_tag", ["prop", "slab"])
       .eq("event_type", "product_view")
       .eq("is_countable", true)
       .neq("traffic_type", "bot")
@@ -389,7 +389,7 @@ async function fetchPropProducts(productIds: number[], includeInactive = false) 
     .from("products")
     .select("id, name, sku, image_url, status, category_id, collection_group_id")
     .in("id", idBatch)
-    .eq("category_id", "prop")))
+    .in("category_id", ["prop", "SLABS"])))
   const productError = productResults.find((result) => result.error)?.error
   if (productError) throw new Error(productError.message)
   const products = productResults.flatMap((result) => (result.data ?? []) as ProductRow[])
@@ -425,10 +425,11 @@ async function fetchPropProducts(productIds: number[], includeInactive = false) 
   }
 
   for (const product of products) {
+    const isSlab = product.category_id === 'SLABS'
     const group = product.collection_group_id === null
       ? null
       : groupMap.get(String(product.collection_group_id))
-    if (!group || !group.tag?.toLowerCase().includes("prop")) continue
+    if (!isSlab && (!group || !group.tag?.toLowerCase().includes("prop"))) continue
     if (!includeInactive && product.status && product.status !== "active") continue
 
     const stockTotal = stockByProduct.get(product.id) ?? 0
@@ -438,8 +439,8 @@ async function fetchPropProducts(productIds: number[], includeInactive = false) 
       sku: product.sku,
       imageUrl: product.image_url,
       status: product.status,
-      collectionGroupId: String(product.collection_group_id),
-      collectionName: sanitizeCategoryName(group.product_sup),
+      collectionGroupId: isSlab ? "woodslab" : String(product.collection_group_id),
+      collectionName: isSlab ? "Wood Slabs" : sanitizeCategoryName(group?.product_sup),
       stockTotal,
       availability: stockTotal > 0 ? "available" : "preorder",
     })
@@ -451,7 +452,7 @@ async function fetchPropProducts(productIds: number[], includeInactive = false) 
       const snapshotResults = await Promise.all(chunkValues(missingIds).map((idBatch) => supabaseAdmin
         .from("algorithm_events")
         .select("product_id, collection_group_id, product_category_snapshot, product_name_snapshot, product_sku_snapshot")
-        .eq("source_tag", "prop")
+        .in("source_tag", ["prop", "slab"])
         .eq("event_type", "product_view")
         .in("product_id", idBatch)
         .order("created_at", { ascending: false })))
@@ -497,7 +498,7 @@ async function fetchAllPropProductIds(cutoff?: string) {
     const { data: eventData } = await supabaseAdmin
       .from("algorithm_events")
       .select("product_id")
-      .eq("source_tag", "prop")
+      .in("source_tag", ["prop", "slab"])
       .eq("event_type", "product_view")
       .eq("is_countable", true)
       .gte("created_at", cutoff)
@@ -872,7 +873,7 @@ export async function getAlgorithmOverview(
       supabaseAdmin
         .from("algorithm_events")
         .select("id", { count: "exact", head: true })
-        .eq("source_tag", "prop")
+        .in("source_tag", ["prop", "slab"])
         .eq("event_type", "product_view")
         .eq("traffic_type", "bot")
         .gte("created_at", cutoff)
@@ -880,7 +881,7 @@ export async function getAlgorithmOverview(
       supabaseAdmin
         .from("algorithm_events")
         .select("id", { count: "exact", head: true })
-        .eq("source_tag", "prop")
+        .in("source_tag", ["prop", "slab"])
         .eq("event_type", "product_view")
         .eq("traffic_type", "internal")
         .gte("created_at", cutoff)
@@ -1286,7 +1287,7 @@ export async function getAlgorithmProductDetail(
   let eventQuery = supabaseAdmin
     .from("algorithm_events")
     .select(EVENT_FIELDS, { count: "exact" })
-    .eq("source_tag", "prop")
+    .in("source_tag", ["prop", "slab"])
     .eq("event_type", "product_view")
     .eq("product_id", productId)
     .gte("created_at", getCutoff(filters.rangeDays))

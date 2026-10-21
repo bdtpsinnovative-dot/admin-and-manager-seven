@@ -18,6 +18,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { getFurnitureProducts, createOrGetCustomProduct } from '@/actions/pos'
+import { getProductBrand } from '@/lib/propFilterModel'
 
 interface Branch {
   id: number
@@ -68,6 +69,8 @@ export default function ExternalProductModal({
   const [furnitureList, setFurnitureList] = useState<any[]>([])
   const [subcategories, setSubcategories] = useState<string[]>([])
   const [selectedSubcat, setSelectedSubcat] = useState<string>('ALL')
+  const [brands, setBrands] = useState<string[]>([])
+  const [selectedBrand, setSelectedBrand] = useState<string>('ALL')
   const [searchQuery, setSearchQuery] = useState('')
   const [loadingFurn, setLoadingFurn] = useState(false)
   const [hasLoaded, setHasLoaded] = useState(false)
@@ -105,6 +108,7 @@ export default function ExternalProductModal({
       if (res.success && res.products) {
         setFurnitureList(res.products)
         setSubcategories(res.subcategories || [])
+        setBrands(res.brands || ['Ember & Ash', 'ZENSLABS'])
         setHasLoaded(true)
       } else {
         toast.error(res.error || 'ไม่สามารถโหลดแคตตาล็อกเฟอร์นิเจอร์ได้')
@@ -119,6 +123,9 @@ export default function ExternalProductModal({
   // ตัวกรองรายการเฟอร์นิเจอร์
   const filteredFurniture = useMemo(() => {
     let list = furnitureList
+    if (selectedBrand !== 'ALL') {
+      list = list.filter((p) => (p.brand || getProductBrand(p)) === selectedBrand)
+    }
     if (selectedSubcat !== 'ALL') {
       list = list.filter((p) => p.product_sup === selectedSubcat)
     }
@@ -129,11 +136,12 @@ export default function ExternalProductModal({
           p.name?.toLowerCase().includes(q) ||
           p.sku?.toLowerCase().includes(q) ||
           p.product_sup?.toLowerCase().includes(q) ||
+          (p.brand && String(p.brand).toLowerCase().includes(q)) ||
           (p.specs?.material && String(p.specs.material).toLowerCase().includes(q))
       )
     }
     return list
-  }, [furnitureList, selectedSubcat, searchQuery])
+  }, [furnitureList, selectedBrand, selectedSubcat, searchQuery])
 
   // สุ่ม SKU อัตโนมัติสำหรับ Custom Item
   const generateRandomSku = () => {
@@ -338,6 +346,47 @@ export default function ExternalProductModal({
               </button>
             </div>
 
+            {/* 🏷️ แถบเลือกแบรนด์สินค้า (Brand Filter Pills) */}
+            <div className="px-4 py-2 bg-slate-50/90 border-b border-slate-100 flex items-center gap-1.5 overflow-x-auto [scrollbar-width:none] shrink-0">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider shrink-0 mr-1 flex items-center gap-1">
+                <Tag className="w-3 h-3 text-amber-600" />
+                แบรนด์:
+              </span>
+              <button
+                type="button"
+                onClick={() => setSelectedBrand('ALL')}
+                className={`px-3 py-1 rounded-full text-[11px] font-bold shrink-0 transition-all cursor-pointer ${
+                  selectedBrand === 'ALL'
+                    ? 'bg-amber-600 text-white shadow-xs'
+                    : 'bg-white text-slate-600 border border-slate-200 hover:border-amber-400 hover:text-amber-800'
+                }`}
+              >
+                ทั้งหมด ({furnitureList.length})
+              </button>
+              {brands.map((b) => {
+                const count = furnitureList.filter((p) => (p.brand || getProductBrand(p)) === b).length
+                return (
+                  <button
+                    key={b}
+                    type="button"
+                    onClick={() => setSelectedBrand(b)}
+                    className={`px-3 py-1 rounded-full text-[11px] font-bold shrink-0 transition-all cursor-pointer flex items-center gap-1.5 ${
+                      selectedBrand === b
+                        ? 'bg-amber-600 text-white shadow-xs'
+                        : 'bg-white text-slate-700 border border-slate-200 hover:border-amber-400 hover:text-amber-800'
+                    }`}
+                  >
+                    <span>{b}</span>
+                    <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-bold ${
+                      selectedBrand === b ? 'bg-amber-700 text-white' : 'bg-slate-100 text-slate-500'
+                    }`}>
+                      {count}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+
             {/* Subcategory Pills */}
             {subcategories.length > 0 && (
               <div className="px-4 py-2 bg-white border-b border-slate-100 flex items-center gap-1.5 overflow-x-auto [scrollbar-width:none] shrink-0">
@@ -441,6 +490,17 @@ export default function ExternalProductModal({
                             >
                               {cleanName}
                             </h4>
+
+                            {/* Tag แบรนด์ & SKU */}
+                            <div className="flex items-center gap-1 mt-0.5">
+                              <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-50 text-amber-800 border border-amber-200/60 inline-flex items-center gap-0.5">
+                                <Tag className="w-2.5 h-2.5" />
+                                {item.brand || getProductBrand(item)}
+                              </span>
+                              <span className="text-[9px] text-slate-400 font-mono truncate">
+                                {item.sku}
+                              </span>
+                            </div>
 
                             <p className="text-[10px] text-slate-400 truncate mt-0.5" title={specsText}>
                               {specsText}

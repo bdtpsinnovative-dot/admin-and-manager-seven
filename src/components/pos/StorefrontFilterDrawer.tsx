@@ -6,25 +6,29 @@ import {
   type ProductFilterMenuItem,
   type ProductColorOption,
   type ProductMaterialOption,
+  type ProductBrandOption,
   type DimensionFilter,
   EMPTY_DIMENSION_FILTER,
   hasActiveDimensions,
 } from "@/lib/propFilterModel"
-import { X, ChevronLeft, SlidersHorizontal, Sparkles } from "lucide-react"
+import { X, ChevronLeft, SlidersHorizontal, Sparkles, Check, Tag } from "lucide-react"
 
 type StorefrontFilterDrawerProps = {
   open: boolean
-  initialPanel?: 'category' | 'color' | 'material' | 'size'
+  initialPanel?: 'category' | 'color' | 'material' | 'size' | 'brand'
   activeCategory: string
   selectedColors?: string[]
   selectedMaterials?: string[]
+  selectedBrands?: string[]
   dimensionFilter?: DimensionFilter
   colorOptions?: ProductColorOption[]
   materialOptions?: ProductMaterialOption[]
+  brandOptions?: ProductBrandOption[]
   onClose: () => void
   onCategoryChange: (category: string) => void
   onColorsChange: (colors: string[]) => void
   onMaterialsChange: (materials: string[]) => void
+  onBrandsChange?: (brands: string[]) => void
   onDimensionFilterChange: (dimensions: DimensionFilter) => void
   onResetAll?: () => void
 }
@@ -46,17 +50,20 @@ export default function StorefrontFilterDrawer({
   activeCategory,
   selectedColors = [],
   selectedMaterials = [],
+  selectedBrands = [],
   dimensionFilter = EMPTY_DIMENSION_FILTER,
   colorOptions = [],
   materialOptions = [],
+  brandOptions = [],
   onClose,
   onCategoryChange,
   onColorsChange,
   onMaterialsChange,
+  onBrandsChange,
   onDimensionFilterChange,
   onResetAll,
 }: StorefrontFilterDrawerProps) {
-  const [currentPanel, setCurrentPanel] = useState<'category' | 'color' | 'material' | 'size'>(initialPanel)
+  const [currentPanel, setCurrentPanel] = useState<'category' | 'color' | 'material' | 'size' | 'brand'>(initialPanel)
   const activeGroup = groupForCategory(activeCategory)
   const [expandedGroups, setExpandedGroups] = useState<string[]>(activeGroup ? [activeGroup] : [])
   const [localDimensions, setLocalDimensions] = useState<DimensionFilter>(dimensionFilter)
@@ -129,6 +136,7 @@ export default function StorefrontFilterDrawer({
     activeCategory !== 'All' && activeCategory !== 'ALL' ||
     selectedColors.length > 0 ||
     selectedMaterials.length > 0 ||
+    selectedBrands.length > 0 ||
     hasActiveDimensions(dimensionFilter)
 
   const renderMenuItem = (item: ProductFilterMenuItem, index: number) => {
@@ -321,6 +329,8 @@ export default function StorefrontFilterDrawer({
                   ? "Material"
                   : currentPanel === 'size'
                   ? "Dimensions"
+                  : currentPanel === 'brand'
+                  ? "Brand"
                   : "Filters"}
               </span>
             </div>
@@ -335,6 +345,7 @@ export default function StorefrontFilterDrawer({
                       onCategoryChange('All')
                       onColorsChange([])
                       onMaterialsChange([])
+                      if (onBrandsChange) onBrandsChange([])
                       onDimensionFilterChange(EMPTY_DIMENSION_FILTER)
                     }
                   }}
@@ -402,6 +413,20 @@ export default function StorefrontFilterDrawer({
             >
               ขนาด {hasActiveDimensions(dimensionFilter) && `(✓)`}
             </button>
+            {brandOptions.length > 0 && (
+              <button
+                onClick={() => setCurrentPanel('brand')}
+                className={`px-2.5 py-1 rounded-full transition-all cursor-pointer whitespace-nowrap ${
+                  currentPanel === 'brand'
+                    ? 'bg-[#84492C] text-white'
+                    : selectedBrands.length > 0
+                    ? 'bg-amber-100 text-[#84492C] font-black'
+                    : 'text-[#6F6861] hover:text-[#3A3835] hover:bg-black/5'
+                }`}
+              >
+                แบรนด์ {selectedBrands.length > 0 && `(${selectedBrands.length})`}
+              </button>
+            )}
           </div>
 
           {/* เนื้อหาด้านในตามแต่ละ Panel */}
@@ -593,6 +618,73 @@ export default function StorefrontFilterDrawer({
                   >
                     ใช้ตัวกรองขนาด
                   </button>
+                </div>
+              </div>
+            )}
+
+            {currentPanel === 'brand' && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between pb-2 border-b border-[#C4B5A5]/30">
+                  <span className="text-xs font-bold text-[#6F6861] uppercase tracking-wider flex items-center gap-1.5">
+                    <Tag className="w-3.5 h-3.5 text-[#84492C]" />
+                    แบรนด์สินค้า ({brandOptions.length})
+                  </span>
+                  {selectedBrands.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => onBrandsChange && onBrandsChange([])}
+                      className="text-[11px] font-bold text-[#84492C] hover:underline"
+                    >
+                      ล้างที่เลือก ({selectedBrands.length})
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 gap-2">
+                  {brandOptions.length === 0 ? (
+                    <div className="py-8 text-center text-xs text-slate-400">
+                      ไม่พบแบรนด์ในหมวดหมู่นี้
+                    </div>
+                  ) : (
+                    brandOptions.map((brand) => {
+                      const isSelected = selectedBrands.includes(brand.value)
+                      return (
+                        <button
+                          key={brand.value}
+                          type="button"
+                          onClick={() => {
+                            if (!onBrandsChange) return
+                            if (isSelected) {
+                              onBrandsChange(selectedBrands.filter((b) => b !== brand.value))
+                            } else {
+                              onBrandsChange([...selectedBrands, brand.value])
+                            }
+                          }}
+                          className={`flex items-center justify-between p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                            isSelected
+                              ? 'bg-[#84492C]/10 border-[#84492C] text-[#84492C] shadow-xs'
+                              : 'bg-white/70 border-[#C4B5A5]/40 text-slate-700 hover:bg-white hover:border-[#84492C]/30'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className={`w-4 h-4 rounded-md border flex items-center justify-center shrink-0 transition-colors ${
+                              isSelected ? 'bg-[#84492C] border-[#84492C] text-white' : 'border-slate-300 bg-white'
+                            }`}>
+                              {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                            </div>
+                            <span className="text-xs font-bold truncate">
+                              {brand.label}
+                            </span>
+                          </div>
+                          <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+                            isSelected ? 'bg-[#84492C]/20 text-[#84492C]' : 'bg-slate-100 text-slate-500'
+                          }`}>
+                            {brand.count}
+                          </span>
+                        </button>
+                      )
+                    })
+                  )}
                 </div>
               </div>
             )}
