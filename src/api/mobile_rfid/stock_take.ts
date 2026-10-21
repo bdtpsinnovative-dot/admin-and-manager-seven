@@ -58,7 +58,8 @@ export const StockTakeController = {
 
   async fetchInitialCount(req: NextRequest, user: any) {
     try {
-      const branchId = user.branchId;
+      const qBranch = req.nextUrl.searchParams.get("branch_id")?.replace("eq.", "");
+      const branchId = qBranch ? Number(qBranch) : (user?.branchId || 1);
       const data = await MobileRfidService.fetchInitialCount(branchId);
       return NextResponse.json(data);
     } catch (err) {
@@ -69,8 +70,7 @@ export const StockTakeController = {
   async clearInitialCount(req: NextRequest, user: any) {
     try {
       const branchIdStr = req.nextUrl.searchParams.get("branch_id")?.replace("eq.", "");
-      if (!branchIdStr) throw new Error("branch_id is required");
-      const branchId = Number(branchIdStr);
+      const branchId = branchIdStr ? Number(branchIdStr) : (user?.branchId || 1);
       await MobileRfidService.clearInitialCount(branchId);
       return new NextResponse(null, { status: 204 });
     } catch (err) {
@@ -97,8 +97,9 @@ export const StockTakeController = {
     try {
       const body = await req.json();
       const items = Array.isArray(body) ? body : (body.items || []);
-      const branch_id = user.branchId;
-      const count = await MobileRfidService.saveInitialCount(branch_id);
+      const branch_id = body.branch_id ? Number(body.branch_id) : (user?.branchId || 1);
+      const counted_by = body.counted_by || user?.userId;
+      const count = await MobileRfidService.saveInitialCount(branch_id, counted_by);
       
       if (items && items.length > 0) {
         const countItems = items.map((x: any) => ({
@@ -128,7 +129,9 @@ export const StockTakeController = {
 
   async fetchInitialCountItems(req: NextRequest, user: any) {
     try {
-      const branchId = user.branchId;
+      const qBranch = req.nextUrl.searchParams.get("branch_id")?.replace("eq.", "")
+        || req.nextUrl.searchParams.get("stock_initial_counts.branch_id")?.replace("eq.", "");
+      const branchId = qBranch ? Number(qBranch) : (user?.branchId || 1);
       const data = await MobileRfidService.fetchInitialCountItems(branchId);
       return NextResponse.json(data);
     } catch (err) {

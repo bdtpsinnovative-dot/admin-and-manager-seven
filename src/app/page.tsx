@@ -15,6 +15,10 @@ export default async function RootPage() {
     .eq('user_id', user.id)
     .single();
 
+  if (!profile) {
+    redirect('/login');
+  }
+
   const role = profile?.role;
   const rawMemberTags: string[] = Array.isArray(profile?.member_tags) ? profile.member_tags : [];
   const pageMemberTags = rawMemberTags.filter((t: string) => t.startsWith('PAGE:')).map((t: string) => t.slice(5));
@@ -25,18 +29,25 @@ export default async function RootPage() {
       ? pageMemberTags
       : [];
 
-  // ถ้ามีกำหนดสิทธิ์หน้าเฉพาะบุคคล ให้พาไปยังหน้าแรกที่ได้รับสิทธิ์ทันที
-  if (customAllowedPages.length > 0) {
-    redirect(customAllowedPages[0]);
-  }
-
+  // 1. ตำแหน่งที่มีระบบ Portal เฉพาะของตัวเอง (Manager และ Sale) ให้เข้าหน้าระบบเฉพาะเสมอ
   if (role === 'manager') {
     redirect('/manager/dashboard');
   } else if (role === 'sale') {
     redirect('/sale/dashboard');
-  } else if (role === 'data_entry' || role === 'warehouse') {
+  }
+
+  // 2. ตำแหน่งที่ทำงานในฝั่ง Admin (เช่น data_entry, warehouse) หากมีกำหนดสิทธิ์หน้าเฉพาะบุคคล ให้พาไปยังหน้าแรกที่ได้รับสิทธิ์ทันที
+  if (customAllowedPages.length > 0) {
+    redirect(customAllowedPages[0]);
+  }
+
+  if (role === 'data_entry' || role === 'warehouse') {
     redirect('/inventory');
   }
 
-  redirect('/dashboard');
-}
+  if (role === 'admin' || role === 'data_analyst') {
+    redirect('/dashboard');
+  }
+
+  redirect('/login');
+}

@@ -505,10 +505,24 @@ export const MobileRfidService = {
     if (error) throw error;
   },
 
-  async saveInitialCount(branchId: number) {
+  async saveInitialCount(branchId: number, countedBy?: string) {
+    let finalCountedBy = countedBy;
+    if (!finalCountedBy) {
+      const { data: fallbackUser } = await supabaseAdmin
+        .from("profiles")
+        .select("user_id")
+        .limit(1)
+        .maybeSingle();
+      finalCountedBy = fallbackUser?.user_id;
+    }
+
     const { data, error } = await supabaseAdmin
       .from("stock_initial_counts")
-      .insert({ branch_id: branchId })
+      .insert({ 
+        branch_id: branchId,
+        counted_by: finalCountedBy,
+        status: 'confirmed'
+      })
       .select("id")
       .single();
     if (error) throw error;

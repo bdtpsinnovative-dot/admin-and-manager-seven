@@ -3,9 +3,6 @@ import { createClient } from "../../../lib/supabase/server";
 import { supabaseAdmin } from "../../../lib/supabase/admin"; // ✅ เรียกใช้ admin client
 import EmployeeClient from "./EmployeeClient";
 
-// src/app/(admin)/employees/page.tsx
-// ... (import ส่วนอื่นๆ เหมือนเดิม)
-
 export default async function EmployeesPage() {
   const { data: { users: authUsers }, error: authError } = await supabaseAdmin.auth.admin.listUsers();
 
@@ -59,7 +56,7 @@ export default async function EmployeesPage() {
     if (role === 'data_entry' || role === 'warehouse') {
       return ['/inventory', '/stock-in', '/propsfina'];
     }
-    return ['/inventory', '/sales-history'];
+    return [];
   };
 
   // ✅ กรองเฉพาะพนักงานจริงในระบบ (ไม่แสดงลูกค้าหน้าเว็บที่ไม่มี Role หรือมี Role เป็น customer)
@@ -84,7 +81,9 @@ export default async function EmployeesPage() {
 
       const userRole = (profile?.role || "").toLowerCase().trim();
 
-      const allowedPages: string[] = profile?.allowed_pages?.length > 0
+      const allowedPages: string[] = ['manager', 'sale'].includes(userRole)
+        ? []
+        : profile?.allowed_pages?.length > 0
         ? profile.allowed_pages
         : (pageMemberTags.length > 0 ? pageMemberTags : getDefaultPagesByRole(userRole));
 

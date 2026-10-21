@@ -124,9 +124,10 @@ export async function updateEmployee(formData: FormData) {
     }
 
     // จัดการสิทธิ์การเข้าถึงหน้าเมนู (Allowed Pages)
+    // สำหรับ manager และ sale มีระบบ portal เฉพาะของตัวเองอยู่แล้ว ไม่ต้องผูกหน้า admin sidebar
     const rawPages = formData.get('allowed_pages') as string
     let pageList: string[] = []
-    if (rawPages) {
+    if (role !== 'manager' && role !== 'sale' && rawPages) {
       try {
         const parsed = JSON.parse(rawPages)
         if (Array.isArray(parsed)) pageList = parsed.filter(Boolean)
@@ -138,7 +139,7 @@ export async function updateEmployee(formData: FormData) {
     // รวมหมวดสินค้า + หน้าเมนูเข้า member_tags เพื่อเป็นแหล่งเก็บสำรองอัตโนมัติแม้ยังไม่ได้เพิ่มคอลัมน์ allowed_pages
     const combinedMemberTags = [
       ...categoryList.filter(c => !c.startsWith('PAGE:')),
-      ...pageList.map(p => p.startsWith('PAGE:') ? p : `PAGE:${p}`)
+      ...(role === 'manager' || role === 'sale' ? [] : pageList.map(p => p.startsWith('PAGE:') ? p : `PAGE:${p}`))
     ]
 
     // จัดการสิทธิ์ดูต้นทุน (Cost Visibility)
@@ -255,9 +256,10 @@ export async function createEmployee(formData: FormData) {
     }
 
     // จัดการสิทธิ์การเข้าถึงหน้าเมนู (Allowed Pages)
+    // สำหรับ manager และ sale มีระบบ portal เฉพาะของตัวเองอยู่แล้ว ไม่ต้องผูกหน้า admin sidebar
     const rawPages = formData.get('allowed_pages') as string
     let pageList: string[] = []
-    if (rawPages) {
+    if (role !== 'manager' && role !== 'sale' && rawPages) {
       try {
         const parsed = JSON.parse(rawPages)
         if (Array.isArray(parsed)) pageList = parsed.filter(Boolean)
@@ -268,7 +270,7 @@ export async function createEmployee(formData: FormData) {
 
     const combinedMemberTags = [
       ...categoryList.filter(c => !c.startsWith('PAGE:')),
-      ...pageList.map(p => p.startsWith('PAGE:') ? p : `PAGE:${p}`)
+      ...(role === 'manager' || role === 'sale' ? [] : pageList.map(p => p.startsWith('PAGE:') ? p : `PAGE:${p}`))
     ]
 
     // 1. สร้าง User ใน Auth

@@ -34,6 +34,13 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     profile = initialPfRes.data;
   }
 
+  // 🔒 ถ้าเป็น manager หรือ sale ให้ไปที่ Portal เฉพาะของตนเองเสมอ
+  if (profile?.role === "manager") {
+    redirect("/manager/dashboard");
+  } else if (profile?.role === "sale") {
+    redirect("/sale/dashboard");
+  }
+
   const rawMemberTags: string[] = Array.isArray(profile?.member_tags) ? profile.member_tags : [];
   const pageMemberTags = rawMemberTags.filter((t) => t.startsWith('PAGE:')).map((t) => t.slice(5));
   const customAllowedPages: string[] | undefined =
@@ -45,14 +52,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
   const allowedRoles = ["admin", "data_entry", "data_analyst", "warehouse"];
   const hasCustomAdminPages = customAllowedPages && customAllowedPages.length > 0;
-  if (profile && !allowedRoles.includes(profile.role) && !hasCustomAdminPages) {
-    if (profile.role === "manager") {
-      redirect("/manager/dashboard");
-    } else if (profile.role === "sale") {
-      redirect("/sale/dashboard");
-    } else {
-      redirect("/login");
-    }
+  if (!profile || (!allowedRoles.includes(profile.role) && !hasCustomAdminPages)) {
+    redirect("/login");
   }
 
   // 🔒 Route Authorization Guard: ดักจับ URL ที่พิมพ์ตรงๆ ทาง Address Bar
@@ -112,7 +113,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   // 4. ข้อมูลที่จะส่งไป Sidebar
   const userData = {
     name: name,
-    role: profile?.role || "Admin",
+    role: profile?.role || "Staff",
     avatar: avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=334155&color=fff`,
     allowedPages: customAllowedPages
   };
@@ -127,4 +128,3 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     </div>
   );
 }
-

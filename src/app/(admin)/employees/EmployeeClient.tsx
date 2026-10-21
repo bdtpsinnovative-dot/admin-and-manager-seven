@@ -85,7 +85,7 @@ function getDefaultPagesByRole(role: string): string[] {
   if (role === 'data_entry' || role === 'warehouse') {
     return ['/inventory', '/stock-in', '/propsfina']
   }
-  return ['/inventory', '/sales-history']
+  return []
 }
 
 // --- Component หลัก ---
@@ -222,7 +222,9 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
       ? emp.allowed_inventory_tabs
       : ['SLABS', 'ROUGH', 'PROP', 'FURNITURE']
     setEditCategories(cats)
-    const rawPages = (emp.allowed_pages && emp.allowed_pages.length > 0)
+    const rawPages = (['manager', 'sale'].includes(r))
+      ? []
+      : (emp.allowed_pages && emp.allowed_pages.length > 0)
       ? emp.allowed_pages
       : getDefaultPagesByRole(r)
     const pages = rawPages.map(p => p === '/manager/gallery' ? '/gallery' : p)
@@ -784,6 +786,7 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
                           const newR = e.target.value;
                           setEditRole(newR);
                           setEditPages(getDefaultPagesByRole(newR));
+                          setEditCanViewCosts(['admin', 'manager', 'data_analyst'].includes(newR));
                         }}
                         className="w-full border border-slate-200 rounded-xl p-2.5 text-sm bg-white focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400 outline-none appearance-none cursor-pointer"
                       >
@@ -807,134 +810,174 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
                   </div>
 
                   {/* สิทธิ์การเข้าถึงหน้าเมนู (Allowed Pages) */}
-                  <div className="pt-3 border-t border-blue-200/60 space-y-2.5">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div>
-                        <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                          <Monitor className="w-3.5 h-3.5 text-indigo-600" /> หน้าที่อนุญาตให้เข้าใช้งาน (เมนู Sidebar)
-                          <span className="px-2 py-0.5 text-[10px] rounded-full bg-indigo-100 text-indigo-700 font-extrabold">
-                            เลือก {editPages.length}/{ALL_PAGE_HREFS.length} หน้า
-                          </span>
-                        </label>
+                  {editRole === 'manager' ? (
+                    <div className="pt-3 border-t border-violet-200/60 space-y-2">
+                      <div className="p-4 rounded-2xl border border-violet-200 bg-violet-50/70 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-xl bg-violet-100 flex items-center justify-center text-violet-700 shrink-0">
+                            <Briefcase className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <h4 className="text-xs font-bold text-violet-950">ตำแหน่ง Manager (ผู้จัดการ) มีระบบพอร์ทัลเฉพาะ</h4>
+                            <p className="text-[11px] text-violet-700 font-medium">เข้าใช้งานหน้า /manager/dashboard โดยตรง</p>
+                          </div>
+                        </div>
+                        <p className="text-xs text-slate-600 leading-relaxed">
+                          ตำแหน่งผู้จัดการมีระบบ <strong>Manager Portal</strong> ประจำสาขาของตนเอง (ระบบหน้าร้าน POS, ตรวจนับสต็อก, ปิดยอดประจำวัน, ประวัติสินค้าเสียหาย ฯลฯ) 
+                          <span className="block mt-1 text-violet-800 font-semibold">✓ ระบบจะเปิดหน้าผู้จัดการให้อัตโนมัติ จึงไม่ต้องเลือกเมนู Admin Sidebar</span>
+                        </p>
                       </div>
-                      <div className="flex flex-wrap items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => setEditPages(ALL_PAGE_HREFS)}
-                          className="text-[10px] text-indigo-600 hover:text-indigo-800 font-semibold px-2 py-0.5 rounded bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition"
-                        >
-                          เลือกทุกหน้า
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setEditPages(getDefaultPagesByRole(editRole))}
-                          className="text-[10px] text-blue-600 hover:text-blue-800 font-semibold px-2 py-0.5 rounded bg-blue-50 hover:bg-blue-100 border border-blue-200 transition"
-                        >
-                          ค่าเริ่มต้นตามตำแหน่ง
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setEditPages(['/inventory', '/stock-in', '/propsfina'])}
-                          className="text-[10px] text-emerald-600 hover:text-emerald-800 font-semibold px-2 py-0.5 rounded bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition"
-                        >
-                          เฉพาะคลังสินค้า
-                        </button>
-                      </div>
+                      <input type="hidden" name="allowed_pages" value="[]" />
                     </div>
-                    <p className="text-[11px] text-slate-500">
-                      ติ๊กเลือกหน้าเมนูที่ต้องการให้แสดงในแถบเมนูด้านซ้าย (Sidebar) ของพนักงานคนนี้
-                    </p>
-
-                    {/* กลุ่ม 1: เมนูหลัก */}
-                    <div className="space-y-1.5">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">เมนูหลัก (งานประจำวัน)</p>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-                        {PAGE_ITEMS.filter(p => p.group === 'primary').map((page) => {
-                          const isChecked = editPages.includes(page.href);
-                          const PageIcon = page.Icon;
-                          return (
-                            <button
-                              key={page.href}
-                              type="button"
-                              onClick={() => {
-                                if (isChecked) {
-                                  if (editPages.length > 1) setEditPages(editPages.filter(h => h !== page.href));
-                                } else {
-                                  setEditPages([...editPages, page.href]);
-                                }
-                              }}
-                              className={`flex items-center gap-2 p-2 rounded-xl border text-left transition-all ${
-                                isChecked
-                                  ? 'border-indigo-300 bg-indigo-50/90 text-indigo-900 font-bold shadow-sm ring-1 ring-indigo-400/50'
-                                  : 'border-slate-200 bg-white/70 text-slate-400 hover:bg-white hover:text-slate-600'
-                              }`}
-                            >
-                              <PageIcon className="w-4 h-4 shrink-0" />
-                              <div className="flex-1 min-w-0">
-                                <p className="text-[11px] leading-tight truncate">{page.label}</p>
-                                <p className="text-[9px] opacity-60 font-mono truncate">{page.href}</p>
-                              </div>
-                              <div className={`w-4 h-4 rounded flex items-center justify-center text-[10px] shrink-0 ${
-                                isChecked ? 'bg-indigo-600 text-white font-bold' : 'border border-slate-300'
-                              }`}>
-                                {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
-                              </div>
-                            </button>
-                          );
-                        })}
+                  ) : editRole === 'sale' ? (
+                    <div className="pt-3 border-t border-sky-200/60 space-y-2">
+                      <div className="p-4 rounded-2xl border border-sky-200 bg-sky-50/70 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-xl bg-sky-100 flex items-center justify-center text-sky-700 shrink-0">
+                            <Tag className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <h4 className="text-xs font-bold text-sky-950">ตำแหน่ง Sale (พนักงานขาย) มีระบบพอร์ทัลเฉพาะ</h4>
+                            <p className="text-[11px] text-sky-700 font-medium">เข้าใช้งานหน้า /sale/dashboard โดยตรง</p>
+                          </div>
+                        </div>
+                        <p className="text-xs text-slate-600 leading-relaxed">
+                          ตำแหน่งพนักงานขายมีระบบ <strong>Sale Portal</strong> ประจำสาขาของตนเอง (ระบบขายหน้าร้าน POS, ตรวจสอบสินค้า, เชื่อมต่อ RFID) 
+                          <span className="block mt-1 text-sky-800 font-semibold">✓ ระบบจะเปิดหน้าพนักงานขายให้อัตโนมัติ จึงไม่ต้องเลือกเมนู Admin Sidebar</span>
+                        </p>
                       </div>
+                      <input type="hidden" name="allowed_pages" value="[]" />
                     </div>
-
-                    {/* กลุ่ม 2: เมนูการจัดการ (Management) */}
-                    <div className="space-y-1.5 pt-1">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">เมนูการจัดการและรายงาน (Management)</p>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-                        {PAGE_ITEMS.filter(p => p.group === 'secondary').map((page) => {
-                          const isChecked = editPages.includes(page.href);
-                          const PageIcon = page.Icon;
-                          return (
-                            <button
-                              key={page.href}
-                              type="button"
-                              onClick={() => {
-                                if (isChecked) {
-                                  if (editPages.length > 1) setEditPages(editPages.filter(h => h !== page.href));
-                                } else {
-                                  setEditPages([...editPages, page.href]);
-                                }
-                              }}
-                              className={`flex items-center gap-2 p-2 rounded-xl border text-left transition-all ${
-                                isChecked
-                                  ? 'border-blue-300 bg-blue-50/90 text-blue-900 font-bold shadow-sm ring-1 ring-blue-400/50'
-                                  : 'border-slate-200 bg-white/70 text-slate-400 hover:bg-white hover:text-slate-600'
-                              }`}
-                            >
-                              <PageIcon className="w-4 h-4 shrink-0" />
-                              <div className="flex-1 min-w-0">
-                                <p className="text-[11px] leading-tight truncate">{page.label}</p>
-                                <p className="text-[9px] opacity-60 font-mono truncate">{page.href}</p>
-                              </div>
-                              <div className={`w-4 h-4 rounded flex items-center justify-center text-[10px] shrink-0 ${
-                                isChecked ? 'bg-blue-600 text-white font-bold' : 'border border-slate-300'
-                              }`}>
-                                {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
-                              </div>
-                            </button>
-                          );
-                        })}
+                  ) : (
+                    <div className="pt-3 border-t border-blue-200/60 space-y-2.5">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                            <Monitor className="w-3.5 h-3.5 text-indigo-600" /> หน้าที่อนุญาตให้เข้าใช้งาน (เมนู Sidebar)
+                            <span className="px-2 py-0.5 text-[10px] rounded-full bg-indigo-100 text-indigo-700 font-extrabold">
+                              เลือก {editPages.length}/{ALL_PAGE_HREFS.length} หน้า
+                            </span>
+                          </label>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setEditPages(ALL_PAGE_HREFS)}
+                            className="text-[10px] text-indigo-600 hover:text-indigo-800 font-semibold px-2 py-0.5 rounded bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition"
+                          >
+                            เลือกทุกหน้า
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditPages(getDefaultPagesByRole(editRole))}
+                            className="text-[10px] text-blue-600 hover:text-blue-800 font-semibold px-2 py-0.5 rounded bg-blue-50 hover:bg-blue-100 border border-blue-200 transition"
+                          >
+                            ค่าเริ่มต้นตามตำแหน่ง
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditPages(['/inventory', '/stock-in', '/propsfina'])}
+                            className="text-[10px] text-emerald-600 hover:text-emerald-800 font-semibold px-2 py-0.5 rounded bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition"
+                          >
+                            เฉพาะคลังสินค้า
+                          </button>
+                        </div>
                       </div>
-                    </div>
+                      <p className="text-[11px] text-slate-500">
+                        สำหรับพนักงาน Data Entry และเจ้าหน้าที่หลังบ้าน ติ๊กเลือกหน้าเมนูที่ต้องการให้แสดงในแถบเมนูด้านซ้าย (Sidebar)
+                      </p>
 
-                    <input 
-                      type="hidden" 
-                      name="allowed_pages" 
-                      value={JSON.stringify(
-                        editPages.includes('/gallery') && !editPages.includes('/manager/gallery')
-                          ? [...editPages, '/manager/gallery']
-                          : editPages
-                      )} 
-                    />
-                  </div>
+                      {/* กลุ่ม 1: เมนูหลัก */}
+                      <div className="space-y-1.5">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">เมนูหลัก (งานประจำวัน)</p>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                          {PAGE_ITEMS.filter(p => p.group === 'primary').map((page) => {
+                            const isChecked = editPages.includes(page.href);
+                            const PageIcon = page.Icon;
+                            return (
+                              <button
+                                key={page.href}
+                                type="button"
+                                onClick={() => {
+                                  if (isChecked) {
+                                    if (editPages.length > 1) setEditPages(editPages.filter(h => h !== page.href));
+                                  } else {
+                                    setEditPages([...editPages, page.href]);
+                                  }
+                                }}
+                                className={`flex items-center gap-2 p-2 rounded-xl border text-left transition-all ${
+                                  isChecked
+                                    ? 'border-indigo-300 bg-indigo-50/90 text-indigo-900 font-bold shadow-sm ring-1 ring-indigo-400/50'
+                                    : 'border-slate-200 bg-white/70 text-slate-400 hover:bg-white hover:text-slate-600'
+                                }`}
+                              >
+                                <PageIcon className="w-4 h-4 shrink-0" />
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-[11px] leading-tight truncate">{page.label}</p>
+                                  <p className="text-[9px] opacity-60 font-mono truncate">{page.href}</p>
+                                </div>
+                                <div className={`w-4 h-4 rounded flex items-center justify-center text-[10px] shrink-0 ${
+                                  isChecked ? 'bg-indigo-600 text-white font-bold' : 'border border-slate-300'
+                                }`}>
+                                  {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* กลุ่ม 2: เมนูการจัดการ (Management) */}
+                      <div className="space-y-1.5 pt-1">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">เมนูการจัดการและรายงาน (Management)</p>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                          {PAGE_ITEMS.filter(p => p.group === 'secondary').map((page) => {
+                            const isChecked = editPages.includes(page.href);
+                            const PageIcon = page.Icon;
+                            return (
+                              <button
+                                key={page.href}
+                                type="button"
+                                onClick={() => {
+                                  if (isChecked) {
+                                    if (editPages.length > 1) setEditPages(editPages.filter(h => h !== page.href));
+                                  } else {
+                                    setEditPages([...editPages, page.href]);
+                                  }
+                                }}
+                                className={`flex items-center gap-2 p-2 rounded-xl border text-left transition-all ${
+                                  isChecked
+                                    ? 'border-blue-300 bg-blue-50/90 text-blue-900 font-bold shadow-sm ring-1 ring-blue-400/50'
+                                    : 'border-slate-200 bg-white/70 text-slate-400 hover:bg-white hover:text-slate-600'
+                                }`}
+                              >
+                                <PageIcon className="w-4 h-4 shrink-0" />
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-[11px] leading-tight truncate">{page.label}</p>
+                                  <p className="text-[9px] opacity-60 font-mono truncate">{page.href}</p>
+                                </div>
+                                <div className={`w-4 h-4 rounded flex items-center justify-center text-[10px] shrink-0 ${
+                                  isChecked ? 'bg-blue-600 text-white font-bold' : 'border border-slate-300'
+                                }`}>
+                                  {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <input 
+                        type="hidden" 
+                        name="allowed_pages" 
+                        value={JSON.stringify(
+                          editPages.includes('/gallery') && !editPages.includes('/manager/gallery')
+                            ? [...editPages, '/manager/gallery']
+                            : editPages
+                        )} 
+                      />
+                    </div>
+                  )}
 
                   {/* หมวดหมู่สินค้าที่รับผิดชอบในคลัง */}
                   <div className="pt-3 border-t border-blue-200/60 space-y-2">
@@ -1222,134 +1265,174 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
                   </div>
 
                   {/* สิทธิ์การเข้าถึงหน้าเมนู (Allowed Pages) */}
-                  <div className="pt-3 border-t border-blue-200/60 space-y-2.5">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div>
-                        <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                          <Monitor className="w-3.5 h-3.5 text-indigo-600" /> หน้าที่อนุญาตให้เข้าใช้งาน (เมนู Sidebar)
-                          <span className="px-2 py-0.5 text-[10px] rounded-full bg-indigo-100 text-indigo-700 font-extrabold">
-                            เลือก {createPages.length}/{ALL_PAGE_HREFS.length} หน้า
-                          </span>
-                        </label>
+                  {createRole === 'manager' ? (
+                    <div className="pt-3 border-t border-violet-200/60 space-y-2">
+                      <div className="p-4 rounded-2xl border border-violet-200 bg-violet-50/70 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-xl bg-violet-100 flex items-center justify-center text-violet-700 shrink-0">
+                            <Briefcase className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <h4 className="text-xs font-bold text-violet-950">ตำแหน่ง Manager (ผู้จัดการ) มีระบบพอร์ทัลเฉพาะ</h4>
+                            <p className="text-[11px] text-violet-700 font-medium">เข้าใช้งานหน้า /manager/dashboard โดยตรง</p>
+                          </div>
+                        </div>
+                        <p className="text-xs text-slate-600 leading-relaxed">
+                          ตำแหน่งผู้จัดการมีระบบ <strong>Manager Portal</strong> ประจำสาขาของตนเอง (ระบบหน้าร้าน POS, ตรวจนับสต็อก, ปิดยอดประจำวัน, ประวัติสินค้าเสียหาย ฯลฯ) 
+                          <span className="block mt-1 text-violet-800 font-semibold">✓ ระบบจะเปิดหน้าผู้จัดการให้อัตโนมัติ จึงไม่ต้องเลือกเมนู Admin Sidebar</span>
+                        </p>
                       </div>
-                      <div className="flex flex-wrap items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => setCreatePages(ALL_PAGE_HREFS)}
-                          className="text-[10px] text-indigo-600 hover:text-indigo-800 font-semibold px-2 py-0.5 rounded bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition"
-                        >
-                          เลือกทุกหน้า
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setCreatePages(getDefaultPagesByRole(createRole))}
-                          className="text-[10px] text-blue-600 hover:text-blue-800 font-semibold px-2 py-0.5 rounded bg-blue-50 hover:bg-blue-100 border border-blue-200 transition"
-                        >
-                          ค่าเริ่มต้นตามตำแหน่ง
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setCreatePages(['/inventory', '/stock-in', '/propsfina'])}
-                          className="text-[10px] text-emerald-600 hover:text-emerald-800 font-semibold px-2 py-0.5 rounded bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition"
-                        >
-                          เฉพาะคลังสินค้า
-                        </button>
-                      </div>
+                      <input type="hidden" name="allowed_pages" value="[]" />
                     </div>
-                    <p className="text-[11px] text-slate-500">
-                      ติ๊กเลือกหน้าเมนูที่ต้องการให้แสดงในแถบเมนูด้านซ้าย (Sidebar) ของพนักงานคนนี้
-                    </p>
-
-                    {/* กลุ่ม 1: เมนูหลัก */}
-                    <div className="space-y-1.5">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">เมนูหลัก (งานประจำวัน)</p>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-                        {PAGE_ITEMS.filter(p => p.group === 'primary').map((page) => {
-                          const isChecked = createPages.includes(page.href);
-                          const PageIcon = page.Icon;
-                          return (
-                            <button
-                              key={page.href}
-                              type="button"
-                              onClick={() => {
-                                if (isChecked) {
-                                  if (createPages.length > 1) setCreatePages(createPages.filter(h => h !== page.href));
-                                } else {
-                                  setCreatePages([...createPages, page.href]);
-                                }
-                              }}
-                              className={`flex items-center gap-2 p-2 rounded-xl border text-left transition-all ${
-                                isChecked
-                                  ? 'border-indigo-300 bg-indigo-50/90 text-indigo-900 font-bold shadow-sm ring-1 ring-indigo-400/50'
-                                  : 'border-slate-200 bg-white/70 text-slate-400 hover:bg-white hover:text-slate-600'
-                              }`}
-                            >
-                              <PageIcon className="w-4 h-4 shrink-0" />
-                              <div className="flex-1 min-w-0">
-                                <p className="text-[11px] leading-tight truncate">{page.label}</p>
-                                <p className="text-[9px] opacity-60 font-mono truncate">{page.href}</p>
-                              </div>
-                              <div className={`w-4 h-4 rounded flex items-center justify-center text-[10px] shrink-0 ${
-                                isChecked ? 'bg-indigo-600 text-white font-bold' : 'border border-slate-300'
-                              }`}>
-                                {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
-                              </div>
-                            </button>
-                          );
-                        })}
+                  ) : createRole === 'sale' ? (
+                    <div className="pt-3 border-t border-sky-200/60 space-y-2">
+                      <div className="p-4 rounded-2xl border border-sky-200 bg-sky-50/70 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-xl bg-sky-100 flex items-center justify-center text-sky-700 shrink-0">
+                            <Tag className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <h4 className="text-xs font-bold text-sky-950">ตำแหน่ง Sale (พนักงานขาย) มีระบบพอร์ทัลเฉพาะ</h4>
+                            <p className="text-[11px] text-sky-700 font-medium">เข้าใช้งานหน้า /sale/dashboard โดยตรง</p>
+                          </div>
+                        </div>
+                        <p className="text-xs text-slate-600 leading-relaxed">
+                          ตำแหน่งพนักงานขายมีระบบ <strong>Sale Portal</strong> ประจำสาขาของตนเอง (ระบบขายหน้าร้าน POS, ตรวจสอบสินค้า, เชื่อมต่อ RFID) 
+                          <span className="block mt-1 text-sky-800 font-semibold">✓ ระบบจะเปิดหน้าพนักงานขายให้อัตโนมัติ จึงไม่ต้องเลือกเมนู Admin Sidebar</span>
+                        </p>
                       </div>
+                      <input type="hidden" name="allowed_pages" value="[]" />
                     </div>
-
-                    {/* กลุ่ม 2: เมนูการจัดการ (Management) */}
-                    <div className="space-y-1.5 pt-1">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">เมนูการจัดการและรายงาน (Management)</p>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-                        {PAGE_ITEMS.filter(p => p.group === 'secondary').map((page) => {
-                          const isChecked = createPages.includes(page.href);
-                          const PageIcon = page.Icon;
-                          return (
-                            <button
-                              key={page.href}
-                              type="button"
-                              onClick={() => {
-                                if (isChecked) {
-                                  if (createPages.length > 1) setCreatePages(createPages.filter(h => h !== page.href));
-                                } else {
-                                  setCreatePages([...createPages, page.href]);
-                                }
-                              }}
-                              className={`flex items-center gap-2 p-2 rounded-xl border text-left transition-all ${
-                                isChecked
-                                  ? 'border-blue-300 bg-blue-50/90 text-blue-900 font-bold shadow-sm ring-1 ring-blue-400/50'
-                                  : 'border-slate-200 bg-white/70 text-slate-400 hover:bg-white hover:text-slate-600'
-                              }`}
-                            >
-                              <PageIcon className="w-4 h-4 shrink-0" />
-                              <div className="flex-1 min-w-0">
-                                <p className="text-[11px] leading-tight truncate">{page.label}</p>
-                                <p className="text-[9px] opacity-60 font-mono truncate">{page.href}</p>
-                              </div>
-                              <div className={`w-4 h-4 rounded flex items-center justify-center text-[10px] shrink-0 ${
-                                isChecked ? 'bg-blue-600 text-white font-bold' : 'border border-slate-300'
-                              }`}>
-                                {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
-                              </div>
-                            </button>
-                          );
-                        })}
+                  ) : (
+                    <div className="pt-3 border-t border-blue-200/60 space-y-2.5">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                            <Monitor className="w-3.5 h-3.5 text-indigo-600" /> หน้าที่อนุญาตให้เข้าใช้งาน (เมนู Sidebar)
+                            <span className="px-2 py-0.5 text-[10px] rounded-full bg-indigo-100 text-indigo-700 font-extrabold">
+                              เลือก {createPages.length}/{ALL_PAGE_HREFS.length} หน้า
+                            </span>
+                          </label>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setCreatePages(ALL_PAGE_HREFS)}
+                            className="text-[10px] text-indigo-600 hover:text-indigo-800 font-semibold px-2 py-0.5 rounded bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition"
+                          >
+                            เลือกทุกหน้า
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setCreatePages(getDefaultPagesByRole(createRole))}
+                            className="text-[10px] text-blue-600 hover:text-blue-800 font-semibold px-2 py-0.5 rounded bg-blue-50 hover:bg-blue-100 border border-blue-200 transition"
+                          >
+                            ค่าเริ่มต้นตามตำแหน่ง
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setCreatePages(['/inventory', '/stock-in', '/propsfina'])}
+                            className="text-[10px] text-emerald-600 hover:text-emerald-800 font-semibold px-2 py-0.5 rounded bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition"
+                          >
+                            เฉพาะคลังสินค้า
+                          </button>
+                        </div>
                       </div>
-                    </div>
+                      <p className="text-[11px] text-slate-500">
+                        สำหรับพนักงาน Data Entry และเจ้าหน้าที่หลังบ้าน ติ๊กเลือกหน้าเมนูที่ต้องการให้แสดงในแถบเมนูด้านซ้าย (Sidebar)
+                      </p>
 
-                    <input 
-                      type="hidden" 
-                      name="allowed_pages" 
-                      value={JSON.stringify(
-                        createPages.includes('/gallery') && !createPages.includes('/manager/gallery')
-                          ? [...createPages, '/manager/gallery']
-                          : createPages
-                      )} 
-                    />
-                  </div>
+                      {/* กลุ่ม 1: เมนูหลัก */}
+                      <div className="space-y-1.5">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">เมนูหลัก (งานประจำวัน)</p>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                          {PAGE_ITEMS.filter(p => p.group === 'primary').map((page) => {
+                            const isChecked = createPages.includes(page.href);
+                            const PageIcon = page.Icon;
+                            return (
+                              <button
+                                key={page.href}
+                                type="button"
+                                onClick={() => {
+                                  if (isChecked) {
+                                    if (createPages.length > 1) setCreatePages(createPages.filter(h => h !== page.href));
+                                  } else {
+                                    setCreatePages([...createPages, page.href]);
+                                  }
+                                }}
+                                className={`flex items-center gap-2 p-2 rounded-xl border text-left transition-all ${
+                                  isChecked
+                                    ? 'border-indigo-300 bg-indigo-50/90 text-indigo-900 font-bold shadow-sm ring-1 ring-indigo-400/50'
+                                    : 'border-slate-200 bg-white/70 text-slate-400 hover:bg-white hover:text-slate-600'
+                                }`}
+                              >
+                                <PageIcon className="w-4 h-4 shrink-0" />
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-[11px] leading-tight truncate">{page.label}</p>
+                                  <p className="text-[9px] opacity-60 font-mono truncate">{page.href}</p>
+                                </div>
+                                <div className={`w-4 h-4 rounded flex items-center justify-center text-[10px] shrink-0 ${
+                                  isChecked ? 'bg-indigo-600 text-white font-bold' : 'border border-slate-300'
+                                }`}>
+                                  {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* กลุ่ม 2: เมนูการจัดการ (Management) */}
+                      <div className="space-y-1.5 pt-1">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">เมนูการจัดการและรายงาน (Management)</p>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                          {PAGE_ITEMS.filter(p => p.group === 'secondary').map((page) => {
+                            const isChecked = createPages.includes(page.href);
+                            const PageIcon = page.Icon;
+                            return (
+                              <button
+                                key={page.href}
+                                type="button"
+                                onClick={() => {
+                                  if (isChecked) {
+                                    if (createPages.length > 1) setCreatePages(createPages.filter(h => h !== page.href));
+                                  } else {
+                                    setCreatePages([...createPages, page.href]);
+                                  }
+                                }}
+                                className={`flex items-center gap-2 p-2 rounded-xl border text-left transition-all ${
+                                  isChecked
+                                    ? 'border-blue-300 bg-blue-50/90 text-blue-900 font-bold shadow-sm ring-1 ring-blue-400/50'
+                                    : 'border-slate-200 bg-white/70 text-slate-400 hover:bg-white hover:text-slate-600'
+                                }`}
+                              >
+                                <PageIcon className="w-4 h-4 shrink-0" />
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-[11px] leading-tight truncate">{page.label}</p>
+                                  <p className="text-[9px] opacity-60 font-mono truncate">{page.href}</p>
+                                </div>
+                                <div className={`w-4 h-4 rounded flex items-center justify-center text-[10px] shrink-0 ${
+                                  isChecked ? 'bg-blue-600 text-white font-bold' : 'border border-slate-300'
+                                }`}>
+                                  {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <input 
+                        type="hidden" 
+                        name="allowed_pages" 
+                        value={JSON.stringify(
+                          createPages.includes('/gallery') && !createPages.includes('/manager/gallery')
+                            ? [...createPages, '/manager/gallery']
+                            : createPages
+                        )} 
+                      />
+                    </div>
+                  )}
 
                   {/* หมวดหมู่สินค้าที่รับผิดชอบในคลัง */}
                   <div className="pt-3 border-t border-blue-200/60 space-y-2">
