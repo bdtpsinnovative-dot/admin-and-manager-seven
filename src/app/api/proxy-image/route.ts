@@ -10,8 +10,16 @@ export async function GET(req: NextRequest) {
   }
 
   try {
+    const headers: Record<string, string> = {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    };
+    if (url.includes("ixiumu.cn")) {
+      headers["Referer"] = "https://ixiumu.cn/";
+    }
+
     const res = await fetch(url, {
-      signal: AbortSignal.timeout(10000),
+      headers,
+      signal: AbortSignal.timeout(15000),
     });
 
     if (!res.ok) {

@@ -100,6 +100,7 @@ export default function PropsClient({ products }: Props) {
   const [showImportModal, setShowImportModal] = useState(false);
   const [importText, setImportText] = useState("");
   const [displayLimit, setDisplayLimit] = useState(100);
+  const [printOrientation, setPrintOrientation] = useState<"portrait" | "landscape">("portrait");
   const loadMoreRef = useRef<HTMLDivElement>(null);
 
   // Search
@@ -222,6 +223,7 @@ export default function PropsClient({ products }: Props) {
   const printQrPhoto = async () => {
     const win = window.open("", "_blank", "width=900,height=700");
     if (!win) return;
+    const isLandscape = printOrientation === "landscape";
     const groups: string[] = [];
 
     for (const p of printTargets) {
@@ -245,7 +247,31 @@ export default function PropsClient({ products }: Props) {
       const priceStr = priceVal > 0 ? new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB', minimumFractionDigits: 0 }).format(priceVal) : '';
 
       for (let i = 0; i < sets; i++) {
-        groups.push(`
+        if (isLandscape) {
+          groups.push(`
+          <div class="group group-landscape">
+            <div class="photo-frame">
+              <img src="${p.image_url || ''}" onerror="this.style.display='none'" />
+            </div>
+            <div class="info-col">
+              <div class="top-row">
+                <img src="${p.category_id === 'SLABS' ? '/logo.zenslab.png' : '/logo.terra.home.png'}" alt="Logo" class="logo-img" />
+              </div>
+              <div class="middle-info">
+                <div class="pname" title="${p.name || ''}">${p.name || ''}</div>
+                <div class="sku-line"><span class="label">SKU:</span>${p.sku || '—'}</div>
+                ${(sizeStr || colorStr || materialStr) ? `<div class="specs-line">${[sizeStr, colorStr, materialStr].filter(Boolean).join(' · ')}</div>` : ''}
+              </div>
+              <div class="bottom-row">
+                <div class="qr-box">
+                  <img src="${qrImg}" class="qr-img" />
+                </div>
+                ${priceStr ? `<div class="price-val">${priceStr}</div>` : ''}
+              </div>
+            </div>
+          </div>`);
+        } else {
+          groups.push(`
           <div class="group">
             <div class="hole"></div>
             
@@ -271,16 +297,160 @@ export default function PropsClient({ products }: Props) {
               </div>
             </div>
           </div>`);
+        }
       }
     }
+    const pageSize = isLandscape ? 20 : 30;
     const pages: string[] = [];
-    for (let i = 0; i < groups.length; i += 30) {
-      const chunk = groups.slice(i, i + 30);
+    for (let i = 0; i < groups.length; i += pageSize) {
+      const chunk = groups.slice(i, i + pageSize);
       pages.push(`<div class="page"><div class="grid">${chunk.join("")}</div></div>`);
     }
-    win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title></title>
-    <style>
-      @page{size:A4;margin:8mm}
+
+    const cssStyles = isLandscape
+      ? `
+      @page{size:A4 landscape;margin:8mm}
+      *{margin:0;padding:0;box-sizing:border-box}
+      body{margin:0;padding:0;font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;}
+      .page{width:calc(297mm - 16mm);height:calc(210mm - 16mm);overflow:hidden;page-break-after:always}
+      .page:last-child{page-break-after:auto}
+      
+      .grid{display:grid;grid-template-columns:repeat(4,1fr);grid-template-rows:repeat(5,38.8mm);gap:0; border-top:1px solid #bbb; border-left:1px solid #bbb;}
+      
+      .group-landscape { 
+        display: flex;
+        flex-direction: row;
+        align-items: stretch;
+        border-right: 1px solid #bbb; 
+        border-bottom: 1px solid #bbb; 
+        background: #fff; 
+        padding: 1.2mm 1.6mm;
+        height: 38.8mm;
+        overflow: hidden;
+        position: relative;
+        gap: 2mm;
+      }
+      
+      .photo-frame {
+        width: 32mm;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        flex-shrink: 0;
+        border: 1px solid #ccc;
+        background: #fafafa;
+        padding: 0.6mm;
+      }
+      
+      .photo-frame img {
+        max-width: 100%;
+        max-height: 100%;
+        object-fit: contain;
+        display: block;
+      }
+      
+      .info-col {
+        flex: 1;
+        min-width: 0;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+      }
+      
+      .top-row {
+        display: flex;
+        justify-content: flex-end;
+        align-items: flex-start;
+        width: 100%;
+        height: 3.8mm;
+      }
+      
+      .logo-img {
+        height: 3.5mm;
+        max-width: 18mm;
+        object-fit: contain;
+        display: block;
+      }
+      
+      .middle-info {
+        display: flex;
+        flex-direction: column;
+        gap: 0.3mm;
+      }
+      
+      .pname {
+        font-size: 6.2pt;
+        font-weight: 800;
+        color: #111;
+        line-height: 1.15;
+        max-height: 2.3em;
+        overflow: hidden;
+        word-break: break-word;
+        letter-spacing: -0.15px;
+      }
+      
+      .sku-line {
+        font-size: 5.6pt;
+        font-weight: 800;
+        color: #000;
+        line-height: 1.1;
+        word-break: break-all;
+        letter-spacing: -0.15px;
+      }
+      
+      .sku-line .label {
+        color: #777;
+        margin-right: 0.4mm;
+      }
+      
+      .specs-line {
+        font-size: 5pt;
+        font-weight: 600;
+        color: #666;
+        line-height: 1;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      
+      .bottom-row {
+        display: flex;
+        align-items: flex-end;
+        gap: 2mm;
+        width: 100%;
+        margin-top: auto;
+      }
+      
+      .qr-box {
+        width: 12mm;
+        height: 12mm;
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      
+      .qr-img {
+        width: 12mm;
+        height: 12mm;
+        object-fit: contain;
+        display: block;
+      }
+      
+      .price-val {
+        font-size: 13pt;
+        font-weight: 900;
+        color: #000;
+        line-height: 1;
+        white-space: nowrap;
+        padding-bottom: 0.2mm;
+      }
+    `
+      : `
+      @page{size:A4 portrait;margin:8mm}
       *{margin:0;padding:0;box-sizing:border-box}
       body{margin:0;padding:0;font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;}
       .page{width:calc(210mm - 16mm);height:calc(297mm - 16mm);overflow:hidden;page-break-after:always}
@@ -419,6 +589,11 @@ export default function PropsClient({ products }: Props) {
         line-height: 1;
         white-space: nowrap;
       }
+    `;
+
+    win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title></title>
+    <style>
+      ${cssStyles}
     </style></head><body>
     ${pages.join("")}
     <script>window.onload=()=>{window.print();window.onafterprint=()=>window.close()}<\/script>
@@ -611,11 +786,48 @@ export default function PropsClient({ products }: Props) {
               })}
             </div>
 
-            <div className="p-4 border-t border-slate-200 flex flex-col gap-2 bg-white">
+            <div className="p-4 border-t border-slate-200 flex flex-col gap-2.5 bg-white">
+              {/* Orientation Mode Selector */}
+              <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded p-2">
+                <span className="text-xs font-semibold text-slate-700">รูปแบบการพิมพ์:</span>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setPrintOrientation("portrait")}
+                    className={`px-3 py-1.5 rounded text-xs font-bold transition flex items-center gap-1.5 ${
+                      printOrientation === "portrait"
+                        ? "bg-white text-orange-600 border border-orange-200 shadow-sm"
+                        : "text-slate-500 hover:text-slate-800"
+                    }`}
+                  >
+                    <span>📄</span>
+                    <span>แนวตั้ง (Portrait)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPrintOrientation("landscape")}
+                    className={`px-3 py-1.5 rounded text-xs font-bold transition flex items-center gap-1.5 ${
+                      printOrientation === "landscape"
+                        ? "bg-white text-orange-600 border border-orange-200 shadow-sm"
+                        : "text-slate-500 hover:text-slate-800"
+                    }`}
+                  >
+                    <span>📑</span>
+                    <span>แนวนอน (Landscape)</span>
+                  </button>
+                </div>
+              </div>
+
               <button onClick={printQrPhoto}
                 className="flex flex-col items-center gap-1 py-4 rounded border border-orange-200 bg-orange-50 hover:bg-orange-100 transition text-slate-700 text-sm">
-                <span className="font-bold text-sm">พิมพ์ QR + รูป + ข้อมูล (Final Layout)</span>
-                <span className="text-[11px] text-slate-500">รูปสินค้าบน · ข้อมูลสินค้า · โลโก้เหนือราคา · QR ย่อ 20% ชิดราคา</span>
+                <span className="font-bold text-sm">
+                  พิมพ์ QR + รูป + ข้อมูล ({printOrientation === "landscape" ? "แนวนอน - Landscape" : "Final Layout (แนวตั้ง)"})
+                </span>
+                <span className="text-[11px] text-slate-500">
+                  {printOrientation === "landscape"
+                    ? "A4 แนวนอน · 20 ป้าย/แผ่น (4×5) · รูปกรอบใหญ่ซ้าย · ข้อมูล โลโก้ และ QR+ราคาขวา"
+                    : "A4 แนวตั้ง · 30 ป้าย/แผ่น (5×6) · รูปสินค้าบน · QR ย่อ 20% ชิดราคา"}
+                </span>
               </button>
               <button onClick={() => setShowModal(false)}
                 className="w-full py-2 rounded border border-slate-200 font-semibold text-slate-500 hover:bg-slate-50 transition text-sm">
