@@ -54,8 +54,34 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
   const vatAmount = vatAmountFromDb ?? (grandTotal - (grandTotal / 1.07));
   const subTotalWithoutVat = grandTotal - vatAmount;
 
+  // 🪵 ตรวจสอบว่าเป็นบิลไม้แผ่นสแลป (Wood Slabs / ZENSLABS)
+  const isSlabDoc = data?.order_items?.some((item: any) => {
+    const cat = (item.products?.category_id || '').toLowerCase();
+    const sku = (item.products?.sku || '').toUpperCase();
+    const name = (item.products?.name || '').toLowerCase();
+    const sup = (item.products?.collection_groups?.product_sup || '').toLowerCase();
+    const isSlabItem = Boolean(item.isSlab || item.products?.isSlab);
+    return isSlabItem || cat === 'slabs' || cat.includes('slab') || cat.includes('rough') ||
+           sku.startsWith('ZLB-') || sku.startsWith('WOOD-') ||
+           name.includes('slab') || name.includes('สแลป') || name.includes('แผ่นไม้') ||
+           sup.includes('slab') || sup.includes('แผ่นไม้');
+  });
+
+  const woodPermitFee = isSlabDoc
+    ? Number(data?.wood_permit_fee ?? data?.discount_snapshot?.wood_permit_fee ?? 5000)
+    : 0;
+
+  const depositPercent = isSlabDoc
+    ? Number(data?.deposit_percent ?? data?.discount_snapshot?.deposit_percent ?? 50)
+    : 100;
+
+  // สำหรับ Slab: Grand Total = ยอดสินค้าสุทธิ (รวม VAT) + ค่าขนส่ง (ถ้ามี) + ค่าใบกำกับไม้ (5,000)
+  const finalGrandTotal = isSlabDoc ? (grandTotal + woodPermitFee) : grandTotal;
+  const depositAmount = isSlabDoc ? (finalGrandTotal * (depositPercent / 100)) : finalGrandTotal;
+  const remainingBalance = isSlabDoc ? (finalGrandTotal - depositAmount) : 0;
+
   // 🪵 ตรวจสอบว่าเป็นบิลไม้ (Wood Slabs) หรือไม้ร่วมกับเฟอร์นิเจอร์ (Wood + Furniture)
-  const isZenslabDoc = data?.order_items?.some((item: any) => {
+  const isZenslabDoc = isSlabDoc || data?.order_items?.some((item: any) => {
     const cat = (item.products?.category_id || '').toLowerCase();
     const sku = (item.products?.sku || '').toUpperCase();
     const name = (item.products?.name || '').toLowerCase();
@@ -306,76 +332,188 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
 
       {/* ================= FOOTER SECTION ================= */}
       <div className="mt-8 break-inside-avoid print:break-inside-avoid">
-        <div className="flex justify-between items-start pt-3 border-t border-neutral-200">
-          <div className="w-1/2 pr-6 mt-0.5">
-            <h3 className="text-[8px] font-bold uppercase tracking-[0.15em] text-neutral-400 mb-1">Terms & Conditions</h3>
-            <p className="text-[7.5px] text-neutral-500 leading-tight">
-              1. ใบเสนอราคานี้มีผล 30 วันนับจากวันที่ออกเอกสาร<br/>
-              2. กรุณาตรวจสอบรายการสินค้าให้ถูกต้องก่อนยืนยันการสั่งซื้อ<br/>
-              3. สินค้าซื้อแล้วไม่รับเปลี่ยนหรือคืน ยกเว้นกรณีชำรุดจากการผลิต
-            </p>
-          </div>
-          <div className="w-56">
-            {totalSpecialDiscount !== 0 ? (
-              <>
-                <div className="flex justify-between py-0.5 text-[9px] text-neutral-500">
-                  <span>Subtotal</span>
-                  <span>{subtotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+        {isSlabDoc ? (
+          <div>
+            <div className="flex justify-between items-start gap-6 pt-3 border-t border-neutral-200">
+              {/* Left: Terms & Conditions + Signatures */}
+              <div className="flex-1 pr-4">
+                <h3 className="text-[8px] font-bold uppercase tracking-[0.15em] text-neutral-400 mb-1">Terms & Conditions</h3>
+                <p className="text-[7.5px] text-neutral-500 leading-tight mb-4">
+                  1. ใบเสนอราคานี้มีผล 30 วันนับจากวันที่ออกเอกสาร<br/>
+                  2. กรุณาตรวจสอบรายการสินค้าให้ถูกต้องก่อนยืนยันการสั่งซื้อ<br/>
+                  3. สินค้าซื้อแล้วไม่รับเปลี่ยนหรือคืน ยกเว้นกรณีชำรุดจากการผลิต<br/>
+                  4. สินค้าแผ่นไม้เป็นสินค้าเฉพาะตัว (One of a kind) ยืนยันการจองสต็อกเมื่อชำระเงินมัดจำ {depositPercent}% เรียบร้อยแล้ว
+                </p>
+
+                <div className="grid grid-cols-2 gap-8 text-center mt-6">
+                  <div>
+                    <div className="h-6 border-b border-neutral-300 w-full mb-1"></div>
+                    <p className="font-medium text-neutral-900 text-[8px] uppercase tracking-wider">Authorized Signature</p>
+                    <p className="text-neutral-400 text-[7px] mt-0.5">ทีพีเอส การ์เด้น เฟอร์นิเจอร์ จำกัด</p>
+                  </div>
+                  <div>
+                    <div className="h-6 border-b border-neutral-300 w-full mb-1"></div>
+                    <p className="font-medium text-neutral-900 text-[8px] uppercase tracking-wider">Accepted By (ลูกค้า)</p>
+                    <p className="text-neutral-600 font-bold text-[7px] mt-0.5">{data?.profiles?.full_name || data?.shipping_name || 'Customer / Client'}</p>
+                  </div>
                 </div>
-                <div className={`flex justify-between py-0.5 text-[9px] ${totalSpecialDiscount > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-                  <span>{totalSpecialDiscount > 0 ? 'Special Discount' : 'Rounding Surcharge'}</span>
-                  <span>{totalSpecialDiscount > 0 ? '-' : '+'} {Math.abs(totalSpecialDiscount).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                </div>
-                <div className="flex justify-between py-0.5 text-[9px] text-neutral-500 border-t border-neutral-100">
-                  <span>Subtotal (Before VAT)</span>
-                  <span>{subTotalWithoutVat.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                </div>
-              </>
-            ) : (
-              <div className="flex justify-between py-0.5 text-[9px] text-neutral-500">
-                <span>Subtotal (Before VAT)</span>
-                <span>{subTotalWithoutVat.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
               </div>
-            )}
-            <div className="flex justify-between py-0.5 text-[9px] text-neutral-500">
-              <span>VAT (7%)</span>
-              <span>{vatAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-            </div>
-            {shippingCost > 0 && (
-              <>
-                <div className="flex justify-between py-0.5 text-[9px] text-neutral-600 font-medium">
-                  <span>Shipping Fee (ค่าจัดส่ง)</span>
-                  <span>+{shippingCost.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+
+              {/* Right: Slab Special Summary Table */}
+              <div className="w-[330px]">
+                <table className="w-full text-[9px] border-collapse border border-neutral-300">
+                  <tbody>
+                    <tr className="border-b border-neutral-300">
+                      <td className="py-1 px-2.5 font-medium text-neutral-700">Total (ราคารวมก่อน VAT)</td>
+                      <td className="py-1 px-2.5 text-right font-mono font-semibold text-neutral-900 w-32">
+                        {subTotalWithoutVat.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                    </tr>
+                    <tr className="bg-[#B4A5D9]/40 border-b border-neutral-300 h-2">
+                      <td colSpan={2} className="py-0 px-0"></td>
+                    </tr>
+                    <tr className="border-b border-neutral-300">
+                      <td className="py-1 px-2.5 font-medium text-neutral-700">Total (ราคารวมก่อน VAT)</td>
+                      <td className="py-1 px-2.5 text-right font-mono font-semibold text-neutral-900">
+                        {subTotalWithoutVat.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                    </tr>
+                    <tr className="border-b border-neutral-300">
+                      <td className="py-1 px-2.5 font-medium text-neutral-700">ภาษีมูลค่าเพิ่ม VAT 7%</td>
+                      <td className="py-1 px-2.5 text-right font-mono font-semibold text-neutral-900">
+                        {vatAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                    </tr>
+                    <tr className="border-b border-neutral-300">
+                      <td className="py-1 px-2.5 font-medium text-neutral-700">ราคา(สินค้า)ทั้งหมด รวมภาษี</td>
+                      <td className="py-1 px-2.5 text-right font-mono font-semibold text-neutral-900">
+                        {grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                    </tr>
+                    <tr className="border-b border-neutral-300">
+                      <td className="py-1 px-2.5 font-medium text-neutral-700">ค่าขนส่งสินค้า</td>
+                      <td className="py-1 px-2.5 text-right font-mono font-semibold text-neutral-900">
+                        {shippingCost > 0 ? shippingCost.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-'}
+                      </td>
+                    </tr>
+                    <tr className="border-b border-neutral-300">
+                      <td className="py-1 px-2.5 font-medium text-neutral-700">ค่าใบกำกับไม้</td>
+                      <td className="py-1 px-2.5 text-right font-mono font-semibold text-neutral-900">
+                        {woodPermitFee.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                    </tr>
+                    <tr className="bg-[#FDE047] border-y-2 border-neutral-900 font-bold">
+                      <td className="py-1.5 px-2.5 text-[10px] text-neutral-900">Grand Total</td>
+                      <td className="py-1.5 px-2.5 text-right font-mono text-[11px] text-neutral-900">
+                        {finalGrandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                    </tr>
+                    <tr className="border-b border-neutral-300">
+                      <td className="py-1 px-2.5 font-medium text-neutral-700">
+                        <div className="flex items-center justify-between">
+                          <span>ยอดเปอร์เซ็นการมัดจำ</span>
+                          <span className="bg-[#B4A5D9] text-[#2E1065] text-[8.5px] font-bold px-2 py-0.5 rounded">
+                            {depositPercent}%
+                          </span>
+                        </div>
+                      </td>
+                      <td className="py-1 px-2.5 text-right font-mono font-bold text-neutral-900">
+                        {depositAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                    </tr>
+                    <tr className="border-b border-neutral-300">
+                      <td className="py-1 px-2.5 font-medium text-neutral-700">ยอดส่วนต่างที่เหลือ</td>
+                      <td className="py-1 px-2.5 text-right font-mono font-bold text-neutral-900">
+                        {remainingBalance.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+
+                {/* Bank Account Info Box (Purple Box) */}
+                <div className="mt-2.5 bg-[#B4A5D9]/50 border border-[#9884C6] p-2.5 rounded text-center text-[#2E1065]">
+                  <p className="text-[8.5px] font-bold">กรุณาโอนเข้าบัญชี:</p>
+                  <p className="text-[9.5px] font-bold mt-0.5">ชื่อบัญชี : ทีพีเอส การ์เด้น เฟอร์นิเจอร์ จำกัด</p>
+                  <p className="text-[8.5px] font-medium mt-0.5">ธนาคารกสิกรไทย สาขา บางโพ</p>
+                  <p className="text-[9.5px] font-bold mt-0.5 font-mono">เลขที่บัญชี : 033 1 08813 7 (กระแสรายวัน)</p>
                 </div>
-                {shippingWaived && (
-                  <div className="flex justify-between py-0.5 text-[9px] text-emerald-600 font-medium">
-                    <span>Shipping Discount (ส่วนลดค่าจัดส่ง ยอดครบ 20,000฿)</span>
-                    <span>-{shippingCost.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div>
+            <div className="flex justify-between items-start pt-3 border-t border-neutral-200">
+              <div className="w-1/2 pr-6 mt-0.5">
+                <h3 className="text-[8px] font-bold uppercase tracking-[0.15em] text-neutral-400 mb-1">Terms & Conditions</h3>
+                <p className="text-[7.5px] text-neutral-500 leading-tight">
+                  1. ใบเสนอราคานี้มีผล 30 วันนับจากวันที่ออกเอกสาร<br/>
+                  2. กรุณาตรวจสอบรายการสินค้าให้ถูกต้องก่อนยืนยันการสั่งซื้อ<br/>
+                  3. สินค้าซื้อแล้วไม่รับเปลี่ยนหรือคืน ยกเว้นกรณีชำรุดจากการผลิต
+                </p>
+              </div>
+              <div className="w-56">
+                {totalSpecialDiscount !== 0 ? (
+                  <>
+                    <div className="flex justify-between py-0.5 text-[9px] text-neutral-500">
+                      <span>Subtotal</span>
+                      <span>{subtotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+                    <div className={`flex justify-between py-0.5 text-[9px] ${totalSpecialDiscount > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                      <span>{totalSpecialDiscount > 0 ? 'Special Discount' : 'Rounding Surcharge'}</span>
+                      <span>{totalSpecialDiscount > 0 ? '-' : '+'} {Math.abs(totalSpecialDiscount).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+                    <div className="flex justify-between py-0.5 text-[9px] text-neutral-500 border-t border-neutral-100">
+                      <span>Subtotal (Before VAT)</span>
+                      <span>{subTotalWithoutVat.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex justify-between py-0.5 text-[9px] text-neutral-500">
+                    <span>Subtotal (Before VAT)</span>
+                    <span>{subTotalWithoutVat.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   </div>
                 )}
-              </>
-            )}
-            <div className="flex justify-between py-1.5 mt-0.5 border-t border-neutral-900">
-              <span className="text-[10px] font-bold text-neutral-900 uppercase tracking-widest mt-0.5">Total (THB)</span>
-              <span className="text-base font-bold text-neutral-900">{grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span>
+                <div className="flex justify-between py-0.5 text-[9px] text-neutral-500">
+                  <span>VAT (7%)</span>
+                  <span>{vatAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+                {shippingCost > 0 && (
+                  <>
+                    <div className="flex justify-between py-0.5 text-[9px] text-neutral-600 font-medium">
+                      <span>Shipping Fee (ค่าจัดส่ง)</span>
+                      <span>+{shippingCost.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+                    {shippingWaived && (
+                      <div className="flex justify-between py-0.5 text-[9px] text-emerald-600 font-medium">
+                        <span>Shipping Discount (ส่วนลดค่าจัดส่ง ยอดครบ 20,000฿)</span>
+                        <span>-{shippingCost.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      </div>
+                    )}
+                  </>
+                )}
+                <div className="flex justify-between py-1.5 mt-0.5 border-t border-neutral-900">
+                  <span className="text-[10px] font-bold text-neutral-900 uppercase tracking-widest mt-0.5">Total (THB)</span>
+                  <span className="text-base font-bold text-neutral-900">{grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-12 text-center mt-3.5">
+              <div>
+                <div className="h-5 border-b border-neutral-300 w-full mb-1"></div>
+                <p className="font-medium text-neutral-900 text-[8px] uppercase tracking-wider">Authorized Signature</p>
+                <p className="text-neutral-400 text-[7px] mt-0.5">Terra Home Studio</p>
+              </div>
+              <div>
+                <div className="h-5 border-b border-neutral-300 w-full mb-1"></div>
+                <p className="font-medium text-neutral-900 text-[8px] uppercase tracking-wider">Accepted By</p>
+                <p className="text-neutral-600 font-bold text-[7px] mt-0.5">{data?.profiles?.full_name || 'Customer / Client'}</p>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
-        <div className="grid grid-cols-2 gap-12 text-center mt-3.5">
-          <div>
-            <div className="h-5 border-b border-neutral-300 w-full mb-1"></div>
-            <p className="font-medium text-neutral-900 text-[8px] uppercase tracking-wider">Authorized Signature</p>
-            <p className="text-neutral-400 text-[7px] mt-0.5">Terra Home Studio</p>
-          </div>
-          <div>
-            <div className="h-5 border-b border-neutral-300 w-full mb-1"></div>
-            <p className="font-medium text-neutral-900 text-[8px] uppercase tracking-wider">Accepted By</p>
-            <p className="text-neutral-600 font-bold text-[7px] mt-0.5">{data?.profiles?.full_name || 'Customer / Client'}</p>
-          </div>
-        </div>
-
-        <div className="text-center mt-2.5 text-[7px] text-neutral-300 uppercase tracking-widest">
+        <div className="text-center mt-3 text-[7px] text-neutral-300 uppercase tracking-widest">
           Thank you for your business
         </div>
       </div>
