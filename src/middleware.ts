@@ -6,11 +6,16 @@ const COOKIE_MAX_AGE = 60 * 60 * 24 * 400 // 400 วัน (ต่ออาย�
 export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname
 
+  // 🚀 ข้าม Middleware ทันทีสำหรับทุก API (/api/...) 
+  // เพื่อให้ Mobile App (เช่น PDA_RFID, Mobile POS) เชื่อมต่อได้ราบรื่น ไม่ถูก Cookie/Session ของเว็บดักจับ
+  if (path.startsWith('/api/')) {
+    return NextResponse.next()
+  }
+
   // หน้า Public ที่ไม่ต้องดักจับ
   const isLoginPage = path === '/login'
   const isUnauthorizedPage = path === '/unauthorized'
-  const isPublicApi = path.startsWith('/api/auth') || path.startsWith('/api/mobile_rfid') || path.startsWith('/api/mobile_pos') || path.startsWith('/_next')
-  const isPublicPath = isLoginPage || isUnauthorizedPage || isPublicApi
+  const isPublicPath = isLoginPage || isUnauthorizedPage || path.startsWith('/_next')
 
   const requestHeaders = new Headers(request.headers)
   requestHeaders.set('x-pathname', path)
