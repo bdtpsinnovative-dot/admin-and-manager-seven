@@ -51,16 +51,19 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       : undefined;
 
   const allowedRoles = ["admin", "data_entry", "data_analyst", "warehouse"];
+  const userRole = profile?.role;
   const hasCustomAdminPages = customAllowedPages && customAllowedPages.length > 0;
-  if (!profile || (!allowedRoles.includes(profile.role) && !hasCustomAdminPages)) {
-    redirect("/login");
+
+  // 🔒 หากไม่มีตำแหน่งที่อนุญาต และไม่มีการกำหนดสิทธิ์หน้าเฉพาะ ให้ไปหน้า unauthorized ทันที (ไม่ส่งไป /login เพื่อไม่ให้เกิดลูปจอดำ)
+  if (!userRole || (!allowedRoles.includes(userRole) && !hasCustomAdminPages)) {
+    redirect("/unauthorized");
   }
 
   // 🔒 Route Authorization Guard: ดักจับ URL ที่พิมพ์ตรงๆ ทาง Address Bar
   const headersList = await headers();
   const currentPath = headersList.get('x-pathname') || '';
 
-  if (profile?.role !== 'admin' && customAllowedPages && customAllowedPages.length > 0) {
+  if (userRole !== 'admin' && customAllowedPages && customAllowedPages.length > 0) {
     const isAllowed = (path: string) => {
       if (!path || path === '/') return true;
       return customAllowedPages.some(allowed => 
@@ -75,10 +78,10 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
     if (currentPath && !isAllowed(currentPath)) {
       // ผู้ใช้ไม่มีสิทธิ์เข้าหน้านี้ -> redirect ไปยังหน้าที่ตนมีสิทธิ์
-      const targetPage = customAllowedPages[0] || '/login';
+      const targetPage = customAllowedPages[0] || '/unauthorized';
       redirect(targetPage);
     }
-  } else if (profile?.role === 'data_entry' || profile?.role === 'warehouse') {
+  } else if (userRole === 'data_entry' || userRole === 'warehouse') {
     const defaultAllowed = ['/inventory', '/propsfina', '/props2', '/stock-in', '/gallery', '/manager/gallery'];
     const isAllowed = (path: string) => {
       if (!path || path === '/') return true;

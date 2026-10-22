@@ -8,8 +8,9 @@ export async function middleware(request: NextRequest) {
 
   // หน้า Public ที่ไม่ต้องดักจับ
   const isLoginPage = path === '/login'
+  const isUnauthorizedPage = path === '/unauthorized'
   const isPublicApi = path.startsWith('/api/auth') || path.startsWith('/api/mobile_rfid') || path.startsWith('/api/mobile_pos') || path.startsWith('/_next')
-  const isPublicPath = isLoginPage || isPublicApi
+  const isPublicPath = isLoginPage || isUnauthorizedPage || isPublicApi
 
   const requestHeaders = new Headers(request.headers)
   requestHeaders.set('x-pathname', path)
@@ -97,7 +98,14 @@ export async function middleware(request: NextRequest) {
   }
 
   // 2. ถ้า Login แล้วแต่อยู่หน้า /login -> ส่งไปหน้าแรกให้ระบบคัดแยก Role อัตโนมัติ
-  if (user && isLoginPage) {
+  // ⚠️ ป้องกัน ERR_TOO_MANY_REDIRECTS: หากมี query param เช่น error, logout, force หรือ no_access
+  // ให้เปิดหน้า /login ได้ตามปกติเพื่อไม่ให้ติดลูป และอนุญาตให้ผู้ใช้สลับบัญชีหรือดูข้อความแจ้งเตือนได้
+  const hasLoginBypassParam = request.nextUrl.searchParams.has('error') || 
+                              request.nextUrl.searchParams.has('logout') || 
+                              request.nextUrl.searchParams.has('force') ||
+                              request.nextUrl.searchParams.has('no_access')
+
+  if (user && isLoginPage && !hasLoginBypassParam) {
     return redirectWithCookies('/')
   }
 

@@ -37,7 +37,7 @@ export default async function InventoryPage({ searchParams }: Props) {
     profile = fallback.data
   }
 
-  const userRole = profile?.role || 'admin'
+  const userRole = profile?.role || 'employee'
   const isSuperAccess = userRole === 'admin' || userRole === 'data_analyst'
 
   let canViewCosts: boolean
