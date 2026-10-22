@@ -1,11 +1,19 @@
-//src/app/(admin)/props/page.tsx
+//src/app/(admin)/propsfina/page.tsx
 export const dynamic = "force-dynamic";
 
-import { getAllProps } from "@/actions/props";
+import { getAllProps, getActiveDiscounts } from "@/actions/props";
 import PropsClient from "./PropsClient";
 
 export default async function PropsListPage() {
-  const products = await getAllProps();
+  const [products, activeDiscounts] = await Promise.all([
+    getAllProps(),
+    getActiveDiscounts(),
+  ]);
 
-  return <PropsClient products={products ?? []} />;
+  return (
+    <PropsClient
+      products={products ?? []}
+      initialActiveDiscounts={activeDiscounts ?? []}
+    />
+  );
 }

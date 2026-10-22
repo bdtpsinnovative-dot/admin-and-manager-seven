@@ -30,10 +30,89 @@ const BarcodeSvg = React.memo(function BarcodeSvg({ value }: { value: string }) 
   return <svg ref={ref} className="w-full" />;
 });
 
+export interface DiscountInfo {
+  hasDiscount: boolean;
+  originalPrice: number;
+  finalPrice: number;
+  discountType: "PERCENT" | "FIXED";
+  discountValue: number;
+  discountName: string;
+  badgeText: string;
+}
+
+export function getProductDiscountInfo(
+  product: any,
+  activeDiscounts: any[]
+): DiscountInfo | null {
+  if (!product || !activeDiscounts || !Array.isArray(activeDiscounts) || activeDiscounts.length === 0) {
+    return null;
+  }
+
+  const originalPrice = Number(product.price) || 0;
+  if (originalPrice <= 0) return null;
+
+  const prodId = String(product.id);
+  const now = new Date();
+
+  let bestDiscount: any = null;
+  let maxDiscountAmount = 0;
+
+  for (const disc of activeDiscounts) {
+    if (!disc.active) continue;
+
+    // Check date bounds if configured
+    if (disc.start_date && new Date(disc.start_date) > now) continue;
+    if (disc.end_date && new Date(disc.end_date) < now) continue;
+
+    const rules = disc.discount_rules;
+    if (!Array.isArray(rules)) continue;
+
+    const isMatch = rules.some((r: any) => String(r.product_id) === prodId);
+    if (!isMatch) continue;
+
+    const val = Number(disc.value) || 0;
+    if (val <= 0) continue;
+
+    let discountAmount = 0;
+    if (disc.discount_type === "PERCENT") {
+      discountAmount = originalPrice * (val / 100);
+      if (disc.max_discount && Number(disc.max_discount) > 0) {
+        discountAmount = Math.min(discountAmount, Number(disc.max_discount));
+      }
+    } else {
+      discountAmount = val;
+    }
+
+    if (discountAmount > maxDiscountAmount) {
+      maxDiscountAmount = discountAmount;
+      bestDiscount = disc;
+    }
+  }
+
+  if (!bestDiscount || maxDiscountAmount <= 0) return null;
+
+  const finalPrice = Math.max(0, originalPrice - maxDiscountAmount);
+  const badgeText =
+    bestDiscount.discount_type === "PERCENT"
+      ? `-${bestDiscount.value}%`
+      : `-฿${Number(bestDiscount.value).toLocaleString()}`;
+
+  return {
+    hasDiscount: true,
+    originalPrice,
+    finalPrice: Math.round(finalPrice),
+    discountType: bestDiscount.discount_type,
+    discountValue: bestDiscount.value,
+    discountName: bestDiscount.name,
+    badgeText,
+  };
+}
+
 interface ProductCardProps {
   item: any;
   isSelected: boolean;
   displayImage?: string;
+  discountInfo?: DiscountInfo | null;
   onToggle: (id: number) => void;
   onEditImage: (e: React.MouseEvent, item: any) => void;
 }
@@ -42,6 +121,7 @@ const ProductCard = React.memo(function ProductCard({
   item,
   isSelected,
   displayImage,
+  discountInfo,
   onToggle,
   onEditImage,
 }: ProductCardProps) {
@@ -73,26 +153,55 @@ const ProductCard = React.memo(function ProductCard({
 
       <div className="px-2.5 pb-3 pt-1">
         <div className="flex items-center gap-1 mb-1.5 flex-wrap">
+          {discountInfo && (
+            <span className="text-[9px] bg-rose-600 text-white px-1.5 py-0.5 rounded font-black shadow-2xs">
+              ลด {discountInfo.badgeText}
+            </span>
+          )}
           <span className="text-[9px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-bold uppercase">{item.color || '–'}</span>
           {sizeStr && (
             <span className="text-[9px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-bold">{sizeStr}</span>
           )}
         </div>
-        <h3 className="text-xs font-bold text-slate-800 mb-2 line-clamp-1">{item.name}</h3>
+        <h3 className="text-xs font-bold text-slate-800 mb-1.5 line-clamp-1">{item.name}</h3>
 
         <div className="bg-slate-50 rounded p-1 border border-slate-100">
           {item.barcode
             ? <BarcodeSvg value={item.barcode} />
             : <p className="text-center text-[10px] text-slate-400 py-2">ไม่มีบาร์โค้ด</p>}
         </div>
+
+        {/* Price Display */}
+        <div className="mt-1.5 pt-1 border-t border-slate-100 flex items-baseline justify-between">
+          {discountInfo ? (
+            <>
+              <span className="text-[10px] text-slate-400 line-through font-mono">
+                ฿{Number(discountInfo.originalPrice).toLocaleString()}
+              </span>
+              <span className="text-xs font-black text-rose-600 font-mono">
+                ฿{Number(discountInfo.finalPrice).toLocaleString()}
+              </span>
+            </>
+          ) : item.price > 0 ? (
+            <span className="text-xs font-bold text-slate-800 font-mono ml-auto">
+              ฿{Number(item.price).toLocaleString()}
+            </span>
+          ) : (
+            <span className="text-[10px] text-slate-400 ml-auto">ไม่ระบุราคา</span>
+          )}
+        </div>
       </div>
     </div>
   );
 });
 
-interface Props { products: any[] }
+interface Props {
+  products: any[];
+  initialActiveDiscounts?: any[];
+}
 
-export default function PropsClient({ products }: Props) {
+export default function PropsClient({ products, initialActiveDiscounts = [] }: Props) {
+  const [activeDiscounts] = useState<any[]>(initialActiveDiscounts);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [showModal, setShowModal] = useState(false);
   const [printTargets, setPrintTargets] = useState<any[]>([]);
@@ -244,8 +353,29 @@ export default function PropsClient({ products }: Props) {
       const colorStr = p.color || '';
       const materialStr = p.material || specs.material || '';
       const detailStr = [colorStr, materialStr].filter(Boolean).join(' · ');
-      const priceVal = Number(p.price);
-      const priceStr = priceVal > 0 ? new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB', minimumFractionDigits: 0 }).format(priceVal) : '';
+      
+      // Check discount
+      const discInfo = getProductDiscountInfo(p, activeDiscounts);
+      const originalPriceVal = Number(p.price);
+      const originalPriceStr = originalPriceVal > 0 
+        ? new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB', minimumFractionDigits: 0 }).format(originalPriceVal) 
+        : '';
+
+      let priceHtml = '';
+      if (discInfo && discInfo.finalPrice > 0) {
+        const finalPriceStr = new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB', minimumFractionDigits: 0 }).format(discInfo.finalPrice);
+        priceHtml = `
+          <div class="price-discount-wrap">
+            <div class="price-strike-line">
+              <span class="price-old">${originalPriceStr}</span>
+              <span class="price-disc-badge">${discInfo.badgeText}</span>
+            </div>
+            <div class="price-val price-val-discounted">${finalPriceStr}</div>
+          </div>
+        `;
+      } else if (originalPriceStr) {
+        priceHtml = `<div class="price-val">${originalPriceStr}</div>`;
+      }
 
       for (let i = 0; i < sets; i++) {
         groups.push(`
@@ -266,7 +396,7 @@ export default function PropsClient({ products }: Props) {
               <div class="qr-box">
                 <img src="${qrImg}" class="qr-img" />
               </div>
-              ${priceStr ? `<div class="price-val">${priceStr}</div>` : ''}
+              ${priceHtml}
             </div>
           </div>`);
       }
@@ -423,9 +553,57 @@ export default function PropsClient({ products }: Props) {
       }
       
       .price-val {
-        font-size: 9.5pt;
+        font-size: 8.5pt;
         font-weight: 900;
         color: #000;
+        line-height: 1;
+        letter-spacing: -0.3px;
+        white-space: nowrap;
+        text-align: center;
+      }
+      
+      .price-discount-wrap {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        line-height: 1;
+        width: 100%;
+        overflow: hidden;
+      }
+
+      .price-strike-line {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.3mm;
+        margin-bottom: 0.2mm;
+      }
+
+      .price-old {
+        font-size: 4.2pt;
+        font-weight: 600;
+        color: #64748b;
+        text-decoration: line-through;
+        white-space: nowrap;
+        line-height: 1;
+      }
+
+      .price-disc-badge {
+        font-size: 3.8pt;
+        font-weight: 800;
+        color: #fff;
+        background: #dc2626;
+        padding: 0.1mm 0.6mm;
+        border-radius: 1px;
+        line-height: 1;
+        white-space: nowrap;
+      }
+
+      .price-val-discounted {
+        font-size: 8pt;
+        font-weight: 900;
+        color: #dc2626;
         line-height: 1;
         letter-spacing: -0.3px;
         white-space: nowrap;
@@ -576,9 +754,57 @@ export default function PropsClient({ products }: Props) {
       }
       
       .price-val {
-        font-size: 9.5pt;
+        font-size: 8.5pt;
         font-weight: 900;
         color: #000;
+        line-height: 1;
+        letter-spacing: -0.3px;
+        white-space: nowrap;
+        text-align: center;
+      }
+      
+      .price-discount-wrap {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        line-height: 1;
+        width: 100%;
+        overflow: hidden;
+      }
+
+      .price-strike-line {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.3mm;
+        margin-bottom: 0.2mm;
+      }
+
+      .price-old {
+        font-size: 4.2pt;
+        font-weight: 600;
+        color: #64748b;
+        text-decoration: line-through;
+        white-space: nowrap;
+        line-height: 1;
+      }
+
+      .price-disc-badge {
+        font-size: 3.8pt;
+        font-weight: 800;
+        color: #fff;
+        background: #dc2626;
+        padding: 0.1mm 0.6mm;
+        border-radius: 1px;
+        line-height: 1;
+        white-space: nowrap;
+      }
+
+      .price-val-discounted {
+        font-size: 8pt;
+        font-weight: 900;
+        color: #dc2626;
         line-height: 1;
         letter-spacing: -0.3px;
         white-space: nowrap;
@@ -610,8 +836,28 @@ export default function PropsClient({ products }: Props) {
         qrImg = await QRCode.toDataURL(val, { width: 200, margin: 1, errorCorrectionLevel: 'M' }); 
       } catch {}
 
-      const priceVal = Number(p.price);
-      const priceStr = priceVal > 0 ? new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB', minimumFractionDigits: 0 }).format(priceVal) : '';
+      // Check discount
+      const discInfo = getProductDiscountInfo(p, activeDiscounts);
+      const originalPriceVal = Number(p.price);
+      const originalPriceStr = originalPriceVal > 0 
+        ? new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB', minimumFractionDigits: 0 }).format(originalPriceVal) 
+        : '';
+
+      let priceHtml = '';
+      if (discInfo && discInfo.finalPrice > 0) {
+        const finalPriceStr = new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB', minimumFractionDigits: 0 }).format(discInfo.finalPrice);
+        priceHtml = `
+          <div class="price-discount-wrap">
+            <div class="price-strike-line">
+              <span class="price-old">${originalPriceStr}</span>
+              <span class="price-disc-badge">${discInfo.badgeText}</span>
+            </div>
+            <div class="price-val price-val-discounted">${finalPriceStr}</div>
+          </div>
+        `;
+      } else if (originalPriceStr) {
+        priceHtml = `<div class="price-val">${originalPriceStr}</div>`;
+      }
 
       for (let i = 0; i < sets; i++) {
         groups.push(`
@@ -635,7 +881,7 @@ export default function PropsClient({ products }: Props) {
                   <div class="price-logo">
                     <img src="${p.category_id === 'SLABS' ? '/logo.zenslab.png' : '/logo.terra.home.png'}" alt="Logo" class="logo-img" />
                   </div>
-                  ${priceStr ? `<div class="price-val">${priceStr}</div>` : ''}
+                  ${priceHtml}
                 </div>
               </div>
             </div>
@@ -789,6 +1035,46 @@ export default function PropsClient({ products }: Props) {
         line-height: 1;
         white-space: nowrap;
       }
+      
+      .price-discount-wrap {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        line-height: 1.05;
+      }
+
+      .price-strike-line {
+        display: flex;
+        align-items: center;
+        gap: 0.8mm;
+      }
+
+      .price-old {
+        font-size: 5.5pt;
+        font-weight: 600;
+        color: #718096;
+        text-decoration: line-through;
+        white-space: nowrap;
+      }
+
+      .price-disc-badge {
+        font-size: 5pt;
+        font-weight: 800;
+        color: #fff;
+        background: #dc2626;
+        padding: 0.1mm 0.8mm;
+        border-radius: 1px;
+        line-height: 1;
+        white-space: nowrap;
+      }
+
+      .price-val-discounted {
+        font-size: 11pt;
+        font-weight: 900;
+        color: #dc2626;
+        line-height: 1;
+        white-space: nowrap;
+      }
     `;
 
     win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title></title>
@@ -921,6 +1207,7 @@ export default function PropsClient({ products }: Props) {
               item={item}
               isSelected={selected.has(item.id)}
               displayImage={localImages[item.id] ?? item.image_url}
+              discountInfo={getProductDiscountInfo(item, activeDiscounts)}
               onToggle={toggleSelect}
               onEditImage={openEditImage}
             />
@@ -971,6 +1258,34 @@ export default function PropsClient({ products }: Props) {
                       <p className="text-xs font-mono text-slate-400 truncate">{p.barcode || p.sku}</p>
                       {sizeStr && <p className="text-xs text-blue-600 font-semibold">{sizeStr}</p>}
                     </div>
+                    {(() => {
+                      const disc = getProductDiscountInfo(p, activeDiscounts);
+                      if (disc) {
+                        return (
+                          <div className="text-right shrink-0">
+                            <span className="text-[10px] text-slate-400 line-through block font-mono">
+                              ฿{Number(disc.originalPrice).toLocaleString()}
+                            </span>
+                            <span className="text-xs font-black text-rose-600 block font-mono">
+                              ฿{Number(disc.finalPrice).toLocaleString()}
+                            </span>
+                            <span className="text-[9px] bg-rose-50 text-rose-600 px-1 rounded font-bold">
+                              {disc.badgeText}
+                            </span>
+                          </div>
+                        );
+                      }
+                      if (p.price > 0) {
+                        return (
+                          <div className="text-right shrink-0">
+                            <span className="text-xs font-bold text-slate-700 block font-mono">
+                              ฿{Number(p.price).toLocaleString()}
+                            </span>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
                     <div className="flex items-center gap-1.5 shrink-0">
                       <span className="text-xs text-slate-500">ชุด:</span>
                       <button onClick={() => setQuantities(q => ({ ...q, [p.id]: Math.max(1, (q[p.id] || 1) - 1) }))}
