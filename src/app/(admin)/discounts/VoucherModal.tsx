@@ -61,11 +61,25 @@ type ThemeType = "ivory" | "obsidian" | "terra";
 type ViewMode = "single" | "sheet_a4";
 type SheetLayout = "10_business_cards" | "8_business_cards" | "3_stacked" | "4_grid";
 type SingleFormat = "business_card" | "luxury_voucher";
+type BrandLogoChoice = "dual" | "terra" | "zenslab";
+
+function getBrandLogoSrc(brand: BrandLogoChoice = "dual", theme: ThemeType = "ivory") {
+  const isDark = theme !== "ivory";
+  if (brand === "terra") {
+    return isDark ? "/logo.terra.home.png" : "/logo.terra.home.dark.png";
+  }
+  if (brand === "zenslab") {
+    return isDark ? "/logo.zenslab.light.png" : "/logo.zenslab.png";
+  }
+  // dual (Terra Home & ZenSlab)
+  return isDark ? "/logo.dual.terra_first.light.png" : "/logo.dual.terra_first.dark.png";
+}
 
 export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModalProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [viewMode, setViewMode] = useState<ViewMode>("sheet_a4");
   const [theme, setTheme] = useState<ThemeType>("ivory");
+  const [brandChoice, setBrandChoice] = useState<BrandLogoChoice>("dual");
   const [sheetLayout, setSheetLayout] = useState<SheetLayout>("10_business_cards");
   const [singleFormat, setSingleFormat] = useState<SingleFormat>("business_card");
   const [qrCodes, setQrCodes] = useState<Record<string, string>>({});
@@ -362,6 +376,51 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
             </div>
           </div>
 
+          {/* Brand Logo Selector */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs font-semibold text-stone-600 hidden sm:inline flex items-center gap-1">
+              🏢 โลโก้:
+            </span>
+            <div className="flex items-center gap-1 bg-stone-200/80 p-1 rounded-xl">
+              <button
+                type="button"
+                onClick={() => setBrandChoice("dual")}
+                className={`px-2.5 py-1.5 rounded-lg text-xs transition cursor-pointer flex items-center gap-1 ${
+                  brandChoice === "dual"
+                    ? "bg-white text-stone-900 shadow-xs font-bold"
+                    : "text-stone-600 hover:text-stone-900 font-medium"
+                }`}
+                title="แสดงโลโก้ของแท้ทั้ง 2 แบรนด์ (Terra Home & ZenSlab)"
+              >
+                <span>✨ Terra & Zen (คู่)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setBrandChoice("zenslab")}
+                className={`px-2.5 py-1.5 rounded-lg text-xs transition cursor-pointer flex items-center gap-1 ${
+                  brandChoice === "zenslab"
+                    ? "bg-white text-stone-900 shadow-xs font-bold"
+                    : "text-stone-600 hover:text-stone-900 font-medium"
+                }`}
+                title="แสดงโลโก้ของแท้เฉพาะ ZenSlab"
+              >
+                <span>🪵 ZenSlab</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setBrandChoice("terra")}
+                className={`px-2.5 py-1.5 rounded-lg text-xs transition cursor-pointer flex items-center gap-1 ${
+                  brandChoice === "terra"
+                    ? "bg-white text-stone-900 shadow-xs font-bold"
+                    : "text-stone-600 hover:text-stone-900 font-medium"
+                }`}
+                title="แสดงโลโก้ของแท้เฉพาะ Terra Home Studio"
+              >
+                <span>🏡 Terra Home</span>
+              </button>
+            </div>
+          </div>
+
           {/* Sheet Layout Switcher (if sheet_a4) */}
           {viewMode === "sheet_a4" && (
             <div className="flex items-center gap-1.5 bg-stone-200/80 p-1 rounded-xl">
@@ -485,6 +544,7 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
                   voucher={currentVoucher}
                   qrCodeUrl={qrCodes[currentVoucher.coupon_code || String(currentVoucher.id)]}
                   theme={theme}
+                  brandLogo={brandChoice}
                   copiedCode={copiedCode}
                   onCopy={copyCode}
                   size={singleFormat === "business_card" ? "business_card" : "large"}
@@ -527,6 +587,7 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
                       voucher={v}
                       qrCodeUrl={qrCodes[v.coupon_code || String(v.id)]}
                       theme={theme}
+                      brandLogo={brandChoice}
                       copiedCode={copiedCode}
                       onCopy={copyCode}
                       size={
@@ -628,6 +689,7 @@ interface VoucherCardProps {
   voucher: VoucherItem;
   qrCodeUrl?: string;
   theme: ThemeType;
+  brandLogo?: BrandLogoChoice;
   copiedCode: string | null;
   onCopy: (code: string) => void;
   size?: "large" | "medium" | "compact" | "business_card" | "business_card_tall";
@@ -637,6 +699,7 @@ function VoucherCard({
   voucher,
   qrCodeUrl,
   theme,
+  brandLogo = "dual",
   copiedCode,
   onCopy,
   size = "business_card",
@@ -770,47 +833,28 @@ function VoucherCard({
           } rounded-lg pointer-events-none ${styles.innerHairline}`}
         />
 
-        {/* Brand Header */}
+        {/* Brand Header with Genuine Official Brand Logos */}
         <div className="flex items-center justify-between gap-1.5 z-10">
-          <div className="flex items-center gap-1.5">
-            <div
-              className={`rounded-md bg-stone-900/10 p-0.5 flex items-center justify-center shrink-0 ${
-                isBusinessCard ? "w-5 h-5" : "w-6 h-6 sm:w-7 sm:h-7"
+          <div className="flex items-center min-w-0">
+            <img
+              src={getBrandLogoSrc(brandLogo, theme)}
+              alt={
+                brandLogo === "terra"
+                  ? "Terra Home Studio"
+                  : brandLogo === "zenslab"
+                  ? "ZenSlab"
+                  : "Terra Home & ZenSlab"
+              }
+              className={`w-auto object-contain object-left ${
+                isBusinessCard ? "h-4.5 sm:h-5 max-w-[145px]" : "h-6 sm:h-7.5 max-w-[220px]"
               }`}
-            >
-              <img
-                src="/logo.terra.home.png"
-                alt="Terra Home"
-                className={`max-h-full max-w-full object-contain ${
-                  theme !== "ivory" ? "filter invert brightness-200" : ""
-                }`}
-                onError={(e) => {
-                  e.currentTarget.style.display = "none";
-                }}
-              />
-            </div>
-            <div>
-              <div
-                className={`font-cinzel ${
-                  isBusinessCard ? "text-[8.5px] sm:text-[9.5px]" : "text-xs sm:text-sm"
-                } font-black tracking-[0.16em] uppercase leading-none ${styles.brandTitle}`}
-              >
-                TERRA HOME & ZENSLAB
-              </div>
-              <div
-                className={`font-cinzel ${
-                  isBusinessCard ? "text-[6.5px] sm:text-[7.5px]" : "text-[8px] sm:text-[9px]"
-                } tracking-[0.14em] uppercase font-bold mt-0.5 ${styles.brandSub}`}
-              >
-                ARTISANAL LIVING & CRAFT
-              </div>
-            </div>
+            />
           </div>
 
           <span
             className={`font-cinzel ${
               isBusinessCard
-                ? "text-[7px] sm:text-[8px] px-1 py-0.2"
+                ? "text-[7px] sm:text-[8px] px-1.5 py-0.5"
                 : "text-[9px] sm:text-[10px] px-2 py-0.5"
             } tracking-widest font-black rounded-xs uppercase shrink-0 ${styles.privilegeBadge}`}
           >
