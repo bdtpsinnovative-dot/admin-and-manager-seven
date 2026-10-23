@@ -219,6 +219,18 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
         quality: 0.98,
         pixelRatio: 2.5,
         cacheBust: true,
+        filter: (node) => {
+          if (node instanceof HTMLElement) {
+            if (
+              node.classList.contains("print:hidden") ||
+              node.classList.contains("no-export") ||
+              node.classList.contains("no-print")
+            ) {
+              return false;
+            }
+          }
+          return true;
+        },
       });
 
       const fileName =
@@ -272,6 +284,18 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
         quality: 0.96,
         pixelRatio: 2,
         cacheBust: true,
+        filter: (node) => {
+          if (node instanceof HTMLElement) {
+            if (
+              node.classList.contains("print:hidden") ||
+              node.classList.contains("no-export") ||
+              node.classList.contains("no-print")
+            ) {
+              return false;
+            }
+          }
+          return true;
+        },
       });
 
       const fileName = `vouchers-A4-${sheetLayout}-${new Date().toISOString().slice(0, 10)}.png`;
@@ -1271,7 +1295,7 @@ function VoucherCard({
                   (e.target as HTMLImageElement).src = "/banner.terrahome.webp";
                 }}
               />
-              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/25 transition flex items-center justify-center opacity-0 group-hover:opacity-100 print:hidden">
+              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/25 transition flex items-center justify-center opacity-0 group-hover:opacity-100 print:hidden no-export">
                 <ImageIcon className="w-3.5 h-3.5 text-white drop-shadow" />
               </div>
             </div>
@@ -1477,7 +1501,7 @@ function VoucherCard({
             } uppercase tracking-wider font-bold ${styles.codeLabel} flex items-center justify-center gap-0.5`}
           >
             <span>รหัสคูปอง</span>
-            <Copy className="w-2 h-2 opacity-60 group-hover:opacity-100 transition print:hidden" />
+            <Copy className="w-2 h-2 opacity-0 group-hover:opacity-100 transition print:hidden no-export" />
           </div>
           <div
             className={`font-spacemono ${
@@ -1491,7 +1515,7 @@ function VoucherCard({
             {code}
           </div>
           {copiedCode === code && (
-            <div className="text-[7.5px] font-prompt font-bold text-emerald-600 print:hidden leading-none mt-0.5">
+            <div className="text-[7.5px] font-prompt font-bold text-emerald-600 print:hidden no-export leading-none mt-0.5">
               ✓ คัดลอกแล้ว
             </div>
           )}
