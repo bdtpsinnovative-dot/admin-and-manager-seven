@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import QRCode from "qrcode";
 import { toPng } from "html-to-image";
 import { saveAs } from "file-saver";
@@ -62,9 +62,44 @@ interface VoucherModalProps {
 
 type ThemeType = "ivory" | "obsidian" | "terra";
 type ViewMode = "single" | "sheet_a4";
-type SheetLayout = "10_business_cards" | "8_business_cards" | "3_stacked" | "4_grid";
-type SingleFormat = "business_card" | "luxury_voucher";
+type SheetLayout = "duo_5_pairs" | "10_business_cards" | "8_business_cards" | "3_stacked" | "4_grid";
+type SingleFormat = "duo_pair" | "business_card";
 type BrandLogoChoice = "dual" | "terra" | "zenslab";
+
+interface VoucherPairItem {
+  left: VoucherItem;
+  right: VoucherItem;
+  id: string;
+}
+
+function buildVoucherPairs(vouchers: VoucherItem[], autoFill: boolean): VoucherPairItem[] {
+  if (!vouchers || vouchers.length === 0) return [];
+  const targetPairs = autoFill ? 5 : Math.max(1, Math.ceil(vouchers.length / 2));
+  const pairs: VoucherPairItem[] = [];
+
+  for (let i = 0; i < targetPairs; i++) {
+    if (vouchers.length === 1) {
+      pairs.push({
+        left: vouchers[0],
+        right: {
+          ...vouchers[0],
+          id: `${vouchers[0].id}_pair_${i}`,
+        },
+        id: `pair_${i}`,
+      });
+    } else {
+      const leftIdx = (i * 2) % vouchers.length;
+      const rightIdx = (i * 2 + 1) % vouchers.length;
+      pairs.push({
+        left: vouchers[leftIdx],
+        right: vouchers[rightIdx],
+        id: `pair_${i}_${vouchers[leftIdx].id}_${vouchers[rightIdx].id}`,
+      });
+    }
+  }
+
+  return pairs;
+}
 
 function getBrandLogoSrc(brand: BrandLogoChoice = "dual", theme: ThemeType = "ivory") {
   const isDark = theme !== "ivory";
@@ -103,8 +138,9 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
   const [viewMode, setViewMode] = useState<ViewMode>("sheet_a4");
   const [theme, setTheme] = useState<ThemeType>("ivory");
   const [brandChoice, setBrandChoice] = useState<BrandLogoChoice>("dual");
-  const [sheetLayout, setSheetLayout] = useState<SheetLayout>("10_business_cards");
-  const [singleFormat, setSingleFormat] = useState<SingleFormat>("business_card");
+  const [sheetLayout, setSheetLayout] = useState<SheetLayout>("duo_5_pairs");
+  const [singleFormat, setSingleFormat] = useState<SingleFormat>("duo_pair");
+  const [autoFillSheet, setAutoFillSheet] = useState(true);
   const [showPhoto, setShowPhoto] = useState(true);
   const [customImage, setCustomImage] = useState<string | null>(null);
   const [qrCodes, setQrCodes] = useState<Record<string, string>>({});
@@ -162,6 +198,10 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
   if (!isOpen || vouchers.length === 0) return null;
 
   const currentVoucher = vouchers[currentIndex] || vouchers[0];
+  const duoPairs = useMemo(
+    () => buildVoucherPairs(vouchers, autoFillSheet),
+    [vouchers, autoFillSheet]
+  );
 
   const copyCode = (code: string) => {
     navigator.clipboard?.writeText(code);
@@ -180,7 +220,10 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
         cacheBust: true,
       });
 
-      const fileName = `voucher-card-${currentVoucher.coupon_code || "coupon"}.png`;
+      const fileName =
+        singleFormat === "duo_pair"
+          ? `voucher-duo-couple-${currentVoucher.coupon_code || "pair"}.png`
+          : `voucher-card-${currentVoucher.coupon_code || "coupon"}.png`;
 
       // Mobile Web Share API with file support
       if (typeof navigator !== "undefined" && navigator.canShare) {
@@ -191,7 +234,10 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
 
           if (navigator.canShare({ files: [file] })) {
             await navigator.share({
-              title: `นามบัตรส่วนลด Terra Home: ${currentVoucher.coupon_code}`,
+              title:
+                singleFormat === "duo_pair"
+                  ? `คูปองจับคู่สิทธิพิเศษ Terra Home & ZenSlab: ${currentVoucher.coupon_code}`
+                  : `นามบัตรส่วนลด Terra Home: ${currentVoucher.coupon_code}`,
               text: `บัตรกำนัลส่วนลดพิเศษ ${currentVoucher.title} รหัสคูปอง: ${currentVoucher.coupon_code}`,
               files: [file],
             });
@@ -301,6 +347,7 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
     });
 
     const isSingle = viewMode === "single";
+    const isDuoSingle = isSingle && singleFormat === "duo_pair";
 
     doc.open();
     doc.write(`
@@ -315,7 +362,7 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
 
             @page {
               size: A4 portrait;
-              margin: ${isSingle ? "25mm auto" : "6mm 8mm"};
+              margin: ${isSingle ? (isDuoSingle ? "16mm auto" : "25mm auto") : "6mm 8mm"};
             }
 
             *, *::before, *::after {
@@ -348,7 +395,7 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
 
             .print-wrapper {
               width: 100% !important;
-              max-width: ${isSingle ? "130mm" : "210mm"} !important;
+              max-width: ${isSingle ? (isDuoSingle ? "190mm" : "130mm") : "210mm"} !important;
               margin: 0 auto !important;
               padding: 0 !important;
               background: #ffffff !important;
@@ -683,9 +730,21 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
           {/* Right Controls: A4 Layout or Single Navigation */}
           <div className="flex items-center gap-2">
             {viewMode === "sheet_a4" && (
-              <div className="flex items-center gap-1.5">
-                <span className="text-stone-500 font-medium hidden lg:inline">รูปแบบ:</span>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-stone-500 font-medium hidden lg:inline">รูปแบบ A4:</span>
                 <div className="inline-flex bg-stone-200/60 p-0.5 rounded-lg">
+                  <button
+                    type="button"
+                    onClick={() => setSheetLayout("duo_5_pairs")}
+                    className={`px-2.5 py-1.5 rounded-md transition cursor-pointer flex items-center gap-1 ${
+                      sheetLayout === "duo_5_pairs"
+                        ? "bg-white text-stone-900 font-semibold shadow-2xs"
+                        : "text-stone-600 hover:text-stone-900 font-medium"
+                    }`}
+                  >
+                    <Ticket className="w-3.5 h-3.5 text-amber-600" />
+                    <span>คูปองจับคู่ (5 คู่)</span>
+                  </button>
                   <button
                     type="button"
                     onClick={() => setSheetLayout("10_business_cards")}
@@ -695,7 +754,7 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
                         : "text-stone-600 hover:text-stone-900 font-medium"
                     }`}
                   >
-                    10 ใบนามบัตร
+                    10 ใบเดี่ยว
                   </button>
                   <button
                     type="button"
@@ -708,42 +767,77 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
                   >
                     8 ใบ
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setSheetLayout("4_grid")}
-                    className={`px-2.5 py-1.5 rounded-md transition cursor-pointer ${
-                      sheetLayout === "4_grid"
-                        ? "bg-white text-stone-900 font-semibold shadow-2xs"
-                        : "text-stone-600 hover:text-stone-900 font-medium"
-                    }`}
-                  >
-                    4 ใบ
-                  </button>
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => setAutoFillSheet(!autoFillSheet)}
+                  className={`px-2.5 py-1.5 rounded-md transition text-xs cursor-pointer border ${
+                    autoFillSheet
+                      ? "bg-amber-50 border-amber-300 text-amber-900 font-semibold shadow-2xs"
+                      : "bg-white border-stone-200 text-stone-600 hover:text-stone-900 font-medium"
+                  }`}
+                  title="เปิดเพื่อเติมคูปองให้เต็มแผ่น 5 คู่ (10 ใบ) บน A4 อัตโนมัติ ป้องกันพื้นที่ว่างโล่ง"
+                >
+                  {autoFillSheet ? "✓ เต็มแผ่น (5 คู่)" : "ตามที่เลือก"}
+                </button>
               </div>
             )}
 
-            {viewMode === "single" && vouchers.length > 1 && (
-              <div className="flex items-center gap-1.5 bg-stone-200/60 p-0.5 rounded-lg">
-                <button
-                  type="button"
-                  onClick={() => setCurrentIndex((prev) => Math.max(0, prev - 1))}
-                  disabled={currentIndex === 0}
-                  className="w-6 h-6 rounded flex items-center justify-center text-stone-600 disabled:opacity-30 hover:bg-white transition cursor-pointer"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-                <span className="text-xs font-mono font-medium text-stone-700 px-1">
-                  {currentIndex + 1} / {vouchers.length}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setCurrentIndex((prev) => Math.min(vouchers.length - 1, prev + 1))}
-                  disabled={currentIndex === vouchers.length - 1}
-                  className="w-6 h-6 rounded flex items-center justify-center text-stone-600 disabled:opacity-30 hover:bg-white transition cursor-pointer"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </button>
+            {viewMode === "single" && (
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-stone-500 font-medium hidden md:inline">รูปแบบ:</span>
+                  <div className="inline-flex bg-stone-200/60 p-0.5 rounded-lg">
+                    <button
+                      type="button"
+                      onClick={() => setSingleFormat("duo_pair")}
+                      className={`px-2.5 py-1.5 rounded-md transition cursor-pointer flex items-center gap-1 ${
+                        singleFormat === "duo_pair"
+                          ? "bg-white text-stone-900 font-semibold shadow-2xs"
+                          : "text-stone-600 hover:text-stone-900 font-medium"
+                      }`}
+                    >
+                      <Ticket className="w-3.5 h-3.5 text-amber-600" />
+                      <span>คูปองจับคู่ (Duo)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSingleFormat("business_card")}
+                      className={`px-2.5 py-1.5 rounded-md transition cursor-pointer ${
+                        singleFormat === "business_card"
+                          ? "bg-white text-stone-900 font-semibold shadow-2xs"
+                          : "text-stone-600 hover:text-stone-900 font-medium"
+                      }`}
+                    >
+                      นามบัตรเดี่ยว
+                    </button>
+                  </div>
+                </div>
+
+                {vouchers.length > 1 && (
+                  <div className="flex items-center gap-1.5 bg-stone-200/60 p-0.5 rounded-lg">
+                    <button
+                      type="button"
+                      onClick={() => setCurrentIndex((prev) => Math.max(0, prev - 1))}
+                      disabled={currentIndex === 0}
+                      className="w-6 h-6 rounded flex items-center justify-center text-stone-600 disabled:opacity-30 hover:bg-white transition cursor-pointer"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    <span className="text-xs font-mono font-medium text-stone-700 px-1">
+                      {currentIndex + 1} / {vouchers.length}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setCurrentIndex((prev) => Math.min(vouchers.length - 1, prev + 1))}
+                      disabled={currentIndex === vouchers.length - 1}
+                      className="w-6 h-6 rounded flex items-center justify-center text-stone-600 disabled:opacity-30 hover:bg-white transition cursor-pointer"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -758,24 +852,62 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
             <div className="w-full flex flex-col items-center gap-4">
               <div
                 ref={singleVoucherRef}
-                className="w-full transition-all duration-300 drop-shadow-lg max-w-[560px]"
+                className={`w-full transition-all duration-300 drop-shadow-lg ${
+                  singleFormat === "duo_pair" ? "max-w-[840px]" : "max-w-[560px]"
+                }`}
               >
-                <VoucherCard
-                  voucher={currentVoucher}
-                  qrCodeUrl={qrCodes[currentVoucher.coupon_code || String(currentVoucher.id)]}
-                  theme={theme}
-                  brandLogo={brandChoice}
-                  showPhoto={showPhoto}
-                  customImage={customImage}
-                  onPhotoClick={() => fileInputRef.current?.click()}
-                  copiedCode={copiedCode}
-                  onCopy={copyCode}
-                  size="business_card"
-                />
+                {singleFormat === "duo_pair" ? (
+                  <DuoVoucherPair
+                    voucherLeft={currentVoucher}
+                    voucherRight={
+                      vouchers.length > 1
+                        ? vouchers[(currentIndex + 1) % vouchers.length]
+                        : currentVoucher
+                    }
+                    qrCodeLeft={qrCodes[currentVoucher.coupon_code || String(currentVoucher.id)]}
+                    qrCodeRight={
+                      qrCodes[
+                        (vouchers.length > 1
+                          ? vouchers[(currentIndex + 1) % vouchers.length]
+                          : currentVoucher
+                        ).coupon_code ||
+                          String(
+                            (vouchers.length > 1
+                              ? vouchers[(currentIndex + 1) % vouchers.length]
+                              : currentVoucher
+                            ).id
+                          )
+                      ]
+                    }
+                    theme={theme}
+                    brandChoice={brandChoice}
+                    showPhoto={showPhoto}
+                    customImage={customImage}
+                    onPhotoClick={() => fileInputRef.current?.click()}
+                    copiedCode={copiedCode}
+                    onCopy={copyCode}
+                    size="business_card"
+                  />
+                ) : (
+                  <VoucherCard
+                    voucher={currentVoucher}
+                    qrCodeUrl={qrCodes[currentVoucher.coupon_code || String(currentVoucher.id)]}
+                    theme={theme}
+                    brandLogo={brandChoice}
+                    showPhoto={showPhoto}
+                    customImage={customImage}
+                    onPhotoClick={() => fileInputRef.current?.click()}
+                    copiedCode={copiedCode}
+                    onCopy={copyCode}
+                    size="business_card"
+                  />
+                )}
               </div>
 
               <div className="text-center text-xs text-stone-500 font-prompt">
-                ขนาดนามบัตรมาตรฐาน (9 × 5.4 ซม.) พอดีกระเป๋าสตางค์
+                {singleFormat === "duo_pair"
+                  ? "คูปองจับคู่ 1 ชุด (2 ใบเชื่อมกัน มีรอยปรุฉีกตรงกลาง) บันทึกรูปเพื่อส่งแชร์เข้า LINE หรือสั่งพิมพ์ได้ทันที"
+                  : "ขนาดนามบัตรมาตรฐาน (9 × 5.4 ซม.) พอดีกระเป๋าสตางค์"}
               </div>
             </div>
           )}
@@ -788,12 +920,12 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
               <div
                 ref={sheetA4Ref}
                 className={`bg-white border border-stone-300 shadow-2xl mx-auto box-border ${
-                  sheetLayout === "10_business_cards"
+                  sheetLayout === "duo_5_pairs"
+                    ? "w-full max-w-[794px] min-h-[1123px] flex flex-col gap-3.5 p-6"
+                    : sheetLayout === "10_business_cards"
                     ? "w-full max-w-[794px] min-h-[1123px] grid grid-cols-2 gap-x-4 gap-y-3.5 p-6"
                     : sheetLayout === "8_business_cards"
                     ? "w-full max-w-[794px] min-h-[1123px] grid grid-cols-2 gap-x-5 gap-y-4 p-6"
-                    : sheetLayout === "3_stacked"
-                    ? "w-full max-w-[794px] min-h-[1123px] flex flex-col gap-6 justify-start p-8"
                     : "w-full max-w-[794px] min-h-[1123px] grid grid-cols-2 gap-6 p-8"
                 }`}
                 style={{
@@ -802,37 +934,67 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
                   backgroundColor: "#ffffff",
                 }}
               >
-                {vouchers.map((v, idx) => (
-                  <div key={v.id || idx} className="relative flex flex-col">
-                    <VoucherCard
-                      voucher={v}
-                      qrCodeUrl={qrCodes[v.coupon_code || String(v.id)]}
-                      theme={theme}
-                      brandLogo={brandChoice}
-                      showPhoto={showPhoto}
-                      customImage={customImage}
-                      onPhotoClick={() => fileInputRef.current?.click()}
-                      copiedCode={copiedCode}
-                      onCopy={copyCode}
-                      size={
-                        sheetLayout === "10_business_cards"
-                          ? "business_card"
-                          : sheetLayout === "8_business_cards"
-                          ? "business_card_tall"
-                          : sheetLayout === "3_stacked"
-                          ? "large"
-                          : "medium"
-                      }
-                    />
+                {sheetLayout === "duo_5_pairs" ? (
+                  duoPairs.map((pair, idx) => (
+                    <div key={pair.id || idx} className="relative flex flex-col">
+                      <DuoVoucherPair
+                        voucherLeft={pair.left}
+                        voucherRight={pair.right}
+                        qrCodeLeft={qrCodes[pair.left.coupon_code || String(pair.left.id)]}
+                        qrCodeRight={qrCodes[pair.right.coupon_code || String(pair.right.id)]}
+                        theme={theme}
+                        brandChoice={brandChoice}
+                        showPhoto={showPhoto}
+                        customImage={customImage}
+                        onPhotoClick={() => fileInputRef.current?.click()}
+                        copiedCode={copiedCode}
+                        onCopy={copyCode}
+                        size="business_card"
+                      />
 
-                    {/* Dotted Cut Guidelines */}
-                    <div className="absolute -bottom-2 left-0 right-0 flex items-center justify-center opacity-40 hover:opacity-100 transition print:opacity-50">
-                      <div className="w-full border-b border-dashed border-stone-400" />
-                      <Scissors className="w-3 h-3 text-stone-500 mx-1 shrink-0 rotate-90" />
-                      <div className="w-full border-b border-dashed border-stone-400" />
+                      {idx < duoPairs.length - 1 && (
+                        <div className="flex items-center justify-center my-1 opacity-50 hover:opacity-100 transition print:opacity-60">
+                          <div className="w-full border-b border-dashed border-stone-400" />
+                          <span className="flex items-center gap-1 text-[7.5px] font-prompt font-semibold text-stone-500 uppercase px-2 shrink-0">
+                            <Scissors className="w-2.5 h-2.5" />
+                            <span>ตัดตามรอยเพื่อแจกเป็นคู่ (DUO PAIR #{idx + 1})</span>
+                          </span>
+                          <div className="w-full border-b border-dashed border-stone-400" />
+                        </div>
+                      )}
                     </div>
-                  </div>
-                ))}
+                  ))
+                ) : (
+                  vouchers.map((v, idx) => (
+                    <div key={v.id || idx} className="relative flex flex-col">
+                      <VoucherCard
+                        voucher={v}
+                        qrCodeUrl={qrCodes[v.coupon_code || String(v.id)]}
+                        theme={theme}
+                        brandLogo={brandChoice}
+                        showPhoto={showPhoto}
+                        customImage={customImage}
+                        onPhotoClick={() => fileInputRef.current?.click()}
+                        copiedCode={copiedCode}
+                        onCopy={copyCode}
+                        size={
+                          sheetLayout === "10_business_cards"
+                            ? "business_card"
+                            : sheetLayout === "8_business_cards"
+                            ? "business_card_tall"
+                            : "medium"
+                        }
+                      />
+
+                      {/* Dotted Cut Guidelines */}
+                      <div className="absolute -bottom-2 left-0 right-0 flex items-center justify-center opacity-40 hover:opacity-100 transition print:opacity-50">
+                        <div className="w-full border-b border-dashed border-stone-400" />
+                        <Scissors className="w-3 h-3 text-stone-500 mx-1 shrink-0 rotate-90" />
+                        <div className="w-full border-b border-dashed border-stone-400" />
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           )}
@@ -842,12 +1004,16 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
         <div className="px-6 py-3.5 bg-white border-t border-stone-200 flex flex-wrap items-center justify-between gap-3 shrink-0 print:hidden font-prompt">
           <div className="text-xs text-stone-500">
             {viewMode === "single" ? (
-              <span>
-                ใบที่ {currentIndex + 1} จาก {vouchers.length} ใบ
-              </span>
+              singleFormat === "duo_pair" ? (
+                <span>คูปองจับคู่ (Duo Paired) • Terra Home & ZenSlab</span>
+              ) : (
+                <span>
+                  ใบที่ {currentIndex + 1} จาก {vouchers.length} ใบ
+                </span>
+              )
             ) : (
               <span>
-                กระดาษ A4 ({sheetLayout === "10_business_cards" ? "10 ใบนามบัตร" : sheetLayout === "8_business_cards" ? "8 ใบ" : "4 ใบ"}) รวม {vouchers.length} ใบ
+                กระดาษ A4 ({sheetLayout === "duo_5_pairs" ? "5 ชุดคูปองคู่ (10 ใบ)" : sheetLayout === "10_business_cards" ? "10 ใบนามบัตร" : "8 ใบ"})
               </span>
             )}
           </div>
@@ -1328,6 +1494,104 @@ function VoucherCard({
               ✓ คัดลอกแล้ว
             </div>
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// =========================================================================
+// SUB-COMPONENT: LUXURY DUO PAIRED VOUCHER (คูปองจับคู่)
+// =========================================================================
+interface DuoVoucherPairProps {
+  voucherLeft: VoucherItem;
+  voucherRight: VoucherItem;
+  qrCodeLeft?: string;
+  qrCodeRight?: string;
+  theme: ThemeType;
+  brandChoice: BrandLogoChoice;
+  showPhoto?: boolean;
+  customImage?: string | null;
+  onPhotoClick?: () => void;
+  copiedCode: string | null;
+  onCopy: (code: string) => void;
+  size?: "large" | "medium" | "compact" | "business_card" | "business_card_tall";
+}
+
+function DuoVoucherPair({
+  voucherLeft,
+  voucherRight,
+  qrCodeLeft,
+  qrCodeRight,
+  theme,
+  brandChoice,
+  showPhoto = true,
+  customImage = null,
+  onPhotoClick,
+  copiedCode,
+  onCopy,
+  size = "business_card",
+}: DuoVoucherPairProps) {
+  // If brandChoice is "dual", left is Terra Home, right is ZenSlab!
+  const leftBrand = brandChoice === "dual" ? "terra" : brandChoice;
+  const rightBrand = brandChoice === "dual" ? "zenslab" : brandChoice;
+
+  return (
+    <div className="relative flex flex-col w-full group">
+      {/* Duo Header Badge Bar */}
+      <div className="flex items-center justify-between px-3 py-1 mb-1 bg-stone-100 rounded-lg border border-stone-200 print:bg-transparent print:border-none print:px-1 print:py-0 print:mb-0.5">
+        <div className="flex items-center gap-1.5 font-prompt text-[9px] sm:text-[9.5px] font-bold text-stone-800">
+          <span className="w-1.5 h-1.5 rounded-full bg-amber-600 print:hidden" />
+          <span className="uppercase tracking-wider">คูปองจับคู่สิทธิพิเศษ (DUO PRIVILEGE COUPON)</span>
+        </div>
+        <div className="font-cinzel text-[8px] sm:text-[8.5px] font-black tracking-widest text-stone-500 uppercase">
+          TERRA HOME & ZENSLAB
+        </div>
+      </div>
+
+      {/* The 2 Joined Cards with Center Perforation */}
+      <div className="relative flex items-stretch gap-0 rounded-xl p-1 bg-stone-100/70 border border-stone-300 shadow-xs print:bg-transparent print:border-none print:shadow-none print:p-0">
+        {/* Left Voucher Card */}
+        <div className="flex-1 min-w-0">
+          <VoucherCard
+            voucher={voucherLeft}
+            qrCodeUrl={qrCodeLeft}
+            theme={theme}
+            brandLogo={leftBrand}
+            showPhoto={showPhoto}
+            customImage={customImage}
+            onPhotoClick={onPhotoClick}
+            copiedCode={copiedCode}
+            onCopy={onCopy}
+            size={size}
+          />
+        </div>
+
+        {/* Center Perforation Spine */}
+        <div className="w-6 -my-1 flex flex-col justify-between items-center relative z-20 shrink-0">
+          <div className="w-4 h-4 rounded-full -mt-2 bg-stone-200 border border-stone-300 print:bg-white" />
+          <div className="h-full border-r-2 border-dashed border-stone-400/90 my-1 flex items-center justify-center relative">
+            <div className="absolute bg-[#FAF7F0] border border-[#C9B591] px-1.5 py-0.5 rounded-full text-[6.5px] font-prompt font-bold text-[#854D0E] uppercase tracking-wider whitespace-nowrap shadow-2xs rotate-90 print:bg-white">
+              ✂ ฉีกแยกได้
+            </div>
+          </div>
+          <div className="w-4 h-4 rounded-full -mb-2 bg-stone-200 border border-stone-300 print:bg-white" />
+        </div>
+
+        {/* Right Voucher Card */}
+        <div className="flex-1 min-w-0">
+          <VoucherCard
+            voucher={voucherRight}
+            qrCodeUrl={qrCodeRight}
+            theme={theme}
+            brandLogo={rightBrand}
+            showPhoto={showPhoto}
+            customImage={customImage}
+            onPhotoClick={onPhotoClick}
+            copiedCode={copiedCode}
+            onCopy={onCopy}
+            size={size}
+          />
         </div>
       </div>
     </div>
