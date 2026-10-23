@@ -83,6 +83,8 @@ import {
 
 const R2_BASE = "https://pub-258bd10e7e8c4a7690a74c54cfbdef93.r2.dev/";
 
+import VoucherModal from "./VoucherModal";
+
 function getImageUrl(url: string | null | undefined): string | null {
   if (!url) return null;
   if (url.startsWith("http")) return url;
@@ -2847,6 +2849,44 @@ export default function DiscountHubClient({
 
   const [isPending, startTransition] = useTransition();
 
+  // ── Voucher Card Modal & Multi-Selection State ──────────────────────────────
+  const [selectedVoucherIds, setSelectedVoucherIds] = useState<Set<string | number>>(new Set());
+  const [isVoucherModalOpen, setIsVoucherModalOpen] = useState(false);
+  const [activeModalVouchers, setActiveModalVouchers] = useState<any[]>([]);
+
+  const toggleSelectVoucher = (id: string | number) => {
+    setSelectedVoucherIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const handleToggleSelectAllCoupons = () => {
+    const couponPromos = filteredTerraPromotions.filter((p) => p.coupon_code);
+    if (selectedVoucherIds.size >= couponPromos.length && couponPromos.length > 0) {
+      setSelectedVoucherIds(new Set());
+    } else {
+      setSelectedVoucherIds(new Set(couponPromos.map((p) => p.id)));
+    }
+  };
+
+  const handleOpenSingleVoucherModal = (promo: any) => {
+    setActiveModalVouchers([promo]);
+    setIsVoucherModalOpen(true);
+  };
+
+  const handleOpenSelectedVouchersModal = () => {
+    const selected = terraPromotions.filter((p) => selectedVoucherIds.has(p.id) && p.coupon_code);
+    if (selected.length === 0) return;
+    setActiveModalVouchers(selected);
+    setIsVoucherModalOpen(true);
+  };
+
   // Metrics
   const posActiveCount = useMemo(() => posDiscounts.filter((d) => d.active).length, [posDiscounts]);
   const terraActiveCount = useMemo(() => terraPromotions.filter((p) => p.is_active).length, [terraPromotions]);
@@ -3007,6 +3047,13 @@ export default function DiscountHubClient({
       return true;
     });
   }, [terraPromotions, terraSearch, terraFilterTab]);
+
+  const couponPromos = useMemo(
+    () => filteredTerraPromotions.filter((p) => p.coupon_code),
+    [filteredTerraPromotions]
+  );
+  const isAllCouponsSelected =
+    couponPromos.length > 0 && couponPromos.every((p) => selectedVoucherIds.has(p.id));
 
   const filteredCollectionGroups = useMemo(() => {
     const q = terraCollectionSearch.trim().toLowerCase();
@@ -3979,6 +4026,50 @@ export default function DiscountHubClient({
             </div>
           </div>
 
+          {/* Batch Voucher Selection Bar */}
+          {couponPromos.length > 0 && (
+            <div className="flex items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-slate-200 shadow-xs flex-wrap">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleToggleSelectAllCoupons}
+                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-bold text-slate-700 transition cursor-pointer"
+                >
+                  <span
+                    className={`w-4 h-4 rounded border flex items-center justify-center transition ${
+                      isAllCouponsSelected
+                        ? "bg-amber-600 border-amber-600 text-white"
+                        : "border-slate-300 bg-white"
+                    }`}
+                  >
+                    {isAllCouponsSelected && <Check className="w-3 h-3 text-white" />}
+                  </span>
+                  <span>{isAllCouponsSelected ? "ยกเลิกการเลือกทั้งหมด" : "เลือกคูปองทั้งหมดเพื่อแจก"}</span>
+                </button>
+
+                {selectedVoucherIds.size > 0 && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 text-amber-900 text-xs font-black border border-amber-300">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-amber-600" />
+                    เลือกแล้ว {selectedVoucherIds.size} ใบ
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                {selectedVoucherIds.size > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleOpenSelectedVouchersModal}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white text-xs font-black shadow-md transition active:scale-95 cursor-pointer"
+                  >
+                    <Ticket className="w-4 h-4" />
+                    <span>ทำบัตรคูปอง & พิมพ์ A4 ({selectedVoucherIds.size} ใบ)</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Terra Card Grid - Hallmark Studio Passcards */}
           {filteredTerraPromotions.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-12 text-center">
@@ -4025,6 +4116,15 @@ export default function DiscountHubClient({
                     <div className="p-4 pb-0">
                       <div className="flex items-center justify-between gap-3 mb-3">
                         <div className="flex items-center gap-1.5 flex-wrap">
+                          {promo.coupon_code && (
+                            <input
+                              type="checkbox"
+                              checked={selectedVoucherIds.has(promo.id)}
+                              onChange={() => toggleSelectVoucher(promo.id)}
+                              className="w-4 h-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500 cursor-pointer accent-amber-600 mr-1"
+                              title="เลือกเพื่อจัดพิมพ์/ส่งออกเป็นบัตร"
+                            />
+                          )}
                           {!isAuto ? (
                             <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-900 border border-amber-200">
                               <Ticket className="h-3 w-3 text-amber-600" />
@@ -4243,6 +4343,17 @@ export default function DiscountHubClient({
 
                       {/* Action Rail */}
                       <div className="mt-3 flex items-center justify-end gap-1.5 border-t border-slate-100 pt-2.5">
+                        {promo.coupon_code && (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenSingleVoucherModal(promo)}
+                            className="inline-flex items-center gap-1 rounded-lg bg-amber-50 text-amber-900 border border-amber-300 px-2.5 py-1.5 text-xs font-black hover:bg-amber-100 active:scale-95 transition shadow-2xs cursor-pointer"
+                            title="สร้างบัตรคูปองส่งเข้ามือถือ/พิมพ์ A4"
+                          >
+                            <Ticket className="h-3.5 w-3.5 text-amber-600" />
+                            <span>แจกบัตร</span>
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => {
@@ -6079,6 +6190,13 @@ export default function DiscountHubClient({
           </div>
         </div>
       )}
-    </div>
+    
+      {/* VOUCHER CARD EXPORT & PRINT MODAL */}
+      <VoucherModal
+        isOpen={isVoucherModalOpen}
+        onClose={() => setIsVoucherModalOpen(false)}
+        vouchers={activeModalVouchers}
+      />
+</div>
   );
 }
