@@ -223,7 +223,161 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
   };
 
   const handlePrint = () => {
-    window.print();
+    // 1. เลือก Element ที่จะพิมพ์ (ถ้าอยู่โหมด single ให้พิมพ์ใบเดี่ยว ถ้าอยู่ sheet_a4 ให้พิมพ์ทั้งแผ่น A4)
+    const printElement =
+      viewMode === "single"
+        ? singleVoucherRef.current
+        : sheetA4Ref.current || document.getElementById("voucher-print-area");
+
+    if (!printElement) {
+      window.print();
+      return;
+    }
+
+    // 2. สร้าง Invisible Iframe สำหรับ Print โดยเฉพาะ (ป้องกันหน้าว่าง 7 แผ่น จาก CSS Next.js Layout)
+    let iframe = document.getElementById("voucher-print-iframe") as HTMLIFrameElement | null;
+    if (iframe) {
+      iframe.remove();
+    }
+    iframe = document.createElement("iframe");
+    iframe.id = "voucher-print-iframe";
+    iframe.style.position = "fixed";
+    iframe.style.right = "0";
+    iframe.style.bottom = "0";
+    iframe.style.width = "0";
+    iframe.style.height = "0";
+    iframe.style.border = "0";
+    iframe.style.visibility = "hidden";
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow?.document;
+    if (!doc) {
+      window.print();
+      return;
+    }
+
+    // 3. รวบรวม Stylesheets และฟอนต์ทั้งหมดจากหน้าเว็บปัจจุบัน
+    let stylesHtml = "";
+    document.querySelectorAll("link[rel='stylesheet'], style").forEach((el) => {
+      stylesHtml += el.outerHTML;
+    });
+
+    const isSingle = viewMode === "single";
+
+    doc.open();
+    doc.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>พิมพ์นามบัตรส่วนลด Terra Home & ZenSlab</title>
+          ${stylesHtml}
+          <style>
+            @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800;900&family=Prompt:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&family=Space+Mono:wght@700&display=swap');
+
+            @page {
+              size: A4 portrait;
+              margin: ${isSingle ? "25mm auto" : "6mm 8mm"};
+            }
+
+            *, *::before, *::after {
+              box-sizing: border-box !important;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+              color-adjust: exact !important;
+            }
+
+            html, body {
+              margin: 0 !important;
+              padding: 0 !important;
+              background-color: #ffffff !important;
+              background: #ffffff !important;
+              width: 100% !important;
+              height: auto !important;
+              min-height: 0 !important;
+              overflow: visible !important;
+            }
+
+            .font-cinzel {
+              font-family: 'Cinzel', serif, ui-serif !important;
+            }
+            .font-prompt {
+              font-family: 'Prompt', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+            }
+            .font-spacemono {
+              font-family: 'Space Mono', ui-monospace, monospace !important;
+            }
+
+            .print-wrapper {
+              width: 100% !important;
+              max-width: ${isSingle ? "130mm" : "210mm"} !important;
+              margin: 0 auto !important;
+              padding: 0 !important;
+              background: #ffffff !important;
+            }
+
+            /* ลบกรอบและเงาหน้ากระดาษ preview ตอนพิมพ์จริง */
+            .print-wrapper > div {
+              box-shadow: none !important;
+              border: none !important;
+              margin: 0 auto !important;
+            }
+
+            .print\\:hidden, .no-print {
+              display: none !important;
+            }
+
+            .break-inside-avoid {
+              break-inside: avoid !important;
+              page-break-inside: avoid !important;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="print-wrapper">
+            ${printElement.outerHTML}
+          </div>
+          <script>
+            window.onload = function() {
+              const imgs = Array.from(document.images);
+              const triggerPrint = function() {
+                try {
+                  window.focus();
+                  window.print();
+                } catch(e) {
+                  console.error(e);
+                }
+              };
+
+              if (imgs.length === 0) {
+                setTimeout(triggerPrint, 250);
+                return;
+              }
+
+              let loaded = 0;
+              const checkAll = function() {
+                loaded++;
+                if (loaded >= imgs.length) {
+                  setTimeout(triggerPrint, 250);
+                }
+              };
+
+              imgs.forEach(function(img) {
+                if (img.complete) {
+                  checkAll();
+                } else {
+                  img.onload = checkAll;
+                  img.onerror = checkAll;
+                }
+              });
+
+              setTimeout(triggerPrint, 1500);
+            };
+          <\/script>
+        </body>
+      </html>
+    `);
+    doc.close();
   };
 
   return (
@@ -245,23 +399,33 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
         }
 
         @media print {
-          body * {
-            visibility: hidden !important;
-          }
-          #voucher-print-area, #voucher-print-area * {
-            visibility: visible !important;
-          }
-          #voucher-print-area {
-            position: absolute !important;
-            left: 0 !important;
-            top: 0 !important;
-            width: 100% !important;
+          html, body {
+            height: auto !important;
+            min-height: 0 !important;
+            overflow: visible !important;
+            background: #ffffff !important;
+            background-color: #ffffff !important;
             margin: 0 !important;
             padding: 0 !important;
           }
+
+          body > *:not(#__next),
+          nav, aside, header, footer {
+            display: none !important;
+          }
+
+          .print\\:hidden, .no-print {
+            display: none !important;
+          }
+
           @page {
             size: A4 portrait;
-            margin: 8mm 10mm;
+            margin: 6mm 8mm;
+          }
+
+          * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
           }
         }
       `,
@@ -269,7 +433,7 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
       />
 
       <div
-        className="bg-white rounded-3xl border border-stone-200 w-full max-w-5xl max-h-[96vh] flex flex-col shadow-2xl overflow-hidden print:border-none print:shadow-none print:max-h-none print:w-auto"
+        className="bg-white rounded-3xl border border-stone-200 w-full max-w-5xl max-h-[96vh] flex flex-col shadow-2xl overflow-hidden print:border-none print:shadow-none print:max-h-none print:w-full print:max-w-full print:overflow-visible print:p-0"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Top Header */}
@@ -528,7 +692,7 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
         </div>
 
         {/* Main Preview Area */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-8 bg-[#E7E3DC] flex flex-col items-center justify-start min-h-[440px]">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-8 bg-[#E7E3DC] flex flex-col items-center justify-start min-h-[440px] print:p-0 print:bg-white print:overflow-visible print:min-h-0 print:block">
           {/* ============================================================== */}
           {/* MODE 1: SINGLE VOUCHER (FOR MOBILE SCREEN / LINE DISTRIBUTION) */}
           {/* ============================================================== */}
