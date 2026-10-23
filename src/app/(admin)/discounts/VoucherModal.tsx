@@ -11,7 +11,6 @@ import {
   Ticket,
   Check,
   Copy,
-  Sparkles,
   ChevronLeft,
   ChevronRight,
   Layers,
@@ -83,10 +82,10 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
         const code = v.coupon_code || String(v.id);
         try {
           const url = await QRCode.toDataURL(code, {
-            width: 280,
+            width: 320,
             margin: 1,
             color: {
-              dark: "#1c1917",
+              dark: "#0f172a",
               light: "#ffffff",
             },
           });
@@ -210,12 +209,12 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/80 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 print:p-0 print:bg-white print:static print:overflow-visible font-sans">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/85 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 print:p-0 print:bg-white print:static print:overflow-visible font-sans">
       {/* 🛑 Load Luxury Fonts & Print CSS */}
       <style
         dangerouslySetInnerHTML={{
           __html: `
-        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700;800;900&family=Prompt:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Space+Mono:wght@400;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800;900&family=Prompt:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&family=Space+Mono:wght@700&display=swap');
 
         .font-cinzel {
           font-family: 'Cinzel', serif, ui-serif;
@@ -258,20 +257,20 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
         {/* Top Header */}
         <div className="px-5 py-4 border-b border-stone-200 flex flex-wrap items-center justify-between gap-3 bg-stone-900 text-stone-100 shrink-0 print:hidden">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+            <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
               <Ticket className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-base font-semibold font-prompt tracking-wide text-white">
+                <h2 className="text-base font-bold font-prompt tracking-wide text-white">
                   ระบบจัดทำบัตรคูปองส่วนลด (Voucher Studio)
                 </h2>
-                <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-bold font-mono">
+                <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-black font-mono">
                   {vouchers.length} ใบ
                 </span>
               </div>
               <p className="text-xs text-stone-400 font-prompt">
-                ออกแบบบัตรกำนัลสไตล์ลักชัวรี เซฟเป็นรูปภาพส่ง LINE หรือสั่งพิมพ์ A4 แจกลูกค้าหน้าร้าน
+                ออกแบบบัตรกำนัลสไตล์ลักชัวรี คมชัด ชัดเจน เซฟเป็นรูปภาพส่ง LINE หรือสั่งพิมพ์ A4 แจกลูกค้าหน้าร้าน
               </p>
             </div>
           </div>
@@ -287,46 +286,46 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
         {/* Toolbar: Switch View, Theme, Layout */}
         <div className="px-5 py-3 bg-stone-50 border-b border-stone-200 flex flex-wrap items-center justify-between gap-3 shrink-0 print:hidden font-prompt">
           {/* View Mode Toggle */}
-          <div className="flex items-center bg-stone-200/70 p-1 rounded-xl">
+          <div className="flex items-center bg-stone-200/80 p-1 rounded-xl">
             <button
               type="button"
               onClick={() => setViewMode("single")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition cursor-pointer ${
                 viewMode === "single"
                   ? "bg-white text-stone-900 shadow-xs font-bold"
-                  : "text-stone-600 hover:text-stone-900"
+                  : "text-stone-600 hover:text-stone-900 font-medium"
               }`}
             >
-              <Smartphone className="w-3.5 h-3.5 text-stone-700" />
+              <Smartphone className="w-3.5 h-3.5 text-stone-800" />
               <span>บัตรเดี่ยว (ส่งมือถือ / LINE)</span>
             </button>
             <button
               type="button"
               onClick={() => setViewMode("sheet_a4")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition cursor-pointer ${
                 viewMode === "sheet_a4"
                   ? "bg-white text-stone-900 shadow-xs font-bold"
-                  : "text-stone-600 hover:text-stone-900"
+                  : "text-stone-600 hover:text-stone-900 font-medium"
               }`}
             >
-              <Layers className="w-3.5 h-3.5 text-stone-700" />
+              <Layers className="w-3.5 h-3.5 text-stone-800" />
               <span>กระดาษ A4 (รวมหลายใบ)</span>
             </button>
           </div>
 
           {/* Theme Selector */}
           <div className="flex items-center gap-2">
-            <span className="text-xs font-medium text-stone-500 hidden sm:inline flex items-center gap-1">
+            <span className="text-xs font-semibold text-stone-600 hidden sm:inline flex items-center gap-1">
               <Palette className="w-3.5 h-3.5" /> โทนสีบัตร:
             </span>
             <div className="flex items-center gap-1.5">
               <button
                 type="button"
                 onClick={() => setTheme("ivory")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition border cursor-pointer ${
+                className={`px-3 py-1.5 rounded-lg text-xs flex items-center gap-1.5 transition border cursor-pointer ${
                   theme === "ivory"
-                    ? "bg-[#FDFBF7] text-stone-900 border-amber-600/40 shadow-xs font-bold ring-1 ring-amber-600/20"
-                    : "bg-white text-stone-600 border-stone-200 hover:bg-stone-100"
+                    ? "bg-[#FAF7F0] text-stone-950 border-amber-700/60 shadow-xs font-bold ring-1 ring-amber-700/30"
+                    : "bg-white text-stone-600 border-stone-200 hover:bg-stone-100 font-medium"
                 }`}
               >
                 <span className="w-2.5 h-2.5 rounded-full bg-[#E5D7C0] border border-[#B39977]" />
@@ -335,25 +334,25 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
               <button
                 type="button"
                 onClick={() => setTheme("obsidian")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition border cursor-pointer ${
+                className={`px-3 py-1.5 rounded-lg text-xs flex items-center gap-1.5 transition border cursor-pointer ${
                   theme === "obsidian"
-                    ? "bg-stone-900 text-amber-200 border-stone-950 shadow-xs font-bold ring-1 ring-stone-700"
-                    : "bg-white text-stone-600 border-stone-200 hover:bg-stone-100"
+                    ? "bg-stone-950 text-amber-300 border-stone-900 shadow-xs font-bold ring-1 ring-amber-500/40"
+                    : "bg-white text-stone-600 border-stone-200 hover:bg-stone-100 font-medium"
                 }`}
               >
-                <span className="w-2.5 h-2.5 rounded-full bg-stone-950 border border-amber-500/50" />
+                <span className="w-2.5 h-2.5 rounded-full bg-stone-950 border border-amber-400" />
                 <span>ดำชาร์โคล (Obsidian Noir)</span>
               </button>
               <button
                 type="button"
                 onClick={() => setTheme("terra")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition border cursor-pointer ${
+                className={`px-3 py-1.5 rounded-lg text-xs flex items-center gap-1.5 transition border cursor-pointer ${
                   theme === "terra"
-                    ? "bg-[#1E2822] text-[#E8E2D5] border-[#161E1A] shadow-xs font-bold"
-                    : "bg-white text-stone-600 border-stone-200 hover:bg-stone-100"
+                    ? "bg-[#1B2920] text-[#F3EEDD] border-[#131D16] shadow-xs font-bold ring-1 ring-[#A39171]"
+                    : "bg-white text-stone-600 border-stone-200 hover:bg-stone-100 font-medium"
                 }`}
               >
-                <span className="w-2.5 h-2.5 rounded-full bg-[#27382E] border border-[#9E8B6E]" />
+                <span className="w-2.5 h-2.5 rounded-full bg-[#27382E] border border-[#A39171]" />
                 <span>เขียวโอลีฟ (Wabi-Sabi)</span>
               </button>
             </div>
@@ -361,14 +360,14 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
 
           {/* Sheet Layout (if sheet_a4) */}
           {viewMode === "sheet_a4" && (
-            <div className="flex items-center gap-1.5 bg-stone-200/70 p-1 rounded-xl">
+            <div className="flex items-center gap-1.5 bg-stone-200/80 p-1 rounded-xl">
               <button
                 type="button"
                 onClick={() => setSheetLayout("4_per_page")}
-                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                className={`px-2.5 py-1 rounded-lg text-xs transition cursor-pointer ${
                   sheetLayout === "4_per_page"
                     ? "bg-white text-stone-900 shadow-xs font-bold"
-                    : "text-stone-600 hover:text-stone-900"
+                    : "text-stone-600 hover:text-stone-900 font-medium"
                 }`}
               >
                 4 ใบ / แผ่น A4 (2×2)
@@ -376,10 +375,10 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
               <button
                 type="button"
                 onClick={() => setSheetLayout("6_per_page")}
-                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                className={`px-2.5 py-1 rounded-lg text-xs transition cursor-pointer ${
                   sheetLayout === "6_per_page"
                     ? "bg-white text-stone-900 shadow-xs font-bold"
-                    : "text-stone-600 hover:text-stone-900"
+                    : "text-stone-600 hover:text-stone-900 font-medium"
                 }`}
               >
                 6 ใบ / แผ่น A4 (2×3)
@@ -414,7 +413,7 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
         </div>
 
         {/* Main Preview Area */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-8 bg-[#EFECE6] flex flex-col items-center justify-start min-h-[420px]">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-8 bg-[#E7E3DC] flex flex-col items-center justify-start min-h-[440px]">
           {/* ============================================================== */}
           {/* MODE 1: SINGLE VOUCHER (FOR MOBILE SCREEN / LINE DISTRIBUTION) */}
           {/* ============================================================== */}
@@ -422,7 +421,7 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
             <div className="w-full flex flex-col items-center gap-6">
               <div
                 ref={singleVoucherRef}
-                className="w-full max-w-[620px] transition-all duration-300 drop-shadow-2xl"
+                className="w-full max-w-[680px] transition-all duration-300 drop-shadow-2xl"
               >
                 <VoucherCard
                   voucher={currentVoucher}
@@ -435,9 +434,9 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
               </div>
 
               {/* Mobile Guide */}
-              <div className="text-center text-xs text-stone-600 max-w-sm font-prompt">
-                ✨ <span className="font-semibold text-stone-900">แนะนำ:</span> กดปุ่ม{" "}
-                <b className="text-stone-900">"บันทึกรูปเข้ามือถือ (LINE)"</b> ด้านล่าง เพื่อเซฟเป็นรูปภาพเข้าอัลบั้มรูป
+              <div className="text-center text-xs text-stone-700 max-w-md font-prompt bg-white/70 backdrop-blur-xs px-4 py-2 rounded-xl border border-stone-300/60 shadow-xs">
+                ✨ <span className="font-bold text-stone-900">แนะนำ:</span> กดปุ่ม{" "}
+                <b className="text-stone-950 font-black">"บันทึกรูปเข้ามือถือ (LINE)"</b> ด้านล่าง เพื่อเซฟเป็นรูปภาพเข้าอัลบั้มรูป
                 หรือกดแชร์ส่งต่อให้ลูกค้าใน LINE ได้ทันที
               </div>
             </div>
@@ -487,15 +486,15 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
 
         {/* Bottom Action Footer */}
         <div className="p-4 bg-white border-t border-stone-200 flex flex-wrap items-center justify-between gap-3 shrink-0 print:hidden font-prompt">
-          <div className="text-xs text-stone-500">
+          <div className="text-xs text-stone-600">
             {viewMode === "single" ? (
               <span>
-                กำลังดูคูปองใบที่ <b className="text-stone-900">{currentIndex + 1}</b> จากทั้งหมด{" "}
-                <b className="text-stone-900">{vouchers.length}</b> ใบ
+                กำลังดูคูปองใบที่ <b className="text-stone-900 font-bold">{currentIndex + 1}</b> จากทั้งหมด{" "}
+                <b className="text-stone-900 font-bold">{vouchers.length}</b> ใบ
               </span>
             ) : (
               <span>
-                จัดเรียงในหน้ากระดาษ A4 รวม <b className="text-stone-900">{vouchers.length}</b> ใบ
+                จัดเรียงในหน้ากระดาษ A4 รวม <b className="text-stone-900 font-bold">{vouchers.length}</b> ใบ
               </span>
             )}
           </div>
@@ -506,7 +505,7 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
               type="button"
               disabled={isExporting}
               onClick={viewMode === "single" ? handleSaveSingleImage : handleSaveSheetImage}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-stone-900 hover:bg-stone-800 text-white font-medium text-xs sm:text-sm shadow-md transition active:scale-95 disabled:opacity-50 cursor-pointer"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-stone-950 hover:bg-stone-900 text-white font-medium text-xs sm:text-sm shadow-md transition active:scale-95 disabled:opacity-50 cursor-pointer"
             >
               {isExporting ? (
                 <>
@@ -516,7 +515,7 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
               ) : (
                 <>
                   <Smartphone className="w-4 h-4 text-amber-400" />
-                  <span className="font-semibold">บันทึกรูปเข้ามือถือ (LINE)</span>
+                  <span className="font-bold">บันทึกรูปเข้ามือถือ (LINE)</span>
                 </>
               )}
             </button>
@@ -525,16 +524,16 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
             <button
               type="button"
               onClick={handlePrint}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-stone-300 bg-white hover:bg-stone-100 text-stone-800 font-semibold text-xs sm:text-sm shadow-xs transition active:scale-95 cursor-pointer"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-stone-300 bg-white hover:bg-stone-100 text-stone-800 font-bold text-xs sm:text-sm shadow-xs transition active:scale-95 cursor-pointer"
             >
-              <Printer className="w-4 h-4 text-stone-600" />
+              <Printer className="w-4 h-4 text-stone-700" />
               <span>พิมพ์กระดาษ A4 / บันทึก PDF</span>
             </button>
 
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-600 font-medium text-xs sm:text-sm transition cursor-pointer"
+              className="px-4 py-2.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-600 font-semibold text-xs sm:text-sm transition cursor-pointer"
             >
               ปิดหน้าต่าง
             </button>
@@ -546,7 +545,7 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
 }
 
 // =========================================================================
-// SUB-COMPONENT: LUXURY VOUCHER TICKET (TIMELESS STATIONERY DESIGN)
+// SUB-COMPONENT: LUXURY VOUCHER TICKET (TIMELESS HIGH-CONTRAST DESIGN)
 // =========================================================================
 interface VoucherCardProps {
   voucher: VoucherItem;
@@ -576,52 +575,91 @@ function VoucherCard({
         }`
       : "ไม่จำกัดระยะเวลา";
 
-  // Refined Color Schemes (Zero tacky gradients, pure high-end tactile stationery)
+  // 100% Explicit High-Contrast Styling (ZERO reliance on dark: classes, ensuring crystal-clear text!)
   const styles = {
     ivory: {
-      cardBg: "bg-[#FDFBF7] text-[#1C1917]",
-      border: "border border-[#D6C7AF]",
-      innerHairline: "border border-[#E7DCCE]",
-      stubBg: "bg-[#F5F0E6] text-[#1C1917]",
-      perforateLine: "border-r-2 border-dashed border-[#D6C7AF]",
-      notchColor: "bg-[#EFECE6]",
-      goldAccent: "text-[#9E7D47]",
-      goldBadge: "bg-[#F2ECE0] text-[#7A5B2B] border border-[#D6C7AF]",
-      pillTier: "bg-[#F7F3EB] border border-[#DDD0BC] text-[#44403C]",
-      subtleText: "text-[#78716C]",
-      ruleLine: "border-[#E7DCCE]",
-      qrBorder: "border-[#D6C7AF]",
-      discountHighlight: "text-[#1C1917]",
+      cardBg: "bg-[#FAF7F0]",
+      border: "border-2 border-[#D4C3A3]",
+      innerHairline: "border border-[#C9B591]/60",
+      stubBg: "bg-[#F3ECE0]",
+      notchColor: "bg-[#E7E3DC]",
+      brandTitle: "text-[#111827]",
+      brandSub: "text-[#854D0E]",
+      privilegeBadge: "bg-[#EDE2CE] text-[#854D0E] border border-[#C9B591]",
+      scopeLabel: "text-[#854D0E]",
+      titleText: "text-[#0F172A]",
+      tierLabel: "text-[#854D0E]",
+      pillTier: "bg-[#FAF7F0] border border-[#C9B591] text-[#111827]",
+      pillTierValue: "text-[#92400E]",
+      maxDiscountText: "text-[#78716C]",
+      discountBig: "text-[#0F172A]",
+      discountSub: "text-[#57534E]",
+      metaBorder: "border-[#C9B591]/40",
+      metaIcon: "text-[#854D0E]",
+      metaText: "text-[#1F2937]",
+      metaSubText: "text-[#57534E]",
+      stubHeader: "text-[#854D0E]",
+      stubSub: "text-[#57534E]",
+      qrBorder: "border-2 border-[#D4C3A3] shadow-xs",
+      codeLabel: "text-[#854D0E]",
+      codeValue: "text-[#0F172A]",
+      copyBtn: "bg-[#EDE2CE] text-[#334155] hover:bg-[#E2D4BC] border border-[#C9B591]",
     },
     obsidian: {
-      cardBg: "bg-[#141416] text-[#F5F5F4]",
-      border: "border border-[#38332B]",
-      innerHairline: "border border-[#262420]",
-      stubBg: "bg-[#1A1A1E] text-[#F5F5F4]",
-      perforateLine: "border-r-2 border-dashed border-[#38332B]",
-      notchColor: "bg-[#EFECE6]",
-      goldAccent: "text-[#DFBA73]",
-      goldBadge: "bg-[#25221B] text-[#DFBA73] border border-[#4D422E]",
-      pillTier: "bg-[#1F1F24] border border-[#33312B] text-[#D6D3D1]",
-      subtleText: "text-[#A8A29E]",
-      ruleLine: "border-[#262420]",
-      qrBorder: "border-[#38332B]",
-      discountHighlight: "text-[#FFFFFF]",
+      cardBg: "bg-[#111215]",
+      border: "border-2 border-[#C5A566]/70",
+      innerHairline: "border border-[#C5A566]/30",
+      stubBg: "bg-[#17181D]",
+      notchColor: "bg-[#E7E3DC]",
+      brandTitle: "text-[#FFFFFF]",
+      brandSub: "text-[#DFBA73]",
+      privilegeBadge: "bg-[#232019] text-[#DFBA73] border border-[#C5A566]/60",
+      scopeLabel: "text-[#DFBA73]",
+      titleText: "text-[#FFFFFF]",
+      tierLabel: "text-[#DFBA73]",
+      pillTier: "bg-[#202026] border border-[#443E33] text-[#E2E8F0]",
+      pillTierValue: "text-[#FDE68A]",
+      maxDiscountText: "text-[#94A3B8]",
+      discountBig: "text-[#FFFFFF]",
+      discountSub: "text-[#CBD5E1]",
+      metaBorder: "border-[#33312B]",
+      metaIcon: "text-[#DFBA73]",
+      metaText: "text-[#F1F5F9]",
+      metaSubText: "text-[#94A3B8]",
+      stubHeader: "text-[#DFBA73]",
+      stubSub: "text-[#94A3B8]",
+      qrBorder: "border-2 border-[#C5A566]/70 shadow-xs",
+      codeLabel: "text-[#DFBA73]",
+      codeValue: "text-[#FFFFFF]",
+      copyBtn: "bg-[#25252D] text-[#E2E8F0] hover:bg-[#32323D] border border-[#443E33]",
     },
     terra: {
-      cardBg: "bg-[#1E2822] text-[#F5F2EB]",
-      border: "border border-[#38483D]",
-      innerHairline: "border border-[#2B3830]",
-      stubBg: "bg-[#18211C] text-[#F5F2EB]",
-      perforateLine: "border-r-2 border-dashed border-[#38483D]",
-      notchColor: "bg-[#EFECE6]",
-      goldAccent: "text-[#C9B48F]",
-      goldBadge: "bg-[#27352D] text-[#C9B48F] border border-[#4E5F53]",
-      pillTier: "bg-[#243029] border border-[#38483D] text-[#D5CEBF]",
-      subtleText: "text-[#9CA39B]",
-      ruleLine: "border-[#2B3830]",
-      qrBorder: "border-[#38483D]",
-      discountHighlight: "text-[#FFFFFF]",
+      cardBg: "bg-[#18231C]",
+      border: "border-2 border-[#A39171]/70",
+      innerHairline: "border border-[#A39171]/35",
+      stubBg: "bg-[#131C16]",
+      notchColor: "bg-[#E7E3DC]",
+      brandTitle: "text-[#FFFFFF]",
+      brandSub: "text-[#D8C7A5]",
+      privilegeBadge: "bg-[#253228] text-[#D8C7A5] border border-[#A39171]/60",
+      scopeLabel: "text-[#D8C7A5]",
+      titleText: "text-[#FFFFFF]",
+      tierLabel: "text-[#D8C7A5]",
+      pillTier: "bg-[#212C24] border border-[#485346] text-[#E2E8F0]",
+      pillTierValue: "text-[#FDE68A]",
+      maxDiscountText: "text-[#94A3B8]",
+      discountBig: "text-[#FFFFFF]",
+      discountSub: "text-[#CBD5E1]",
+      metaBorder: "border-[#2E3C32]",
+      metaIcon: "text-[#D8C7A5]",
+      metaText: "text-[#F1F5F9]",
+      metaSubText: "text-[#94A3B8]",
+      stubHeader: "text-[#D8C7A5]",
+      stubSub: "text-[#94A3B8]",
+      qrBorder: "border-2 border-[#A39171]/70 shadow-xs",
+      codeLabel: "text-[#D8C7A5]",
+      codeValue: "text-[#FFFFFF]",
+      copyBtn: "bg-[#233027] text-[#E2E8F0] hover:bg-[#2F3F34] border border-[#485346]",
     },
   }[theme];
 
@@ -629,10 +667,10 @@ function VoucherCard({
     <div
       className={`relative rounded-2xl overflow-hidden shadow-xl flex flex-row ${styles.cardBg} ${styles.border} ${
         size === "compact"
-          ? "min-h-[190px]"
+          ? "min-h-[200px]"
           : size === "medium"
-          ? "min-h-[220px]"
-          : "min-h-[250px]"
+          ? "min-h-[230px]"
+          : "min-h-[260px]"
       }`}
     >
       {/* ============================================================== */}
@@ -646,8 +684,8 @@ function VoucherCard({
 
         {/* Brand Header */}
         <div className="flex items-center justify-between gap-2 z-10">
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-md bg-stone-900/10 dark:bg-white/10 p-0.5 flex items-center justify-center shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-md bg-stone-900/10 p-0.5 flex items-center justify-center shrink-0">
               <img
                 src="/logo.terra.home.png"
                 alt="Terra Home"
@@ -660,17 +698,21 @@ function VoucherCard({
               />
             </div>
             <div>
-              <div className="font-cinzel text-[11px] sm:text-xs font-bold tracking-[0.18em] uppercase leading-none">
+              <div
+                className={`font-cinzel text-xs sm:text-sm font-black tracking-[0.18em] uppercase leading-none ${styles.brandTitle}`}
+              >
                 TERRA HOME & ZENSLAB
               </div>
-              <div className="font-cinzel text-[8px] sm:text-[9px] tracking-[0.15em] text-[#9E7D47] uppercase mt-0.5">
+              <div
+                className={`font-cinzel text-[8px] sm:text-[9px] tracking-[0.16em] uppercase font-bold mt-0.5 ${styles.brandSub}`}
+              >
                 ARTISANAL LIVING & CRAFT
               </div>
             </div>
           </div>
 
           <span
-            className={`font-cinzel text-[9px] sm:text-[10px] tracking-widest font-bold px-2 py-0.5 rounded-sm uppercase shrink-0 ${styles.goldBadge}`}
+            className={`font-cinzel text-[9px] sm:text-[10px] tracking-widest font-black px-2 py-0.5 rounded-sm uppercase shrink-0 ${styles.privilegeBadge}`}
           >
             PRIVILEGE VOUCHER
           </span>
@@ -678,17 +720,19 @@ function VoucherCard({
 
         {/* Center Offer / Discount Body */}
         <div className="py-2.5 sm:py-3 z-10">
-          <div className="font-prompt text-[10px] sm:text-[11px] tracking-wider uppercase font-semibold text-[#9E7D47] truncate">
+          <div
+            className={`font-prompt text-[10px] sm:text-[11px] tracking-wider uppercase font-bold truncate ${styles.scopeLabel}`}
+          >
             {voucher.collection_name || "สิทธิพิเศษสำหรับสินค้าทั้งร้าน (STOREWIDE PRIVILEGE)"}
           </div>
 
-          {/* Title */}
+          {/* Title - Deep contrast, perfectly visible! */}
           <h3
-            className={`font-prompt font-semibold tracking-tight text-stone-900 dark:text-white leading-snug mt-0.5 ${
+            className={`font-prompt font-extrabold tracking-tight leading-snug mt-1 ${
               size === "compact"
-                ? "text-xs sm:text-sm line-clamp-1"
-                : "text-sm sm:text-base line-clamp-1"
-            } ${styles.discountHighlight}`}
+                ? "text-sm sm:text-base line-clamp-1"
+                : "text-base sm:text-lg line-clamp-1"
+            } ${styles.titleText}`}
           >
             {voucher.title}
           </h3>
@@ -696,15 +740,15 @@ function VoucherCard({
           {/* Discount Presentation */}
           {isTiered ? (
             <div className="mt-2 space-y-1">
-              <div className="font-prompt text-[11px] font-medium flex items-center gap-1.5 flex-wrap">
-                <span className="text-xs font-bold text-[#9E7D47]">ส่วนลดขั้นบันได:</span>
+              <div className="font-prompt text-[11px] font-semibold flex items-center gap-1.5 flex-wrap">
+                <span className={`text-xs font-bold ${styles.tierLabel}`}>ส่วนลดขั้นบันได:</span>
                 {voucher.tiers?.map((t, idx) => (
                   <span
                     key={idx}
-                    className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-prompt font-medium ${styles.pillTier}`}
+                    className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-prompt font-semibold ${styles.pillTier}`}
                   >
                     ครบ ฿{Number(t.min_spend).toLocaleString()}:{" "}
-                    <b className="ml-1 text-stone-900 dark:text-white font-bold">
+                    <b className={`ml-1 font-bold ${styles.pillTierValue}`}>
                       {t.discount_type === "percentage"
                         ? `${t.discount_value}%`
                         : `฿${Number(t.discount_value).toLocaleString()}`}
@@ -713,7 +757,7 @@ function VoucherCard({
                 ))}
               </div>
               {voucher.max_discount_amount && (
-                <span className="font-prompt text-[9px] text-[#A8A29E] block">
+                <span className={`font-prompt text-[9px] font-medium block ${styles.maxDiscountText}`}>
                   (จำกัดส่วนลดสูงสุด ฿{Number(voucher.max_discount_amount).toLocaleString()})
                 </span>
               )}
@@ -721,13 +765,13 @@ function VoucherCard({
           ) : (
             <div className="mt-1.5 flex items-baseline gap-2">
               <span
-                className={`font-cinzel text-2xl sm:text-3xl font-extrabold tracking-tight ${styles.discountHighlight}`}
+                className={`font-cinzel text-2xl sm:text-3xl font-black tracking-tight ${styles.discountBig}`}
               >
                 {isPercent
                   ? `${voucher.discount_value}% OFF`
                   : `฿${Number(voucher.discount_value).toLocaleString()} OFF`}
               </span>
-              <span className="font-prompt text-xs font-normal text-stone-500">
+              <span className={`font-prompt text-xs font-medium ${styles.discountSub}`}>
                 {voucher.min_spend
                   ? `(เมื่อช้อปครบ ฿${Number(voucher.min_spend).toLocaleString()})`
                   : "(ไม่มีขั้นต่ำ)"}
@@ -737,23 +781,25 @@ function VoucherCard({
         </div>
 
         {/* Footer Meta: Attribution & Validity */}
-        <div className="pt-2 border-t border-dashed z-10 flex flex-wrap items-center justify-between gap-1 text-[10px] font-prompt border-stone-300 dark:border-stone-800">
+        <div
+          className={`pt-2 border-t border-dashed z-10 flex flex-wrap items-center justify-between gap-1 text-[10px] font-prompt ${styles.metaBorder}`}
+        >
           <div className="flex items-center gap-2 flex-wrap">
             {voucher.attribution?.lead_sales && (
-              <span className="flex items-center gap-1 font-medium">
-                <User className="w-2.5 h-2.5 text-[#9E7D47]" />
+              <span className={`flex items-center gap-1 font-semibold ${styles.metaText}`}>
+                <User className={`w-2.5 h-2.5 ${styles.metaIcon}`} />
                 <span>เซลส์: {voucher.attribution.lead_sales}</span>
               </span>
             )}
             {voucher.attribution?.partner_company && (
-              <span className="flex items-center gap-1 font-medium text-stone-500">
+              <span className={`flex items-center gap-1 font-medium ${styles.metaSubText}`}>
                 <span>• บริษัท: {voucher.attribution.partner_company}</span>
               </span>
             )}
           </div>
 
-          <div className="flex items-center gap-1 text-[9px] text-stone-500">
-            <Calendar className="w-2.5 h-2.5 text-[#9E7D47]" />
+          <div className={`flex items-center gap-1 text-[9px] font-medium ${styles.metaSubText}`}>
+            <Calendar className={`w-2.5 h-2.5 ${styles.metaIcon}`} />
             <span>หมดเขต: {dateRange}</span>
           </div>
         </div>
@@ -768,7 +814,7 @@ function VoucherCard({
         <div
           className={`w-4 h-4 rounded-full -mt-2 -ml-0.5 border border-stone-300 ${styles.notchColor} print:bg-white`}
         />
-        <div className={`h-full border-r-2 border-dashed border-stone-300/80 my-1`} />
+        <div className="h-full border-r-2 border-dashed border-stone-300/80 my-1" />
         <div
           className={`w-4 h-4 rounded-full -mb-2 -ml-0.5 border border-stone-300 ${styles.notchColor} print:bg-white`}
         />
@@ -778,14 +824,16 @@ function VoucherCard({
       {/* RIGHT SECTION: STUB / QR CODE & COUPON CODE                    */}
       {/* ============================================================== */}
       <div
-        className={`w-36 sm:w-44 p-3 sm:p-4 flex flex-col items-center justify-between text-center relative shrink-0 ${styles.stubBg}`}
+        className={`w-40 sm:w-48 p-3 sm:p-4 flex flex-col items-center justify-between text-center relative shrink-0 ${styles.stubBg}`}
       >
         {/* Top Header */}
         <div className="w-full">
-          <div className="font-cinzel text-[8px] sm:text-[9px] tracking-[0.2em] uppercase font-bold text-[#9E7D47]">
+          <div
+            className={`font-cinzel text-[9px] sm:text-[10px] tracking-[0.2em] uppercase font-black ${styles.stubHeader}`}
+          >
             SCAN / REDEEM
           </div>
-          <div className="font-prompt text-[9px] text-stone-500 leading-tight mt-0.5">
+          <div className={`font-prompt text-[9px] font-medium leading-tight mt-0.5 ${styles.stubSub}`}>
             สแกนเพื่อใช้สิทธิ์
           </div>
         </div>
@@ -794,7 +842,7 @@ function VoucherCard({
         <div className="my-1.5">
           {qrCodeUrl ? (
             <div
-              className={`w-16 h-16 sm:w-20 sm:h-20 bg-white p-1 rounded-lg shadow-sm border ${styles.qrBorder} flex items-center justify-center`}
+              className={`w-20 h-20 sm:w-24 sm:h-24 bg-white p-1 rounded-xl shadow-sm border ${styles.qrBorder} flex items-center justify-center`}
             >
               <img
                 src={qrCodeUrl}
@@ -803,7 +851,7 @@ function VoucherCard({
               />
             </div>
           ) : (
-            <div className="w-16 h-16 sm:w-20 sm:h-20 bg-stone-100 rounded-lg flex items-center justify-center text-[10px] text-stone-400 font-prompt">
+            <div className="w-20 h-20 sm:w-24 sm:h-24 bg-stone-100 rounded-xl flex items-center justify-center text-[10px] text-stone-400 font-prompt">
               กำลังโหลด...
             </div>
           )}
@@ -811,10 +859,14 @@ function VoucherCard({
 
         {/* Voucher Code Box */}
         <div className="w-full">
-          <div className="font-prompt text-[8px] text-stone-500 uppercase tracking-wider font-semibold">
+          <div
+            className={`font-prompt text-[9px] uppercase tracking-wider font-bold ${styles.codeLabel}`}
+          >
             รหัสคูปอง
           </div>
-          <div className="font-spacemono text-xs sm:text-sm font-bold tracking-wider text-stone-900 dark:text-white mt-0.5 select-all truncate">
+          <div
+            className={`font-spacemono text-sm sm:text-base font-bold tracking-wider mt-0.5 select-all truncate ${styles.codeValue}`}
+          >
             {code}
           </div>
 
@@ -822,16 +874,16 @@ function VoucherCard({
           <button
             type="button"
             onClick={() => onCopy(code)}
-            className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded bg-stone-200/60 dark:bg-white/10 hover:bg-stone-200 text-[9px] font-prompt font-semibold text-stone-700 dark:text-stone-300 transition active:scale-95 print:hidden cursor-pointer"
+            className={`mt-1.5 inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-prompt font-bold transition active:scale-95 print:hidden cursor-pointer ${styles.copyBtn}`}
           >
             {copiedCode === code ? (
               <>
-                <Check className="w-2.5 h-2.5 text-emerald-600" />
+                <Check className="w-3 h-3 text-emerald-600" />
                 <span className="text-emerald-700 font-bold">คัดลอกแล้ว</span>
               </>
             ) : (
               <>
-                <Copy className="w-2.5 h-2.5" />
+                <Copy className="w-3 h-3" />
                 <span>คัดลอกรหัส</span>
               </>
             )}
