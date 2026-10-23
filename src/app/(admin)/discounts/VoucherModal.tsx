@@ -195,13 +195,14 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
     };
   }, [isOpen, vouchers]);
 
-  if (!isOpen || vouchers.length === 0) return null;
-
-  const currentVoucher = vouchers[currentIndex] || vouchers[0];
   const duoPairs = useMemo(
     () => buildVoucherPairs(vouchers, autoFillSheet),
     [vouchers, autoFillSheet]
   );
+
+  if (!isOpen || vouchers.length === 0) return null;
+
+  const currentVoucher = vouchers[currentIndex] || vouchers[0];
 
   const copyCode = (code: string) => {
     navigator.clipboard?.writeText(code);
