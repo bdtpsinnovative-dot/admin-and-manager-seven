@@ -65,7 +65,7 @@ export class MobilePosDispatchController {
             price_at_sale,
             fulfill_branch_id,
             products!order_items_product_fk (
-              id, name, sku, image_url, price, specs, width_cm, length_cm, thickness_cm,
+              id, name, sku, category_id, image_url, price, specs, width_cm, length_cm, thickness_cm,
               collection_groups ( product_sup ),
               stock ( branch_id, qty )
             ),
@@ -100,7 +100,7 @@ export class MobilePosDispatchController {
             price_at_sale,
             fulfill_branch_id,
             products!order_items_product_fk (
-              id, name, sku, image_url, price, specs, width_cm, length_cm, thickness_cm,
+              id, name, sku, category_id, image_url, price, specs, width_cm, length_cm, thickness_cm,
               collection_groups ( product_sup ),
               stock ( branch_id, qty )
             ),
@@ -136,7 +136,7 @@ export class MobilePosDispatchController {
             price_at_sale,
             fulfill_branch_id,
             products!order_items_product_fk (
-              id, name, sku, image_url, price, specs, width_cm, length_cm, thickness_cm,
+              id, name, sku, category_id, image_url, price, specs, width_cm, length_cm, thickness_cm,
               collection_groups ( product_sup ),
               stock ( branch_id, qty )
             ),
@@ -172,7 +172,7 @@ export class MobilePosDispatchController {
             price_at_sale,
             fulfill_branch_id,
             products!order_items_product_fk (
-              id, name, sku, image_url, price, specs, width_cm, length_cm, thickness_cm,
+              id, name, sku, category_id, image_url, price, specs, width_cm, length_cm, thickness_cm,
               collection_groups ( product_sup ),
               stock ( branch_id, qty )
             ),
@@ -214,6 +214,30 @@ export class MobilePosDispatchController {
               const h = product.thickness_cm ?? product.specs?.thickness_cm
               const sizeStr = w || d || h ? `W${w || "-"} x D${d || "-"} x H${h || "-"} cm` : null
 
+              const skuUpper = (product.sku || "").toUpperCase()
+              const nameLower = (product.name || "").toLowerCase()
+              const catUpper = (product.category_id || "").toUpperCase()
+              const matLower = (material || "").toLowerCase()
+              const isWoodSlab =
+                catUpper === "WOODSLAB" ||
+                catUpper === "SLABS" ||
+                catUpper === "SLAB" ||
+                skuUpper.startsWith("ZLB-") ||
+                skuUpper.startsWith("WOOD-") ||
+                skuUpper.startsWith("LEG-") ||
+                skuUpper.startsWith("SLB-") ||
+                skuUpper.startsWith("SLAB-") ||
+                (rawSub && (rawSub.toLowerCase().includes("slab") || rawSub.toLowerCase().includes("แผ่นไม้"))) ||
+                nameLower.includes("slab") ||
+                nameLower.includes("แผ่นไม้") ||
+                nameLower.includes("สแลป") ||
+                nameLower.includes("stand") ||
+                nameLower.includes("ขาโต๊ะ") ||
+                nameLower.includes("ขาตั้ง") ||
+                matLower.includes("wood") ||
+                matLower.includes("ไม้") ||
+                Boolean(product.specs?.wood_type)
+
               return {
                 id: item.id,
                 qty: Number(item.qty) || 0,
@@ -227,11 +251,13 @@ export class MobilePosDispatchController {
                   id: product.id,
                   name: product.name || "",
                   sku: product.sku || "",
+                  category_id: product.category_id || null,
                   image_url: product.image_url || null,
                   price: Number(product.price) || 0,
                   product_sup: rawSub,
                   material: material,
                   size_str: sizeStr,
+                  is_wood_slab: isWoodSlab,
                 },
               }
             })
@@ -322,7 +348,7 @@ export class MobilePosDispatchController {
             qty,
             fulfill_branch_id,
             products (
-              id, name, sku
+              id, name, sku, category_id, specs
             )
           )
         `)
@@ -358,6 +384,58 @@ export class MobilePosDispatchController {
           .like("note", `%${order.order_code}%`)
       }
 
+      // 🔍 ตรวจสอบสต็อก: บล็อกเฉพาะไม้แผ่น (Wood Slab) ที่สต็อกไม่พอ
+      // ส่วนสินค้าทั่วไป/เฟอร์นิเจอร์/พร็อพ อนุญาตให้เปิดพรีออเดอร์ (สต็อกติดลบ) ได้
+      let hasPreOrder = false
+      const blockedWoodSlabs: string[] = []
+
+      for (const item of (order.order_items as any[]) || []) {
+        const productId = item.products?.id
+        const branchId = item.fulfill_branch_id
+        const qty = Number(item.qty) || 0
+
+        if (!productId || qty <= 0) continue
+
+        const prod = item.products || {}
+        const skuUpper = (prod.sku || "").toUpperCase()
+        const nameLower = (prod.name || "").toLowerCase()
+        const isWoodSlab =
+          prod.category_id === "woodslab" ||
+          skuUpper.startsWith("ZLB-") ||
+          skuUpper.startsWith("WOOD-") ||
+          nameLower.includes("slab") ||
+          nameLower.includes("แผ่นไม้") ||
+          nameLower.includes("สแลป") ||
+          Boolean(prod.specs?.wood_type)
+
+        const { data: currentStock } = await supabaseAdmin
+          .from("stock")
+          .select("id, qty")
+          .eq("product_id", productId)
+          .eq("branch_id", branchId)
+          .maybeSingle()
+
+        const currentQty = Number(currentStock?.qty) || 0
+
+        if (currentQty < qty) {
+          if (isWoodSlab) {
+            blockedWoodSlabs.push(`• ${prod.name || 'ไม้แผ่น'} (SKU: ${prod.sku || '-'})`)
+          } else {
+            hasPreOrder = true
+          }
+        }
+      }
+
+      if (blockedWoodSlabs.length > 0) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: `ไม่สามารถอนุมัติได้! สินค้าไม้แผ่นเป็นสินค้าชิ้นเดียวและสต็อกไม่เพียงพอ (ขายหรือถูกตัดหน้าไปแล้ว):\n${blockedWoodSlabs.join('\n')}`,
+          },
+          { status: 400 }
+        )
+      }
+
       // ตัดสต็อกสินค้าในคลัง
       for (const item of (order.order_items as any[]) || []) {
         const productId = item.products?.id
@@ -371,30 +449,48 @@ export class MobilePosDispatchController {
           .select("id, qty")
           .eq("product_id", productId)
           .eq("branch_id", branchId)
-          .single()
+          .maybeSingle()
 
-        if (!currentStock || currentStock.qty < qty) {
-          return NextResponse.json(
-            { success: false, message: `สต็อกสินค้า "${item.products?.name || productId}" ไม่เพียงพอในสาขานี้` },
-            { status: 400 }
-          )
+        const currentQty = Number(currentStock?.qty) || 0
+        const isItemPreOrder = currentQty < qty
+
+        if (currentStock) {
+          await supabaseAdmin
+            .from("stock")
+            .update({ qty: currentStock.qty - qty, updated_at: new Date().toISOString() })
+            .eq("id", currentStock.id)
+        } else {
+          await supabaseAdmin
+            .from("stock")
+            .insert({
+              product_id: productId,
+              branch_id: branchId,
+              qty: -qty,
+              updated_at: new Date().toISOString(),
+            })
         }
-
-        await supabaseAdmin
-          .from("stock")
-          .update({ qty: currentStock.qty - qty, updated_at: new Date().toISOString() })
-          .eq("id", currentStock.id)
 
         await supabaseAdmin.from("stock_movements").insert({
           product_id_bigint: productId,
           branch_id: branchId,
           type: "SALE",
           qty: -Math.abs(qty),
-          note: `ชำระเงินและอนุมัติใบขาย (บิล: ${finalOrderCode}) โดย Mobile POS`,
+          note: isItemPreOrder
+            ? `ชำระเงินใบขาย (พรีออเดอร์/สต็อกติดลบ บิล: ${finalOrderCode}) โดย Mobile POS`
+            : `ชำระเงินและอนุมัติใบขาย (บิล: ${finalOrderCode}) โดย Mobile POS`,
           ref_type: "ORDER",
           ref_id_bigint: orderId,
           created_by: user.userId,
         })
+      }
+
+      if (hasPreOrder) {
+        const updatedSnap = {
+          ...((order.discount_snapshot as any) || {}),
+          is_preorder: true,
+          has_preorder: true,
+        }
+        await supabaseAdmin.from("orders").update({ discount_snapshot: updatedSnap }).eq("id", orderId)
       }
 
       const isTakeaway = Boolean(order.shipping_address?.startsWith("[รับหน้าร้าน]"))
