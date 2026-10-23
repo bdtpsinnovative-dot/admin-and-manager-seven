@@ -433,276 +433,232 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
       />
 
       <div
-        className="bg-white rounded-3xl border border-stone-200 w-full max-w-5xl max-h-[96vh] flex flex-col shadow-2xl overflow-hidden print:border-none print:shadow-none print:max-h-none print:w-full print:max-w-full print:overflow-visible print:p-0"
+        className="bg-white rounded-2xl border border-stone-200/90 w-full max-w-5xl max-h-[92vh] flex flex-col shadow-xl overflow-hidden print:border-none print:shadow-none print:max-h-none print:w-full print:max-w-full print:overflow-visible print:p-0"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Top Header */}
-        <div className="px-5 py-4 border-b border-stone-200 flex flex-wrap items-center justify-between gap-3 bg-stone-900 text-stone-100 shrink-0 print:hidden">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
-              <CreditCard className="w-5 h-5" />
+        {/* Header - Minimalist, Human-Designed Luxury SaaS */}
+        <div className="px-6 py-3.5 border-b border-stone-200 flex items-center justify-between bg-white shrink-0 print:hidden font-prompt">
+          <div>
+            <div className="flex items-center gap-2.5">
+              <h2 className="text-base font-bold text-stone-900 tracking-tight">
+                พิมพ์นามบัตรและคูปองส่วนลด
+              </h2>
+              <span className="px-2 py-0.5 rounded-md bg-stone-100 text-stone-600 text-xs font-mono font-medium">
+                {vouchers.length} ใบ
+              </span>
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-base font-bold font-prompt tracking-wide text-white">
-                  ระบบจัดทำนามบัตร & คูปองส่วนลด (Voucher Studio)
-                </h2>
-                <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-black font-mono">
-                  {vouchers.length} ใบ
-                </span>
-              </div>
-              <p className="text-xs text-stone-400 font-prompt">
-                ขนาดนามบัตรมาตรฐาน (9×5.4 ซม.) พกพาสะดวก ใส่กระเป๋าสตางค์ได้พอดี เซฟส่ง LINE หรือพิมพ์ A4 ตัดแจกหน้าร้าน
-              </p>
-            </div>
+            <p className="text-xs text-stone-500 mt-0.5">
+              ขนาดนามบัตรมาตรฐาน (9 × 5.4 ซม.) พิมพ์ลง A4 ได้ 10 ใบต่อแผ่น หรือส่งออกรูปสำหรับแจกลูกค้า
+            </p>
           </div>
 
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-full bg-stone-800 hover:bg-stone-700 flex items-center justify-center text-stone-300 hover:text-white transition cursor-pointer"
+            className="p-1.5 rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition cursor-pointer"
+            title="ปิดหน้าต่าง"
           >
-            <X className="w-4 h-4" />
+            <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Toolbar: Switch View, Theme, Layout */}
-        <div className="px-5 py-3 bg-stone-50 border-b border-stone-200 flex flex-wrap items-center justify-between gap-3 shrink-0 print:hidden font-prompt">
-          {/* View Mode Toggle */}
-          <div className="flex items-center bg-stone-200/80 p-1 rounded-xl">
-            <button
-              type="button"
-              onClick={() => setViewMode("sheet_a4")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition cursor-pointer ${
-                viewMode === "sheet_a4"
-                  ? "bg-white text-stone-900 shadow-xs font-bold"
-                  : "text-stone-600 hover:text-stone-900 font-medium"
-              }`}
-            >
-              <Layers className="w-3.5 h-3.5 text-stone-800" />
-              <span>กระดาษ A4 (รวมหลายใบ)</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode("single")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition cursor-pointer ${
-                viewMode === "single"
-                  ? "bg-white text-stone-900 shadow-xs font-bold"
-                  : "text-stone-600 hover:text-stone-900 font-medium"
-              }`}
-            >
-              <Smartphone className="w-3.5 h-3.5 text-stone-800" />
-              <span>ดูทีละใบ (ส่งมือถือ / LINE)</span>
-            </button>
-          </div>
+        {/* Toolbar - Sleek Unified Segmented Controls (No Emojis / No Rainbow Clutter) */}
+        <div className="px-6 py-2.5 bg-stone-50/90 border-b border-stone-200/80 flex flex-wrap items-center justify-between gap-3 shrink-0 print:hidden font-prompt text-xs">
+          <div className="flex items-center gap-3 flex-wrap">
+            {/* 1. View Mode Segmented Control */}
+            <div className="inline-flex bg-stone-200/60 p-0.5 rounded-lg">
+              <button
+                type="button"
+                onClick={() => setViewMode("sheet_a4")}
+                className={`px-3 py-1.5 rounded-md transition cursor-pointer flex items-center gap-1.5 ${
+                  viewMode === "sheet_a4"
+                    ? "bg-white text-stone-900 font-semibold shadow-2xs"
+                    : "text-stone-600 hover:text-stone-900 font-medium"
+                }`}
+              >
+                <Layers className="w-3.5 h-3.5 text-stone-600" />
+                <span>แผ่นกระดาษ A4</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("single")}
+                className={`px-3 py-1.5 rounded-md transition cursor-pointer flex items-center gap-1.5 ${
+                  viewMode === "single"
+                    ? "bg-white text-stone-900 font-semibold shadow-2xs"
+                    : "text-stone-600 hover:text-stone-900 font-medium"
+                }`}
+              >
+                <Smartphone className="w-3.5 h-3.5 text-stone-600" />
+                <span>รูปนามบัตรเดี่ยว</span>
+              </button>
+            </div>
 
-          {/* Theme Selector */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-stone-600 hidden sm:inline flex items-center gap-1">
-              <Palette className="w-3.5 h-3.5" /> โทนสี:
-            </span>
+            <div className="h-4 w-px bg-stone-300 hidden sm:block" />
+
+            {/* 2. Brand Selector */}
             <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => setTheme("ivory")}
-                className={`px-3 py-1.5 rounded-lg text-xs flex items-center gap-1.5 transition border cursor-pointer ${
-                  theme === "ivory"
-                    ? "bg-[#FAF7F0] text-stone-950 border-amber-700/60 shadow-xs font-bold ring-1 ring-amber-700/30"
-                    : "bg-white text-stone-600 border-stone-200 hover:bg-stone-100 font-medium"
-                }`}
-              >
-                <span className="w-2.5 h-2.5 rounded-full bg-[#E5D7C0] border border-[#B39977]" />
-                <span>ครีมงาช้าง (Ivory Sand)</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setTheme("obsidian")}
-                className={`px-3 py-1.5 rounded-lg text-xs flex items-center gap-1.5 transition border cursor-pointer ${
-                  theme === "obsidian"
-                    ? "bg-stone-950 text-amber-300 border-stone-900 shadow-xs font-bold ring-1 ring-amber-500/40"
-                    : "bg-white text-stone-600 border-stone-200 hover:bg-stone-100 font-medium"
-                }`}
-              >
-                <span className="w-2.5 h-2.5 rounded-full bg-stone-950 border border-amber-400" />
-                <span>ดำชาร์โคล (Obsidian)</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setTheme("terra")}
-                className={`px-3 py-1.5 rounded-lg text-xs flex items-center gap-1.5 transition border cursor-pointer ${
-                  theme === "terra"
-                    ? "bg-[#1B2920] text-[#F3EEDD] border-[#131D16] shadow-xs font-bold ring-1 ring-[#A39171]"
-                    : "bg-white text-stone-600 border-stone-200 hover:bg-stone-100 font-medium"
-                }`}
-              >
-                <span className="w-2.5 h-2.5 rounded-full bg-[#27382E] border border-[#A39171]" />
-                <span>เขียวโอลีฟ (Wabi-Sabi)</span>
-              </button>
+              <span className="text-stone-500 font-medium hidden md:inline">แบรนด์:</span>
+              <div className="inline-flex bg-stone-200/60 p-0.5 rounded-lg">
+                <button
+                  type="button"
+                  onClick={() => setBrandChoice("dual")}
+                  className={`px-2.5 py-1.5 rounded-md transition cursor-pointer ${
+                    brandChoice === "dual"
+                      ? "bg-white text-stone-900 font-semibold shadow-2xs"
+                      : "text-stone-600 hover:text-stone-900 font-medium"
+                  }`}
+                >
+                  Terra & Zen
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBrandChoice("zenslab")}
+                  className={`px-2.5 py-1.5 rounded-md transition cursor-pointer ${
+                    brandChoice === "zenslab"
+                      ? "bg-white text-stone-900 font-semibold shadow-2xs"
+                      : "text-stone-600 hover:text-stone-900 font-medium"
+                  }`}
+                >
+                  ZenSlab
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBrandChoice("terra")}
+                  className={`px-2.5 py-1.5 rounded-md transition cursor-pointer ${
+                    brandChoice === "terra"
+                      ? "bg-white text-stone-900 font-semibold shadow-2xs"
+                      : "text-stone-600 hover:text-stone-900 font-medium"
+                  }`}
+                >
+                  Terra Home
+                </button>
+              </div>
+            </div>
+
+            <div className="h-4 w-px bg-stone-300 hidden sm:block" />
+
+            {/* 3. Paper Tone Selector */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-stone-500 font-medium hidden md:inline">โทนสี:</span>
+              <div className="inline-flex bg-stone-200/60 p-0.5 rounded-lg">
+                <button
+                  type="button"
+                  onClick={() => setTheme("ivory")}
+                  className={`px-2.5 py-1.5 rounded-md transition cursor-pointer flex items-center gap-1.5 ${
+                    theme === "ivory"
+                      ? "bg-white text-stone-900 font-semibold shadow-2xs"
+                      : "text-stone-600 hover:text-stone-900 font-medium"
+                  }`}
+                >
+                  <span className="w-2 h-2 rounded-full bg-[#E5D7C0] border border-[#B39977]" />
+                  <span>งาช้าง</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTheme("obsidian")}
+                  className={`px-2.5 py-1.5 rounded-md transition cursor-pointer flex items-center gap-1.5 ${
+                    theme === "obsidian"
+                      ? "bg-white text-stone-900 font-semibold shadow-2xs"
+                      : "text-stone-600 hover:text-stone-900 font-medium"
+                  }`}
+                >
+                  <span className="w-2 h-2 rounded-full bg-stone-900" />
+                  <span>ชาร์โคล</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTheme("terra")}
+                  className={`px-2.5 py-1.5 rounded-md transition cursor-pointer flex items-center gap-1.5 ${
+                    theme === "terra"
+                      ? "bg-white text-stone-900 font-semibold shadow-2xs"
+                      : "text-stone-600 hover:text-stone-900 font-medium"
+                  }`}
+                >
+                  <span className="w-2 h-2 rounded-full bg-[#27382E]" />
+                  <span>โอลีฟ</span>
+                </button>
+              </div>
             </div>
           </div>
 
-          {/* Brand Logo Selector */}
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs font-semibold text-stone-600 hidden sm:inline flex items-center gap-1">
-              🏢 โลโก้:
-            </span>
-            <div className="flex items-center gap-1 bg-stone-200/80 p-1 rounded-xl">
-              <button
-                type="button"
-                onClick={() => setBrandChoice("dual")}
-                className={`px-2.5 py-1.5 rounded-lg text-xs transition cursor-pointer flex items-center gap-1 ${
-                  brandChoice === "dual"
-                    ? "bg-white text-stone-900 shadow-xs font-bold"
-                    : "text-stone-600 hover:text-stone-900 font-medium"
-                }`}
-                title="แสดงโลโก้ของแท้ทั้ง 2 แบรนด์ (Terra Home & ZenSlab)"
-              >
-                <span>✨ Terra & Zen (คู่)</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setBrandChoice("zenslab")}
-                className={`px-2.5 py-1.5 rounded-lg text-xs transition cursor-pointer flex items-center gap-1 ${
-                  brandChoice === "zenslab"
-                    ? "bg-white text-stone-900 shadow-xs font-bold"
-                    : "text-stone-600 hover:text-stone-900 font-medium"
-                }`}
-                title="แสดงโลโก้ของแท้เฉพาะ ZenSlab"
-              >
-                <span>🪵 ZenSlab</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setBrandChoice("terra")}
-                className={`px-2.5 py-1.5 rounded-lg text-xs transition cursor-pointer flex items-center gap-1 ${
-                  brandChoice === "terra"
-                    ? "bg-white text-stone-900 shadow-xs font-bold"
-                    : "text-stone-600 hover:text-stone-900 font-medium"
-                }`}
-                title="แสดงโลโก้ของแท้เฉพาะ Terra Home Studio"
-              >
-                <span>🏡 Terra Home</span>
-              </button>
-            </div>
+          {/* Right Controls: A4 Layout or Single Navigation */}
+          <div className="flex items-center gap-2">
+            {viewMode === "sheet_a4" && (
+              <div className="flex items-center gap-1.5">
+                <span className="text-stone-500 font-medium hidden lg:inline">รูปแบบ:</span>
+                <div className="inline-flex bg-stone-200/60 p-0.5 rounded-lg">
+                  <button
+                    type="button"
+                    onClick={() => setSheetLayout("10_business_cards")}
+                    className={`px-2.5 py-1.5 rounded-md transition cursor-pointer ${
+                      sheetLayout === "10_business_cards"
+                        ? "bg-white text-stone-900 font-semibold shadow-2xs"
+                        : "text-stone-600 hover:text-stone-900 font-medium"
+                    }`}
+                  >
+                    10 ใบนามบัตร
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSheetLayout("8_business_cards")}
+                    className={`px-2.5 py-1.5 rounded-md transition cursor-pointer ${
+                      sheetLayout === "8_business_cards"
+                        ? "bg-white text-stone-900 font-semibold shadow-2xs"
+                        : "text-stone-600 hover:text-stone-900 font-medium"
+                    }`}
+                  >
+                    8 ใบ
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSheetLayout("4_grid")}
+                    className={`px-2.5 py-1.5 rounded-md transition cursor-pointer ${
+                      sheetLayout === "4_grid"
+                        ? "bg-white text-stone-900 font-semibold shadow-2xs"
+                        : "text-stone-600 hover:text-stone-900 font-medium"
+                    }`}
+                  >
+                    4 ใบ
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {viewMode === "single" && vouchers.length > 1 && (
+              <div className="flex items-center gap-1.5 bg-stone-200/60 p-0.5 rounded-lg">
+                <button
+                  type="button"
+                  onClick={() => setCurrentIndex((prev) => Math.max(0, prev - 1))}
+                  disabled={currentIndex === 0}
+                  className="w-6 h-6 rounded flex items-center justify-center text-stone-600 disabled:opacity-30 hover:bg-white transition cursor-pointer"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <span className="text-xs font-mono font-medium text-stone-700 px-1">
+                  {currentIndex + 1} / {vouchers.length}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setCurrentIndex((prev) => Math.min(vouchers.length - 1, prev + 1))}
+                  disabled={currentIndex === vouchers.length - 1}
+                  className="w-6 h-6 rounded flex items-center justify-center text-stone-600 disabled:opacity-30 hover:bg-white transition cursor-pointer"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            )}
           </div>
-
-          {/* Sheet Layout Switcher (if sheet_a4) */}
-          {viewMode === "sheet_a4" && (
-            <div className="flex items-center gap-1.5 bg-stone-200/80 p-1 rounded-xl">
-              <button
-                type="button"
-                onClick={() => setSheetLayout("10_business_cards")}
-                className={`px-3 py-1.5 rounded-lg text-xs transition cursor-pointer flex items-center gap-1.5 ${
-                  sheetLayout === "10_business_cards"
-                    ? "bg-white text-stone-900 shadow-xs font-bold"
-                    : "text-stone-600 hover:text-stone-900 font-medium"
-                }`}
-              >
-                <CreditCard className="w-3.5 h-3.5 text-amber-600" />
-                <span>10 ใบนามบัตร / แผ่น (9×5.4 ซม. แนะนำ ⭐)</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setSheetLayout("8_business_cards")}
-                className={`px-2.5 py-1.5 rounded-lg text-xs transition cursor-pointer ${
-                  sheetLayout === "8_business_cards"
-                    ? "bg-white text-stone-900 shadow-xs font-bold"
-                    : "text-stone-600 hover:text-stone-900 font-medium"
-                }`}
-              >
-                8 ใบนามบัตรใหญ่ (9×6.8 ซม.)
-              </button>
-              <button
-                type="button"
-                onClick={() => setSheetLayout("3_stacked")}
-                className={`px-2.5 py-1.5 rounded-lg text-xs transition cursor-pointer ${
-                  sheetLayout === "3_stacked"
-                    ? "bg-white text-stone-900 shadow-xs font-bold"
-                    : "text-stone-600 hover:text-stone-900 font-medium"
-                }`}
-              >
-                3 ใบยาว (แผ่นใหญ่)
-              </button>
-              <button
-                type="button"
-                onClick={() => setSheetLayout("4_grid")}
-                className={`px-2.5 py-1.5 rounded-lg text-xs transition cursor-pointer ${
-                  sheetLayout === "4_grid"
-                    ? "bg-white text-stone-900 shadow-xs font-bold"
-                    : "text-stone-600 hover:text-stone-900 font-medium"
-                }`}
-              >
-                4 ใบ (2×2)
-              </button>
-            </div>
-          )}
-
-          {/* Single Format Switcher (if single) */}
-          {viewMode === "single" && (
-            <div className="flex items-center gap-1.5 bg-stone-200/80 p-1 rounded-xl">
-              <button
-                type="button"
-                onClick={() => setSingleFormat("business_card")}
-                className={`px-3 py-1.5 rounded-lg text-xs transition cursor-pointer flex items-center gap-1 ${
-                  singleFormat === "business_card"
-                    ? "bg-white text-stone-900 shadow-xs font-bold"
-                    : "text-stone-600 hover:text-stone-900 font-medium"
-                }`}
-              >
-                <CreditCard className="w-3 h-3 text-amber-600" />
-                <span>ขนาดนามบัตร (9×5.4 ซม.)</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setSingleFormat("luxury_voucher")}
-                className={`px-2.5 py-1.5 rounded-lg text-xs transition cursor-pointer ${
-                  singleFormat === "luxury_voucher"
-                    ? "bg-white text-stone-900 shadow-xs font-bold"
-                    : "text-stone-600 hover:text-stone-900 font-medium"
-                }`}
-              >
-                ขนาดตั๋วยาวหรูหรา
-              </button>
-            </div>
-          )}
-
-          {/* Pagination for Single View */}
-          {viewMode === "single" && vouchers.length > 1 && (
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setCurrentIndex((prev) => Math.max(0, prev - 1))}
-                disabled={currentIndex === 0}
-                className="w-7 h-7 rounded-lg bg-white border border-stone-200 flex items-center justify-center text-stone-600 disabled:opacity-30 hover:bg-stone-100 transition cursor-pointer"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-              <span className="text-xs font-mono font-bold text-stone-700">
-                {currentIndex + 1} / {vouchers.length}
-              </span>
-              <button
-                type="button"
-                onClick={() => setCurrentIndex((prev) => Math.min(vouchers.length - 1, prev + 1))}
-                disabled={currentIndex === vouchers.length - 1}
-                className="w-7 h-7 rounded-lg bg-white border border-stone-200 flex items-center justify-center text-stone-600 disabled:opacity-30 hover:bg-stone-100 transition cursor-pointer"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
-          )}
         </div>
 
-        {/* Main Preview Area */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-8 bg-[#E7E3DC] flex flex-col items-center justify-start min-h-[440px] print:p-0 print:bg-white print:overflow-visible print:min-h-0 print:block">
+        {/* Main Canvas Preview */}
+        <div className="flex-1 overflow-y-auto p-4 sm:p-8 bg-stone-100/80 flex flex-col items-center justify-start min-h-[440px] print:p-0 print:bg-white print:overflow-visible print:min-h-0 print:block">
           {/* ============================================================== */}
           {/* MODE 1: SINGLE VOUCHER (FOR MOBILE SCREEN / LINE DISTRIBUTION) */}
           {/* ============================================================== */}
           {viewMode === "single" && (
-            <div className="w-full flex flex-col items-center gap-5">
+            <div className="w-full flex flex-col items-center gap-4">
               <div
                 ref={singleVoucherRef}
-                className={`w-full transition-all duration-300 drop-shadow-2xl ${
-                  singleFormat === "business_card" ? "max-w-[560px]" : "max-w-[680px]"
-                }`}
+                className="w-full transition-all duration-300 drop-shadow-lg max-w-[560px]"
               >
                 <VoucherCard
                   voucher={currentVoucher}
@@ -711,14 +667,12 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
                   brandLogo={brandChoice}
                   copiedCode={copiedCode}
                   onCopy={copyCode}
-                  size={singleFormat === "business_card" ? "business_card" : "large"}
+                  size="business_card"
                 />
               </div>
 
-              {/* Mobile Guide */}
-              <div className="text-center text-xs text-stone-700 max-w-md font-prompt bg-white/70 backdrop-blur-xs px-4 py-2 rounded-xl border border-stone-300/60 shadow-xs">
-                💳 <span className="font-bold text-stone-900">ขนาดนามบัตร:</span> กดปุ่ม{" "}
-                <b className="text-stone-950 font-black">"บันทึกรูปเข้ามือถือ (LINE)"</b> เพื่อบันทึกรูปนามบัตรส่วนลด หรือกดแชร์ส่งต่อให้ลูกค้าใน LINE ได้ทันที
+              <div className="text-center text-xs text-stone-500 font-prompt">
+                ขนาดนามบัตรมาตรฐาน (9 × 5.4 ซม.) พอดีกระเป๋าสตางค์
               </div>
             </div>
           )}
@@ -778,66 +732,55 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
           )}
         </div>
 
-        {/* Bottom Action Footer */}
-        <div className="p-4 bg-white border-t border-stone-200 flex flex-wrap items-center justify-between gap-3 shrink-0 print:hidden font-prompt">
-          <div className="text-xs text-stone-600">
+        {/* Bottom Action Footer - Clean, Human-Designed & Practical */}
+        <div className="px-6 py-3.5 bg-white border-t border-stone-200 flex flex-wrap items-center justify-between gap-3 shrink-0 print:hidden font-prompt">
+          <div className="text-xs text-stone-500">
             {viewMode === "single" ? (
               <span>
-                กำลังดูนามบัตรใบที่ <b className="text-stone-900 font-bold">{currentIndex + 1}</b> จากทั้งหมด{" "}
-                <b className="text-stone-900 font-bold">{vouchers.length}</b> ใบ
+                ใบที่ {currentIndex + 1} จาก {vouchers.length} ใบ
               </span>
             ) : (
               <span>
-                กระดาษ A4 (
-                {sheetLayout === "10_business_cards"
-                  ? "ขนาดนามบัตร 10 ใบ/แผ่น (9×5.4 ซม.)"
-                  : sheetLayout === "8_business_cards"
-                  ? "นามบัตรใหญ่ 8 ใบ/แผ่น (9×6.8 ซม.)"
-                  : sheetLayout === "3_stacked"
-                  ? "3 ใบยาว"
-                  : "4 ใบ (2×2)"}
-                ) รวม <b className="text-stone-900 font-bold">{vouchers.length}</b> ใบ
+                กระดาษ A4 ({sheetLayout === "10_business_cards" ? "10 ใบนามบัตร" : sheetLayout === "8_business_cards" ? "8 ใบ" : "4 ใบ"}) รวม {vouchers.length} ใบ
               </span>
             )}
           </div>
 
-          <div className="flex items-center gap-2.5 flex-wrap">
-            {/* Save to Mobile / Download Button */}
+          <div className="flex items-center gap-2">
             <button
               type="button"
               disabled={isExporting}
               onClick={viewMode === "single" ? handleSaveSingleImage : handleSaveSheetImage}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-stone-950 hover:bg-stone-900 text-white font-medium text-xs sm:text-sm shadow-md transition active:scale-95 disabled:opacity-50 cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-stone-300 bg-white hover:bg-stone-50 text-stone-700 font-medium text-xs transition active:scale-95 disabled:opacity-50 cursor-pointer shadow-2xs"
             >
               {isExporting ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin text-amber-400" />
-                  <span>กำลังสร้างรูปภาพ...</span>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-stone-500" />
+                  <span>กำลังส่งออก...</span>
                 </>
               ) : (
                 <>
-                  <Smartphone className="w-4 h-4 text-amber-400" />
-                  <span className="font-bold">บันทึกรูปเข้ามือถือ (LINE)</span>
+                  <Smartphone className="w-3.5 h-3.5 text-stone-500" />
+                  <span>บันทึกรูป (PNG)</span>
                 </>
               )}
             </button>
 
-            {/* Print A4 Paper / Save PDF */}
             <button
               type="button"
               onClick={handlePrint}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-stone-300 bg-white hover:bg-stone-100 text-stone-800 font-bold text-xs sm:text-sm shadow-xs transition active:scale-95 cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-stone-900 hover:bg-stone-800 text-white font-medium text-xs shadow-xs transition active:scale-95 cursor-pointer"
             >
-              <Printer className="w-4 h-4 text-stone-700" />
-              <span>พิมพ์นามบัตรกระดาษ A4 / เซฟ PDF</span>
+              <Printer className="w-3.5 h-3.5 text-stone-200" />
+              <span>พิมพ์ A4 (EPSON / PDF)</span>
             </button>
 
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-600 font-semibold text-xs sm:text-sm transition cursor-pointer"
+              className="px-3 py-2 text-stone-500 hover:text-stone-800 font-medium text-xs transition cursor-pointer"
             >
-              ปิดหน้าต่าง
+              ปิด
             </button>
           </div>
         </div>
