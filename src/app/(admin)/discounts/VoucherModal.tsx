@@ -808,7 +808,7 @@ function VoucherCard({
     <div
       className={`relative rounded-xl overflow-hidden shadow-md flex flex-row ${styles.cardBg} ${styles.border} ${
         size === "business_card"
-          ? "min-h-[148px] max-h-[160px]"
+          ? "min-h-[155px] max-h-[168px]"
           : size === "business_card_tall"
           ? "min-h-[165px] max-h-[185px]"
           : size === "compact"
@@ -1000,39 +1000,39 @@ function VoucherCard({
       <div
         className={`${
           isBusinessCard
-            ? "w-24 sm:w-28 p-2"
+            ? "w-24 sm:w-28 py-2.5 px-2"
             : size === "compact" || size === "medium"
-            ? "w-28 sm:w-32 p-2 sm:p-2.5"
+            ? "w-28 sm:w-32 py-3 px-2 sm:px-2.5"
             : "w-40 sm:w-48 p-3 sm:p-4"
         } flex flex-col items-center justify-between text-center relative shrink-0 ${styles.stubBg}`}
       >
         {/* Top Header */}
-        <div className="w-full">
+        <div className="w-full shrink-0">
           <div
             className={`font-cinzel ${
               isBusinessCard ? "text-[7.5px] sm:text-[8px]" : "text-[9px] sm:text-[10px]"
-            } tracking-[0.18em] uppercase font-black ${styles.stubHeader}`}
+            } tracking-[0.16em] uppercase font-black leading-tight ${styles.stubHeader}`}
           >
             SCAN CODE
           </div>
           <div
             className={`font-prompt ${
-              isBusinessCard ? "text-[7.5px]" : "text-[9px]"
-            } font-medium leading-tight mt-0.5 ${styles.stubSub}`}
+              isBusinessCard ? "text-[7px]" : "text-[8.5px] sm:text-[9px]"
+            } font-medium leading-none mt-0.5 ${styles.stubSub}`}
           >
             สแกนรับสิทธิ์
           </div>
         </div>
 
         {/* QR Code */}
-        <div className="my-0.5">
+        <div className="my-auto flex items-center justify-center shrink-0">
           {qrCodeUrl ? (
             <div
               className={`${
                 isBusinessCard
-                  ? "w-13 h-13 sm:w-15 sm:h-15 p-0.5"
+                  ? "w-14 h-14 p-0.5"
                   : size === "compact" || size === "medium"
-                  ? "w-14 h-14 sm:w-16 sm:h-16 p-1"
+                  ? "w-16 h-16 p-1"
                   : "w-20 h-20 sm:w-24 sm:h-24 p-1"
               } bg-white rounded-lg shadow-xs border ${styles.qrBorder} flex items-center justify-center`}
             >
@@ -1050,46 +1050,35 @@ function VoucherCard({
         </div>
 
         {/* Voucher Code Box */}
-        <div className="w-full">
+        <div
+          onClick={() => onCopy(code)}
+          title="คลิกเพื่อคัดลอกรหัสคูปอง"
+          className="w-full shrink-0 cursor-pointer group select-all"
+        >
           <div
             className={`font-prompt ${
-              isBusinessCard ? "text-[7.5px]" : "text-[9px]"
-            } uppercase tracking-wider font-bold ${styles.codeLabel}`}
+              isBusinessCard ? "text-[7.5px]" : "text-[8.5px]"
+            } uppercase tracking-wider font-bold ${styles.codeLabel} flex items-center justify-center gap-0.5`}
           >
-            รหัสคูปอง
+            <span>รหัสคูปอง</span>
+            <Copy className="w-2 h-2 opacity-60 group-hover:opacity-100 transition print:hidden" />
           </div>
           <div
             className={`font-spacemono ${
               isBusinessCard
-                ? "text-[10px] sm:text-[11px] font-black"
+                ? "text-[10px] sm:text-[11px] font-black leading-tight"
                 : size === "compact" || size === "medium"
                 ? "text-[11px] sm:text-xs font-bold"
                 : "text-sm sm:text-base font-bold"
-            } tracking-wider mt-0.5 select-all truncate ${styles.codeValue}`}
+            } tracking-wider mt-0.5 truncate ${styles.codeValue}`}
           >
             {code}
           </div>
-
-          {/* Copy Button (Hidden on Print) */}
-          <button
-            type="button"
-            onClick={() => onCopy(code)}
-            className={`mt-1 inline-flex items-center gap-0.5 ${
-              isBusinessCard ? "px-1.5 py-0.2 text-[7.5px]" : "px-2.5 py-1 text-[10px]"
-            } rounded-md font-prompt font-bold transition active:scale-95 print:hidden cursor-pointer ${styles.copyBtn}`}
-          >
-            {copiedCode === code ? (
-              <>
-                <Check className="w-2.5 h-2.5 text-emerald-600" />
-                <span className="text-emerald-700 font-bold">คัดลอกแล้ว</span>
-              </>
-            ) : (
-              <>
-                <Copy className="w-2 h-2" />
-                <span>คัดลอก</span>
-              </>
-            )}
-          </button>
+          {copiedCode === code && (
+            <div className="text-[7.5px] font-prompt font-bold text-emerald-600 print:hidden leading-none mt-0.5">
+              ✓ คัดลอกแล้ว
+            </div>
+          )}
         </div>
       </div>
     </div>
