@@ -22,6 +22,7 @@ import {
   Palette,
   CreditCard,
   Sparkles,
+  Image as ImageIcon,
 } from "lucide-react";
 
 export interface VoucherItem {
@@ -39,6 +40,8 @@ export interface VoucherItem {
   min_spend?: number | string;
   max_discount_amount?: number | string;
   collection_name?: string | null;
+  collection_image?: string | null;
+  image_url?: string | null;
   attribution?: {
     lead_sales?: string;
     partner_company?: string;
@@ -75,6 +78,26 @@ function getBrandLogoSrc(brand: BrandLogoChoice = "dual", theme: ThemeType = "iv
   return isDark ? "/logo.dual.terra_first.light.png" : "/logo.dual.terra_first.dark.png";
 }
 
+function getCardPhotoUrl(
+  voucher: VoucherItem,
+  brandLogo: BrandLogoChoice = "dual",
+  customImage?: string | null
+): string {
+  if (customImage) return customImage;
+  const rawUrl = voucher.image_url || voucher.collection_image;
+  if (rawUrl) {
+    if (rawUrl.startsWith("http") || rawUrl.startsWith("data:") || rawUrl.startsWith("/")) {
+      return rawUrl;
+    }
+    return `https://pub-258bd10e7e8c4a7690a74c54cfbdef93.r2.dev/${rawUrl}`;
+  }
+  // Fallback showcase image
+  if (brandLogo === "zenslab") {
+    return "/banner.zenslab.webp";
+  }
+  return "/banner.terrahome.webp";
+}
+
 export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModalProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [viewMode, setViewMode] = useState<ViewMode>("sheet_a4");
@@ -82,12 +105,27 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
   const [brandChoice, setBrandChoice] = useState<BrandLogoChoice>("dual");
   const [sheetLayout, setSheetLayout] = useState<SheetLayout>("10_business_cards");
   const [singleFormat, setSingleFormat] = useState<SingleFormat>("business_card");
+  const [showPhoto, setShowPhoto] = useState(true);
+  const [customImage, setCustomImage] = useState<string | null>(null);
   const [qrCodes, setQrCodes] = useState<Record<string, string>>({});
   const [isExporting, setIsExporting] = useState(false);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
 
   const singleVoucherRef = useRef<HTMLDivElement>(null);
   const sheetA4Ref = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      if (typeof event.target?.result === "string") {
+        setCustomImage(event.target.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
 
   // Generate QR codes for all vouchers
   useEffect(() => {
@@ -578,6 +616,68 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
                 </button>
               </div>
             </div>
+
+            <div className="h-4 w-px bg-stone-300 hidden sm:block" />
+
+            {/* 4. Photo Toggle & Upload */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-stone-500 font-medium hidden md:inline">รูปสินค้า:</span>
+              <div className="inline-flex bg-stone-200/60 p-0.5 rounded-lg">
+                <button
+                  type="button"
+                  onClick={() => setShowPhoto(true)}
+                  className={`px-2.5 py-1.5 rounded-md transition cursor-pointer ${
+                    showPhoto
+                      ? "bg-white text-stone-900 font-semibold shadow-2xs"
+                      : "text-stone-600 hover:text-stone-900 font-medium"
+                  }`}
+                >
+                  แสดงรูป
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowPhoto(false)}
+                  className={`px-2.5 py-1.5 rounded-md transition cursor-pointer ${
+                    !showPhoto
+                      ? "bg-white text-stone-900 font-semibold shadow-2xs"
+                      : "text-stone-600 hover:text-stone-900 font-medium"
+                  }`}
+                >
+                  ซ่อนรูป
+                </button>
+              </div>
+
+              {showPhoto && (
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="px-2.5 py-1.5 rounded-md bg-white hover:bg-stone-50 text-stone-700 font-medium text-xs transition cursor-pointer flex items-center gap-1 border border-stone-200 shadow-2xs"
+                    title="คลิกเพื่ออัปโหลดรูปภาพสินค้าเองลงบนนามบัตร"
+                  >
+                    <ImageIcon className="w-3.5 h-3.5 text-stone-500" />
+                    <span>เปลี่ยนรูป...</span>
+                  </button>
+                  {customImage && (
+                    <button
+                      type="button"
+                      onClick={() => setCustomImage(null)}
+                      className="text-stone-400 hover:text-rose-600 text-xs font-medium transition cursor-pointer px-1"
+                      title="ล้างรูปที่อัปโหลด กลับไปใช้รูปตั้งต้น"
+                    >
+                      รีเซ็ต
+                    </button>
+                  )}
+                </div>
+              )}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleFileChange}
+              />
+            </div>
           </div>
 
           {/* Right Controls: A4 Layout or Single Navigation */}
@@ -665,6 +765,9 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
                   qrCodeUrl={qrCodes[currentVoucher.coupon_code || String(currentVoucher.id)]}
                   theme={theme}
                   brandLogo={brandChoice}
+                  showPhoto={showPhoto}
+                  customImage={customImage}
+                  onPhotoClick={() => fileInputRef.current?.click()}
                   copiedCode={copiedCode}
                   onCopy={copyCode}
                   size="business_card"
@@ -706,6 +809,9 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
                       qrCodeUrl={qrCodes[v.coupon_code || String(v.id)]}
                       theme={theme}
                       brandLogo={brandChoice}
+                      showPhoto={showPhoto}
+                      customImage={customImage}
+                      onPhotoClick={() => fileInputRef.current?.click()}
                       copiedCode={copiedCode}
                       onCopy={copyCode}
                       size={
@@ -797,6 +903,9 @@ interface VoucherCardProps {
   qrCodeUrl?: string;
   theme: ThemeType;
   brandLogo?: BrandLogoChoice;
+  showPhoto?: boolean;
+  customImage?: string | null;
+  onPhotoClick?: () => void;
   copiedCode: string | null;
   onCopy: (code: string) => void;
   size?: "large" | "medium" | "compact" | "business_card" | "business_card_tall";
@@ -807,6 +916,9 @@ function VoucherCard({
   qrCodeUrl,
   theme,
   brandLogo = "dual",
+  showPhoto = true,
+  customImage = null,
+  onPhotoClick,
   copiedCode,
   onCopy,
   size = "business_card",
@@ -815,6 +927,7 @@ function VoucherCard({
   const code = voucher.coupon_code || String(voucher.id);
   const isTiered = voucher.is_tiered && voucher.tiers && voucher.tiers.length > 0;
   const isBusinessCard = size === "business_card" || size === "business_card_tall";
+  const photoUrl = showPhoto ? getCardPhotoUrl(voucher, brandLogo, customImage) : null;
 
   const dateRange =
     voucher.start_date || voucher.end_date
@@ -969,94 +1082,123 @@ function VoucherCard({
           </span>
         </div>
 
-        {/* Center Offer / Discount Body */}
-        <div className={`z-10 ${isBusinessCard ? "py-1 sm:py-1.5" : "py-2 sm:py-3"}`}>
-          <div
-            className={`font-prompt ${
-              isBusinessCard ? "text-[8px] sm:text-[9px]" : "text-[10px] sm:text-[11px]"
-            } tracking-wider uppercase font-bold truncate ${styles.scopeLabel}`}
-          >
-            {voucher.collection_name || "สิทธิพิเศษทั้งร้าน (STOREWIDE)"}
-          </div>
-
-          {/* Title - Deep contrast, perfectly visible! */}
-          <h3
-            className={`font-prompt font-extrabold tracking-tight leading-snug mt-0.5 ${
-              isBusinessCard
-                ? "text-xs sm:text-[13px] line-clamp-1"
-                : size === "compact"
-                ? "text-xs sm:text-sm line-clamp-1"
-                : size === "medium"
-                ? "text-sm sm:text-base line-clamp-1"
-                : "text-base sm:text-lg line-clamp-1"
-            } ${styles.titleText}`}
-          >
-            {voucher.title}
-          </h3>
-
-          {/* Discount Presentation */}
-          {isTiered ? (
-            <div className={`${isBusinessCard ? "mt-1 space-y-0.5" : "mt-1.5 space-y-1"}`}>
-              <div
-                className={`font-prompt ${
-                  isBusinessCard ? "text-[9px] sm:text-[10px]" : "text-[10px] sm:text-[11px]"
-                } font-semibold flex items-center gap-1 flex-wrap`}
-              >
-                <span className={`text-[9px] sm:text-[10px] font-bold ${styles.tierLabel}`}>
-                  ส่วนลดขั้นบันได:
-                </span>
-                {voucher.tiers?.map((t, idx) => (
-                  <span
-                    key={idx}
-                    className={`inline-flex items-center rounded-sm font-prompt font-semibold ${styles.pillTier} ${
-                      isBusinessCard ? "px-1.5 py-0.2 text-[8px] sm:text-[9px]" : "px-2 py-0.5 text-[9px] sm:text-[10px]"
-                    }`}
-                  >
-                    ครบ ฿{Number(t.min_spend).toLocaleString()}:{" "}
-                    <b className={`ml-0.5 font-bold ${styles.pillTierValue}`}>
-                      {t.discount_type === "percentage"
-                        ? `${t.discount_value}%`
-                        : `฿${Number(t.discount_value).toLocaleString()}`}
-                    </b>
-                  </span>
-                ))}
+        {/* Center Offer / Discount Body with Product Photo */}
+        <div className={`z-10 ${isBusinessCard ? "py-1 sm:py-1.5" : "py-2 sm:py-3"} flex items-center gap-2.5 sm:gap-3`}>
+          {photoUrl && (
+            <div
+              onClick={onPhotoClick}
+              title="คลิกเพื่อเปลี่ยนรูปภาพสินค้า"
+              className={`relative shrink-0 rounded-lg overflow-hidden border border-[#C9B591]/50 shadow-xs cursor-pointer group bg-stone-100 ${
+                isBusinessCard
+                  ? "w-12 h-12 sm:w-14 sm:h-14"
+                  : size === "compact"
+                  ? "w-14 h-14 sm:w-16 sm:h-16"
+                  : "w-16 h-16 sm:w-20 sm:h-20"
+              }`}
+            >
+              <img
+                src={photoUrl}
+                alt={voucher.title}
+                className="w-full h-full object-cover transition duration-300 group-hover:scale-105"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = "/banner.terrahome.webp";
+                }}
+              />
+              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/25 transition flex items-center justify-center opacity-0 group-hover:opacity-100 print:hidden">
+                <ImageIcon className="w-3.5 h-3.5 text-white drop-shadow" />
               </div>
-              {voucher.max_discount_amount && (
-                <span
-                  className={`font-prompt ${
-                    isBusinessCard ? "text-[7.5px]" : "text-[8px] sm:text-[9px]"
-                  } font-medium block ${styles.maxDiscountText}`}
-                >
-                  (ลดสูงสุด ฿{Number(voucher.max_discount_amount).toLocaleString()})
-                </span>
-              )}
-            </div>
-          ) : (
-            <div className="mt-1 flex items-baseline gap-1.5">
-              <span
-                className={`font-cinzel ${
-                  isBusinessCard
-                    ? "text-lg sm:text-xl"
-                    : size === "compact"
-                    ? "text-xl sm:text-2xl"
-                    : "text-2xl sm:text-3xl"
-                } font-black tracking-tight ${styles.discountBig}`}
-              >
-                {isPercent
-                  ? `${voucher.discount_value}% OFF`
-                  : `฿${Number(voucher.discount_value).toLocaleString()} OFF`}
-              </span>
-              <span
-                className={`font-prompt ${
-                  isBusinessCard ? "text-[9px]" : "text-[10px] sm:text-xs"
-                } font-medium ${styles.discountSub}`}
-              >
-                {voucher.min_spend
-                  ? `(เมื่อช้อปครบ ฿${Number(voucher.min_spend).toLocaleString()})`
-                  : "(ไม่มีขั้นต่ำ)"}
-              </span>
             </div>
           )}
+
+          {/* Text Details: Scope, Title, Discount */}
+          <div className="flex-1 min-w-0">
+            <div
+              className={`font-prompt ${
+                isBusinessCard ? "text-[8px] sm:text-[9px]" : "text-[10px] sm:text-[11px]"
+              } tracking-wider uppercase font-bold truncate ${styles.scopeLabel}`}
+            >
+              {voucher.collection_name || "สิทธิพิเศษทั้งร้าน (STOREWIDE)"}
+            </div>
+
+            {/* Title - Deep contrast, perfectly visible! */}
+            <h3
+              className={`font-prompt font-extrabold tracking-tight leading-snug mt-0.5 ${
+                isBusinessCard
+                  ? "text-xs sm:text-[12.5px] line-clamp-1"
+                  : size === "compact"
+                  ? "text-xs sm:text-sm line-clamp-1"
+                  : size === "medium"
+                  ? "text-sm sm:text-base line-clamp-1"
+                  : "text-base sm:text-lg line-clamp-1"
+              } ${styles.titleText}`}
+            >
+              {voucher.title}
+            </h3>
+
+            {/* Discount Presentation */}
+            {isTiered ? (
+              <div className={`${isBusinessCard ? "mt-0.5 space-y-0.5" : "mt-1.5 space-y-1"}`}>
+                <div
+                  className={`font-prompt ${
+                    isBusinessCard ? "text-[8.5px] sm:text-[9.5px]" : "text-[10px] sm:text-[11px]"
+                  } font-semibold flex items-center gap-1 flex-wrap`}
+                >
+                  <span className={`text-[8.5px] sm:text-[9.5px] font-bold ${styles.tierLabel}`}>
+                    ส่วนลดขั้นบันได:
+                  </span>
+                  {voucher.tiers?.map((t, idx) => (
+                    <span
+                      key={idx}
+                      className={`inline-flex items-center rounded-sm font-prompt font-semibold ${styles.pillTier} ${
+                        isBusinessCard ? "px-1.5 py-0.2 text-[8px] sm:text-[8.5px]" : "px-2 py-0.5 text-[9px] sm:text-[10px]"
+                      }`}
+                    >
+                      ครบ ฿{Number(t.min_spend).toLocaleString()}:{" "}
+                      <b className={`ml-0.5 font-bold ${styles.pillTierValue}`}>
+                        {t.discount_type === "percentage"
+                          ? `${t.discount_value}%`
+                          : `฿${Number(t.discount_value).toLocaleString()}`}
+                      </b>
+                    </span>
+                  ))}
+                </div>
+                {voucher.max_discount_amount && (
+                  <span
+                    className={`font-prompt ${
+                      isBusinessCard ? "text-[7.5px]" : "text-[8px] sm:text-[9px]"
+                    } font-medium block ${styles.maxDiscountText}`}
+                  >
+                    (ลดสูงสุด ฿{Number(voucher.max_discount_amount).toLocaleString()})
+                  </span>
+                )}
+              </div>
+            ) : (
+              <div className="mt-0.5 flex items-baseline gap-1.5">
+                <span
+                  className={`font-cinzel ${
+                    isBusinessCard
+                      ? "text-base sm:text-lg"
+                      : size === "compact"
+                      ? "text-xl sm:text-2xl"
+                      : "text-2xl sm:text-3xl"
+                  } font-black tracking-tight ${styles.discountBig}`}
+                >
+                  {isPercent
+                    ? `${voucher.discount_value}% OFF`
+                    : `฿${Number(voucher.discount_value).toLocaleString()} OFF`}
+                </span>
+                <span
+                  className={`font-prompt ${
+                    isBusinessCard ? "text-[8.5px]" : "text-[10px] sm:text-xs"
+                  } font-medium ${styles.discountSub}`}
+                >
+                  {voucher.min_spend
+                    ? `(เมื่อช้อปครบ ฿${Number(voucher.min_spend).toLocaleString()})`
+                    : "(ไม่มีขั้นต่ำ)"}
+                </span>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Footer Meta: Attribution & Validity */}
