@@ -377,7 +377,7 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
   };
 
   const handlePrint = () => {
-    // 1. เลือก Element ที่จะพิมพ์ (ถ้าอยู่โหมด single ให้พิมพ์ใบเดี่ยว ถ้าอยู่ sheet_a4 ให้พิมพ์ทั้งแผ่น A4)
+    // 1. เลือก Element ที่จะพิมพ์ (ถ้าอยู่โหมด single ให้พิมพ์ใบเดี่ยว ถ้าอยู่ sheet_a4 หรือ qr_stickers ให้พิมพ์ทั้งแผ่น A4)
     const printElement =
       viewMode === "single"
         ? singleVoucherRef.current
@@ -388,7 +388,7 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
       return;
     }
 
-    // 2. สร้าง Invisible Iframe สำหรับ Print โดยเฉพาะ (ป้องกันหน้าว่าง 7 แผ่น จาก CSS Next.js Layout)
+    // 2. สร้าง Offscreen Iframe สำหรับ Print โดยเฉพาะ (มีขนาด A4 จริง ไม่ใช้ visibility:hidden เพื่อไม่ให้หน้าขาว)
     let iframe = document.getElementById("voucher-print-iframe") as HTMLIFrameElement | null;
     if (iframe) {
       iframe.remove();
@@ -396,12 +396,13 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
     iframe = document.createElement("iframe");
     iframe.id = "voucher-print-iframe";
     iframe.style.position = "fixed";
-    iframe.style.right = "0";
-    iframe.style.bottom = "0";
-    iframe.style.width = "0";
-    iframe.style.height = "0";
+    iframe.style.left = "-10000px";
+    iframe.style.top = "0";
+    iframe.style.width = "210mm";
+    iframe.style.height = "297mm";
     iframe.style.border = "0";
-    iframe.style.visibility = "hidden";
+    iframe.style.opacity = "0";
+    iframe.style.pointerEvents = "none";
     document.body.appendChild(iframe);
 
     const doc = iframe.contentWindow?.document;
@@ -410,16 +411,20 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
       return;
     }
 
-    // 3. รวบรวม Stylesheets และฟอนต์ทั้งหมดจากหน้าเว็บปัจจุบัน
+    // 3. รวบรวม Stylesheets และฟอนต์ทั้งหมดจากหน้าเว็บปัจจุบัน (ข้าม @media print ที่ซ่อน body > *)
     let stylesHtml = "";
     document.querySelectorAll("link[rel='stylesheet'], style").forEach((el) => {
-      stylesHtml += el.outerHTML;
+      if (el.id === "voucher-modal-page-style") return;
+      const html = el.outerHTML;
+      if (html.includes("body > *:not(")) return;
+      stylesHtml += html;
     });
 
     const isSingle = viewMode === "single";
     const isDuoSingle = isSingle && singleFormat === "duo_pair";
     const isQrSingle = isSingle && singleFormat === "qr_sticker";
     const isQrStickers = viewMode === "qr_stickers";
+    const originUrl = typeof window !== "undefined" ? window.location.origin : "";
 
     doc.open();
     doc.write(`
@@ -427,7 +432,8 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
       <html>
         <head>
           <meta charset="utf-8" />
-          <title>พิมพ์นามบัตรส่วนลด Terra Home & ZenSlab</title>
+          <base href="${originUrl}/" />
+          <title>พิมพ์นามบัตรและสติกเกอร์ส่วนลด Terra Home & ZenSlab</title>
           ${stylesHtml}
           <style>
             @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800;900&family=Prompt:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&family=Space+Mono:wght@700&display=swap');
@@ -442,7 +448,7 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
                     ? "30mm auto"
                     : "25mm auto"
                   : isQrStickers
-                  ? "8mm 8mm"
+                  ? "5mm 6mm"
                   : "6mm 8mm"
               };
             }
@@ -463,6 +469,8 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
               height: auto !important;
               min-height: 0 !important;
               overflow: visible !important;
+              display: block !important;
+              visibility: visible !important;
             }
 
             .font-cinzel {
@@ -475,7 +483,11 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
               font-family: 'Space Mono', ui-monospace, monospace !important;
             }
 
+            body > #__next,
             .print-wrapper {
+              display: block !important;
+              visibility: visible !important;
+              opacity: 1 !important;
               width: 100% !important;
               max-width: ${
                 isSingle
@@ -496,6 +508,7 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
               box-shadow: none !important;
               border: none !important;
               margin: 0 auto !important;
+              min-height: 0 !important;
             }
 
             .print\\:hidden, .no-print {
@@ -509,13 +522,15 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
           </style>
         </head>
         <body>
-          <div class="print-wrapper">
+          <div id="__next" class="print-wrapper">
             ${printElement.outerHTML}
           </div>
           <script>
-            window.onload = function() {
-              const imgs = Array.from(document.images);
+            (function() {
+              let printed = false;
               const triggerPrint = function() {
+                if (printed) return;
+                printed = true;
                 try {
                   window.focus();
                   window.print();
@@ -524,30 +539,40 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
                 }
               };
 
-              if (imgs.length === 0) {
-                setTimeout(triggerPrint, 250);
-                return;
-              }
-
-              let loaded = 0;
-              const checkAll = function() {
-                loaded++;
-                if (loaded >= imgs.length) {
-                  setTimeout(triggerPrint, 250);
+              const waitForImagesAndPrint = function() {
+                const imgs = Array.from(document.images);
+                if (imgs.length === 0) {
+                  setTimeout(triggerPrint, 300);
+                  return;
                 }
+
+                let loaded = 0;
+                const checkAll = function() {
+                  loaded++;
+                  if (loaded >= imgs.length) {
+                    setTimeout(triggerPrint, 300);
+                  }
+                };
+
+                imgs.forEach(function(img) {
+                  if (img.complete) {
+                    checkAll();
+                  } else {
+                    img.onload = checkAll;
+                    img.onerror = checkAll;
+                  }
+                });
+
+                setTimeout(triggerPrint, 1500);
               };
 
-              imgs.forEach(function(img) {
-                if (img.complete) {
-                  checkAll();
-                } else {
-                  img.onload = checkAll;
-                  img.onerror = checkAll;
-                }
-              });
-
-              setTimeout(triggerPrint, 1500);
-            };
+              if (document.readyState === "complete") {
+                waitForImagesAndPrint();
+              } else {
+                window.addEventListener("load", waitForImagesAndPrint);
+                setTimeout(waitForImagesAndPrint, 800);
+              }
+            })();
           <\/script>
         </body>
       </html>
@@ -557,8 +582,9 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/85 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 print:p-0 print:bg-white print:static print:overflow-visible font-sans">
-      {/* 🛑 Load Luxury Fonts & Print CSS */}
+      {/* 🛑 Load Luxury Fonts */}
       <style
+        id="voucher-modal-page-style"
         dangerouslySetInnerHTML={{
           __html: `
         @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800;900&family=Prompt:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&family=Space+Mono:wght@700&display=swap');
@@ -571,37 +597,6 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
         }
         .font-spacemono {
           font-family: 'Space Mono', ui-monospace, SFMono-Regular, monospace;
-        }
-
-        @media print {
-          html, body {
-            height: auto !important;
-            min-height: 0 !important;
-            overflow: visible !important;
-            background: #ffffff !important;
-            background-color: #ffffff !important;
-            margin: 0 !important;
-            padding: 0 !important;
-          }
-
-          body > *:not(#__next),
-          nav, aside, header, footer {
-            display: none !important;
-          }
-
-          .print\\:hidden, .no-print {
-            display: none !important;
-          }
-
-          @page {
-            size: A4 portrait;
-            margin: 6mm 8mm;
-          }
-
-          * {
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-          }
         }
       `,
         }}
@@ -1191,12 +1186,12 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
                   minHeight: "297mm",
                   padding:
                     qrStickerSize === "5x6_cm"
-                      ? "16mm 20mm"
+                      ? "8mm 12mm"
                       : qrStickerSize === "1_inch"
-                      ? "10mm 10mm"
+                      ? "8mm 8mm"
                       : qrStickerSize === "1.5_inch"
-                      ? "12mm 12mm"
-                      : "15mm 12mm",
+                      ? "10mm 10mm"
+                      : "12mm 10mm",
                   display: "grid",
                   gridTemplateColumns:
                     qrStickerSize === "5x6_cm"
@@ -1216,12 +1211,12 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
                       : "14mm",
                   rowGap:
                     qrStickerSize === "5x6_cm"
-                      ? "8mm"
+                      ? "6mm"
                       : qrStickerSize === "1_inch"
-                      ? "5mm"
+                      ? "4.5mm"
                       : qrStickerSize === "1.5_inch"
-                      ? "7mm"
-                      : "14mm",
+                      ? "6.5mm"
+                      : "12mm",
                   justifyContent: "center",
                   alignContent: "center",
                   backgroundColor: "#ffffff",
