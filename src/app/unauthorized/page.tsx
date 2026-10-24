@@ -1,11 +1,38 @@
 import React from 'react';
 import { createClient } from '../../lib/supabase/server';
+import { supabaseAdmin } from '../../lib/supabase/admin';
+import { redirect } from 'next/navigation';
 import { logoutAction } from '../../actions/auth';
 import { ShieldAlert, LogOut, ArrowLeft } from 'lucide-react';
 
 export default async function UnauthorizedPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
+
+  // หากผู้ใช้มีสิทธิ์เข้าใช้งานแล้ว (เช่น เพิ่งได้รับการปรับสิทธิ์เป็น Admin) ให้ส่งเข้าหน้าหลักอัตโนมัติทันทีเมื่อรีเฟรช
+  if (user) {
+    const { data: profile } = await supabaseAdmin
+      .from('profiles')
+      .select('role, member_tags')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    const role = profile?.role;
+    const rawMemberTags: string[] = Array.isArray(profile?.member_tags) ? profile.member_tags : [];
+    const pageMemberTags = rawMemberTags.filter((t: string) => t.startsWith('PAGE:')).map((t: string) => t.slice(5));
+
+    if (role === 'admin' || role === 'data_analyst') {
+      redirect('/dashboard');
+    } else if (role === 'manager') {
+      redirect('/manager/dashboard');
+    } else if (role === 'sale') {
+      redirect('/sale/dashboard');
+    } else if (role === 'data_entry' || role === 'warehouse') {
+      redirect('/inventory');
+    } else if (pageMemberTags.length > 0) {
+      redirect(pageMemberTags[0]);
+    }
+  }
 
   return (
     <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 font-sans text-slate-100">

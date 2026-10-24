@@ -10,12 +10,24 @@ export default async function RootPage() {
     redirect('/login');
   }
 
-  // 🛡️ ดึงข้อมูลผ่าน supabaseAdmin ป้องกัน RLS error และใช้ maybeSingle แทน single
-  const { data: profile } = await supabaseAdmin
+  // 🛡️ ดึงข้อมูลผ่าน supabaseAdmin ป้องกัน RLS error และ fallback กรณีไม่มีคอลัมน์ allowed_pages
+  let profile: any = null;
+  const initialPfRes = await supabaseAdmin
     .from('profiles')
     .select('role, member_tags, allowed_pages')
     .eq('user_id', user.id)
     .maybeSingle();
+
+  if (initialPfRes.error && initialPfRes.error.message?.includes('allowed_pages')) {
+    const fallbackPf = await supabaseAdmin
+      .from('profiles')
+      .select('role, member_tags')
+      .eq('user_id', user.id)
+      .maybeSingle();
+    profile = fallbackPf.data;
+  } else {
+    profile = initialPfRes.data;
+  }
 
   const role = profile?.role;
   const rawMemberTags: string[] = Array.isArray(profile?.member_tags) ? profile.member_tags : [];
