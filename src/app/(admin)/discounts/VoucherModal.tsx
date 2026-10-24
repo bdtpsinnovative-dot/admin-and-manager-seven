@@ -66,12 +66,13 @@ type ViewMode = "sheet_a4" | "qr_stickers" | "single";
 type SheetLayout = "duo_5_pairs" | "10_business_cards" | "8_business_cards" | "3_stacked" | "4_grid";
 type SingleFormat = "duo_pair" | "business_card" | "qr_sticker";
 type BrandLogoChoice = "dual" | "terra" | "zenslab";
-type QrStickerSize = "1_inch" | "1.5_inch" | "2_inch";
+type QrStickerSize = "5x6_cm" | "1_inch" | "1.5_inch" | "2_inch";
 
 function getStickerTargetCount(size: QrStickerSize): number {
-  if (size === "1_inch") return 54; // 6 cols x 9 rows
-  if (size === "1.5_inch") return 24; // 4 cols x 6 rows
-  return 12; // 3 cols x 4 rows
+  if (size === "5x6_cm") return 12; // 3 cols x 4 rows (50mm x 60mm)
+  if (size === "1_inch") return 54; // 6 cols x 9 rows (25.4mm x 25.4mm)
+  if (size === "1.5_inch") return 24; // 4 cols x 6 rows (38.1mm x 38.1mm)
+  return 12; // 3 cols x 4 rows (50.8mm x 50.8mm)
 }
 
 function buildQrStickers(
@@ -168,7 +169,7 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
   const [brandChoice, setBrandChoice] = useState<BrandLogoChoice>("dual");
   const [sheetLayout, setSheetLayout] = useState<SheetLayout>("duo_5_pairs");
   const [singleFormat, setSingleFormat] = useState<SingleFormat>("duo_pair");
-  const [qrStickerSize, setQrStickerSize] = useState<QrStickerSize>("1.5_inch");
+  const [qrStickerSize, setQrStickerSize] = useState<QrStickerSize>("5x6_cm");
   const [autoFillSheet, setAutoFillSheet] = useState(true);
   const [showPhoto, setShowPhoto] = useState(true);
   const [customImage, setCustomImage] = useState<string | null>(null);
@@ -351,7 +352,7 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
             await navigator.share({
               title:
                 viewMode === "qr_stickers"
-                  ? `สติกเกอร์ QR Code A4 (${qrStickerSize === "1_inch" ? "1 นิ้ว" : qrStickerSize === "1.5_inch" ? "1.5 นิ้ว" : "2 นิ้ว"}) - Terra Home`
+                  ? `สติกเกอร์ QR Code A4 (${qrStickerSize === "5x6_cm" ? "5x6 ซม." : qrStickerSize === "1_inch" ? "1 นิ้ว" : qrStickerSize === "1.5_inch" ? "1.5 นิ้ว" : "2 นิ้ว"}) - Terra Home`
                   : "นามบัตรส่วนลดกระดาษ A4 - Terra Home",
               files: [file],
             });
@@ -897,6 +898,18 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
                   <div className="inline-flex bg-stone-200/60 p-0.5 rounded-lg">
                     <button
                       type="button"
+                      onClick={() => setQrStickerSize("5x6_cm")}
+                      className={`px-2.5 py-1.5 rounded-md transition cursor-pointer font-medium ${
+                        qrStickerSize === "5x6_cm"
+                          ? "bg-white text-stone-900 font-semibold shadow-2xs"
+                          : "text-stone-600 hover:text-stone-900"
+                      }`}
+                      title="กว้าง 5 ซม. สูง 6 ซม. (50 × 60 มม.) พิมพ์ได้ 12 ดวงต่อแผ่น A4"
+                    >
+                      5 × 6 ซม. (12 ดวง)
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => setQrStickerSize("1_inch")}
                       className={`px-2.5 py-1.5 rounded-md transition cursor-pointer ${
                         qrStickerSize === "1_inch"
@@ -996,6 +1009,17 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
 
                 {singleFormat === "qr_sticker" && (
                   <div className="inline-flex bg-stone-200/60 p-0.5 rounded-lg">
+                    <button
+                      type="button"
+                      onClick={() => setQrStickerSize("5x6_cm")}
+                      className={`px-2 py-1 rounded transition text-xs cursor-pointer ${
+                        qrStickerSize === "5x6_cm"
+                          ? "bg-white text-stone-900 font-semibold shadow-2xs"
+                          : "text-stone-600 hover:text-stone-900 font-medium"
+                      }`}
+                    >
+                      5 × 6 ซม.
+                    </button>
                     <button
                       type="button"
                       onClick={() => setQrStickerSize("1_inch")}
@@ -1139,20 +1163,22 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
                 {singleFormat === "duo_pair"
                   ? "คูปองจับคู่ 1 ชุด (2 ใบเชื่อมกัน มีรอยปรุฉีกตรงกลาง) บันทึกรูปเพื่อส่งแชร์เข้า LINE หรือสั่งพิมพ์ได้ทันที"
                   : singleFormat === "qr_sticker"
-                  ? `สติกเกอร์ QR Code สี่เหลี่ยม ขนาด ${
-                      qrStickerSize === "1_inch"
+                  ? `สติกเกอร์ QR Code ขนาด ${
+                      qrStickerSize === "5x6_cm"
+                        ? "กว้าง 5 × สูง 6 ซม. (50 × 60 มม.)"
+                        : qrStickerSize === "1_inch"
                         ? "1 นิ้ว (2.54 × 2.54 ซม.)"
                         : qrStickerSize === "1.5_inch"
                         ? "1.5 นิ้ว (3.81 × 3.81 ซม.)"
                         : "2 นิ้ว (5.08 × 5.08 ซม.)"
-                    } พร้อมรหัสคูปองชัดเจนด้านล่าง บันทึกรูป PNG หรือพิมพ์ได้ทันที`
+                    } พร้อมวันหมดอายุด้านบนและรหัสคูปองชัดเจนด้านล่าง บันทึกรูป PNG หรือพิมพ์ได้ทันที`
                   : "ขนาดนามบัตรมาตรฐาน (9 × 5.4 ซม.) พอดีกระเป๋าสตางค์"}
               </div>
             </div>
           )}
 
           {/* ============================================================== */}
-          {/* MODE 2: QR CODE STICKERS SHEET (A4 1", 1.5", 2" SQUARES)       */}
+          {/* MODE 2: QR CODE STICKERS SHEET (A4 5x6cm, 1", 1.5", 2")        */}
           {/* ============================================================== */}
           {viewMode === "qr_stickers" && (
             <div id="voucher-print-area" className="w-full flex flex-col items-center">
@@ -1164,26 +1190,34 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
                   maxWidth: "210mm",
                   minHeight: "297mm",
                   padding:
-                    qrStickerSize === "1_inch"
+                    qrStickerSize === "5x6_cm"
+                      ? "16mm 20mm"
+                      : qrStickerSize === "1_inch"
                       ? "10mm 10mm"
                       : qrStickerSize === "1.5_inch"
                       ? "12mm 12mm"
                       : "15mm 12mm",
                   display: "grid",
                   gridTemplateColumns:
-                    qrStickerSize === "1_inch"
+                    qrStickerSize === "5x6_cm"
+                      ? "repeat(3, 50mm)"
+                      : qrStickerSize === "1_inch"
                       ? "repeat(6, 25.4mm)"
                       : qrStickerSize === "1.5_inch"
                       ? "repeat(4, 38.1mm)"
                       : "repeat(3, 50.8mm)",
                   columnGap:
-                    qrStickerSize === "1_inch"
+                    qrStickerSize === "5x6_cm"
+                      ? "10mm"
+                      : qrStickerSize === "1_inch"
                       ? "6mm"
                       : qrStickerSize === "1.5_inch"
                       ? "9mm"
                       : "14mm",
                   rowGap:
-                    qrStickerSize === "1_inch"
+                    qrStickerSize === "5x6_cm"
+                      ? "8mm"
+                      : qrStickerSize === "1_inch"
                       ? "5mm"
                       : qrStickerSize === "1.5_inch"
                       ? "7mm"
@@ -1304,7 +1338,7 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
             {viewMode === "single" ? (
               singleFormat === "qr_sticker" ? (
                 <span>
-                  สติกเกอร์ QR Code ({qrStickerSize === "1_inch" ? "1 นิ้ว (2.54 × 2.54 ซม.)" : qrStickerSize === "1.5_inch" ? "1.5 นิ้ว (3.81 × 3.81 ซม.)" : "2 นิ้ว (5.08 × 5.08 ซม.)"}) • รหัส: {currentVoucher.coupon_code} ({currentIndex + 1}/{vouchers.length})
+                  สติกเกอร์ QR Code ({qrStickerSize === "5x6_cm" ? "5 × 6 ซม." : qrStickerSize === "1_inch" ? "1 นิ้ว" : qrStickerSize === "1.5_inch" ? "1.5 นิ้ว" : "2 นิ้ว"}) • รหัส: {currentVoucher.coupon_code} ({currentIndex + 1}/{vouchers.length})
                 </span>
               ) : singleFormat === "duo_pair" ? (
                 <span>คูปองจับคู่ (Duo Paired) • Terra Home & ZenSlab</span>
@@ -1315,7 +1349,7 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
               )
             ) : viewMode === "qr_stickers" ? (
               <span>
-                แผ่นสติกเกอร์ QR Code A4 ขนาด {qrStickerSize === "1_inch" ? "1 นิ้ว (54 ดวง)" : qrStickerSize === "1.5_inch" ? "1.5 นิ้ว (24 ดวง)" : "2 นิ้ว (12 ดวง)"}
+                แผ่นสติกเกอร์ QR Code A4 ขนาด {qrStickerSize === "5x6_cm" ? "กว้าง 5 × สูง 6 ซม. (12 ดวง)" : qrStickerSize === "1_inch" ? "1 นิ้ว (54 ดวง)" : qrStickerSize === "1.5_inch" ? "1.5 นิ้ว (24 ดวง)" : "2 นิ้ว (12 ดวง)"}
               </span>
             ) : (
               <span>
@@ -1969,8 +2003,16 @@ function QrSticker({
     },
   }[theme];
 
-  // Dimensions & typography based on 1", 1.5", 2"
+  // Dimensions & typography based on 5x6 cm, 1", 1.5", 2"
   const sizeConfig = {
+    "5x6_cm": {
+      widthMm: "50mm",
+      heightMm: "60mm",
+      padding: "p-[2.5mm]",
+      expiryClass: "text-[10px] font-prompt font-bold tracking-normal leading-tight pt-0.5",
+      qrSizeMm: "38mm",
+      codeClass: "text-[13px] font-spacemono font-black tracking-widest leading-tight pb-0.5",
+    },
     "1_inch": {
       widthMm: "25.4mm",
       heightMm: "25.4mm",
