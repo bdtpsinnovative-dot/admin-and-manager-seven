@@ -54,9 +54,19 @@ interface FurnitureCache {
 let furnitureCache: FurnitureCache | null = null;
 const FURNITURE_CACHE_TTL = 5 * 60 * 1000; // แคชเฟอร์นิเจอร์ไว้ 5 นาที
 
+interface SlabsCache {
+  timestamp: number;
+  products: any[];
+  subcategories: string[];
+  brands: string[];
+}
+let slabsCache: SlabsCache | null = null;
+const SLABS_CACHE_TTL = 5 * 60 * 1000; // แคชแผ่นไม้สแลปไว้ 5 นาที
+
 export async function clearPosCache() {
   posCache = null;
   furnitureCache = null;
+  slabsCache = null;
 }
 
 async function ensurePosCache(forceRefresh: boolean = false) {
@@ -505,7 +515,7 @@ export async function getFurnitureProducts(forceRefresh: boolean = false) {
     .from('products')
     .select(`
       id, name, sku, price, image_url, barcode, specs, category_id,
-      collection_groups ( product_sup, tag ),
+      collection_groups ( product_sup, tag, image_url, cover_image_url ),
       stock ( branch_id, qty )
     `)
     .in('category_id', ['furniture', 'SLABS'])
@@ -520,10 +530,23 @@ export async function getFurnitureProducts(forceRefresh: boolean = false) {
 
   const formattedFurniture = (furnitureData || []).map(p => {
     const rawCol = Array.isArray(p.collection_groups) ? p.collection_groups[0] : p.collection_groups
-    const isSlab = p.category_id === 'SLABS' || (p.sku && p.sku.startsWith('ZLB-'))
+    const isSlab = p.category_id === 'SLABS' || (p.sku && (p.sku.startsWith('ZLB-') || p.sku.startsWith('LEG-')))
+    const specs = (p.specs && typeof p.specs === 'object') ? p.specs : {}
+
+    let resolvedImage: string | null = null
+    if (p.image_url && typeof p.image_url === 'string' && p.image_url.trim() !== '') {
+      resolvedImage = p.image_url
+    } else if (Array.isArray(specs.images) && specs.images.length > 0 && specs.images[0]?.path) {
+      resolvedImage = specs.images[0].path
+    } else if (rawCol?.image_url) {
+      resolvedImage = rawCol.image_url
+    } else if (rawCol?.cover_image_url) {
+      resolvedImage = rawCol.cover_image_url
+    }
+
     let subcat = rawCol?.product_sup
     if (!subcat) {
-      subcat = isSlab ? 'แผ่นไม้ / Wood Slabs' : 'เฟอร์นิเจอร์ทั่วไป'
+      subcat = isSlab ? (specs.material || 'แผ่นไม้ / Wood Slabs') : 'เฟอร์นิเจอร์ทั่วไป'
     }
     subcatSet.add(subcat)
 
@@ -539,14 +562,14 @@ export async function getFurnitureProducts(forceRefresh: boolean = false) {
       original_price: Number(p.price) || 0,
       price: Number(p.price) || 0,
       discount_label: '',
-      image_url: p.image_url || null,
+      image_url: resolvedImage,
       barcode: p.barcode || null,
       product_sup: subcat,
       category_id: p.category_id || (isSlab ? 'SLABS' : 'furniture'),
       isFurniture: p.category_id === 'furniture' || (!isSlab && p.sku?.startsWith('EMBER-')),
       isSlab,
       stocks: Array.isArray(p.stock) ? p.stock : [],
-      specs: p.specs || {},
+      specs: specs,
       brand: brand || (isSlab ? 'ZENSLABS' : 'Ember & Ash')
     }
   })
@@ -555,7 +578,7 @@ export async function getFurnitureProducts(forceRefresh: boolean = false) {
   if (formattedFurniture.some(p => p.isFurniture || p.sku?.startsWith('EMBER-'))) {
     brandSet.add('Ember & Ash')
   }
-  if (formattedFurniture.some(p => p.isSlab || p.sku?.startsWith('ZLB-'))) {
+  if (formattedFurniture.some(p => p.isSlab || p.sku?.startsWith('ZLB-') || p.sku?.startsWith('LEG-'))) {
     brandSet.add('ZENSLABS')
   }
 
@@ -572,6 +595,115 @@ export async function getFurnitureProducts(forceRefresh: boolean = false) {
   return {
     success: true,
     products: formattedFurniture,
+    subcategories,
+    brands
+  }
+}
+
+export async function getSlabsProducts(forceRefresh: boolean = false) {
+  const cookieStore = await cookies()
+  const supabase = createServerClient(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!, {
+    cookies: { getAll() { return cookieStore.getAll() } }
+  })
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { success: false, error: "Unauthorized" }
+
+  const now = Date.now();
+  if (!forceRefresh && slabsCache && (now - slabsCache.timestamp < SLABS_CACHE_TTL)) {
+    return {
+      success: true,
+      products: slabsCache.products,
+      subcategories: slabsCache.subcategories,
+      brands: slabsCache.brands,
+      fromCache: true
+    }
+  }
+
+  // ดึงสินค้าแผ่นไม้สแลปทั้งหมด (category_id = 'SLABS' รวมถึงขาโต๊ะ LEG-) ครอบคลุม 1,032+ ชิ้น
+  const { data: slabsData, error: slabsError } = await supabase
+    .from('products')
+    .select(`
+      id, name, sku, price, image_url, barcode, specs, category_id,
+      collection_groups ( product_sup, tag, image_url, cover_image_url ),
+      stock ( branch_id, qty )
+    `)
+    .or("category_id.eq.SLABS,sku.ilike.ZLB-%,sku.ilike.LEG-%")
+    .order('name', { ascending: true })
+    .range(0, 2500)
+
+  if (slabsError) {
+    return { success: false, error: "เกิดข้อผิดพลาดในการโหลดข้อมูลแผ่นไม้ ZENSLABS: " + slabsError.message }
+  }
+
+  const subcatSet = new Set<string>()
+
+  const formattedSlabs = (slabsData || []).map(p => {
+    const rawCol = Array.isArray(p.collection_groups) ? p.collection_groups[0] : p.collection_groups
+    const specs = (p.specs && typeof p.specs === 'object') ? p.specs : {}
+
+    // ค้นหารูปภาพความละเอียดสูงจาก specs.images[0].path หรือ image_url หรือ collection
+    let resolvedImage: string | null = null
+    if (p.image_url && typeof p.image_url === 'string' && p.image_url.trim() !== '') {
+      resolvedImage = p.image_url
+    } else if (Array.isArray(specs.images) && specs.images.length > 0 && specs.images[0]?.path) {
+      resolvedImage = specs.images[0].path
+    } else if (rawCol?.image_url) {
+      resolvedImage = rawCol.image_url
+    } else if (rawCol?.cover_image_url) {
+      resolvedImage = rawCol.cover_image_url
+    }
+
+    // กำหนดประเภทเนื้อไม้ / หมวดหมู่ย่อย (เช่น Black Walnut, White Oak, Maple, ขาโต๊ะ)
+    let materialCategory = specs.material || rawCol?.product_sup
+    const lowerName = (p.name || '').toLowerCase()
+    const skuLower = (p.sku || '').toLowerCase()
+    if (!materialCategory) {
+      if (lowerName.includes('walnut')) materialCategory = 'North American Black Walnut'
+      else if (lowerName.includes('oak')) materialCategory = 'French White Oak'
+      else if (lowerName.includes('maple')) materialCategory = 'European Maple Wood'
+      else if (lowerName.includes('olive')) materialCategory = 'Italian Olive Wood'
+      else if (lowerName.includes('teak')) materialCategory = 'Burmese Teak'
+      else if (lowerName.includes('afromosia')) materialCategory = 'Afromosia'
+      else if (lowerName.includes('leg') || lowerName.includes('stand') || skuLower.startsWith('leg')) materialCategory = 'ขาโต๊ะ / ขาตั้ง (Leg & Stand)'
+      else materialCategory = 'แผ่นไม้ / Wood Slabs'
+    } else if (skuLower.startsWith('leg') || lowerName.includes('leg') || lowerName.includes('ขาโต๊ะ') || lowerName.includes('stand')) {
+      materialCategory = 'ขาโต๊ะ / ขาตั้ง (Leg & Stand)'
+    }
+    subcatSet.add(materialCategory)
+
+    return {
+      id: p.id,
+      name: p.name,
+      sku: p.sku,
+      original_price: Number(p.price) || 0,
+      price: Number(p.price) || 0,
+      discount_label: '',
+      image_url: resolvedImage,
+      barcode: p.barcode || null,
+      product_sup: materialCategory,
+      category_id: 'SLABS',
+      isFurniture: false,
+      isSlab: true,
+      stocks: Array.isArray(p.stock) ? p.stock : [],
+      specs: specs,
+      brand: 'ZENSLABS'
+    }
+  })
+
+  const subcategories = Array.from(subcatSet).sort()
+  const brands = ['ZENSLABS']
+
+  slabsCache = {
+    timestamp: now,
+    products: formattedSlabs,
+    subcategories,
+    brands
+  }
+
+  return {
+    success: true,
+    products: formattedSlabs,
     subcategories,
     brands
   }
@@ -960,8 +1092,8 @@ export async function processCheckout(payload: CheckoutPayload): Promise<Checkou
 
     // 🏷️ กฎธุรกิจ: สินค้าพรอพ (Prop) ไม่สามารถรวมกับเฟอร์นิเจอร์ (Furniture) หรือแผ่นไม้ (Wood Slabs) ในบิลเดียวกันได้
     // แต่ เฟอร์นิเจอร์ กับ แผ่นไม้ สามารถรวมในบิลเดียวกันได้!
-    const hasProp = payload.items.some(i => !i.isFurniture && !i.isSlab && i.category_id !== 'furniture' && i.category_id !== 'SLABS')
-    const hasFurnOrWood = payload.items.some(i => i.isFurniture || i.isSlab || i.category_id === 'furniture' || i.category_id === 'SLABS')
+    const hasProp = payload.items.some(i => !i.isFurniture && !i.isSlab && i.category_id !== 'furniture' && i.category_id !== 'SLABS' && !((i as any).sku && ((i as any).sku.startsWith('ZLB-') || (i as any).sku.startsWith('LEG-'))))
+    const hasFurnOrWood = payload.items.some(i => i.isFurniture || i.isSlab || i.category_id === 'furniture' || i.category_id === 'SLABS' || ((i as any).sku && ((i as any).sku.startsWith('ZLB-') || (i as any).sku.startsWith('LEG-'))))
     if (hasProp && hasFurnOrWood) {
       return {
         success: false,
@@ -973,6 +1105,12 @@ export async function processCheckout(payload: CheckoutPayload): Promise<Checkou
     const requestedOrderCode = payload.customOrderCode?.trim()
     const orderCode = requestedOrderCode || previousOrderCode || `INV${Date.now()}`
 
+    const isSlabOrder = payload.items.some(i => 
+      i.isSlab || 
+      i.category_id === 'SLABS' || 
+      (typeof (i as any).sku === 'string' && ((i as any).sku.startsWith('ZLB-') || (i as any).sku.startsWith('LEG-') || (i as any).sku.startsWith('WOOD-')))
+    )
+
     const usedDiscounts = payload.items
       .filter(item => item.discountId)
       .map(item => ({ id: item.discountId, name: item.discountName, amount_per_piece: item.discountAmountPerPiece }))
@@ -983,6 +1121,11 @@ export async function processCheckout(payload: CheckoutPayload): Promise<Checkou
         percent: payload.specialDiscountPercent || 0,
         baht: payload.specialDiscountBaht || 0
       }
+    }
+    if (isSlabOrder) {
+      discountSnapshot.is_slab_order = true
+      discountSnapshot.wood_permit_fee = 5000
+      discountSnapshot.deposit_percent = 50
     }
     if (payload.couponCode) {
       discountSnapshot.coupon = {
@@ -1007,7 +1150,14 @@ export async function processCheckout(payload: CheckoutPayload): Promise<Checkou
     const outOfStockItems: string[] = []
     
     // ดึงสต็อกเฉพาะสินค้าที่ต้องตรวจสต็อก (ไม่รวมสินค้านอก, เฟอร์นิเจอร์ หรือแผ่นไม้)
-    const stockCheckedItems = payload.items.filter(item => !item.isExternal && !item.isFurniture && !item.isSlab && item.category_id !== 'furniture' && item.category_id !== 'SLABS')
+    const stockCheckedItems = payload.items.filter(item => 
+      !item.isExternal && 
+      !item.isFurniture && 
+      !item.isSlab && 
+      item.category_id !== 'furniture' && 
+      item.category_id !== 'SLABS' &&
+      !((item as any).sku && ((item as any).sku.startsWith('ZLB-') || (item as any).sku.startsWith('LEG-')))
+    )
     const productIds = stockCheckedItems.map(item => item.productId)
     
     if (productIds.length > 0) {
@@ -1042,6 +1192,11 @@ export async function processCheckout(payload: CheckoutPayload): Promise<Checkou
     const finalVatAmount = payload.vatAmount !== undefined && payload.vatAmount !== null
       ? Math.round(Number(payload.vatAmount) * 100) / 100
       : Math.round((finalTotalAmount - (finalTotalAmount / 1.07)) * 100) / 100
+
+    if (isSlabOrder) {
+      discountSnapshot.deposit_amount = Math.round(finalTotalAmount * 0.5 * 100) / 100
+      discountSnapshot.remaining_balance = Math.round((finalTotalAmount - discountSnapshot.deposit_amount) * 100) / 100
+    }
 
     let order;
     if (payload.orderId) {

@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react'
 import dynamic from 'next/dynamic'
-import { getPosData, getPosProductsPage, processCheckout, CheckoutPayload, getNearbyStock, getOrderForEdit, PosSetBundle, validatePosCoupon, updateProductPrice } from '@/actions/pos'
-import { FolderOpen, Store, Truck, Receipt, MapPin, Save, AlertTriangle, AlertCircle, Info, X, Plus, Minus, FileText, Trash2, Printer, RefreshCw, Clock, Menu, Sparkles, Ticket, SlidersHorizontal, Armchair, Tag, Edit3, Loader2 } from 'lucide-react'
+import { getPosData, getPosProductsPage, processCheckout, CheckoutPayload, getNearbyStock, getOrderForEdit, PosSetBundle, validatePosCoupon, updateProductPrice, getSlabsProducts, getFurnitureProducts } from '@/actions/pos'
+import { FolderOpen, Store, Truck, Receipt, MapPin, Save, AlertTriangle, AlertCircle, Info, X, Plus, Minus, FileText, Trash2, Printer, RefreshCw, Clock, Menu, Sparkles, Ticket, SlidersHorizontal, Armchair, Tag, Edit3, Loader2, Layers } from 'lucide-react'
 import { toast } from 'sonner'
 import StorefrontFilterDrawer from '@/components/pos/StorefrontFilterDrawer'
 import StorefrontFilterBar from '@/components/pos/StorefrontFilterBar'
@@ -37,6 +37,7 @@ interface Product {
   isExternal?: boolean;
   isFurniture?: boolean;
   isSlab?: boolean;
+  brand?: string;
 }
 
 interface CartItem extends Product {
@@ -48,6 +49,7 @@ interface CartItem extends Product {
   isExternal?: boolean;
   isFurniture?: boolean;
   isSlab?: boolean;
+  brand?: string;
 }
 
 interface NestedCategory {
@@ -78,6 +80,15 @@ export default function ManagerPOSPage() {
     'DOLL': true,
     'WALL ART': true,
   })
+
+  // 🪵 Catalog Mode: 'PROP' | 'FURNITURE' | 'SLAB'
+  const [catalogType, setCatalogType] = useState<'PROP' | 'FURNITURE' | 'SLAB'>('PROP')
+  const [slabsList, setSlabsList] = useState<Product[]>([])
+  const [furnitureList, setFurnitureList] = useState<Product[]>([])
+  const [loadingCatalog, setLoadingCatalog] = useState<boolean>(false)
+  const [slabSubcategories, setSlabSubcategories] = useState<string[]>([])
+  const [furnitureSubcategories, setFurnitureSubcategories] = useState<string[]>([])
+  const [selectedWoodMaterial, setSelectedWoodMaterial] = useState<string>('ALL')
 
   // 🛋️ State สำหรับโมดอลเพิ่มสินค้านอก & เฟอร์นิเจอร์
   const [isExternalModalOpen, setIsExternalModalOpen] = useState(false)
@@ -433,9 +444,98 @@ export default function ManagerPOSPage() {
     if (isInitial) setLoadingDb(false)
   }
 
+  // 🪵 สลับแคตตาล็อก: 'PROP' | 'FURNITURE' | 'SLAB' (สไตล์เดียวกับ Mobile POS)
+  const handleSwitchCatalog = async (type: 'PROP' | 'FURNITURE' | 'SLAB') => {
+    if (type === catalogType) return
+    setCatalogType(type)
+    setSearchQuery('')
+    setSelectedCategory('ALL')
+    setSelectedWoodMaterial('ALL')
+
+    if (type === 'SLAB') {
+      if (slabsList.length === 0) {
+        setLoadingCatalog(true)
+        try {
+          const res = await getSlabsProducts()
+          if (res.success && res.products) {
+            setSlabsList(res.products)
+            setSlabSubcategories(res.subcategories || [])
+          } else {
+            toast.error(res.error || 'ไม่สามารถโหลดแคตตาล็อกแผ่นไม้ ZENSLABS ได้')
+          }
+        } catch (err: any) {
+          toast.error('เกิดข้อผิดพลาดในการโหลดแผ่นไม้: ' + (err.message || String(err)))
+        } finally {
+          setLoadingCatalog(false)
+        }
+      }
+    } else if (type === 'FURNITURE') {
+      if (furnitureList.length === 0) {
+        setLoadingCatalog(true)
+        try {
+          const res = await getFurnitureProducts()
+          if (res.success && res.products) {
+            setFurnitureList(res.products)
+            setFurnitureSubcategories(res.subcategories || [])
+          } else {
+            toast.error(res.error || 'ไม่สามารถโหลดแคตตาล็อกเฟอร์นิเจอร์ได้')
+          }
+        } catch (err: any) {
+          toast.error('เกิดข้อผิดพลาดในการโหลดเฟอร์นิเจอร์: ' + (err.message || String(err)))
+        } finally {
+          setLoadingCatalog(false)
+        }
+      }
+    }
+  }
+
+  // ⚡ รายการสินค้าที่จะแสดงในหน้า POS ตามแคตตาล็อกที่เลือก
+  const activeProducts = useMemo(() => {
+    if (catalogType === 'SLAB') {
+      let list = slabsList
+      if (selectedWoodMaterial !== 'ALL') {
+        list = list.filter(p => p.product_sup === selectedWoodMaterial || p.specs?.material === selectedWoodMaterial)
+      }
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim()
+        list = list.filter(p =>
+          p.name?.toLowerCase().includes(q) ||
+          p.sku?.toLowerCase().includes(q) ||
+          p.product_sup?.toLowerCase().includes(q) ||
+          (p.specs?.dimensions && String(p.specs.dimensions).toLowerCase().includes(q)) ||
+          (p.specs?.material && String(p.specs.material).toLowerCase().includes(q))
+        )
+      }
+      return list
+    }
+    if (catalogType === 'FURNITURE') {
+      let list = furnitureList
+      if (selectedCategory !== 'ALL') {
+        list = list.filter(p => p.product_sup === selectedCategory)
+      }
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim()
+        list = list.filter(p =>
+          p.name?.toLowerCase().includes(q) ||
+          p.sku?.toLowerCase().includes(q) ||
+          p.product_sup?.toLowerCase().includes(q) ||
+          (p.specs?.material && String(p.specs.material).toLowerCase().includes(q))
+        )
+      }
+      return list
+    }
+    return products
+  }, [catalogType, slabsList, furnitureList, products, selectedWoodMaterial, selectedCategory, searchQuery])
+
+  const displayedTotalCount = useMemo(() => {
+    if (catalogType === 'SLAB') return activeProducts.length
+    if (catalogType === 'FURNITURE') return activeProducts.length
+    return totalCount
+  }, [catalogType, activeProducts.length, totalCount])
+
   // 🚀 ฟังก์ชันดึงสินค้าหน้าถัดไปแบบ Infinite Scroll
   const loadMoreProducts = async () => {
-    if (isLoadingMore || !hasMore || loadingDb || selectedCategory === 'SETS') return
+    if (catalogType !== 'PROP' || isLoadingMore || !hasMore || loadingDb || selectedCategory === 'SETS') return
     setIsLoadingMore(true)
     try {
       const nextPage = currentPage + 1
@@ -470,7 +570,7 @@ export default function ManagerPOSPage() {
 
   // 🌀 ดักจับเมื่อผู้ใช้เลื่อนจอลงมาใกล้ล่างสุด แล้วโหลดเพิ่มอัตโนมัติ (Infinite Scroll)
   useEffect(() => {
-    if (selectedCategory === 'SETS') return
+    if (catalogType !== 'PROP' || selectedCategory === 'SETS') return
     const target = observerTargetRef.current
     if (!target) return
 
@@ -485,11 +585,11 @@ export default function ManagerPOSPage() {
 
     observer.observe(target)
     return () => observer.disconnect()
-  }, [hasMore, isLoadingMore, loadingDb, currentPage, searchQuery, selectedCategory, storefrontCategory, selectedColors, selectedMaterials, selectedBrands, dimensionFilter, selectedLocation])
+  }, [catalogType, hasMore, isLoadingMore, loadingDb, currentPage, searchQuery, selectedCategory, storefrontCategory, selectedColors, selectedMaterials, selectedBrands, dimensionFilter, selectedLocation])
 
   // ⚡ ค้นหาและกรองผ่าน Server แบบ Debounced (ค้นหาไวในเสี้ยววินาที ไม่กระตุก)
   useEffect(() => {
-    if (loadingDb) return
+    if (loadingDb || catalogType !== 'PROP') return
     if (selectedCategory === 'SETS') return
 
     const timer = setTimeout(async () => {
@@ -524,7 +624,7 @@ export default function ManagerPOSPage() {
     }, 220)
 
     return () => clearTimeout(timer)
-  }, [searchQuery, selectedCategory, storefrontCategory, selectedColors, selectedMaterials, selectedBrands, dimensionFilter, selectedLocation])
+  }, [catalogType, searchQuery, selectedCategory, storefrontCategory, selectedColors, selectedMaterials, selectedBrands, dimensionFilter, selectedLocation])
 
   const buildNestedMenu = (rawCategories: string[]) => {
     const groups: Record<string, { fullText: string; subText: string }[]> = {}
@@ -618,7 +718,9 @@ export default function ManagerPOSPage() {
       product.category_id === 'furniture' || 
       product.category_id === 'SLABS' ||
       product.sku?.toUpperCase().startsWith('WOOD') ||
-      product.sku?.toUpperCase().startsWith('EMBER')
+      product.sku?.toUpperCase().startsWith('EMBER') ||
+      product.sku?.toUpperCase().startsWith('ZLB') ||
+      product.sku?.toUpperCase().startsWith('LEG')
     )
     const isAddingProp = !isAddingWoodOrFurn
 
@@ -628,7 +730,9 @@ export default function ManagerPOSPage() {
       item.category_id !== 'furniture' && 
       item.category_id !== 'SLABS' &&
       !item.sku?.toUpperCase().startsWith('WOOD') &&
-      !item.sku?.toUpperCase().startsWith('EMBER')
+      !item.sku?.toUpperCase().startsWith('EMBER') &&
+      !item.sku?.toUpperCase().startsWith('ZLB') &&
+      !item.sku?.toUpperCase().startsWith('LEG')
     )
     const cartHasWoodOrFurn = cart.some(item => 
       item.isFurniture || 
@@ -636,7 +740,9 @@ export default function ManagerPOSPage() {
       item.category_id === 'furniture' || 
       item.category_id === 'SLABS' ||
       item.sku?.toUpperCase().startsWith('WOOD') ||
-      item.sku?.toUpperCase().startsWith('EMBER')
+      item.sku?.toUpperCase().startsWith('EMBER') ||
+      item.sku?.toUpperCase().startsWith('ZLB') ||
+      item.sku?.toUpperCase().startsWith('LEG')
     )
 
     if (isAddingProp && cartHasWoodOrFurn) {
@@ -657,7 +763,15 @@ export default function ManagerPOSPage() {
     const currentInCart = existing ? existing.quantity : 0
 
     // ถ้าเป็นสินค้านอก, เฟอร์นิเจอร์ หรือแผ่นไม้ ไม่ต้องบล็อกสต็อกหน้าร้าน
-    const isExemptStock = Boolean(product.isExternal || product.isFurniture || product.isSlab || product.category_id === 'furniture' || product.category_id === 'SLABS')
+    const isExemptStock = Boolean(
+      product.isExternal || 
+      product.isFurniture || 
+      product.isSlab || 
+      product.category_id === 'furniture' || 
+      product.category_id === 'SLABS' ||
+      product.sku?.toUpperCase().startsWith('ZLB') ||
+      product.sku?.toUpperCase().startsWith('LEG')
+    )
 
     // ถ้าสต็อกในสาขาหมด หรือหยิบจนเกินสต็อกที่มี (เฉพาะสินค้าทั่วไป)
     if (!forceAdd && !isExemptStock && (availableQty <= 0 || currentInCart >= availableQty)) {
@@ -691,8 +805,8 @@ export default function ManagerPOSPage() {
         fulfill_branch_id: targetBranchId,
         fulfill_branch_name: branchName,
         isExternal: Boolean(product.isExternal),
-        isFurniture: Boolean(product.isFurniture || product.category_id === 'furniture'),
-        isSlab: Boolean(product.isSlab || product.category_id === 'SLABS')
+        isFurniture: Boolean(product.isFurniture || product.category_id === 'furniture' || product.sku?.toUpperCase().startsWith('EMBER')),
+        isSlab: Boolean(product.isSlab || product.category_id === 'SLABS' || product.sku?.toUpperCase().startsWith('ZLB') || product.sku?.toUpperCase().startsWith('LEG') || product.sku?.toUpperCase().startsWith('WOOD'))
       }]
     })
   }
@@ -1100,7 +1214,21 @@ export default function ManagerPOSPage() {
   const isShippingWaived = isOrderOver20k && waiveShippingFee
   const deliveryFee = Number(shippingCost) || 0
   const deliveryFeeCharged = isShippingWaived ? 0 : deliveryFee
-  const grandTotal = totalFinalPrice + deliveryFeeCharged
+
+  // 🪵 ตรวจสอบว่าในตะกร้ามีแผ่นไม้ ZENSLABS หรือไม่
+  const hasSlabInCart = cart.some(item => 
+    item.isSlab || 
+    item.category_id === 'SLABS' || 
+    (typeof item.sku === 'string' && (item.sku.startsWith('ZLB-') || item.sku.startsWith('LEG-') || item.sku.startsWith('WOOD-')))
+  )
+
+  // 📜 ค่าใบกำกับไม้ (Wood Permit Fee) 5,000.00 บาทสำหรับสินค้าแผ่นไม้สแลป
+  const woodPermitFee = hasSlabInCart ? 5000 : 0
+  const grandTotal = totalFinalPrice + deliveryFeeCharged + woodPermitFee
+
+  // 💰 ยอดมัดจำ 50% และคงเหลือวันส่งมอบ สำหรับสินค้าแผ่นไม้ ZENSLABS
+  const deposit50Percent = Math.round(grandTotal * 0.5 * 100) / 100
+  const remaining50Percent = Math.round((grandTotal - deposit50Percent) * 100) / 100
 
   const handlePreCheckout = () => {
     if (cart.length === 0) return
@@ -1214,6 +1342,8 @@ export default function ManagerPOSPage() {
         companyNameEn: companyNameEn.trim() || null,
         companyAddress: companyAddress.trim() || null,
         taxId: taxId.trim() || null,
+        isSlabOrder: hasSlabInCart,
+        woodPermitFee: woodPermitFee,
         items: cart.map(item => ({
           productId: item.id,
           qty: item.quantity,
@@ -1224,7 +1354,9 @@ export default function ManagerPOSPage() {
           discountName: item.discount_name || null,
           discountAmountPerPiece: item.original_price - item.price,
           isExternal: Boolean(item.isExternal),
-          isFurniture: Boolean(item.isFurniture || item.category_id === 'furniture')
+          isFurniture: Boolean(item.isFurniture || item.category_id === 'furniture' || item.sku?.startsWith('EMBER-')),
+          isSlab: Boolean(item.isSlab || item.category_id === 'SLABS' || item.sku?.startsWith('ZLB-') || item.sku?.startsWith('LEG-') || item.sku?.startsWith('WOOD-')),
+          category_id: item.category_id || (item.isSlab ? 'SLABS' : item.isFurniture ? 'furniture' : 'prop')
         }))
       }
 
@@ -1404,6 +1536,69 @@ export default function ManagerPOSPage() {
 
         <div className="flex-1 w-full flex flex-col gap-4">
           <div className="bg-white p-4 rounded-3xl shadow-xs flex flex-col gap-3 w-full sticky top-0 md:top-4 z-20">
+            {/* 🌟 Row 0: แถบเลือกแคตตาล็อกหลัก (PROPS vs FURNITURE vs ZENSLABS) แบบเดียวกับ Mobile App */}
+            <div className="flex items-center gap-2 border-b border-slate-100 pb-3 overflow-x-auto no-scrollbar">
+              <button
+                type="button"
+                onClick={() => handleSwitchCatalog('PROP')}
+                className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer shrink-0 shadow-2xs ${
+                  catalogType === 'PROP'
+                    ? 'bg-[#1E293B] text-white shadow-md'
+                    : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200/80'
+                }`}
+              >
+                <span>🏺 พรอพ (PROPS)</span>
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                  catalogType === 'PROP' ? 'bg-slate-700 text-slate-100' : 'bg-slate-200/80 text-slate-600'
+                }`}>
+                  {totalCount.toLocaleString()}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleSwitchCatalog('FURNITURE')}
+                className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer shrink-0 shadow-2xs ${
+                  catalogType === 'FURNITURE'
+                    ? 'bg-[#84492C] text-white shadow-md'
+                    : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200/80'
+                }`}
+              >
+                <Armchair className="w-3.5 h-3.5" />
+                <span>เฟอร์นิเจอร์ (EMBER & ASH)</span>
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                  catalogType === 'FURNITURE' ? 'bg-[#5c331e] text-amber-200' : 'bg-slate-200/80 text-slate-600'
+                }`}>
+                  {furnitureList.length > 0 ? furnitureList.length.toLocaleString() : '833'}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleSwitchCatalog('SLAB')}
+                className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer shrink-0 shadow-2xs ${
+                  catalogType === 'SLAB'
+                    ? 'bg-gradient-to-r from-[#291e14] via-[#452817] to-[#1e130c] text-amber-300 ring-2 ring-amber-500/50 shadow-lg'
+                    : 'bg-stone-50 text-stone-700 hover:bg-stone-100 border border-stone-200/80'
+                }`}
+              >
+                <span className="text-sm leading-none">🪵</span>
+                <span>แผ่นไม้ / สแลป (ZENSLABS)</span>
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                  catalogType === 'SLAB' ? 'bg-amber-900 text-amber-200' : 'bg-stone-200/80 text-stone-700'
+                }`}>
+                  {slabsList.length > 0 ? slabsList.length.toLocaleString() : '1,032'}
+                </span>
+              </button>
+
+              {loadingCatalog && (
+                <div className="flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 px-3 py-1.5 rounded-full border border-amber-200/60 font-bold ml-auto shrink-0 animate-pulse">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>กำลังดึงแคตตาล็อก...</span>
+                </div>
+              )}
+            </div>
+
             {/* 🌟 Row 1: เครื่องมือหลัก, ปุ่มหมวดหมู่เดิม, เซ็ตสินค้า, ค้นหา */}
             <div className="flex flex-col xl:flex-row gap-3 items-center justify-between w-full">
               <div className="flex items-center gap-2 w-full xl:w-auto overflow-hidden">
@@ -1425,7 +1620,13 @@ export default function ManagerPOSPage() {
                   className="bg-slate-100 text-slate-700 font-bold text-xs px-3.5 py-2.5 rounded-full hover:bg-slate-200 transition-all flex items-center justify-center gap-1.5 shadow-xs flex-1 min-w-0 xl:flex-none xl:w-auto text-center truncate cursor-pointer"
                 >
                   <FolderOpen className="w-3.5 h-3.5 shrink-0 text-slate-500" />
-                  <span className="truncate">หมวดหมู่ {selectedCategory !== 'ALL' && `(${selectedCategory.split(' ').pop()})`}</span>
+                  <span className="truncate">
+                    {catalogType === 'SLAB'
+                      ? `เนื้อไม้ (${selectedWoodMaterial === 'ALL' ? 'ทั้งหมด' : selectedWoodMaterial})`
+                      : catalogType === 'FURNITURE'
+                        ? `หมวด (${selectedCategory === 'ALL' ? 'ทั้งหมด' : selectedCategory})`
+                        : `หมวดหมู่ ${selectedCategory !== 'ALL' ? `(${selectedCategory.split(' ').pop()})` : ''}`}
+                  </span>
                 </button>
 
                 {/* ✨ Reload & Time (Desktop only) */}
@@ -1439,23 +1640,43 @@ export default function ManagerPOSPage() {
                     </span>
                   </div>
                   <button
-                    onClick={() => loadData(false, true)}
-                    disabled={loadingDb}
+                    onClick={() => {
+                      if (catalogType === 'SLAB') {
+                        setSlabsList([])
+                        handleSwitchCatalog('SLAB')
+                      } else if (catalogType === 'FURNITURE') {
+                        setFurnitureList([])
+                        handleSwitchCatalog('FURNITURE')
+                      } else {
+                        loadData(false, true)
+                      }
+                    }}
+                    disabled={loadingDb || loadingCatalog}
                     className="ml-1 p-1.5 bg-white border border-slate-200 text-amber-600 rounded-full hover:bg-amber-50 hover:border-amber-300 disabled:opacity-50 transition-all cursor-pointer shadow-xs"
                     title="รีโหลดข้อมูลสินค้าและสต็อกสดจากคลัง"
                   >
-                    <RefreshCw className={`w-3.5 h-3.5 ${loadingDb ? 'animate-spin text-slate-400' : ''}`} />
+                    <RefreshCw className={`w-3.5 h-3.5 ${(loadingDb || loadingCatalog) ? 'animate-spin text-slate-400' : ''}`} />
                   </button>
                 </div>
 
                 {/* ✨ Mobile-only compact reload button */}
                 <button
-                  onClick={() => loadData(false, true)}
-                  disabled={loadingDb}
+                  onClick={() => {
+                    if (catalogType === 'SLAB') {
+                      setSlabsList([])
+                      handleSwitchCatalog('SLAB')
+                    } else if (catalogType === 'FURNITURE') {
+                      setFurnitureList([])
+                      handleSwitchCatalog('FURNITURE')
+                    } else {
+                      loadData(false, true)
+                    }
+                  }}
+                  disabled={loadingDb || loadingCatalog}
                   className="flex sm:hidden p-2.5 bg-slate-100 hover:bg-slate-200 text-amber-600 rounded-full disabled:opacity-50 transition-all cursor-pointer shadow-xs shrink-0"
                   title="รีโหลดข้อมูลสินค้าและสต็อกสดจากคลัง"
                 >
-                  <RefreshCw className={`w-3.5 h-3.5 ${loadingDb ? 'animate-spin text-slate-400' : ''}`} />
+                  <RefreshCw className={`w-3.5 h-3.5 ${(loadingDb || loadingCatalog) ? 'animate-spin text-slate-400' : ''}`} />
                 </button>
               </div>
               
@@ -1471,7 +1692,7 @@ export default function ManagerPOSPage() {
                   <span>+ สินค้านอก / เฟอร์</span>
                 </button>
 
-                {sets.length > 0 && (
+                {catalogType === 'PROP' && sets.length > 0 && (
                   <button
                     type="button"
                     onClick={() => setSelectedCategory(prev => prev === 'SETS' ? 'ALL' : 'SETS')}
@@ -1489,7 +1710,13 @@ export default function ManagerPOSPage() {
                 <div className="w-full xl:w-72 shrink-0 relative">
                   <input
                     type="text"
-                    placeholder={selectedCategory === 'SETS' ? "ค้นหาชื่อเซ็ต หรือหมวด..." : "ค้นหาชื่อสินค้าที่นี่..."}
+                    placeholder={
+                      catalogType === 'SLAB'
+                        ? "ค้นหาแผ่นไม้ (รหัส ZLB, ขนาด, ไม้วอลนัท, โอ๊ค...)"
+                        : catalogType === 'FURNITURE'
+                          ? "ค้นหาเฟอร์นิเจอร์ (เก้าอี้, โต๊ะ, ตู้...)"
+                          : (selectedCategory === 'SETS' ? "ค้นหาชื่อเซ็ต หรือหมวด..." : "ค้นหาชื่อสินค้าที่นี่...")
+                    }
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="w-full pl-5 pr-10 py-2.5 bg-slate-50 rounded-full text-sm outline-none focus:bg-white focus:ring-2 focus:ring-amber-200 transition-all"
@@ -1503,83 +1730,161 @@ export default function ManagerPOSPage() {
               </div>
             </div>
 
-            {/* 🌟 Row 2: แถบปุ่มฟิลเตอร์สไตล์หน้าบ้าน (Storefront Filter Bar) ตรงตามเรฟภาพเป๊ะๆ */}
-            <div className="w-full pt-2 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <StorefrontFilterBar
-                onOpenFilter={() => {
-                  setStorefrontDrawerPanel('category')
-                  setIsStorefrontDrawerOpen(true)
-                }}
-                onOpenColor={() => {
-                  setStorefrontDrawerPanel('color')
-                  setIsStorefrontDrawerOpen(true)
-                }}
-                onOpenMaterial={() => {
-                  setStorefrontDrawerPanel('material')
-                  setIsStorefrontDrawerOpen(true)
-                }}
-                onOpenSize={() => {
-                  setStorefrontDrawerPanel('size')
-                  setIsStorefrontDrawerOpen(true)
-                }}
-                onOpenBrand={() => {
-                  setStorefrontDrawerPanel('brand')
-                  setIsStorefrontDrawerOpen(true)
-                }}
-                onClearFilters={() => {
-                  setStorefrontCategory('All')
-                  setSelectedColors([])
-                  setSelectedMaterials([])
-                  setSelectedBrands([])
-                  setDimensionFilter(EMPTY_DIMENSION_FILTER)
-                }}
-                hasActiveFilters={hasActiveStorefrontFilters}
-                isFilterOpen={isStorefrontDrawerOpen}
-                selectedCategory={storefrontCategory}
-                selectedColorsCount={selectedColors.length}
-                selectedMaterialsCount={selectedMaterials.length}
-                selectedBrandsCount={selectedBrands.length}
-                hasActiveDimensions={hasActiveDimensions(dimensionFilter)}
-                branches={branches}
-                selectedLocation={selectedLocation}
-                onSelectLocation={(loc) => {
-                  setSelectedLocation(loc)
-                  const bName = loc === 'ALL' ? 'ทุกสาขาทั่วประเทศ' : branches.find(b => b.id === loc)?.branch_name || 'สาขาที่เลือก'
-                  toast.info(`📍 แสดงสต็อก: ${bName}`)
-                }}
-              />
+            {/* 🌟 Row 2: ตัวกรองตามแคตตาล็อก */}
+            {catalogType === 'SLAB' ? (
+              <div className="w-full pt-2 border-t border-slate-100 flex flex-col gap-2">
+                <div className="flex items-center justify-between gap-2 overflow-x-auto no-scrollbar pb-1">
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedWoodMaterial('ALL')}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
+                        selectedWoodMaterial === 'ALL'
+                          ? 'bg-[#1E293B] text-white shadow-2xs'
+                          : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                      }`}
+                    >
+                      ทั้งหมด ({slabsList.length})
+                    </button>
+                    {slabSubcategories.slice(0, 8).map(mat => (
+                      <button
+                        key={mat}
+                        type="button"
+                        onClick={() => setSelectedWoodMaterial(prev => prev === mat ? 'ALL' : mat)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
+                          selectedWoodMaterial === mat
+                            ? 'bg-[#84492C] text-white shadow-2xs'
+                            : 'bg-stone-100 hover:bg-stone-200 text-stone-700'
+                        }`}
+                      >
+                        {mat}
+                      </button>
+                    ))}
+                    {slabSubcategories.length > 8 && (
+                      <select
+                        value={selectedWoodMaterial}
+                        onChange={e => setSelectedWoodMaterial(e.target.value)}
+                        className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none cursor-pointer shrink-0"
+                      >
+                        <option value="ALL">ไม้ชนิดอื่นๆ ({slabSubcategories.length - 8} ชนิด)...</option>
+                        {slabSubcategories.slice(8).map(mat => (
+                          <option key={mat} value={mat}>{mat}</option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
 
-              {/* Active Filter Badges */}
-              {hasActiveStorefrontFilters && (
-                <div className="flex items-center gap-1.5 shrink-0 overflow-x-auto [scrollbar-width:none] py-0.5">
-                  {storefrontCategory !== 'All' && storefrontCategory !== 'ALL' && (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-bold rounded-full whitespace-nowrap">
-                      หมวด: {storefrontCategory}
-                    </span>
-                  )}
-                  {selectedBrands.length > 0 && (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-bold rounded-full whitespace-nowrap">
-                      แบรนด์ ({selectedBrands.length})
-                    </span>
-                  )}
-                  {selectedColors.length > 0 && (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-bold rounded-full whitespace-nowrap">
-                      สี ({selectedColors.length})
-                    </span>
-                  )}
-                  {selectedMaterials.length > 0 && (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-bold rounded-full whitespace-nowrap">
-                      วัสดุ ({selectedMaterials.length})
-                    </span>
-                  )}
-                  {hasActiveDimensions(dimensionFilter) && (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-bold rounded-full whitespace-nowrap">
-                      ขนาด
-                    </span>
-                  )}
+                  <div className="text-[11px] font-bold text-amber-900 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200 shrink-0 hidden sm:flex items-center gap-1">
+                    <span>📜 มีค่าใบกำกับไม้ ฿5,000 (มัดจำ 50%)</span>
+                  </div>
                 </div>
-              )}
-            </div>
+              </div>
+            ) : catalogType === 'FURNITURE' ? (
+              <div className="w-full pt-2 border-t border-slate-100 flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
+                <button
+                  type="button"
+                  onClick={() => setSelectedCategory('ALL')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
+                    selectedCategory === 'ALL'
+                      ? 'bg-[#1E293B] text-white shadow-2xs'
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                  }`}
+                >
+                  ทั้งหมด ({furnitureList.length})
+                </button>
+                {furnitureSubcategories.map(cat => (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => setSelectedCategory(prev => prev === cat ? 'ALL' : cat)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
+                      selectedCategory === cat
+                        ? 'bg-[#84492C] text-white shadow-2xs'
+                        : 'bg-stone-100 hover:bg-stone-200 text-stone-700'
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="w-full pt-2 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <StorefrontFilterBar
+                  onOpenFilter={() => {
+                    setStorefrontDrawerPanel('category')
+                    setIsStorefrontDrawerOpen(true)
+                  }}
+                  onOpenColor={() => {
+                    setStorefrontDrawerPanel('color')
+                    setIsStorefrontDrawerOpen(true)
+                  }}
+                  onOpenMaterial={() => {
+                    setStorefrontDrawerPanel('material')
+                    setIsStorefrontDrawerOpen(true)
+                  }}
+                  onOpenSize={() => {
+                    setStorefrontDrawerPanel('size')
+                    setIsStorefrontDrawerOpen(true)
+                  }}
+                  onOpenBrand={() => {
+                    setStorefrontDrawerPanel('brand')
+                    setIsStorefrontDrawerOpen(true)
+                  }}
+                  onClearFilters={() => {
+                    setStorefrontCategory('All')
+                    setSelectedColors([])
+                    setSelectedMaterials([])
+                    setSelectedBrands([])
+                    setDimensionFilter(EMPTY_DIMENSION_FILTER)
+                  }}
+                  hasActiveFilters={hasActiveStorefrontFilters}
+                  isFilterOpen={isStorefrontDrawerOpen}
+                  selectedCategory={storefrontCategory}
+                  selectedColorsCount={selectedColors.length}
+                  selectedMaterialsCount={selectedMaterials.length}
+                  selectedBrandsCount={selectedBrands.length}
+                  hasActiveDimensions={hasActiveDimensions(dimensionFilter)}
+                  branches={branches}
+                  selectedLocation={selectedLocation}
+                  onSelectLocation={(loc) => {
+                    setSelectedLocation(loc)
+                    const bName = loc === 'ALL' ? 'ทุกสาขาทั่วประเทศ' : branches.find(b => b.id === loc)?.branch_name || 'สาขาที่เลือก'
+                    toast.info(`📍 แสดงสต็อก: ${bName}`)
+                  }}
+                />
+
+                {/* Active Filter Badges */}
+                {hasActiveStorefrontFilters && (
+                  <div className="flex items-center gap-1.5 shrink-0 overflow-x-auto [scrollbar-width:none] py-0.5">
+                    {storefrontCategory !== 'All' && storefrontCategory !== 'ALL' && (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-bold rounded-full whitespace-nowrap">
+                        หมวด: {storefrontCategory}
+                      </span>
+                    )}
+                    {selectedBrands.length > 0 && (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-bold rounded-full whitespace-nowrap">
+                        แบรนด์ ({selectedBrands.length})
+                      </span>
+                    )}
+                    {selectedColors.length > 0 && (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-bold rounded-full whitespace-nowrap">
+                        สี ({selectedColors.length})
+                      </span>
+                    )}
+                    {selectedMaterials.length > 0 && (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-bold rounded-full whitespace-nowrap">
+                        วัสดุ ({selectedMaterials.length})
+                      </span>
+                    )}
+                    {hasActiveDimensions(dimensionFilter) && (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-bold rounded-full whitespace-nowrap">
+                        ขนาด
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {selectedCategory === 'SETS' ? (
@@ -1752,31 +2057,48 @@ export default function ManagerPOSPage() {
             /* 📦 ตารางแสดงสินค้าเดี่ยวปกติ */
             <>
               <div className="grid grid-cols-4 md:grid-cols-5 xl:grid-cols-6 gap-2 sm:gap-4 w-full">
-                {products.length === 0 && !loadingDb ? (
+                {activeProducts.length === 0 && !loadingDb && !loadingCatalog ? (
                   <div className="col-span-full py-16 flex flex-col items-center justify-center text-center">
                     <div className="w-14 h-14 bg-slate-100 rounded-full flex items-center justify-center text-slate-400 mb-3">
                       <FolderOpen className="w-7 h-7" />
                     </div>
-                    <p className="text-sm font-bold text-slate-600">ไม่พบสินค้าที่ตรงกับเงื่อนไขการค้นหา</p>
+                    <p className="text-sm font-bold text-slate-600">
+                      {catalogType === 'SLAB' 
+                        ? 'ไม่พบสินค้าแผ่นไม้ ZENSLABS ที่ตรงกับเงื่อนไข' 
+                        : catalogType === 'FURNITURE'
+                          ? 'ไม่พบสินค้าเฟอร์นิเจอร์ที่ตรงกับเงื่อนไข'
+                          : 'ไม่พบสินค้าที่ตรงกับเงื่อนไขการค้นหา'}
+                    </p>
                     <p className="text-xs text-slate-400 mt-1">ลองเปลี่ยนคำค้นหา หรือรีเซ็ตตัวกรอง</p>
                   </div>
                 ) : (
-                  products.map((product) => {
+                  activeProducts.map((product) => {
                     const targetBranch = selectedLocation === 'ALL' ? myBranchId : selectedLocation
-                    const branchStock = product.stocks.find(s => s.branch_id === targetBranch)
+                    const branchStock = product.stocks?.find(s => s.branch_id === targetBranch)
                     const currentBranchQty = branchStock ? Number(branchStock.qty) : 0
-                    const totalStock = product.stocks.reduce((sum, s) => sum + Number(s.qty), 0)
+                    const totalStock = product.stocks ? product.stocks.reduce((sum, s) => sum + Number(s.qty), 0) : 0
+                    const isSlabProduct = Boolean(product.isSlab || product.category_id === 'SLABS' || (product.sku && (product.sku.startsWith('ZLB-') || product.sku.startsWith('LEG-'))))
+
                     return (
                       <div
                         key={product.id}
                         onClick={() => handleProductClick(product)}
-                        className="bg-white rounded-[20px] p-2 flex flex-col shadow-xs cursor-pointer border border-slate-100 hover:border-amber-400 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 group relative"
+                        className={`bg-white rounded-[20px] p-2 flex flex-col shadow-xs cursor-pointer border transition-all duration-300 group relative ${
+                          isSlabProduct 
+                            ? 'border-amber-100 hover:border-amber-500 hover:shadow-amber-100 hover:shadow-lg hover:-translate-y-1' 
+                            : 'border-slate-100 hover:border-amber-400 hover:shadow-lg hover:-translate-y-1'
+                        }`}
                       >
                         <div className="relative w-full aspect-square bg-slate-50 rounded-2xl overflow-hidden mb-2 flex items-center justify-center">
                           {product.image_url ? (
                             <img id={`product-img-${product.id}`} src={product.image_url} alt={product.name} className="object-cover w-full h-full transition-transform duration-500 group-hover:scale-110" />
                           ) : (
                             <span className="text-xs text-slate-300 font-medium">ไม่มีรูป</span>
+                          )}
+                          {isSlabProduct && (
+                            <div className="absolute top-2 left-2 bg-[#1c130d]/90 text-amber-300 border border-amber-500/40 text-[8px] font-black px-1.5 py-0.5 rounded-md backdrop-blur-xs flex items-center gap-0.5 shadow-xs z-10">
+                              <span>🪵</span> ZENSLABS
+                            </div>
                           )}
                           {currentBranchQty > 0 ? (
                             <div className="absolute top-2 right-2 bg-slate-900/80 text-white text-[9px] px-1.5 py-0.5 rounded-md backdrop-blur-xs font-bold">
@@ -1785,6 +2107,10 @@ export default function ManagerPOSPage() {
                           ) : totalStock > 0 ? (
                             <div className="absolute top-2 right-2 bg-amber-600 text-white text-[9px] px-1.5 py-0.5 rounded-md backdrop-blur-xs font-bold shadow-xs flex items-center gap-0.5">
                               <MapPin className="w-2.5 h-2.5" /> ดึงสาขา ({totalStock})
+                            </div>
+                          ) : isSlabProduct ? (
+                            <div className="absolute top-2 right-2 bg-amber-950/80 text-amber-200 text-[8px] px-1.5 py-0.5 rounded-md backdrop-blur-xs font-bold shadow-xs border border-amber-800/50">
+                              พร้อมส่ง / Pre-order
                             </div>
                           ) : (
                             <div className="absolute top-2 right-2 bg-slate-700/80 text-white text-[9px] px-1.5 py-0.5 rounded-md backdrop-blur-xs font-bold shadow-xs">
@@ -1796,9 +2122,14 @@ export default function ManagerPOSPage() {
                           <h3 className="font-bold text-slate-800 text-[10px] sm:text-xs truncate w-full" title={product.name}>
                             {product.name}
                           </h3>
-                          {product.specs && product.specs.material && (
-                            <span className="text-[8px] text-slate-400 font-medium uppercase tracking-wider block mt-0.5 leading-none">
-                              {product.specs.material}
+                          {product.specs?.dimensions && (
+                            <div className="text-[9px] text-amber-900 font-mono font-bold bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200/50 w-fit mt-0.5 truncate max-w-full">
+                              📐 {product.specs.dimensions}
+                            </div>
+                          )}
+                          {(product.specs?.material || product.product_sup) && (
+                            <span className="text-[8px] text-slate-400 font-medium uppercase tracking-wider block mt-0.5 leading-none truncate">
+                              {product.specs?.material || product.product_sup}
                             </span>
                           )}
                           <div className="flex items-end justify-between mt-1">
@@ -1825,24 +2156,26 @@ export default function ManagerPOSPage() {
                 )}
               </div>
 
-              {/* 🌀 Sentinel element for Infinite Scroll */}
-              <div ref={observerTargetRef} className="h-6 w-full flex items-center justify-center my-3 pointer-events-none">
-                {isLoadingMore && (
-                  <div className="flex items-center gap-2 text-xs text-amber-700 font-bold py-2 bg-amber-50 px-4 rounded-full border border-amber-200/60 shadow-2xs">
-                    <Loader2 className="w-4 h-4 animate-spin text-amber-600" />
-                    กำลังโหลดสินค้าเพิ่มเติม...
-                  </div>
-                )}
-              </div>
+              {/* 🌀 Sentinel element for Infinite Scroll (เฉพาะหน้าพรอพ) */}
+              {catalogType === 'PROP' && (
+                <div ref={observerTargetRef} className="h-6 w-full flex items-center justify-center my-3 pointer-events-none">
+                  {isLoadingMore && (
+                    <div className="flex items-center gap-2 text-xs text-amber-700 font-bold py-2 bg-amber-50 px-4 rounded-full border border-amber-200/60 shadow-2xs">
+                      <Loader2 className="w-4 h-4 animate-spin text-amber-600" />
+                      กำลังโหลดสินค้าเพิ่มเติม...
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* ✨ แถบสถานะการโหลดและปุ่มโหลดเพิ่มเติม */}
               <div className="w-full flex flex-col sm:flex-row items-center justify-between gap-3 p-4 bg-white rounded-2xl border border-slate-100 shadow-2xs mt-1 mb-24 lg:mb-4">
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-slate-600 font-bold">
-                    แสดง {products.length} จาก {totalCount} รายการ ({selectedLocation === 'ALL' ? 'พร้อมส่งทุกสาขา' : branches.find(b => b.id === selectedLocation)?.branch_name || 'สาขาที่เลือก'})
+                    แสดง {activeProducts.length} จาก {displayedTotalCount} รายการ ({selectedLocation === 'ALL' ? 'พร้อมส่งทุกสาขา' : branches.find(b => b.id === selectedLocation)?.branch_name || 'สาขาที่เลือก'})
                   </span>
                 </div>
-                {hasMore && (
+                {catalogType === 'PROP' && hasMore && (
                   <button
                     type="button"
                     disabled={isLoadingMore}
@@ -2022,15 +2355,25 @@ export default function ManagerPOSPage() {
                             ✍️ สินค้านอก
                           </span>
                         )}
-                        {(item.isFurniture || item.category_id === 'furniture') && !item.isExternal && (
+                        {(item.isFurniture || item.category_id === 'furniture') && !item.isExternal && !item.isSlab && (
                           <span className="text-[8px] bg-amber-50 text-amber-800 px-1.5 py-0.5 rounded-md font-bold border border-amber-200">
                             🛋️ เฟอร์นิเจอร์
+                          </span>
+                        )}
+                        {(item.isSlab || item.category_id === 'SLABS' || (item.sku && (item.sku.startsWith('ZLB-') || item.sku.startsWith('LEG-')))) && (
+                          <span className="text-[8px] bg-[#1c130d] text-amber-300 px-1.5 py-0.5 rounded-md font-bold border border-amber-600/40">
+                            🪵 ZENSLABS
+                          </span>
+                        )}
+                        {item.specs?.dimensions && (
+                          <span className="text-[8px] text-amber-900 bg-amber-50 px-1.5 py-0.5 rounded font-mono font-bold border border-amber-200/50">
+                            {item.specs.dimensions}
                           </span>
                         )}
                         {(() => {
                           const branchStock = item.stocks?.find(s => s.branch_id === item.fulfill_branch_id)
                           const actualQty = branchStock ? Number(branchStock.qty) : 0
-                          if (!item.isExternal && !item.isFurniture && item.category_id !== 'furniture' && actualQty <= 0) {
+                          if (!item.isExternal && !item.isFurniture && !item.isSlab && item.category_id !== 'furniture' && item.category_id !== 'SLABS' && actualQty <= 0) {
                             return (
                               <span className="text-[8px] bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded-md font-bold border border-amber-200">
                                 📋 เสนอราคา (สต็อก 0)
@@ -2205,11 +2548,44 @@ export default function ManagerPOSPage() {
                   )}
                 </>
               )}
+              {woodPermitFee > 0 && (
+                <div className="flex justify-between items-center text-amber-950 font-bold bg-amber-100/70 px-2.5 py-1.5 rounded-xl border border-amber-300 shadow-2xs">
+                  <span className="flex items-center gap-1">📜 ค่าใบกำกับไม้ (Slab Permit Fee)</span>
+                  <span className="font-black">+ {woodPermitFee.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span>
+                </div>
+              )}
               <div className="flex justify-between pt-1 border-t border-dashed border-slate-200"><span>ยอดก่อนภาษี (Subtotal)</span><span>{(grandTotal / 1.07).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span></div>
               <div className="flex justify-between"><span>ภาษีมูลค่าเพิ่ม (VAT 7%)</span><span>{(grandTotal - (grandTotal / 1.07)).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span></div>
               <div className="flex justify-between text-xs font-bold text-slate-800 pt-3 mt-1 border-t border-dashed border-slate-200">
                 <span>ยอดสุทธิใบขาย (Grand Total)</span><span className="text-base text-amber-700 font-black">{grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span>
               </div>
+              {hasSlabInCart && (
+                <div className="mt-3 p-3 bg-gradient-to-br from-purple-50 via-indigo-50/60 to-amber-50/40 border border-purple-200 rounded-2xl space-y-1.5">
+                  <div className="flex items-center justify-between pb-1.5 border-b border-purple-100">
+                    <span className="text-[11px] font-black text-purple-950 flex items-center gap-1">
+                      <span>🪵</span> เงื่อนไขมัดจำงานไม้ ZENSLABS
+                    </span>
+                    <span className="text-[10px] bg-purple-200/90 text-purple-900 font-extrabold px-2 py-0.5 rounded-md">
+                      มัดจำ 50%
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center text-xs pt-0.5">
+                    <span className="font-bold text-purple-900">ยอดมัดจำ (50%):</span>
+                    <span className="font-black text-sm text-purple-700">
+                      {deposit50Percent.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center text-[11px] text-slate-600">
+                    <span>คงเหลือชำระวันส่งมอบ:</span>
+                    <span className="font-bold text-slate-700">
+                      {remaining50Percent.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿
+                    </span>
+                  </div>
+                  <p className="text-[9px] text-purple-600/90 mt-1 font-medium leading-tight">
+                    * รวมค่าใบกำกับไม้ ฿5,000.00 แล้ว จัดเตรียมเอกสารและไม้ตามเงื่อนไข
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* ✨ เพิ่มปุ่มเสนอราคามาไว้ตรงนี้ */}
@@ -2638,10 +3014,22 @@ export default function ManagerPOSPage() {
                   )}
                 </>
               )}
+              {woodPermitFee > 0 && (
+                <div className="flex justify-between text-amber-950 font-bold bg-amber-100/70 p-2 rounded-xl border border-amber-300">
+                  <span>📜 ค่าใบกำกับไม้ (Slab Permit Fee):</span>
+                  <span>+{woodPermitFee.toLocaleString()} ฿</span>
+                </div>
+              )}
               <div className="flex justify-between text-slate-800 font-black text-sm pt-2 border-t border-slate-200">
                 <span>ยอดสุทธิทั้งสิ้น:</span>
                 <span className="text-amber-700">{grandTotal.toLocaleString()} ฿</span>
               </div>
+              {hasSlabInCart && (
+                <div className="mt-2 pt-2 border-t border-dashed border-purple-200 flex justify-between items-center text-purple-900 font-bold bg-purple-50/70 p-2 rounded-xl">
+                  <span>มัดจำ 50% (เริ่มจัดเตรียม/ใบกำกับไม้):</span>
+                  <span className="text-purple-700 font-black">{deposit50Percent.toLocaleString()} ฿</span>
+                </div>
+              )}
             </div>
 
             {!editOrderId && (
