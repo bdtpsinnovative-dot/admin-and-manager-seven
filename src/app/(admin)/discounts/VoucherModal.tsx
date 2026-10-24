@@ -1905,7 +1905,7 @@ function DuoVoucherPair({
 }
 
 // =========================================================================
-// SUB-COMPONENT: SQUARE QR CODE STICKER (1", 1.5", 2" WITH COUPON CODE ONLY)
+// SUB-COMPONENT: SQUARE QR CODE STICKER (1", 1.5", 2" WITH EXPIRY ON TOP & CODE ON BOTTOM)
 // =========================================================================
 interface QrStickerProps {
   voucher: VoucherItem;
@@ -1915,6 +1915,21 @@ interface QrStickerProps {
   theme?: ThemeType;
   copiedCode?: string | null;
   onCopy?: (code: string) => void;
+}
+
+function formatStickerExpiry(endDate?: string | null): string {
+  if (!endDate) return "ใช้ได้ตลอด";
+  try {
+    const d = new Date(endDate);
+    if (isNaN(d.getTime())) return "ใช้ได้ตลอด";
+    return `หมดอายุ: ${d.toLocaleDateString("th-TH", {
+      day: "numeric",
+      month: "short",
+      year: "2-digit",
+    })}`;
+  } catch {
+    return "ใช้ได้ตลอด";
+  }
 }
 
 function QrSticker({
@@ -1927,51 +1942,58 @@ function QrSticker({
 }: QrStickerProps) {
   const code = voucher.coupon_code || String(voucher.id);
   const isCopied = copiedCode === code;
+  const expiryLabel = formatStickerExpiry(voucher.end_date);
 
   // Visual Theme Config
   const themeStyles = {
     ivory: {
       cardBg: "bg-[#FAF7F0]",
       border: "border-[#C9B591]",
+      expiryText: "text-[#854D0E]",
       codeText: "text-[#0F172A]",
       qrWrapper: "bg-white border border-[#D4C3A3]/60",
     },
     obsidian: {
       cardBg: "bg-[#111215]",
       border: "border-[#C5A566]/70",
+      expiryText: "text-[#DFBA73]",
       codeText: "text-[#FFFFFF]",
       qrWrapper: "bg-white border border-stone-800",
     },
     terra: {
       cardBg: "bg-[#F4F6F4]",
       border: "border-[#3D5A36]/60",
+      expiryText: "text-[#27382E]",
       codeText: "text-[#141F18]",
       qrWrapper: "bg-white border border-[#A3B899]/60",
     },
   }[theme];
 
-  // Dimensions & typography based on 1", 1.5", 2" (Maximizing QR Code scannability)
+  // Dimensions & typography based on 1", 1.5", 2"
   const sizeConfig = {
     "1_inch": {
       widthMm: "25.4mm",
       heightMm: "25.4mm",
       padding: "p-[1.2mm]",
-      qrSizeMm: "18mm",
-      codeClass: "text-[8px] font-spacemono font-extrabold tracking-wider leading-none pb-0.5",
+      expiryClass: "text-[6px] font-prompt font-semibold tracking-tight leading-none pt-0.5",
+      qrSizeMm: "15.5mm",
+      codeClass: "text-[7.5px] font-spacemono font-extrabold tracking-wider leading-none pb-0.5",
     },
     "1.5_inch": {
       widthMm: "38.1mm",
       heightMm: "38.1mm",
       padding: "p-[2mm]",
-      qrSizeMm: "27mm",
-      codeClass: "text-[11px] font-spacemono font-black tracking-widest leading-none pb-0.5",
+      expiryClass: "text-[8px] font-prompt font-semibold tracking-normal leading-none pt-0.5",
+      qrSizeMm: "23.5mm",
+      codeClass: "text-[10px] font-spacemono font-black tracking-widest leading-none pb-0.5",
     },
     "2_inch": {
       widthMm: "50.8mm",
       heightMm: "50.8mm",
-      padding: "p-[3mm]",
-      qrSizeMm: "36.5mm",
-      codeClass: "text-[14px] font-spacemono font-black tracking-widest leading-none pb-1",
+      padding: "p-[2.8mm]",
+      expiryClass: "text-[9.5px] font-prompt font-bold tracking-normal leading-tight pt-0.5",
+      qrSizeMm: "32mm",
+      codeClass: "text-[12.5px] font-spacemono font-black tracking-widest leading-tight pb-0.5",
     },
   }[size];
 
@@ -1998,7 +2020,16 @@ function QrSticker({
         </div>
       )}
 
-      {/* Center: Square QR Code (Maximized & Crisp) */}
+      {/* Top: Expiration Date Only */}
+      <div className="w-full flex items-center justify-center px-0.5 shrink-0 overflow-hidden leading-none">
+        <span
+          className={`truncate max-w-full text-center ${themeStyles.expiryText} ${sizeConfig.expiryClass}`}
+        >
+          {expiryLabel}
+        </span>
+      </div>
+
+      {/* Center: Square QR Code */}
       <div
         className={`flex items-center justify-center rounded-xs p-0.5 shrink-0 shadow-2xs my-auto ${themeStyles.qrWrapper}`}
         style={{
