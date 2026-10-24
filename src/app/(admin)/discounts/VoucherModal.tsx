@@ -678,47 +678,50 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
               </button>
             </div>
 
-            <div className="h-4 w-px bg-stone-300 hidden sm:block" />
-
-            {/* 2. Brand Selector */}
-            <div className="flex items-center gap-1.5">
-              <span className="text-stone-500 font-medium hidden md:inline">แบรนด์:</span>
-              <div className="inline-flex bg-stone-200/60 p-0.5 rounded-lg">
-                <button
-                  type="button"
-                  onClick={() => setBrandChoice("dual")}
-                  className={`px-2.5 py-1.5 rounded-md transition cursor-pointer ${
-                    brandChoice === "dual"
-                      ? "bg-white text-stone-900 font-semibold shadow-2xs"
-                      : "text-stone-600 hover:text-stone-900 font-medium"
-                  }`}
-                >
-                  Terra & Zen
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setBrandChoice("zenslab")}
-                  className={`px-2.5 py-1.5 rounded-md transition cursor-pointer ${
-                    brandChoice === "zenslab"
-                      ? "bg-white text-stone-900 font-semibold shadow-2xs"
-                      : "text-stone-600 hover:text-stone-900 font-medium"
-                  }`}
-                >
-                  ZenSlab
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setBrandChoice("terra")}
-                  className={`px-2.5 py-1.5 rounded-md transition cursor-pointer ${
-                    brandChoice === "terra"
-                      ? "bg-white text-stone-900 font-semibold shadow-2xs"
-                      : "text-stone-600 hover:text-stone-900 font-medium"
-                  }`}
-                >
-                  Terra Home
-                </button>
-              </div>
-            </div>
+            {/* 2. Brand Selector (Hidden in QR Sticker mode) */}
+            {viewMode !== "qr_stickers" && (viewMode !== "single" || singleFormat !== "qr_sticker") && (
+              <>
+                <div className="h-4 w-px bg-stone-300 hidden sm:block" />
+                <div className="flex items-center gap-1.5">
+                  <span className="text-stone-500 font-medium hidden md:inline">แบรนด์:</span>
+                  <div className="inline-flex bg-stone-200/60 p-0.5 rounded-lg">
+                    <button
+                      type="button"
+                      onClick={() => setBrandChoice("dual")}
+                      className={`px-2.5 py-1.5 rounded-md transition cursor-pointer ${
+                        brandChoice === "dual"
+                          ? "bg-white text-stone-900 font-semibold shadow-2xs"
+                          : "text-stone-600 hover:text-stone-900 font-medium"
+                      }`}
+                    >
+                      Terra & Zen
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBrandChoice("zenslab")}
+                      className={`px-2.5 py-1.5 rounded-md transition cursor-pointer ${
+                        brandChoice === "zenslab"
+                          ? "bg-white text-stone-900 font-semibold shadow-2xs"
+                          : "text-stone-600 hover:text-stone-900 font-medium"
+                      }`}
+                    >
+                      ZenSlab
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBrandChoice("terra")}
+                      className={`px-2.5 py-1.5 rounded-md transition cursor-pointer ${
+                        brandChoice === "terra"
+                          ? "bg-white text-stone-900 font-semibold shadow-2xs"
+                          : "text-stone-600 hover:text-stone-900 font-medium"
+                      }`}
+                    >
+                      Terra Home
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
 
             <div className="h-4 w-px bg-stone-300 hidden sm:block" />
 
@@ -1902,7 +1905,7 @@ function DuoVoucherPair({
 }
 
 // =========================================================================
-// SUB-COMPONENT: SQUARE QR CODE STICKER (1", 1.5", 2" WITH COUPON CODE)
+// SUB-COMPONENT: SQUARE QR CODE STICKER (1", 1.5", 2" WITH COUPON CODE ONLY)
 // =========================================================================
 interface QrStickerProps {
   voucher: VoucherItem;
@@ -1918,89 +1921,57 @@ function QrSticker({
   voucher,
   qrCodeUrl,
   size,
-  brandChoice = "dual",
   theme = "ivory",
   copiedCode,
   onCopy,
 }: QrStickerProps) {
   const code = voucher.coupon_code || String(voucher.id);
   const isCopied = copiedCode === code;
-  const isPercent = voucher.discount_type === "percentage";
-  const discountText = voucher.discount_value
-    ? isPercent
-      ? `ลด ${voucher.discount_value}%`
-      : `ลด ฿${Number(voucher.discount_value).toLocaleString()}`
-    : "";
-
-  const brandName =
-    brandChoice === "zenslab"
-      ? "ZENSLAB"
-      : brandChoice === "terra"
-      ? "TERRA HOME"
-      : "TERRA & ZEN";
 
   // Visual Theme Config
   const themeStyles = {
     ivory: {
       cardBg: "bg-[#FAF7F0]",
       border: "border-[#C9B591]",
-      brandText: "text-[#854D0E]",
       codeText: "text-[#0F172A]",
-      discountBadge: "bg-[#EDE2CE] text-[#854D0E] border-[#C9B591]",
       qrWrapper: "bg-white border border-[#D4C3A3]/60",
-      subText: "text-[#78716C]",
     },
     obsidian: {
       cardBg: "bg-[#111215]",
       border: "border-[#C5A566]/70",
-      brandText: "text-[#DFBA73]",
       codeText: "text-[#FFFFFF]",
-      discountBadge: "bg-[#232019] text-[#DFBA73] border-[#C5A566]/60",
       qrWrapper: "bg-white border border-stone-800",
-      subText: "text-[#94A3B8]",
     },
     terra: {
       cardBg: "bg-[#F4F6F4]",
       border: "border-[#3D5A36]/60",
-      brandText: "text-[#27382E]",
       codeText: "text-[#141F18]",
-      discountBadge: "bg-[#E3EBE4] text-[#27382E] border-[#A3B899]",
       qrWrapper: "bg-white border border-[#A3B899]/60",
-      subText: "text-[#4A6741]",
     },
   }[theme];
 
-  // Dimensions & typography based on 1", 1.5", 2"
+  // Dimensions & typography based on 1", 1.5", 2" (Maximizing QR Code scannability)
   const sizeConfig = {
     "1_inch": {
       widthMm: "25.4mm",
       heightMm: "25.4mm",
-      padding: "p-[1.5mm]",
-      brandClass: "text-[6px] font-cinzel font-black tracking-widest leading-none pt-0.5",
-      qrSizeMm: "14.5mm",
-      codeClass: "text-[7.5px] font-spacemono font-extrabold tracking-wider leading-none pb-0.5",
-      showBadge: false,
-      showSub: false,
+      padding: "p-[1.2mm]",
+      qrSizeMm: "18mm",
+      codeClass: "text-[8px] font-spacemono font-extrabold tracking-wider leading-none pb-0.5",
     },
     "1.5_inch": {
       widthMm: "38.1mm",
       heightMm: "38.1mm",
-      padding: "p-[2.2mm]",
-      brandClass: "text-[8px] font-cinzel font-black tracking-widest leading-none pt-0.5",
-      qrSizeMm: "22.5mm",
-      codeClass: "text-[9.5px] font-spacemono font-black tracking-widest leading-none pb-0.5",
-      showBadge: false,
-      showSub: !!discountText,
+      padding: "p-[2mm]",
+      qrSizeMm: "27mm",
+      codeClass: "text-[11px] font-spacemono font-black tracking-widest leading-none pb-0.5",
     },
     "2_inch": {
       widthMm: "50.8mm",
       heightMm: "50.8mm",
       padding: "p-[3mm]",
-      brandClass: "text-[9.5px] font-cinzel font-black tracking-widest leading-tight",
-      qrSizeMm: "29mm",
-      codeClass: "text-[12px] font-spacemono font-black tracking-widest leading-tight pb-0.5",
-      showBadge: !!discountText,
-      showSub: true,
+      qrSizeMm: "36.5mm",
+      codeClass: "text-[14px] font-spacemono font-black tracking-widest leading-none pb-1",
     },
   }[size];
 
@@ -2027,25 +1998,9 @@ function QrSticker({
         </div>
       )}
 
-      {/* Top Header: Brand Name & Optional Discount Badge on 2" */}
-      <div className="w-full flex items-center justify-between px-0.5 shrink-0 overflow-hidden">
-        <span
-          className={`truncate max-w-full uppercase text-center w-full ${themeStyles.brandText} ${sizeConfig.brandClass}`}
-        >
-          {brandName}
-        </span>
-        {sizeConfig.showBadge && discountText && (
-          <span
-            className={`hidden 2xl:inline-block px-1 py-0.2 text-[7.5px] font-prompt font-bold rounded-full border shrink-0 ${themeStyles.discountBadge}`}
-          >
-            {discountText}
-          </span>
-        )}
-      </div>
-
-      {/* Center: Square QR Code */}
+      {/* Center: Square QR Code (Maximized & Crisp) */}
       <div
-        className={`flex items-center justify-center rounded-xs p-0.5 shrink-0 shadow-2xs ${themeStyles.qrWrapper}`}
+        className={`flex items-center justify-center rounded-xs p-0.5 shrink-0 shadow-2xs my-auto ${themeStyles.qrWrapper}`}
         style={{
           width: sizeConfig.qrSizeMm,
           height: sizeConfig.qrSizeMm,
@@ -2065,20 +2020,13 @@ function QrSticker({
         )}
       </div>
 
-      {/* Bottom: Coupon Code + Optional Discount/Expiry */}
+      {/* Bottom: Coupon Code Only */}
       <div className="w-full flex flex-col items-center justify-center shrink-0 px-0.5 leading-none overflow-hidden">
         <span
           className={`truncate max-w-full text-center ${themeStyles.codeText} ${sizeConfig.codeClass}`}
         >
           {code}
         </span>
-        {sizeConfig.showSub && discountText && (
-          <span
-            className={`truncate max-w-full text-center font-prompt text-[7px] font-semibold mt-0.5 ${themeStyles.subText}`}
-          >
-            {discountText}
-          </span>
-        )}
       </div>
     </div>
   );
