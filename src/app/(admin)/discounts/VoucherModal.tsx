@@ -23,6 +23,7 @@ import {
   CreditCard,
   Sparkles,
   Image as ImageIcon,
+  QrCode as QrCodeIcon,
 } from "lucide-react";
 
 export interface VoucherItem {
@@ -61,10 +62,37 @@ interface VoucherModalProps {
 }
 
 type ThemeType = "ivory" | "obsidian" | "terra";
-type ViewMode = "single" | "sheet_a4";
+type ViewMode = "sheet_a4" | "qr_stickers" | "single";
 type SheetLayout = "duo_5_pairs" | "10_business_cards" | "8_business_cards" | "3_stacked" | "4_grid";
-type SingleFormat = "duo_pair" | "business_card";
+type SingleFormat = "duo_pair" | "business_card" | "qr_sticker";
 type BrandLogoChoice = "dual" | "terra" | "zenslab";
+type QrStickerSize = "1_inch" | "1.5_inch" | "2_inch";
+
+function getStickerTargetCount(size: QrStickerSize): number {
+  if (size === "1_inch") return 54; // 6 cols x 9 rows
+  if (size === "1.5_inch") return 24; // 4 cols x 6 rows
+  return 12; // 3 cols x 4 rows
+}
+
+function buildQrStickers(
+  vouchers: VoucherItem[],
+  size: QrStickerSize,
+  autoFill: boolean
+): VoucherItem[] {
+  if (!vouchers || vouchers.length === 0) return [];
+  if (!autoFill) return vouchers;
+
+  const target = getStickerTargetCount(size);
+  const result: VoucherItem[] = [];
+  for (let i = 0; i < target; i++) {
+    const v = vouchers[i % vouchers.length];
+    result.push({
+      ...v,
+      id: `${v.id}_stk_${i}`,
+    });
+  }
+  return result;
+}
 
 interface VoucherPairItem {
   left: VoucherItem;
@@ -140,6 +168,7 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
   const [brandChoice, setBrandChoice] = useState<BrandLogoChoice>("dual");
   const [sheetLayout, setSheetLayout] = useState<SheetLayout>("duo_5_pairs");
   const [singleFormat, setSingleFormat] = useState<SingleFormat>("duo_pair");
+  const [qrStickerSize, setQrStickerSize] = useState<QrStickerSize>("1.5_inch");
   const [autoFillSheet, setAutoFillSheet] = useState(true);
   const [showPhoto, setShowPhoto] = useState(true);
   const [customImage, setCustomImage] = useState<string | null>(null);
@@ -200,6 +229,11 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
     [vouchers, autoFillSheet]
   );
 
+  const qrStickers = useMemo(
+    () => buildQrStickers(vouchers, qrStickerSize, autoFillSheet),
+    [vouchers, qrStickerSize, autoFillSheet]
+  );
+
   if (!isOpen || vouchers.length === 0) return null;
 
   const currentVoucher = vouchers[currentIndex] || vouchers[0];
@@ -234,7 +268,9 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
       });
 
       const fileName =
-        singleFormat === "duo_pair"
+        singleFormat === "qr_sticker"
+          ? `qr-sticker-${qrStickerSize}-${currentVoucher.coupon_code || "code"}.png`
+          : singleFormat === "duo_pair"
           ? `voucher-duo-couple-${currentVoucher.coupon_code || "pair"}.png`
           : `voucher-card-${currentVoucher.coupon_code || "coupon"}.png`;
 
@@ -248,7 +284,9 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
           if (navigator.canShare({ files: [file] })) {
             await navigator.share({
               title:
-                singleFormat === "duo_pair"
+                singleFormat === "qr_sticker"
+                  ? `สติกเกอร์ QR Code: ${currentVoucher.coupon_code}`
+                  : singleFormat === "duo_pair"
                   ? `คูปองจับคู่สิทธิพิเศษ Terra Home & ZenSlab: ${currentVoucher.coupon_code}`
                   : `นามบัตรส่วนลด Terra Home: ${currentVoucher.coupon_code}`,
               text: `บัตรกำนัลส่วนลดพิเศษ ${currentVoucher.title} รหัสคูปอง: ${currentVoucher.coupon_code}`,
@@ -298,7 +336,10 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
         },
       });
 
-      const fileName = `vouchers-A4-${sheetLayout}-${new Date().toISOString().slice(0, 10)}.png`;
+      const fileName =
+        viewMode === "qr_stickers"
+          ? `qr-stickers-${qrStickerSize}-A4-${new Date().toISOString().slice(0, 10)}.png`
+          : `vouchers-A4-${sheetLayout}-${new Date().toISOString().slice(0, 10)}.png`;
 
       if (typeof navigator !== "undefined" && navigator.canShare) {
         try {
@@ -308,7 +349,10 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
 
           if (navigator.canShare({ files: [file] })) {
             await navigator.share({
-              title: "นามบัตรส่วนลดกระดาษ A4 - Terra Home",
+              title:
+                viewMode === "qr_stickers"
+                  ? `สติกเกอร์ QR Code A4 (${qrStickerSize === "1_inch" ? "1 นิ้ว" : qrStickerSize === "1.5_inch" ? "1.5 นิ้ว" : "2 นิ้ว"}) - Terra Home`
+                  : "นามบัตรส่วนลดกระดาษ A4 - Terra Home",
               files: [file],
             });
             setIsExporting(false);
@@ -373,6 +417,8 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
 
     const isSingle = viewMode === "single";
     const isDuoSingle = isSingle && singleFormat === "duo_pair";
+    const isQrSingle = isSingle && singleFormat === "qr_sticker";
+    const isQrStickers = viewMode === "qr_stickers";
 
     doc.open();
     doc.write(`
@@ -387,7 +433,17 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
 
             @page {
               size: A4 portrait;
-              margin: ${isSingle ? (isDuoSingle ? "16mm auto" : "25mm auto") : "6mm 8mm"};
+              margin: ${
+                isSingle
+                  ? isDuoSingle
+                    ? "16mm auto"
+                    : isQrSingle
+                    ? "30mm auto"
+                    : "25mm auto"
+                  : isQrStickers
+                  ? "8mm 8mm"
+                  : "6mm 8mm"
+              };
             }
 
             *, *::before, *::after {
@@ -420,7 +476,15 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
 
             .print-wrapper {
               width: 100% !important;
-              max-width: ${isSingle ? (isDuoSingle ? "190mm" : "130mm") : "210mm"} !important;
+              max-width: ${
+                isSingle
+                  ? isDuoSingle
+                    ? "190mm"
+                    : isQrSingle
+                    ? "80mm"
+                    : "130mm"
+                  : "210mm"
+              } !important;
               margin: 0 auto !important;
               padding: 0 !important;
               background: #ffffff !important;
@@ -586,7 +650,19 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
                 }`}
               >
                 <Layers className="w-3.5 h-3.5 text-stone-600" />
-                <span>แผ่นกระดาษ A4</span>
+                <span>แผ่นคูปอง A4</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("qr_stickers")}
+                className={`px-3 py-1.5 rounded-md transition cursor-pointer flex items-center gap-1.5 ${
+                  viewMode === "qr_stickers"
+                    ? "bg-white text-stone-900 font-semibold shadow-2xs"
+                    : "text-stone-600 hover:text-stone-900 font-medium"
+                }`}
+              >
+                <QrCodeIcon className="w-3.5 h-3.5 text-amber-600" />
+                <span>สติกเกอร์ QR Code</span>
               </button>
               <button
                 type="button"
@@ -598,7 +674,7 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
                 }`}
               >
                 <Smartphone className="w-3.5 h-3.5 text-stone-600" />
-                <span>รูปนามบัตรเดี่ยว</span>
+                <span>รูปเดี่ยว (แชร์ LINE)</span>
               </button>
             </div>
 
@@ -691,68 +767,70 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
 
             <div className="h-4 w-px bg-stone-300 hidden sm:block" />
 
-            {/* 4. Photo Toggle & Upload */}
-            <div className="flex items-center gap-1.5">
-              <span className="text-stone-500 font-medium hidden md:inline">รูปสินค้า:</span>
-              <div className="inline-flex bg-stone-200/60 p-0.5 rounded-lg">
-                <button
-                  type="button"
-                  onClick={() => setShowPhoto(true)}
-                  className={`px-2.5 py-1.5 rounded-md transition cursor-pointer ${
-                    showPhoto
-                      ? "bg-white text-stone-900 font-semibold shadow-2xs"
-                      : "text-stone-600 hover:text-stone-900 font-medium"
-                  }`}
-                >
-                  แสดงรูป
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowPhoto(false)}
-                  className={`px-2.5 py-1.5 rounded-md transition cursor-pointer ${
-                    !showPhoto
-                      ? "bg-white text-stone-900 font-semibold shadow-2xs"
-                      : "text-stone-600 hover:text-stone-900 font-medium"
-                  }`}
-                >
-                  ซ่อนรูป
-                </button>
-              </div>
-
-              {showPhoto && (
-                <div className="flex items-center gap-1">
+            {/* 4. Photo Toggle & Upload (Hidden when viewing QR Stickers) */}
+            {viewMode !== "qr_stickers" && (viewMode !== "single" || singleFormat !== "qr_sticker") && (
+              <div className="flex items-center gap-1.5">
+                <span className="text-stone-500 font-medium hidden md:inline">รูปสินค้า:</span>
+                <div className="inline-flex bg-stone-200/60 p-0.5 rounded-lg">
                   <button
                     type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="px-2.5 py-1.5 rounded-md bg-white hover:bg-stone-50 text-stone-700 font-medium text-xs transition cursor-pointer flex items-center gap-1 border border-stone-200 shadow-2xs"
-                    title="คลิกเพื่ออัปโหลดรูปภาพสินค้าเองลงบนนามบัตร"
+                    onClick={() => setShowPhoto(true)}
+                    className={`px-2.5 py-1.5 rounded-md transition cursor-pointer ${
+                      showPhoto
+                        ? "bg-white text-stone-900 font-semibold shadow-2xs"
+                        : "text-stone-600 hover:text-stone-900 font-medium"
+                    }`}
                   >
-                    <ImageIcon className="w-3.5 h-3.5 text-stone-500" />
-                    <span>เปลี่ยนรูป...</span>
+                    แสดงรูป
                   </button>
-                  {customImage && (
+                  <button
+                    type="button"
+                    onClick={() => setShowPhoto(false)}
+                    className={`px-2.5 py-1.5 rounded-md transition cursor-pointer ${
+                      !showPhoto
+                        ? "bg-white text-stone-900 font-semibold shadow-2xs"
+                        : "text-stone-600 hover:text-stone-900 font-medium"
+                    }`}
+                  >
+                    ซ่อนรูป
+                  </button>
+                </div>
+
+                {showPhoto && (
+                  <div className="flex items-center gap-1">
                     <button
                       type="button"
-                      onClick={() => setCustomImage(null)}
-                      className="text-stone-400 hover:text-rose-600 text-xs font-medium transition cursor-pointer px-1"
-                      title="ล้างรูปที่อัปโหลด กลับไปใช้รูปตั้งต้น"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="px-2.5 py-1.5 rounded-md bg-white hover:bg-stone-50 text-stone-700 font-medium text-xs transition cursor-pointer flex items-center gap-1 border border-stone-200 shadow-2xs"
+                      title="คลิกเพื่ออัปโหลดรูปภาพสินค้าเองลงบนนามบัตร"
                     >
-                      รีเซ็ต
+                      <ImageIcon className="w-3.5 h-3.5 text-stone-500" />
+                      <span>เปลี่ยนรูป...</span>
                     </button>
-                  )}
-                </div>
-              )}
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={handleFileChange}
-              />
-            </div>
+                    {customImage && (
+                      <button
+                        type="button"
+                        onClick={() => setCustomImage(null)}
+                        className="text-stone-400 hover:text-rose-600 text-xs font-medium transition cursor-pointer px-1"
+                        title="ล้างรูปที่อัปโหลด กลับไปใช้รูปตั้งต้น"
+                      >
+                        รีเซ็ต
+                      </button>
+                    )}
+                  </div>
+                )}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleFileChange}
+                />
+              </div>
+            )}
           </div>
 
-          {/* Right Controls: A4 Layout or Single Navigation */}
+          {/* Right Controls: A4 Layout, QR Stickers, or Single Navigation */}
           <div className="flex items-center gap-2">
             {viewMode === "sheet_a4" && (
               <div className="flex items-center gap-1.5 flex-wrap">
@@ -809,6 +887,67 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
               </div>
             )}
 
+            {viewMode === "qr_stickers" && (
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-stone-500 font-medium hidden lg:inline">ขนาดสติกเกอร์:</span>
+                  <div className="inline-flex bg-stone-200/60 p-0.5 rounded-lg">
+                    <button
+                      type="button"
+                      onClick={() => setQrStickerSize("1_inch")}
+                      className={`px-2.5 py-1.5 rounded-md transition cursor-pointer ${
+                        qrStickerSize === "1_inch"
+                          ? "bg-white text-stone-900 font-semibold shadow-2xs"
+                          : "text-stone-600 hover:text-stone-900 font-medium"
+                      }`}
+                      title="สี่เหลี่ยม 1 นิ้ว (2.54 × 2.54 ซม.) พิมพ์ได้ 54 ดวงต่อแผ่น A4"
+                    >
+                      1 นิ้ว (54 ดวง)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setQrStickerSize("1.5_inch")}
+                      className={`px-2.5 py-1.5 rounded-md transition cursor-pointer ${
+                        qrStickerSize === "1.5_inch"
+                          ? "bg-white text-stone-900 font-semibold shadow-2xs"
+                          : "text-stone-600 hover:text-stone-900 font-medium"
+                      }`}
+                      title="สี่เหลี่ยม 1.5 นิ้ว (3.81 × 3.81 ซม.) พิมพ์ได้ 24 ดวงต่อแผ่น A4"
+                    >
+                      1.5 นิ้ว (24 ดวง)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setQrStickerSize("2_inch")}
+                      className={`px-2.5 py-1.5 rounded-md transition cursor-pointer ${
+                        qrStickerSize === "2_inch"
+                          ? "bg-white text-stone-900 font-semibold shadow-2xs"
+                          : "text-stone-600 hover:text-stone-900 font-medium"
+                      }`}
+                      title="สี่เหลี่ยม 2 นิ้ว (5.08 × 5.08 ซม.) พิมพ์ได้ 12 ดวงต่อแผ่น A4"
+                    >
+                      2 นิ้ว (12 ดวง)
+                    </button>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setAutoFillSheet(!autoFillSheet)}
+                  className={`px-2.5 py-1.5 rounded-md transition text-xs cursor-pointer border ${
+                    autoFillSheet
+                      ? "bg-amber-50 border-amber-300 text-amber-900 font-semibold shadow-2xs"
+                      : "bg-white border-stone-200 text-stone-600 hover:text-stone-900 font-medium"
+                  }`}
+                  title="เปิดเพื่อพิมพ์สติกเกอร์ให้เต็มแผ่น A4 อัตโนมัติ"
+                >
+                  {autoFillSheet
+                    ? `✓ เต็มแผ่น (${getStickerTargetCount(qrStickerSize)} ดวง)`
+                    : `ตามที่เลือก (${vouchers.length} ดวง)`}
+                </button>
+              </div>
+            )}
+
             {viewMode === "single" && (
               <div className="flex items-center gap-2 flex-wrap">
                 <div className="flex items-center gap-1.5">
@@ -824,7 +963,7 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
                       }`}
                     >
                       <Ticket className="w-3.5 h-3.5 text-amber-600" />
-                      <span>คูปองจับคู่ (Duo)</span>
+                      <span>คูปองคู่ (Duo)</span>
                     </button>
                     <button
                       type="button"
@@ -835,10 +974,60 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
                           : "text-stone-600 hover:text-stone-900 font-medium"
                       }`}
                     >
-                      นามบัตรเดี่ยว
+                      นามบัตร
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSingleFormat("qr_sticker")}
+                      className={`px-2.5 py-1.5 rounded-md transition cursor-pointer flex items-center gap-1 ${
+                        singleFormat === "qr_sticker"
+                          ? "bg-white text-stone-900 font-semibold shadow-2xs"
+                          : "text-stone-600 hover:text-stone-900 font-medium"
+                      }`}
+                    >
+                      <QrCodeIcon className="w-3.5 h-3.5 text-amber-600" />
+                      <span>สติกเกอร์ QR</span>
                     </button>
                   </div>
                 </div>
+
+                {singleFormat === "qr_sticker" && (
+                  <div className="inline-flex bg-stone-200/60 p-0.5 rounded-lg">
+                    <button
+                      type="button"
+                      onClick={() => setQrStickerSize("1_inch")}
+                      className={`px-2 py-1 rounded transition text-xs cursor-pointer ${
+                        qrStickerSize === "1_inch"
+                          ? "bg-white text-stone-900 font-semibold shadow-2xs"
+                          : "text-stone-600 hover:text-stone-900 font-medium"
+                      }`}
+                    >
+                      1 นิ้ว
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setQrStickerSize("1.5_inch")}
+                      className={`px-2 py-1 rounded transition text-xs cursor-pointer ${
+                        qrStickerSize === "1.5_inch"
+                          ? "bg-white text-stone-900 font-semibold shadow-2xs"
+                          : "text-stone-600 hover:text-stone-900 font-medium"
+                      }`}
+                    >
+                      1.5 นิ้ว
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setQrStickerSize("2_inch")}
+                      className={`px-2 py-1 rounded transition text-xs cursor-pointer ${
+                        qrStickerSize === "2_inch"
+                          ? "bg-white text-stone-900 font-semibold shadow-2xs"
+                          : "text-stone-600 hover:text-stone-900 font-medium"
+                      }`}
+                    >
+                      2 นิ้ว
+                    </button>
+                  </div>
+                )}
 
                 {vouchers.length > 1 && (
                   <div className="flex items-center gap-1.5 bg-stone-200/60 p-0.5 rounded-lg">
@@ -877,8 +1066,12 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
             <div className="w-full flex flex-col items-center gap-4">
               <div
                 ref={singleVoucherRef}
-                className={`w-full transition-all duration-300 drop-shadow-lg ${
-                  singleFormat === "duo_pair" ? "max-w-[840px]" : "max-w-[560px]"
+                className={`transition-all duration-300 drop-shadow-lg flex justify-center items-center ${
+                  singleFormat === "duo_pair"
+                    ? "w-full max-w-[840px]"
+                    : singleFormat === "qr_sticker"
+                    ? "w-auto"
+                    : "w-full max-w-[560px]"
                 }`}
               >
                 {singleFormat === "duo_pair" ? (
@@ -913,6 +1106,16 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
                     onCopy={copyCode}
                     size="business_card"
                   />
+                ) : singleFormat === "qr_sticker" ? (
+                  <QrSticker
+                    voucher={currentVoucher}
+                    qrCodeUrl={qrCodes[currentVoucher.coupon_code || String(currentVoucher.id)]}
+                    size={qrStickerSize}
+                    brandChoice={brandChoice}
+                    theme={theme}
+                    copiedCode={copiedCode}
+                    onCopy={copyCode}
+                  />
                 ) : (
                   <VoucherCard
                     voucher={currentVoucher}
@@ -932,13 +1135,80 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
               <div className="text-center text-xs text-stone-500 font-prompt">
                 {singleFormat === "duo_pair"
                   ? "คูปองจับคู่ 1 ชุด (2 ใบเชื่อมกัน มีรอยปรุฉีกตรงกลาง) บันทึกรูปเพื่อส่งแชร์เข้า LINE หรือสั่งพิมพ์ได้ทันที"
+                  : singleFormat === "qr_sticker"
+                  ? `สติกเกอร์ QR Code สี่เหลี่ยม ขนาด ${
+                      qrStickerSize === "1_inch"
+                        ? "1 นิ้ว (2.54 × 2.54 ซม.)"
+                        : qrStickerSize === "1.5_inch"
+                        ? "1.5 นิ้ว (3.81 × 3.81 ซม.)"
+                        : "2 นิ้ว (5.08 × 5.08 ซม.)"
+                    } พร้อมรหัสคูปองชัดเจนด้านล่าง บันทึกรูป PNG หรือพิมพ์ได้ทันที`
                   : "ขนาดนามบัตรมาตรฐาน (9 × 5.4 ซม.) พอดีกระเป๋าสตางค์"}
               </div>
             </div>
           )}
 
           {/* ============================================================== */}
-          {/* MODE 2: A4 SHEET (MULTI-VOUCHER WITH SCISSOR CUT LINES)         */}
+          {/* MODE 2: QR CODE STICKERS SHEET (A4 1", 1.5", 2" SQUARES)       */}
+          {/* ============================================================== */}
+          {viewMode === "qr_stickers" && (
+            <div id="voucher-print-area" className="w-full flex flex-col items-center">
+              <div
+                ref={sheetA4Ref}
+                className="bg-white border border-stone-300 shadow-2xl mx-auto box-border print:border-none print:shadow-none"
+                style={{
+                  width: "100%",
+                  maxWidth: "210mm",
+                  minHeight: "297mm",
+                  padding:
+                    qrStickerSize === "1_inch"
+                      ? "10mm 10mm"
+                      : qrStickerSize === "1.5_inch"
+                      ? "12mm 12mm"
+                      : "15mm 12mm",
+                  display: "grid",
+                  gridTemplateColumns:
+                    qrStickerSize === "1_inch"
+                      ? "repeat(6, 25.4mm)"
+                      : qrStickerSize === "1.5_inch"
+                      ? "repeat(4, 38.1mm)"
+                      : "repeat(3, 50.8mm)",
+                  columnGap:
+                    qrStickerSize === "1_inch"
+                      ? "6mm"
+                      : qrStickerSize === "1.5_inch"
+                      ? "9mm"
+                      : "14mm",
+                  rowGap:
+                    qrStickerSize === "1_inch"
+                      ? "5mm"
+                      : qrStickerSize === "1.5_inch"
+                      ? "7mm"
+                      : "14mm",
+                  justifyContent: "center",
+                  alignContent: "center",
+                  backgroundColor: "#ffffff",
+                }}
+              >
+                {qrStickers.map((v, idx) => (
+                  <div key={v.id || idx} className="break-inside-avoid flex items-center justify-center">
+                    <QrSticker
+                      voucher={v}
+                      qrCodeUrl={qrCodes[v.coupon_code || String(v.id)]}
+                      size={qrStickerSize}
+                      brandChoice={brandChoice}
+                      theme={theme}
+                      copiedCode={copiedCode}
+                      onCopy={copyCode}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ============================================================== */}
+          {/* MODE 3: A4 SHEET (MULTI-VOUCHER WITH SCISSOR CUT LINES)         */}
           {/* ============================================================== */}
           {viewMode === "sheet_a4" && (
             <div id="voucher-print-area" className="w-full flex flex-col items-center">
@@ -1029,13 +1299,21 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
         <div className="px-6 py-3.5 bg-white border-t border-stone-200 flex flex-wrap items-center justify-between gap-3 shrink-0 print:hidden font-prompt">
           <div className="text-xs text-stone-500">
             {viewMode === "single" ? (
-              singleFormat === "duo_pair" ? (
+              singleFormat === "qr_sticker" ? (
+                <span>
+                  สติกเกอร์ QR Code ({qrStickerSize === "1_inch" ? "1 นิ้ว (2.54 × 2.54 ซม.)" : qrStickerSize === "1.5_inch" ? "1.5 นิ้ว (3.81 × 3.81 ซม.)" : "2 นิ้ว (5.08 × 5.08 ซม.)"}) • รหัส: {currentVoucher.coupon_code} ({currentIndex + 1}/{vouchers.length})
+                </span>
+              ) : singleFormat === "duo_pair" ? (
                 <span>คูปองจับคู่ (Duo Paired) • Terra Home & ZenSlab</span>
               ) : (
                 <span>
                   ใบที่ {currentIndex + 1} จาก {vouchers.length} ใบ
                 </span>
               )
+            ) : viewMode === "qr_stickers" ? (
+              <span>
+                แผ่นสติกเกอร์ QR Code A4 ขนาด {qrStickerSize === "1_inch" ? "1 นิ้ว (54 ดวง)" : qrStickerSize === "1.5_inch" ? "1.5 นิ้ว (24 ดวง)" : "2 นิ้ว (12 ดวง)"}
+              </span>
             ) : (
               <span>
                 กระดาษ A4 ({sheetLayout === "duo_5_pairs" ? "5 ชุดคูปองคู่ (10 ใบ)" : sheetLayout === "10_business_cards" ? "10 ใบนามบัตร" : "8 ใบ"})
@@ -1618,6 +1896,189 @@ function DuoVoucherPair({
             size={size}
           />
         </div>
+      </div>
+    </div>
+  );
+}
+
+// =========================================================================
+// SUB-COMPONENT: SQUARE QR CODE STICKER (1", 1.5", 2" WITH COUPON CODE)
+// =========================================================================
+interface QrStickerProps {
+  voucher: VoucherItem;
+  qrCodeUrl?: string;
+  size: QrStickerSize;
+  brandChoice?: BrandLogoChoice;
+  theme?: ThemeType;
+  copiedCode?: string | null;
+  onCopy?: (code: string) => void;
+}
+
+function QrSticker({
+  voucher,
+  qrCodeUrl,
+  size,
+  brandChoice = "dual",
+  theme = "ivory",
+  copiedCode,
+  onCopy,
+}: QrStickerProps) {
+  const code = voucher.coupon_code || String(voucher.id);
+  const isCopied = copiedCode === code;
+  const isPercent = voucher.discount_type === "percentage";
+  const discountText = voucher.discount_value
+    ? isPercent
+      ? `ลด ${voucher.discount_value}%`
+      : `ลด ฿${Number(voucher.discount_value).toLocaleString()}`
+    : "";
+
+  const brandName =
+    brandChoice === "zenslab"
+      ? "ZENSLAB"
+      : brandChoice === "terra"
+      ? "TERRA HOME"
+      : "TERRA & ZEN";
+
+  // Visual Theme Config
+  const themeStyles = {
+    ivory: {
+      cardBg: "bg-[#FAF7F0]",
+      border: "border-[#C9B591]",
+      brandText: "text-[#854D0E]",
+      codeText: "text-[#0F172A]",
+      discountBadge: "bg-[#EDE2CE] text-[#854D0E] border-[#C9B591]",
+      qrWrapper: "bg-white border border-[#D4C3A3]/60",
+      subText: "text-[#78716C]",
+    },
+    obsidian: {
+      cardBg: "bg-[#111215]",
+      border: "border-[#C5A566]/70",
+      brandText: "text-[#DFBA73]",
+      codeText: "text-[#FFFFFF]",
+      discountBadge: "bg-[#232019] text-[#DFBA73] border-[#C5A566]/60",
+      qrWrapper: "bg-white border border-stone-800",
+      subText: "text-[#94A3B8]",
+    },
+    terra: {
+      cardBg: "bg-[#F4F6F4]",
+      border: "border-[#3D5A36]/60",
+      brandText: "text-[#27382E]",
+      codeText: "text-[#141F18]",
+      discountBadge: "bg-[#E3EBE4] text-[#27382E] border-[#A3B899]",
+      qrWrapper: "bg-white border border-[#A3B899]/60",
+      subText: "text-[#4A6741]",
+    },
+  }[theme];
+
+  // Dimensions & typography based on 1", 1.5", 2"
+  const sizeConfig = {
+    "1_inch": {
+      widthMm: "25.4mm",
+      heightMm: "25.4mm",
+      padding: "p-[1.5mm]",
+      brandClass: "text-[6px] font-cinzel font-black tracking-widest leading-none pt-0.5",
+      qrSizeMm: "14.5mm",
+      codeClass: "text-[7.5px] font-spacemono font-extrabold tracking-wider leading-none pb-0.5",
+      showBadge: false,
+      showSub: false,
+    },
+    "1.5_inch": {
+      widthMm: "38.1mm",
+      heightMm: "38.1mm",
+      padding: "p-[2.2mm]",
+      brandClass: "text-[8px] font-cinzel font-black tracking-widest leading-none pt-0.5",
+      qrSizeMm: "22.5mm",
+      codeClass: "text-[9.5px] font-spacemono font-black tracking-widest leading-none pb-0.5",
+      showBadge: false,
+      showSub: !!discountText,
+    },
+    "2_inch": {
+      widthMm: "50.8mm",
+      heightMm: "50.8mm",
+      padding: "p-[3mm]",
+      brandClass: "text-[9.5px] font-cinzel font-black tracking-widest leading-tight",
+      qrSizeMm: "29mm",
+      codeClass: "text-[12px] font-spacemono font-black tracking-widest leading-tight pb-0.5",
+      showBadge: !!discountText,
+      showSub: true,
+    },
+  }[size];
+
+  return (
+    <div
+      onClick={() => onCopy?.(code)}
+      title="คลิกเพื่อคัดลอกรหัสคูปอง"
+      className={`group relative flex flex-col items-center justify-between box-border rounded-md border border-dashed cursor-pointer select-none transition-all active:scale-98 print:cursor-default print:border-solid print:shadow-none print:break-inside-avoid ${themeStyles.cardBg} ${themeStyles.border} ${sizeConfig.padding}`}
+      style={{
+        width: sizeConfig.widthMm,
+        height: sizeConfig.heightMm,
+        minWidth: sizeConfig.widthMm,
+        minHeight: sizeConfig.heightMm,
+        maxWidth: sizeConfig.widthMm,
+        maxHeight: sizeConfig.heightMm,
+        boxSizing: "border-box",
+      }}
+    >
+      {/* Copied Flash Notification (Screen Only) */}
+      {isCopied && (
+        <div className="absolute inset-0 bg-stone-900/90 text-white flex flex-col items-center justify-center rounded-[inherit] z-30 print:hidden animate-in fade-in duration-150">
+          <span className="text-[10px] font-prompt font-bold">คัดลอกแล้ว!</span>
+          <span className="text-[7.5px] font-spacemono opacity-80">{code}</span>
+        </div>
+      )}
+
+      {/* Top Header: Brand Name & Optional Discount Badge on 2" */}
+      <div className="w-full flex items-center justify-between px-0.5 shrink-0 overflow-hidden">
+        <span
+          className={`truncate max-w-full uppercase text-center w-full ${themeStyles.brandText} ${sizeConfig.brandClass}`}
+        >
+          {brandName}
+        </span>
+        {sizeConfig.showBadge && discountText && (
+          <span
+            className={`hidden 2xl:inline-block px-1 py-0.2 text-[7.5px] font-prompt font-bold rounded-full border shrink-0 ${themeStyles.discountBadge}`}
+          >
+            {discountText}
+          </span>
+        )}
+      </div>
+
+      {/* Center: Square QR Code */}
+      <div
+        className={`flex items-center justify-center rounded-xs p-0.5 shrink-0 shadow-2xs ${themeStyles.qrWrapper}`}
+        style={{
+          width: sizeConfig.qrSizeMm,
+          height: sizeConfig.qrSizeMm,
+        }}
+      >
+        {qrCodeUrl ? (
+          <img
+            src={qrCodeUrl}
+            alt={`QR Code: ${code}`}
+            className="w-full h-full object-contain"
+            style={{ imageRendering: "pixelated" }}
+          />
+        ) : (
+          <div className="w-full h-full bg-stone-100 flex items-center justify-center text-[7px] text-stone-400 font-mono">
+            QR
+          </div>
+        )}
+      </div>
+
+      {/* Bottom: Coupon Code + Optional Discount/Expiry */}
+      <div className="w-full flex flex-col items-center justify-center shrink-0 px-0.5 leading-none overflow-hidden">
+        <span
+          className={`truncate max-w-full text-center ${themeStyles.codeText} ${sizeConfig.codeClass}`}
+        >
+          {code}
+        </span>
+        {sizeConfig.showSub && discountText && (
+          <span
+            className={`truncate max-w-full text-center font-prompt text-[7px] font-semibold mt-0.5 ${themeStyles.subText}`}
+          >
+            {discountText}
+          </span>
+        )}
       </div>
     </div>
   );
