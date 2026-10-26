@@ -1773,93 +1773,113 @@ export default function ManagerPOSPage() {
       />
 
       {/* โครงสร้างเนื้อหาหลัก */}
-      <div className="max-w-[1600px] mx-auto flex flex-col lg:flex-row gap-6 items-start">
+      <div className="max-w-[1600px] w-full mx-auto flex flex-col xl:flex-row gap-4 xl:gap-6 items-start min-w-0">
 
-        <div className="flex-1 w-full flex flex-col gap-4">
-          <div className="bg-white p-4 rounded-3xl shadow-xs border border-slate-100 flex flex-col gap-3 w-full sticky top-0 md:top-4 z-20">
-            {/* Row 0: แถบเลือกแคตตาล็อกหลัก (PROPS vs FURNITURE vs ZENSLABS) */}
-            <div className="flex items-center gap-2 border-b border-slate-100 pb-3 overflow-x-auto no-scrollbar">
+        <div className="flex-1 min-w-0 w-full flex flex-col gap-3 sm:gap-4">
+          <div className="bg-white p-3 sm:p-4 rounded-2xl sm:rounded-3xl shadow-xs border border-slate-100 flex flex-col gap-2.5 w-full sticky top-0 md:top-3 z-20">
+            {/* Row 0: แถบเลือกแคตตาล็อกหลัก (PROPS vs FURNITURE vs ZENSLABS) + ปุ่มตะกร้าด่วนสำหรับ iPad/Tablet */}
+            <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
+              <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar min-w-0 flex-1">
+                <button
+                  type="button"
+                  onClick={() => handleSwitchCatalog('PROP')}
+                  className={`px-3 sm:px-4 py-2 rounded-xl sm:rounded-2xl text-xs font-bold transition-all flex items-center gap-1.5 sm:gap-2 cursor-pointer shrink-0 ${
+                    catalogType === 'PROP'
+                      ? 'bg-[#1E293B] text-white shadow-xs'
+                      : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200/80'
+                  }`}
+                >
+                  <Package className="w-3.5 h-3.5" />
+                  <span>พรอพ (PROPS)</span>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                    catalogType === 'PROP' ? 'bg-white/15 text-white' : 'bg-slate-200/80 text-slate-600'
+                  }`}>
+                    {totalCount.toLocaleString()}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleSwitchCatalog('FURNITURE')}
+                  className={`px-3 sm:px-4 py-2 rounded-xl sm:rounded-2xl text-xs font-bold transition-all flex items-center gap-1.5 sm:gap-2 cursor-pointer shrink-0 ${
+                    catalogType === 'FURNITURE'
+                      ? 'bg-[#1E293B] text-white shadow-xs'
+                      : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200/80'
+                  }`}
+                >
+                  <Armchair className="w-3.5 h-3.5" />
+                  <span>เฟอร์นิเจอร์ (EMBER & ASH)</span>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                    catalogType === 'FURNITURE' ? 'bg-white/15 text-white' : 'bg-slate-200/80 text-slate-600'
+                  }`}>
+                    {furnitureCatalogCount > 0 ? furnitureCatalogCount.toLocaleString() : '833'}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleSwitchCatalog('SLAB')}
+                  className={`px-3 sm:px-4 py-2 rounded-xl sm:rounded-2xl text-xs font-bold transition-all flex items-center gap-1.5 sm:gap-2 cursor-pointer shrink-0 ${
+                    catalogType === 'SLAB'
+                      ? 'bg-[#1E293B] text-white shadow-xs'
+                      : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200/80'
+                  }`}
+                >
+                  <Layers className="w-3.5 h-3.5" />
+                  <span>แผ่นไม้ / สแลป (ZENSLABS)</span>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                    catalogType === 'SLAB' ? 'bg-white/15 text-white' : 'bg-slate-200/80 text-slate-600'
+                  }`}>
+                    {slabsCatalogCount > 0 ? slabsCatalogCount.toLocaleString() : '1,032'}
+                  </span>
+                </button>
+
+                {loadingCatalog && (
+                  <div className="flex items-center gap-1.5 text-xs text-slate-600 bg-slate-100 px-3 py-1.5 rounded-full border border-slate-200 font-bold shrink-0">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-500" />
+                    <span className="hidden sm:inline">กำลังดึงแคตตาล็อก...</span>
+                  </div>
+                )}
+              </div>
+
+              {/* ปุ่มเปิดตะกร้าด่วนบนแถบหัวเว็บสำหรับ iPad / Tablet (< xl) */}
               <button
                 type="button"
-                onClick={() => handleSwitchCatalog('PROP')}
-                className={`px-4 py-2.5 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
-                  catalogType === 'PROP'
-                    ? 'bg-[#1E293B] text-white shadow-xs'
-                    : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200/80'
-                }`}
+                onClick={() => setIsMobileCartOpen(true)}
+                className="xl:hidden flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[#1E293B] hover:bg-slate-800 text-white text-xs font-bold shadow-xs shrink-0 cursor-pointer active:scale-95 transition-all"
               >
-                <Package className="w-3.5 h-3.5" />
-                <span>พรอพ (PROPS)</span>
-                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
-                  catalogType === 'PROP' ? 'bg-white/15 text-white' : 'bg-slate-200/80 text-slate-600'
-                }`}>
-                  {totalCount.toLocaleString()}
+                <Receipt className="w-3.5 h-3.5 text-slate-300" />
+                <span className="hidden sm:inline">สรุปบิล</span>
+                <span className="bg-white/20 text-white px-1.5 py-0.5 rounded-full text-[10px] font-black">
+                  {cart.length}
                 </span>
+                {cart.length > 0 && (
+                  <span className="hidden md:inline font-mono text-[11px] text-slate-200 border-l border-white/20 pl-2">
+                    ฿{grandTotal.toLocaleString()}
+                  </span>
+                )}
               </button>
-
-              <button
-                type="button"
-                onClick={() => handleSwitchCatalog('FURNITURE')}
-                className={`px-4 py-2.5 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
-                  catalogType === 'FURNITURE'
-                    ? 'bg-[#1E293B] text-white shadow-xs'
-                    : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200/80'
-                }`}
-              >
-                <Armchair className="w-3.5 h-3.5" />
-                <span>เฟอร์นิเจอร์ (EMBER & ASH)</span>
-                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
-                  catalogType === 'FURNITURE' ? 'bg-white/15 text-white' : 'bg-slate-200/80 text-slate-600'
-                }`}>
-                  {furnitureCatalogCount > 0 ? furnitureCatalogCount.toLocaleString() : '833'}
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleSwitchCatalog('SLAB')}
-                className={`px-4 py-2.5 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
-                  catalogType === 'SLAB'
-                    ? 'bg-[#1E293B] text-white shadow-xs'
-                    : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200/80'
-                }`}
-              >
-                <Layers className="w-3.5 h-3.5" />
-                <span>แผ่นไม้ / สแลป (ZENSLABS)</span>
-                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
-                  catalogType === 'SLAB' ? 'bg-white/15 text-white' : 'bg-slate-200/80 text-slate-600'
-                }`}>
-                  {slabsCatalogCount > 0 ? slabsCatalogCount.toLocaleString() : '1,032'}
-                </span>
-              </button>
-
-              {loadingCatalog && (
-                <div className="flex items-center gap-1.5 text-xs text-slate-600 bg-slate-100 px-3 py-1.5 rounded-full border border-slate-200 font-bold ml-auto shrink-0">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-500" />
-                  <span>กำลังดึงแคตตาล็อก...</span>
-                </div>
-              )}
             </div>
 
-            {/* Row 1: เครื่องมือหลัก, ปุ่มหมวดหมู่เดิม, เซ็ตสินค้า, ค้นหา */}
-            <div className="flex flex-col xl:flex-row gap-3 items-center justify-between w-full">
-              <div className="flex items-center gap-2 w-full xl:w-auto overflow-hidden">
+            {/* Row 1: เครื่องมือหลัก, ปุ่มหมวดหมู่, สินค้านอก, ค้นหา, รีเฟรช — จัดเรียงบรรทัดเดียวบน iPad และ Desktop */}
+            <div className="flex flex-wrap md:flex-nowrap gap-2 items-center justify-between w-full">
+              <div className="flex items-center gap-2 shrink-0">
                 {/* ปุ่ม Hamburger สำหรับมือถือ */}
                 <button
                   type="button"
                   onClick={() => {
                     window.dispatchEvent(new Event("open-mobile-menu"));
                   }}
-                  className="flex md:hidden p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-full transition-all cursor-pointer shadow-xs shrink-0"
+                  className="flex md:hidden p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-full transition-all cursor-pointer shadow-xs shrink-0"
                   title="เปิดเมนูหลัก"
                 >
                   <Menu className="w-4 h-4" />
                 </button>
 
-                {/* ปุ่มเดิม: หมวดหมู่ */}
+                {/* ปุ่มหมวดหมู่ */}
                 <button
                   onClick={() => setIsSidebarOpen(true)}
-                  className="bg-slate-100 text-slate-700 font-bold text-xs px-3.5 py-2.5 rounded-full hover:bg-slate-200 transition-all flex items-center justify-center gap-1.5 shadow-xs flex-1 min-w-0 xl:flex-none xl:w-auto text-center truncate cursor-pointer"
+                  className="bg-slate-100 text-slate-700 font-bold text-xs px-3.5 py-2 rounded-full hover:bg-slate-200 transition-all flex items-center justify-center gap-1.5 shadow-2xs max-w-[180px] sm:max-w-[220px] truncate cursor-pointer shrink-0"
                 >
                   <FolderOpen className="w-3.5 h-3.5 shrink-0 text-slate-500" />
                   <span className="truncate">
@@ -1871,54 +1891,6 @@ export default function ManagerPOSPage() {
                   </span>
                 </button>
 
-                {/* Reload & Time (Desktop only) */}
-                <div className="hidden sm:flex items-center gap-2 bg-slate-50 border border-slate-100 rounded-full px-3 py-1.5 shrink-0 ml-auto xl:ml-0">
-                  <div className="flex flex-col">
-                    <span className="text-[9px] text-slate-400 font-bold flex items-center gap-1">
-                      <Clock className="w-2.5 h-2.5" /> อัปเดตล่าสุด
-                    </span>
-                    <span className="text-[10px] text-slate-700 font-bold">
-                      {lastUpdated ? lastUpdated.toLocaleString('th-TH', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : 'กำลังโหลด...'}
-                    </span>
-                  </div>
-                  <button
-                    onClick={() => {
-                      if (catalogType === 'SLAB') {
-                        handleSwitchCatalog('SLAB', true, true)
-                      } else if (catalogType === 'FURNITURE') {
-                        handleSwitchCatalog('FURNITURE', true, true)
-                      } else {
-                        loadData(false, true)
-                      }
-                    }}
-                    disabled={loadingDb || loadingCatalog}
-                    className="ml-1 p-1.5 bg-white border border-slate-200 text-slate-600 rounded-full hover:bg-slate-100 hover:border-slate-300 disabled:opacity-50 transition-all cursor-pointer shadow-xs"
-                    title="รีโหลดข้อมูลสินค้าและสต็อกสดจากคลัง"
-                  >
-                    <RefreshCw className={`w-3.5 h-3.5 ${(loadingDb || loadingCatalog) ? 'animate-spin text-slate-400' : ''}`} />
-                  </button>
-                </div>
-
-                {/* Mobile-only compact reload button */}
-                <button
-                  onClick={() => {
-                    if (catalogType === 'SLAB') {
-                      handleSwitchCatalog('SLAB', true, true)
-                    } else if (catalogType === 'FURNITURE') {
-                      handleSwitchCatalog('FURNITURE', true, true)
-                    } else {
-                      loadData(false, true)
-                    }
-                  }}
-                  disabled={loadingDb || loadingCatalog}
-                  className="flex sm:hidden p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-full disabled:opacity-50 transition-all cursor-pointer shadow-xs shrink-0"
-                  title="รีโหลดข้อมูลสินค้าและสต็อกสดจากคลัง"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${(loadingDb || loadingCatalog) ? 'animate-spin text-slate-400' : ''}`} />
-                </button>
-              </div>
-              
-              <div className="flex items-center gap-2 w-full xl:w-auto">
                 {/* ปุ่มเพิ่มสินค้านอก & เฟอร์นิเจอร์ */}
                 <button
                   type="button"
@@ -1941,11 +1913,15 @@ export default function ManagerPOSPage() {
                     }`}
                   >
                     <Layers className="w-3.5 h-3.5" />
-                    <span>สินค้าจัดเซ็ต ({sets.length})</span>
+                    <span className="hidden sm:inline">สินค้าจัดเซ็ต</span>
+                    <span>({sets.length})</span>
                   </button>
                 )}
+              </div>
 
-                <div className="w-full xl:w-72 shrink-0 relative">
+              {/* ช่องค้นหา + ปุ่มรีโหลดข้อมูล */}
+              <div className="flex items-center gap-2 flex-1 min-w-[200px] w-full md:w-auto justify-end">
+                <div className="flex-1 md:max-w-md relative min-w-0">
                   <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
                     type="text"
@@ -1979,24 +1955,45 @@ export default function ManagerPOSPage() {
                         }
                       }
                     }}
-                    className="w-full pl-9 pr-10 py-2.5 bg-slate-50 border border-slate-200/80 rounded-full text-xs text-slate-800 outline-none focus:bg-white focus:border-slate-400 focus:ring-2 focus:ring-slate-200 transition-all"
+                    className="w-full pl-9 pr-9 py-2 bg-slate-50 border border-slate-200/80 rounded-full text-xs text-slate-800 outline-none focus:bg-white focus:border-slate-400 focus:ring-2 focus:ring-slate-200 transition-all"
                   />
                   {searchQuery && !isSearching && (
                     <button
                       type="button"
                       onClick={() => setSearchQuery('')}
-                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
                       title="ล้างคำค้นหา"
                     >
                       <X className="w-4 h-4" />
                     </button>
                   )}
                   {isSearching && (
-                    <div className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none">
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none">
                       <Loader2 className="w-4 h-4 animate-spin" />
                     </div>
                   )}
                 </div>
+
+                {/* ปุ่มรีโหลดข้อมูลและเวลาอัปเดต */}
+                <button
+                  onClick={() => {
+                    if (catalogType === 'SLAB') {
+                      handleSwitchCatalog('SLAB', true, true)
+                    } else if (catalogType === 'FURNITURE') {
+                      handleSwitchCatalog('FURNITURE', true, true)
+                    } else {
+                      loadData(false, true)
+                    }
+                  }}
+                  disabled={loadingDb || loadingCatalog}
+                  className="flex items-center gap-1.5 px-2.5 py-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-600 rounded-full disabled:opacity-50 transition-all cursor-pointer shadow-2xs shrink-0"
+                  title={lastUpdated ? `อัปเดตล่าสุด: ${lastUpdated.toLocaleString('th-TH')}` : 'รีโหลดข้อมูลสินค้าและสต็อกสดจากคลัง'}
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${(loadingDb || loadingCatalog) ? 'animate-spin text-slate-400' : ''}`} />
+                  <span className="hidden 2xl:inline text-[10px] font-bold text-slate-600">
+                    {lastUpdated ? lastUpdated.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : 'รีเฟรช'}
+                  </span>
+                </button>
               </div>
             </div>
 
@@ -2328,7 +2325,7 @@ export default function ManagerPOSPage() {
           ) : (
             /* ตารางแสดงสินค้าเดี่ยวปกติ */
             <>
-              <div className="grid grid-cols-4 md:grid-cols-5 xl:grid-cols-6 gap-2 sm:gap-4 w-full">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 2xl:grid-cols-5 gap-2.5 sm:gap-3.5 w-full">
                 {activeProducts.length === 0 && !loadingDb && !loadingCatalog ? (
                   <div className="col-span-full py-16 flex flex-col items-center justify-center text-center">
                     <div className="w-14 h-14 bg-slate-100 rounded-full flex items-center justify-center text-slate-400 mb-3">
@@ -2502,17 +2499,17 @@ export default function ManagerPOSPage() {
           )}
         </div>
 
-        {/* 🛒 ฝั่งขวา: ตะกร้าสรุปบิล (Desktop แสดงตลอดเวลา, Mobile แสดงในโมดอล/ดรอว์เวอร์เมื่อเปิด) */}
+        {/* ฝั่งขวา: ตะกร้าสรุปบิล (จอใหญ่ xl แสดงข้างกันตลอดเวลา, จอ iPad/มือถือ เปิดเป็นลิ้นชักด้านขวา/ด้านล่าง) */}
         <div 
           className={`
-            ${isMobileCartOpen ? 'fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm lg:relative lg:bg-transparent lg:inset-auto lg:z-10 lg:flex-none lg:items-stretch lg:justify-start' : 'hidden lg:flex'}
-            w-full lg:w-[380px] shrink-0 lg:sticky lg:top-6 lg:h-[calc(100vh-48px)]
+            ${isMobileCartOpen ? 'fixed inset-0 z-50 flex items-end sm:items-stretch justify-end bg-black/40 backdrop-blur-xs xl:relative xl:bg-transparent xl:inset-auto xl:z-10 xl:flex-none xl:justify-start' : 'hidden xl:flex'}
+            w-full xl:w-[370px] shrink-0 xl:sticky xl:top-3 xl:h-[calc(100vh-28px)]
           `}
           onClick={() => setIsMobileCartOpen(false)}
         >
           <div 
             id="mobile-cart-section" 
-            className="w-full h-[85vh] lg:h-full bg-white rounded-t-3xl lg:rounded-3xl shadow-2xl lg:shadow-sm border border-slate-100 flex flex-col overflow-hidden"
+            className="w-full sm:w-[410px] xl:w-full h-[88vh] sm:h-full bg-white rounded-t-3xl sm:rounded-none sm:rounded-l-3xl xl:rounded-3xl shadow-2xl xl:shadow-xs border border-slate-100 flex flex-col overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
           
@@ -2585,13 +2582,13 @@ export default function ManagerPOSPage() {
                   )}
                 </div>
               )}
-              {/* ปุ่มปิดโมดอลสำหรับมือถือ */}
+              {/* ปุ่มปิดโมดอลสำหรับมือถือและ iPad */}
               <button
                 onClick={() => setIsMobileCartOpen(false)}
-                className="lg:hidden p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-full transition-colors cursor-pointer"
+                className="xl:hidden p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-full transition-colors cursor-pointer"
                 title="ปิดตะกร้า"
               >
-                <X className="w-3.5 h-3.5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
           </div>
@@ -3860,15 +3857,18 @@ export default function ManagerPOSPage() {
         </div>
       )}
 
-      {/* ปุ่มลอยสำหรับมือถือ (เปิดตะกร้าในรูปแบบโมดอล) */}
-      <div className="lg:hidden fixed bottom-6 right-6 z-40">
+      {/* ปุ่มลอยสำหรับมือถือและ iPad (เปิดตะกร้าแบบลิ้นชัก) */}
+      <div className="xl:hidden fixed bottom-6 right-6 z-40">
         <button 
           onClick={() => setIsMobileCartOpen(true)} 
-          className="bg-[#1E293B] hover:bg-slate-800 text-white rounded-full p-4 shadow-2xl flex items-center justify-center relative transition-transform active:scale-95"
+          className="bg-[#1E293B] hover:bg-slate-800 text-white rounded-full px-5 py-3.5 shadow-2xl flex items-center gap-2.5 relative transition-transform active:scale-95 border border-white/10"
         >
-          <Receipt className="w-6 h-6" />
+          <Receipt className="w-5 h-5" />
+          <span className="text-xs font-bold">
+            {cart.length > 0 ? `ตะกร้า (${cart.length}) • ฿${grandTotal.toLocaleString()}` : 'ตะกร้าขาย'}
+          </span>
           {cart.length > 0 && (
-            <span className="absolute -top-1 -right-1 bg-rose-600 text-white text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center border-2 border-[#F4F7F9] shadow-xs">
+            <span className="bg-rose-600 text-white text-[10px] font-bold min-w-5 h-5 px-1 rounded-full flex items-center justify-center shadow-xs">
               {cart.length}
             </span>
           )}
