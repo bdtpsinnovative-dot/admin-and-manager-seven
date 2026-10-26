@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import { getPosData, getPosProductsPage, processCheckout, CheckoutPayload, getNearbyStock, getOrderForEdit, PosSetBundle, validatePosCoupon, updateProductPrice, getSlabsProducts, getFurnitureProducts } from '@/actions/pos'
-import { FolderOpen, Store, Truck, Receipt, MapPin, Save, AlertTriangle, AlertCircle, Info, X, Plus, Minus, FileText, Trash2, Printer, RefreshCw, Clock, Menu, Sparkles, Ticket, SlidersHorizontal, Armchair, Tag, Edit3, Loader2, Layers } from 'lucide-react'
+import { FolderOpen, Store, Truck, Receipt, MapPin, Save, AlertTriangle, AlertCircle, Info, X, Plus, Minus, FileText, Trash2, Printer, RefreshCw, Clock, Menu, Sparkles, Ticket, SlidersHorizontal, Armchair, Tag, Edit3, Loader2, Layers, Package, Ruler, FileCheck, Calculator, User, Building2, Users, Percent, Check, ChevronRight, Search, Box } from 'lucide-react'
 import { toast } from 'sonner'
 import StorefrontFilterDrawer from '@/components/pos/StorefrontFilterDrawer'
 import StorefrontFilterBar from '@/components/pos/StorefrontFilterBar'
@@ -81,10 +81,21 @@ export default function ManagerPOSPage() {
     'WALL ART': true,
   })
 
-  // 🪵 Catalog Mode: 'PROP' | 'FURNITURE' | 'SLAB'
+  // Catalog Mode: 'PROP' | 'FURNITURE' | 'SLAB'
+  const PAGE_SIZE = 100
   const [catalogType, setCatalogType] = useState<'PROP' | 'FURNITURE' | 'SLAB'>('PROP')
   const [slabsList, setSlabsList] = useState<Product[]>([])
+  const [slabsPage, setSlabsPage] = useState<number>(1)
+  const [slabsHasMore, setSlabsHasMore] = useState<boolean>(false)
+  const [slabsTotalCount, setSlabsTotalCount] = useState<number>(0)
+  const [slabsCatalogCount, setSlabsCatalogCount] = useState<number>(0)
+
   const [furnitureList, setFurnitureList] = useState<Product[]>([])
+  const [furniturePage, setFurniturePage] = useState<number>(1)
+  const [furnitureHasMore, setFurnitureHasMore] = useState<boolean>(false)
+  const [furnitureTotalCount, setFurnitureTotalCount] = useState<number>(0)
+  const [furnitureCatalogCount, setFurnitureCatalogCount] = useState<number>(0)
+
   const [loadingCatalog, setLoadingCatalog] = useState<boolean>(false)
   const [slabSubcategories, setSlabSubcategories] = useState<string[]>([])
   const [furnitureSubcategories, setFurnitureSubcategories] = useState<string[]>([])
@@ -282,8 +293,10 @@ export default function ManagerPOSPage() {
         original_price: numPrice
       }
 
-      // 1. อัปเดตรายการสินค้าหน้าร้าน (products)
+      // 1. อัปเดตรายการสินค้าหน้าร้าน (products, slabsList, furnitureList)
       setProducts(prev => prev.map(p => p.id === targetId ? { ...p, price: numPrice, original_price: numPrice } : p))
+      setSlabsList(prev => prev.map(p => p.id === targetId ? { ...p, price: numPrice, original_price: numPrice } : p))
+      setFurnitureList(prev => prev.map(p => p.id === targetId ? { ...p, price: numPrice, original_price: numPrice } : p))
 
       // 2. ถ้ามีอยู่ในตะกร้าแล้ว (cartItemId) -> อัปเดตราคาในตะกร้าทันที
       if (priceModal.cartItemId) {
@@ -310,7 +323,53 @@ export default function ManagerPOSPage() {
     }
   }
 
-  useEffect(() => { loadData(true) }, [])
+  // อ่านและซิงค์แคตตาล็อกกับ URL (?catalog=SLAB | FURNITURE | PROP) เพื่อให้กด Refresh (F5) แล้วไม่เด้งกลับไปหน้าพรอพ
+  const syncUrlParams = (
+    type: 'PROP' | 'FURNITURE' | 'SLAB',
+    extra?: { wood?: string; cat?: string }
+  ) => {
+    if (typeof window === 'undefined') return
+    const url = new URL(window.location.href)
+    if (type === 'PROP') {
+      url.searchParams.delete('catalog')
+      url.searchParams.delete('wood')
+    } else {
+      url.searchParams.set('catalog', type)
+    }
+    if (extra?.wood !== undefined) {
+      if (!extra.wood || extra.wood === 'ALL') url.searchParams.delete('wood')
+      else url.searchParams.set('wood', extra.wood)
+    }
+    if (extra?.cat !== undefined) {
+      if (!extra.cat || extra.cat === 'ALL') url.searchParams.delete('cat')
+      else url.searchParams.set('cat', extra.cat)
+    }
+    window.history.replaceState(null, '', `${url.pathname}${url.search}`)
+  }
+
+  useEffect(() => {
+    let initialCatalog: 'PROP' | 'FURNITURE' | 'SLAB' = 'PROP'
+    let initialWood = 'ALL'
+    let initialCat = 'ALL'
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search)
+      const rawCatalog = (params.get('catalog') || params.get('tab') || '').toUpperCase()
+      if (rawCatalog === 'SLAB' || rawCatalog === 'SLABS' || rawCatalog === 'ZENSLABS') {
+        initialCatalog = 'SLAB'
+      } else if (rawCatalog === 'FURNITURE') {
+        initialCatalog = 'FURNITURE'
+      }
+      const rawWood = params.get('wood')
+      if (rawWood) initialWood = rawWood
+      const rawCat = params.get('cat')
+      if (rawCat) initialCat = rawCat
+
+      if (initialCatalog !== 'PROP') setCatalogType(initialCatalog)
+      if (initialWood !== 'ALL') setSelectedWoodMaterial(initialWood)
+      if (initialCat !== 'ALL') setSelectedCategory(initialCat)
+    }
+    loadData(true, false, initialCatalog, initialWood, initialCat)
+  }, [])
 
   // ✨ ฟังก์ชันโหลดบิลเก่ามาแก้ไข
   async function loadOrderForEdit(orderCode: string) {
@@ -419,9 +478,16 @@ export default function ManagerPOSPage() {
     }
   }, [cart, myBranchId, saleMode])
 
-  async function loadData(isInitial = false, forceRefresh = false) {
+  async function loadData(
+    isInitial = false,
+    forceRefresh = false,
+    initialCatalog: 'PROP' | 'FURNITURE' | 'SLAB' = catalogType,
+    initialWood: string = selectedWoodMaterial,
+    initialCat: string = selectedCategory
+  ) {
     if (isInitial) setLoadingDb(true)
     const res = await getPosData(forceRefresh)
+    let resolvedLocation: number | 'ALL' = selectedLocation
     if (res.success && res.products && res.branches) {
       setProducts(res.products)
       setTotalCount(res.totalCount || res.products.length)
@@ -435,31 +501,112 @@ export default function ManagerPOSPage() {
       if (res.brandOptions) setServerBrandOptions(res.brandOptions)
       if (res.branchId) {
         setMyBranchId(res.branchId)
-        if (isInitial) setSelectedLocation(res.branchId)
+        if (isInitial) {
+          setSelectedLocation(res.branchId)
+          resolvedLocation = res.branchId
+        }
       }
       setLastUpdated(new Date())
     } else {
       toast.error("โหลดข้อมูลล้มเหลว: " + res.error)
     }
+
+    // ถ้าใน URL ระบุแคตตาล็อก SLAB หรือ FURNITURE ตอนเปิดหน้า/กด Refresh ให้ดึงแคตตาล็อกนั้นขึ้นมาทันที
+    if (isInitial && initialCatalog === 'SLAB') {
+      setLoadingCatalog(true)
+      try {
+        const slabRes = await getSlabsProducts({
+          page: 1,
+          pageSize: PAGE_SIZE,
+          searchQuery: '',
+          selectedWoodMaterial: initialWood,
+          selectedLocation: resolvedLocation,
+          forceRefresh,
+        })
+        if (slabRes.success && slabRes.products) {
+          setSlabsList(slabRes.products)
+          setSlabsPage(1)
+          setSlabsHasMore(Boolean(slabRes.hasMore))
+          setSlabsTotalCount(slabRes.totalCount || slabRes.products.length)
+          setSlabsCatalogCount(slabRes.catalogTotalCount || slabRes.totalCount || slabRes.products.length)
+          setSlabSubcategories(slabRes.subcategories || [])
+        }
+      } finally {
+        setLoadingCatalog(false)
+      }
+    } else if (isInitial && initialCatalog === 'FURNITURE') {
+      setLoadingCatalog(true)
+      try {
+        const furnRes = await getFurnitureProducts({
+          page: 1,
+          pageSize: PAGE_SIZE,
+          searchQuery: '',
+          selectedCategory: initialCat,
+          selectedLocation: resolvedLocation,
+          forceRefresh,
+          onlyFurniture: true,
+        })
+        if (furnRes.success && furnRes.products) {
+          setFurnitureList(furnRes.products)
+          setFurniturePage(1)
+          setFurnitureHasMore(Boolean(furnRes.hasMore))
+          setFurnitureTotalCount(furnRes.totalCount || furnRes.products.length)
+          setFurnitureCatalogCount(furnRes.catalogTotalCount || furnRes.totalCount || furnRes.products.length)
+          setFurnitureSubcategories(furnRes.subcategories || [])
+        }
+      } finally {
+        setLoadingCatalog(false)
+      }
+    }
+
     if (isInitial) setLoadingDb(false)
   }
 
-  // 🪵 สลับแคตตาล็อก: 'PROP' | 'FURNITURE' | 'SLAB' (สไตล์เดียวกับ Mobile POS)
-  const handleSwitchCatalog = async (type: 'PROP' | 'FURNITURE' | 'SLAB') => {
-    if (type === catalogType) return
+  // ซิงค์ตัวกรองย่อย (ชนิดไม้ / หมวดหมู่) ลง URL อัตโนมัติเมื่อเปลี่ยนค่า
+  useEffect(() => {
+    if (loadingDb) return
+    syncUrlParams(catalogType, {
+      wood: catalogType === 'SLAB' ? selectedWoodMaterial : undefined,
+      cat: catalogType !== 'SLAB' ? selectedCategory : undefined,
+    })
+  }, [catalogType, selectedWoodMaterial, selectedCategory, loadingDb])
+
+  // สลับแคตตาล็อก: 'PROP' | 'FURNITURE' | 'SLAB' (ดึงทีละ 100 รายการ เรียงสต็อกสาขาเรา -> สาขาอื่น -> 0)
+  const handleSwitchCatalog = async (
+    type: 'PROP' | 'FURNITURE' | 'SLAB',
+    forceRefresh: boolean = false,
+    preserveSearch: boolean = false
+  ) => {
+    if (type === catalogType && !forceRefresh) return
+    const nextSearch = preserveSearch ? searchQuery : ''
     setCatalogType(type)
-    setSearchQuery('')
+    if (!preserveSearch) {
+      setSearchQuery('')
+    }
     setSelectedCategory('ALL')
     setSelectedWoodMaterial('ALL')
+    syncUrlParams(type, { wood: 'ALL', cat: 'ALL' })
 
     if (type === 'SLAB') {
-      if (slabsList.length === 0) {
+      if (forceRefresh || slabsList.length === 0 || preserveSearch) {
         setLoadingCatalog(true)
         try {
-          const res = await getSlabsProducts()
+          const res = await getSlabsProducts({
+            page: 1,
+            pageSize: PAGE_SIZE,
+            searchQuery: nextSearch,
+            selectedWoodMaterial: 'ALL',
+            selectedLocation,
+            forceRefresh,
+          })
           if (res.success && res.products) {
             setSlabsList(res.products)
+            setSlabsPage(1)
+            setSlabsHasMore(Boolean(res.hasMore))
+            setSlabsTotalCount(res.totalCount || res.products.length)
+            setSlabsCatalogCount(res.catalogTotalCount || res.totalCount || res.products.length)
             setSlabSubcategories(res.subcategories || [])
+            if (forceRefresh) setLastUpdated(new Date())
           } else {
             toast.error(res.error || 'ไม่สามารถโหลดแคตตาล็อกแผ่นไม้ ZENSLABS ได้')
           }
@@ -470,13 +617,26 @@ export default function ManagerPOSPage() {
         }
       }
     } else if (type === 'FURNITURE') {
-      if (furnitureList.length === 0) {
+      if (forceRefresh || furnitureList.length === 0 || preserveSearch) {
         setLoadingCatalog(true)
         try {
-          const res = await getFurnitureProducts()
+          const res = await getFurnitureProducts({
+            page: 1,
+            pageSize: PAGE_SIZE,
+            searchQuery: nextSearch,
+            selectedCategory: 'ALL',
+            selectedLocation,
+            forceRefresh,
+            onlyFurniture: true,
+          })
           if (res.success && res.products) {
             setFurnitureList(res.products)
+            setFurniturePage(1)
+            setFurnitureHasMore(Boolean(res.hasMore))
+            setFurnitureTotalCount(res.totalCount || res.products.length)
+            setFurnitureCatalogCount(res.catalogTotalCount || res.totalCount || res.products.length)
             setFurnitureSubcategories(res.subcategories || [])
+            if (forceRefresh) setLastUpdated(new Date())
           } else {
             toast.error(res.error || 'ไม่สามารถโหลดแคตตาล็อกเฟอร์นิเจอร์ได้')
           }
@@ -489,115 +649,35 @@ export default function ManagerPOSPage() {
     }
   }
 
-  // ⚡ รายการสินค้าที่จะแสดงในหน้า POS ตามแคตตาล็อกที่เลือก
+  // รายการสินค้าที่จะแสดงในหน้า POS ตามแคตตาล็อกที่เลือก (แบ่งหน้าจากเซิร์ฟเวอร์แล้ว)
   const activeProducts = useMemo(() => {
-    if (catalogType === 'SLAB') {
-      let list = slabsList
-      if (selectedWoodMaterial !== 'ALL') {
-        list = list.filter(p => p.product_sup === selectedWoodMaterial || p.specs?.material === selectedWoodMaterial)
-      }
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase().trim()
-        list = list.filter(p =>
-          p.name?.toLowerCase().includes(q) ||
-          p.sku?.toLowerCase().includes(q) ||
-          p.product_sup?.toLowerCase().includes(q) ||
-          (p.specs?.dimensions && String(p.specs.dimensions).toLowerCase().includes(q)) ||
-          (p.specs?.material && String(p.specs.material).toLowerCase().includes(q))
-        )
-      }
-      return list
-    }
-    if (catalogType === 'FURNITURE') {
-      let list = furnitureList
-      if (selectedCategory !== 'ALL') {
-        list = list.filter(p => p.product_sup === selectedCategory)
-      }
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase().trim()
-        list = list.filter(p =>
-          p.name?.toLowerCase().includes(q) ||
-          p.sku?.toLowerCase().includes(q) ||
-          p.product_sup?.toLowerCase().includes(q) ||
-          (p.specs?.material && String(p.specs.material).toLowerCase().includes(q))
-        )
-      }
-      return list
-    }
+    if (catalogType === 'SLAB') return slabsList
+    if (catalogType === 'FURNITURE') return furnitureList
     return products
-  }, [catalogType, slabsList, furnitureList, products, selectedWoodMaterial, selectedCategory, searchQuery])
+  }, [catalogType, slabsList, furnitureList, products])
+
+  const activeHasMore = useMemo(() => {
+    if (catalogType === 'SLAB') return slabsHasMore
+    if (catalogType === 'FURNITURE') return furnitureHasMore
+    return hasMore
+  }, [catalogType, slabsHasMore, furnitureHasMore, hasMore])
 
   const displayedTotalCount = useMemo(() => {
-    if (catalogType === 'SLAB') return activeProducts.length
-    if (catalogType === 'FURNITURE') return activeProducts.length
+    if (catalogType === 'SLAB') return slabsTotalCount
+    if (catalogType === 'FURNITURE') return furnitureTotalCount
     return totalCount
-  }, [catalogType, activeProducts.length, totalCount])
+  }, [catalogType, slabsTotalCount, furnitureTotalCount, totalCount])
 
-  // 🚀 ฟังก์ชันดึงสินค้าหน้าถัดไปแบบ Infinite Scroll
+  // ฟังก์ชันดึงสินค้าหน้าถัดไปทีละ 100 รายการแบบ Infinite Scroll (รองรับทั้ง PROP, FURNITURE, SLAB)
   const loadMoreProducts = async () => {
-    if (catalogType !== 'PROP' || isLoadingMore || !hasMore || loadingDb || selectedCategory === 'SETS') return
+    if (isLoadingMore || !activeHasMore || loadingDb || loadingCatalog || selectedCategory === 'SETS') return
     setIsLoadingMore(true)
     try {
-      const nextPage = currentPage + 1
-      const res = await getPosProductsPage({
-        page: nextPage,
-        pageSize: 48,
-        searchQuery,
-        selectedCategory,
-        storefrontCategory,
-        selectedColors,
-        selectedMaterials,
-        selectedBrands,
-        dimensionFilter,
-        selectedLocation,
-      })
-      if (res.success && res.products) {
-        setProducts(prev => {
-          const existingIds = new Set(prev.map(p => p.id))
-          const newOnes = res.products.filter(p => !existingIds.has(p.id))
-          return [...prev, ...newOnes]
-        })
-        setCurrentPage(nextPage)
-        setHasMore(Boolean(res.hasMore))
-        setTotalCount(res.totalCount)
-      }
-    } catch (err) {
-      console.error("Failed to load more products:", err)
-    } finally {
-      setIsLoadingMore(false)
-    }
-  }
-
-  // 🌀 ดักจับเมื่อผู้ใช้เลื่อนจอลงมาใกล้ล่างสุด แล้วโหลดเพิ่มอัตโนมัติ (Infinite Scroll)
-  useEffect(() => {
-    if (catalogType !== 'PROP' || selectedCategory === 'SETS') return
-    const target = observerTargetRef.current
-    if (!target) return
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting && hasMore && !isLoadingMore && !loadingDb) {
-          loadMoreProducts()
-        }
-      },
-      { rootMargin: '350px' }
-    )
-
-    observer.observe(target)
-    return () => observer.disconnect()
-  }, [catalogType, hasMore, isLoadingMore, loadingDb, currentPage, searchQuery, selectedCategory, storefrontCategory, selectedColors, selectedMaterials, selectedBrands, dimensionFilter, selectedLocation])
-
-  // ⚡ ค้นหาและกรองผ่าน Server แบบ Debounced (ค้นหาไวในเสี้ยววินาที ไม่กระตุก)
-  useEffect(() => {
-    if (loadingDb || catalogType !== 'PROP') return
-    if (selectedCategory === 'SETS') return
-
-    const timer = setTimeout(async () => {
-      setIsSearching(true)
-      try {
+      if (catalogType === 'PROP') {
+        const nextPage = currentPage + 1
         const res = await getPosProductsPage({
-          page: 1,
-          pageSize: 48,
+          page: nextPage,
+          pageSize: PAGE_SIZE,
           searchQuery,
           selectedCategory,
           storefrontCategory,
@@ -608,23 +688,154 @@ export default function ManagerPOSPage() {
           selectedLocation,
         })
         if (res.success && res.products) {
-          setProducts(res.products)
-          setCurrentPage(1)
-          setTotalCount(res.totalCount)
+          setProducts(prev => {
+            const existingIds = new Set(prev.map(p => p.id))
+            const newOnes = res.products.filter(p => !existingIds.has(p.id))
+            return [...prev, ...newOnes]
+          })
+          setCurrentPage(nextPage)
           setHasMore(Boolean(res.hasMore))
-          if (res.colorOptions) setServerColorOptions(res.colorOptions)
-          if (res.materialOptions) setServerMaterialOptions(res.materialOptions)
-          if (res.brandOptions) setServerBrandOptions(res.brandOptions)
+          setTotalCount(res.totalCount)
+        }
+      } else if (catalogType === 'SLAB') {
+        const nextPage = slabsPage + 1
+        const res = await getSlabsProducts({
+          page: nextPage,
+          pageSize: PAGE_SIZE,
+          searchQuery,
+          selectedWoodMaterial,
+          selectedLocation,
+        })
+        if (res.success && res.products) {
+          setSlabsList(prev => {
+            const existingIds = new Set(prev.map(p => p.id))
+            const newOnes = res.products.filter(p => !existingIds.has(p.id))
+            return [...prev, ...newOnes]
+          })
+          setSlabsPage(nextPage)
+          setSlabsHasMore(Boolean(res.hasMore))
+          setSlabsTotalCount(res.totalCount ?? slabsTotalCount)
+        }
+      } else if (catalogType === 'FURNITURE') {
+        const nextPage = furniturePage + 1
+        const res = await getFurnitureProducts({
+          page: nextPage,
+          pageSize: PAGE_SIZE,
+          searchQuery,
+          selectedCategory,
+          selectedLocation,
+          onlyFurniture: true,
+        })
+        if (res.success && res.products) {
+          setFurnitureList(prev => {
+            const existingIds = new Set(prev.map(p => p.id))
+            const newOnes = res.products.filter(p => !existingIds.has(p.id))
+            return [...prev, ...newOnes]
+          })
+          setFurniturePage(nextPage)
+          setFurnitureHasMore(Boolean(res.hasMore))
+          setFurnitureTotalCount(res.totalCount ?? furnitureTotalCount)
+        }
+      }
+    } catch (err) {
+      console.error("Failed to load more products:", err)
+    } finally {
+      setIsLoadingMore(false)
+    }
+  }
+
+  // ดักจับเมื่อผู้ใช้เลื่อนจอลงมาใกล้ล่างสุด แล้วโหลดเพิ่มอัตโนมัติทีละ 100 รายการ (Infinite Scroll ทุกแคตตาล็อก)
+  useEffect(() => {
+    if (selectedCategory === 'SETS') return
+    const target = observerTargetRef.current
+    if (!target) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && activeHasMore && !isLoadingMore && !loadingDb && !loadingCatalog) {
+          loadMoreProducts()
+        }
+      },
+      { rootMargin: '400px' }
+    )
+
+    observer.observe(target)
+    return () => observer.disconnect()
+  }, [catalogType, activeHasMore, isLoadingMore, loadingDb, loadingCatalog, currentPage, slabsPage, furniturePage, searchQuery, selectedCategory, selectedWoodMaterial, storefrontCategory, selectedColors, selectedMaterials, selectedBrands, dimensionFilter, selectedLocation])
+
+  // ค้นหาและกรองผ่าน Server แบบ Debounced (ดึงเฉพาะหน้าแรก 100 รายการ ประหยัดเซิร์ฟเวอร์สูงสุด)
+  useEffect(() => {
+    if (loadingDb) return
+    if (selectedCategory === 'SETS') return
+
+    const timer = setTimeout(async () => {
+      setIsSearching(true)
+      try {
+        if (catalogType === 'PROP') {
+          const res = await getPosProductsPage({
+            page: 1,
+            pageSize: PAGE_SIZE,
+            searchQuery,
+            selectedCategory,
+            storefrontCategory,
+            selectedColors,
+            selectedMaterials,
+            selectedBrands,
+            dimensionFilter,
+            selectedLocation,
+          })
+          if (res.success && res.products) {
+            setProducts(res.products)
+            setCurrentPage(1)
+            setTotalCount(res.totalCount)
+            setHasMore(Boolean(res.hasMore))
+            if (res.colorOptions) setServerColorOptions(res.colorOptions)
+            if (res.materialOptions) setServerMaterialOptions(res.materialOptions)
+            if (res.brandOptions) setServerBrandOptions(res.brandOptions)
+          }
+        } else if (catalogType === 'SLAB') {
+          const res = await getSlabsProducts({
+            page: 1,
+            pageSize: PAGE_SIZE,
+            searchQuery,
+            selectedWoodMaterial,
+            selectedLocation,
+          })
+          if (res.success && res.products) {
+            setSlabsList(res.products)
+            setSlabsPage(1)
+            setSlabsHasMore(Boolean(res.hasMore))
+            setSlabsTotalCount(res.totalCount)
+            setSlabsCatalogCount(res.catalogTotalCount)
+            if (res.subcategories && res.subcategories.length > 0) setSlabSubcategories(res.subcategories)
+          }
+        } else if (catalogType === 'FURNITURE') {
+          const res = await getFurnitureProducts({
+            page: 1,
+            pageSize: PAGE_SIZE,
+            searchQuery,
+            selectedCategory,
+            selectedLocation,
+            onlyFurniture: true,
+          })
+          if (res.success && res.products) {
+            setFurnitureList(res.products)
+            setFurniturePage(1)
+            setFurnitureHasMore(Boolean(res.hasMore))
+            setFurnitureTotalCount(res.totalCount)
+            setFurnitureCatalogCount(res.catalogTotalCount)
+            if (res.subcategories && res.subcategories.length > 0) setFurnitureSubcategories(res.subcategories)
+          }
         }
       } catch (err) {
         console.error("Search/filter failed:", err)
       } finally {
         setIsSearching(false)
       }
-    }, 220)
+    }, 200)
 
     return () => clearTimeout(timer)
-  }, [catalogType, searchQuery, selectedCategory, storefrontCategory, selectedColors, selectedMaterials, selectedBrands, dimensionFilter, selectedLocation])
+  }, [catalogType, searchQuery, selectedCategory, selectedWoodMaterial, storefrontCategory, selectedColors, selectedMaterials, selectedBrands, dimensionFilter, selectedLocation])
 
   const buildNestedMenu = (rawCategories: string[]) => {
     const groups: Record<string, { fullText: string; subText: string }[]> = {}
@@ -700,13 +911,30 @@ export default function ManagerPOSPage() {
   }
 
   const addToCart = async (product: Product, customQty = 1, customFulfillBranchId?: number, forceAdd = false) => {
-    const targetBranchId = customFulfillBranchId !== undefined
+    let targetBranchId = customFulfillBranchId !== undefined
       ? customFulfillBranchId
       : (selectedLocation === 'ALL' ? myBranchId : selectedLocation)
 
+    const initialBranchStock = product.stocks?.find(s => s.branch_id === targetBranchId)
+    const initialAvailableQty = initialBranchStock ? Number(initialBranchStock.qty) : 0
+    const initialInCart = cart.find(it => it.cartItemId === `${product.id}-${targetBranchId}`)?.quantity || 0
+
+    // 🧠 ค้นหาสาขาอื่นที่มีสต็อกพร้อมหยิบ (กรณีสาขาเราไม่มีสต็อก หรือหยิบจนครบสต็อกสาขาเราแล้ว)
+    const otherBranchesWithStock = (product.stocks || [])
+      .filter(s => s.branch_id !== targetBranchId && Number(s.qty) > 0)
+      .filter(s => {
+        const inOtherCart = cart.find(it => it.cartItemId === `${product.id}-${s.branch_id}`)?.quantity || 0
+        return inOtherCart < Number(s.qty)
+      })
+      .sort((a, b) => Number(b.qty) - Number(a.qty))
+
     // 🏷️ กฎบังคับ: ถ้าสินค้ามีราคา 0 ฿ หรือยังไม่ได้ตั้งราคา ต้องให้เซลตั้งราคาก่อนเสมอ และบันทึกลงฐานข้อมูลจริง!
     if (!product.price || Number(product.price) <= 0) {
-      openSetPriceModal(product, null, targetBranchId, customQty)
+      const effectiveBranchForPrice =
+        customFulfillBranchId === undefined && initialAvailableQty <= 0 && otherBranchesWithStock.length === 1
+          ? otherBranchesWithStock[0].branch_id
+          : targetBranchId
+      openSetPriceModal(product, null, effectiveBranchForPrice, customQty)
       return
     }
 
@@ -754,15 +982,7 @@ export default function ManagerPOSPage() {
       return
     }
 
-    const branchStock = product.stocks?.find(s => s.branch_id === targetBranchId)
-    const availableQty = branchStock ? Number(branchStock.qty) : 0
-    const totalStock = product.stocks ? product.stocks.reduce((sum, s) => sum + Number(s.qty), 0) : 0
-
-    const cartItemId = `${product.id}-${targetBranchId}`
-    const existing = cart.find((item) => item.cartItemId === cartItemId)
-    const currentInCart = existing ? existing.quantity : 0
-
-    // ถ้าเป็นสินค้านอก, เฟอร์นิเจอร์ หรือแผ่นไม้ ไม่ต้องบล็อกสต็อกหน้าร้าน
+    // ถ้าเป็นสินค้านอก, เฟอร์นิเจอร์ หรือแผ่นไม้ ไม่ต้องบล็อกสต็อกหน้าร้านเมื่อสต็อกเป็น 0 ทุกสาขา
     const isExemptStock = Boolean(
       product.isExternal || 
       product.isFurniture || 
@@ -773,24 +993,45 @@ export default function ManagerPOSPage() {
       product.sku?.toUpperCase().startsWith('LEG')
     )
 
-    // ถ้าสต็อกในสาขาหมด หรือหยิบจนเกินสต็อกที่มี (เฉพาะสินค้าทั่วไป)
-    if (!forceAdd && !isExemptStock && (availableQty <= 0 || currentInCart >= availableQty)) {
-      if (totalStock > 0 && totalStock > currentInCart) {
+    // 🧠 ระบบดึงสต็อกข้ามสาขาอัจฉริยะ:
+    // ถ้าสาขาปัจจุบันไม่มีสต็อก (หรือหยิบครบสต็อกสาขาเราแล้ว) แต่สาขาอื่นมีสต็อก ให้ดึงจากสาขาที่มีของก่อนเสมอ!
+    let autoPulledCrossBranch = false
+    if (!forceAdd && customFulfillBranchId === undefined && (initialAvailableQty <= 0 || initialInCart >= initialAvailableQty)) {
+      if (otherBranchesWithStock.length === 1) {
+        // กรณีมีสาขาอื่นที่มีของอยู่ 1 สาขา -> ดึงสต็อกจากสาขานั้นให้อัตโนมัติทันที!
+        targetBranchId = otherBranchesWithStock[0].branch_id
+        autoPulledCrossBranch = targetBranchId !== myBranchId
+      } else if (otherBranchesWithStock.length > 1) {
+        // กรณีมีหลายสาขาที่มีของ -> เปิดหน้าต่างให้เลือกสาขาที่จะดึงสต็อก
         setNearbyModal({ isOpen: true, product, nearbyStocks: [], isLoading: true })
         const res = await getNearbyStock(product.id, targetBranchId)
         if (res.success && res.data && res.data.length > 0) {
           setNearbyModal({ isOpen: true, product, nearbyStocks: res.data, isLoading: false })
           return
         }
+        // Fallback หากโหลด API ไม่สำเร็จ ให้ดึงจากสาขาที่มีสต็อกมากที่สุดอัตโนมัติ
+        targetBranchId = otherBranchesWithStock[0].branch_id
+        autoPulledCrossBranch = targetBranchId !== myBranchId
+      } else if (!isExemptStock) {
+        // สินค้าทั่วไปที่สต็อกเป็น 0 ทุกสาขา
+        toast.info('เพิ่มสินค้าลงตะกร้าแล้ว (สต็อก 0 สำหรับออกใบเสนอราคา)')
       }
-      // หากไม่มีสต็อกในสาขาอื่น หรือสต็อกเป็น 0 ทุกสาขา อนุญาตให้ดึงลงตะกร้าสำหรับทำใบเสนอราคา
-      toast.info('เพิ่มสินค้าลงตะกร้าแล้ว (สต็อก 0 สำหรับออกใบเสนอราคา)')
     }
+
+    const cartItemId = `${product.id}-${targetBranchId}`
+    const existing = cart.find((item) => item.cartItemId === cartItemId)
 
     // 🚀 สต็อกพอ หรือออกใบเสนอราคา ดึงลงตะกร้าปกติ พร้อมเล่นแอนิเมชัน
     triggerCartAnimation(product.id)
 
-    const branchName = branches.find(b => b.id === targetBranchId)?.branch_name || 'สาขาหลัก'
+    const branchName = branches.find(b => b.id === targetBranchId)?.branch_name || `สาขา #${targetBranchId}`
+
+    if (autoPulledCrossBranch) {
+      toast.info(`สาขาเราไม่มีสต็อก ระบบดึงสต็อกจาก "${branchName}" ให้อัตโนมัติครับ`)
+      if (saleMode === 'TAKE_AWAY') {
+        setSaleMode('DELIVERY')
+      }
+    }
 
     setCart((prevCart) => {
       if (existing) {
@@ -971,10 +1212,10 @@ export default function ManagerPOSPage() {
       if (outOfStockNames.length > 0) {
         toast.warning(`หยิบเซ็ต "${bundle.name}" สำเร็จ ${addedCount} ชิ้น (ข้าม ${outOfStockNames.length} ชิ้นที่หมดสต็อกหรือยังไม่ระบุราคา)`)
       } else {
-        toast.success(`🎉 เพิ่มเซ็ต "${bundle.name}" (${addedCount} ชิ้น) ลงในบิลแล้ว!`)
+        toast.success(`เพิ่มเซ็ต "${bundle.name}" (${addedCount} ชิ้น) ลงในบิลแล้ว`)
       }
       if (hasCrossBranch) {
-        toast.info('📍 มีการดึงสต็อกข้ามสาขา จึงเปลี่ยนเป็นโหมด "ให้ร้านส่งให้" อัตโนมัติ')
+        toast.info('มีการดึงสต็อกข้ามสาขา จึงเปลี่ยนเป็นโหมด "ให้ร้านส่งให้" อัตโนมัติ')
       }
     } else {
       toast.error('สินค้าในเซ็ตนี้หมดสต็อกทุกสาขา ไม่สามารถเพิ่มได้ครับ!')
@@ -1083,11 +1324,11 @@ export default function ManagerPOSPage() {
       setAppliedCoupon(res.coupon)
       setCouponInput('')
       setCouponErrorMsg(null)
-      const topUpTag = res.coupon.isTopUp ? ' ⚡[Top-up ลดเพิ่ม]' : ''
+      const topUpTag = res.coupon.isTopUp ? ' [Top-up ลดเพิ่ม]' : ''
       const attrInfo = res.coupon.attribution?.partnerCompany
         ? ` (${res.coupon.attribution.partnerCompany} • เซลล์: ${res.coupon.attribution.leadSales || '-'})`
         : ''
-      toast.success(`🎟️ ใช้คูปอง [${res.coupon.code}] สำเร็จ!${topUpTag} ลดทันที ฿${res.coupon.discountAmount.toLocaleString()}${attrInfo}`)
+      toast.success(`ใช้คูปอง [${res.coupon.code}] สำเร็จ${topUpTag} ลดทันที ฿${res.coupon.discountAmount.toLocaleString()}${attrInfo}`)
     } else {
       const errMsg = res.error || "รหัสคูปองไม่ถูกต้อง"
       setCouponErrorMsg(errMsg)
@@ -1445,15 +1686,15 @@ export default function ManagerPOSPage() {
               onClick={() => { setSelectedCategory('SETS'); setIsSidebarOpen(false); }}
               className={`w-full text-left px-4 py-3 rounded-2xl font-bold text-sm transition-all mb-2 flex items-center justify-between ${
                 selectedCategory === 'SETS'
-                  ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md'
-                  : 'bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200'
+                  ? 'bg-[#1E293B] text-white shadow-xs'
+                  : 'bg-slate-50 text-slate-700 hover:bg-slate-100 border border-slate-200'
               }`}
             >
               <span className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-purple-500" />
-                📦 สินค้าจัดเซ็ต (Sets)
+                <Layers className="w-4 h-4 text-slate-400" />
+                สินค้าจัดเซ็ต (Sets)
               </span>
-              <span className={`text-[10px] px-2 py-0.5 rounded-full font-black ${selectedCategory === 'SETS' ? 'bg-white/20 text-white' : 'bg-purple-200 text-purple-900'}`}>
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-black ${selectedCategory === 'SETS' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'}`}>
                 {sets.length}
               </span>
             </button>
@@ -1486,10 +1727,10 @@ export default function ManagerPOSPage() {
                       <button
                         key={child.fullText}
                         onClick={() => { setSelectedCategory(child.fullText); setIsSidebarOpen(false); }}
-                        className={`w-full text-left px-4 py-2 text-xs font-bold uppercase transition-all relative ${selectedCategory === child.fullText ? 'text-amber-600' : 'text-slate-500 hover:text-slate-800'}`}
+                        className={`w-full text-left px-4 py-2 text-xs font-bold uppercase transition-all relative ${selectedCategory === child.fullText ? 'text-slate-900' : 'text-slate-500 hover:text-slate-800'}`}
                       >
                         {selectedCategory === child.fullText && (
-                          <span className="absolute left-[-5px] top-1/2 -translate-y-1/2 w-1.5 h-1.5 bg-amber-500 rounded-full"></span>
+                          <span className="absolute left-[-5px] top-1/2 -translate-y-1/2 w-1.5 h-1.5 bg-slate-900 rounded-full"></span>
                         )}
                         {child.subText}
                       </button>
@@ -1504,7 +1745,7 @@ export default function ManagerPOSPage() {
 
       {isSidebarOpen && <div onClick={() => setIsSidebarOpen(false)} className="fixed inset-0 z-40 bg-black/10 backdrop-blur-xs transition-opacity" />}
 
-      {/* 🛍️ ลิ้นชักฟิลเตอร์หน้าบ้าน (Storefront Filter Drawer) สไตล์หน้าร้าน */}
+      {/* ลิ้นชักฟิลเตอร์หน้าบ้าน (Storefront Filter Drawer) สไตล์หน้าร้าน */}
       <StorefrontFilterDrawer
         open={isStorefrontDrawerOpen}
         initialPanel={storefrontDrawerPanel}
@@ -1531,25 +1772,26 @@ export default function ManagerPOSPage() {
         }}
       />
 
-      {/* 🧩 โครงสร้างเนื้อหาหลัก */}
+      {/* โครงสร้างเนื้อหาหลัก */}
       <div className="max-w-[1600px] mx-auto flex flex-col lg:flex-row gap-6 items-start">
 
         <div className="flex-1 w-full flex flex-col gap-4">
-          <div className="bg-white p-4 rounded-3xl shadow-xs flex flex-col gap-3 w-full sticky top-0 md:top-4 z-20">
-            {/* 🌟 Row 0: แถบเลือกแคตตาล็อกหลัก (PROPS vs FURNITURE vs ZENSLABS) แบบเดียวกับ Mobile App */}
+          <div className="bg-white p-4 rounded-3xl shadow-xs border border-slate-100 flex flex-col gap-3 w-full sticky top-0 md:top-4 z-20">
+            {/* Row 0: แถบเลือกแคตตาล็อกหลัก (PROPS vs FURNITURE vs ZENSLABS) */}
             <div className="flex items-center gap-2 border-b border-slate-100 pb-3 overflow-x-auto no-scrollbar">
               <button
                 type="button"
                 onClick={() => handleSwitchCatalog('PROP')}
-                className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer shrink-0 shadow-2xs ${
+                className={`px-4 py-2.5 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
                   catalogType === 'PROP'
-                    ? 'bg-[#1E293B] text-white shadow-md'
+                    ? 'bg-[#1E293B] text-white shadow-xs'
                     : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200/80'
                 }`}
               >
-                <span>🏺 พรอพ (PROPS)</span>
+                <Package className="w-3.5 h-3.5" />
+                <span>พรอพ (PROPS)</span>
                 <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
-                  catalogType === 'PROP' ? 'bg-slate-700 text-slate-100' : 'bg-slate-200/80 text-slate-600'
+                  catalogType === 'PROP' ? 'bg-white/15 text-white' : 'bg-slate-200/80 text-slate-600'
                 }`}>
                   {totalCount.toLocaleString()}
                 </span>
@@ -1558,48 +1800,48 @@ export default function ManagerPOSPage() {
               <button
                 type="button"
                 onClick={() => handleSwitchCatalog('FURNITURE')}
-                className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer shrink-0 shadow-2xs ${
+                className={`px-4 py-2.5 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
                   catalogType === 'FURNITURE'
-                    ? 'bg-[#84492C] text-white shadow-md'
+                    ? 'bg-[#1E293B] text-white shadow-xs'
                     : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200/80'
                 }`}
               >
                 <Armchair className="w-3.5 h-3.5" />
                 <span>เฟอร์นิเจอร์ (EMBER & ASH)</span>
                 <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
-                  catalogType === 'FURNITURE' ? 'bg-[#5c331e] text-amber-200' : 'bg-slate-200/80 text-slate-600'
+                  catalogType === 'FURNITURE' ? 'bg-white/15 text-white' : 'bg-slate-200/80 text-slate-600'
                 }`}>
-                  {furnitureList.length > 0 ? furnitureList.length.toLocaleString() : '833'}
+                  {furnitureCatalogCount > 0 ? furnitureCatalogCount.toLocaleString() : '833'}
                 </span>
               </button>
 
               <button
                 type="button"
                 onClick={() => handleSwitchCatalog('SLAB')}
-                className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer shrink-0 shadow-2xs ${
+                className={`px-4 py-2.5 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
                   catalogType === 'SLAB'
-                    ? 'bg-gradient-to-r from-[#291e14] via-[#452817] to-[#1e130c] text-amber-300 ring-2 ring-amber-500/50 shadow-lg'
-                    : 'bg-stone-50 text-stone-700 hover:bg-stone-100 border border-stone-200/80'
+                    ? 'bg-[#1E293B] text-white shadow-xs'
+                    : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200/80'
                 }`}
               >
-                <span className="text-sm leading-none">🪵</span>
+                <Layers className="w-3.5 h-3.5" />
                 <span>แผ่นไม้ / สแลป (ZENSLABS)</span>
                 <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
-                  catalogType === 'SLAB' ? 'bg-amber-900 text-amber-200' : 'bg-stone-200/80 text-stone-700'
+                  catalogType === 'SLAB' ? 'bg-white/15 text-white' : 'bg-slate-200/80 text-slate-600'
                 }`}>
-                  {slabsList.length > 0 ? slabsList.length.toLocaleString() : '1,032'}
+                  {slabsCatalogCount > 0 ? slabsCatalogCount.toLocaleString() : '1,032'}
                 </span>
               </button>
 
               {loadingCatalog && (
-                <div className="flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 px-3 py-1.5 rounded-full border border-amber-200/60 font-bold ml-auto shrink-0 animate-pulse">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <div className="flex items-center gap-1.5 text-xs text-slate-600 bg-slate-100 px-3 py-1.5 rounded-full border border-slate-200 font-bold ml-auto shrink-0">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-500" />
                   <span>กำลังดึงแคตตาล็อก...</span>
                 </div>
               )}
             </div>
 
-            {/* 🌟 Row 1: เครื่องมือหลัก, ปุ่มหมวดหมู่เดิม, เซ็ตสินค้า, ค้นหา */}
+            {/* Row 1: เครื่องมือหลัก, ปุ่มหมวดหมู่เดิม, เซ็ตสินค้า, ค้นหา */}
             <div className="flex flex-col xl:flex-row gap-3 items-center justify-between w-full">
               <div className="flex items-center gap-2 w-full xl:w-auto overflow-hidden">
                 {/* ปุ่ม Hamburger สำหรับมือถือ */}
@@ -1614,7 +1856,7 @@ export default function ManagerPOSPage() {
                   <Menu className="w-4 h-4" />
                 </button>
 
-                {/* 🧭 ปุ่มเดิม: หมวดหมู่ (ห้ามแตะต้อง คงไว้ 100%) */}
+                {/* ปุ่มเดิม: หมวดหมู่ */}
                 <button
                   onClick={() => setIsSidebarOpen(true)}
                   className="bg-slate-100 text-slate-700 font-bold text-xs px-3.5 py-2.5 rounded-full hover:bg-slate-200 transition-all flex items-center justify-center gap-1.5 shadow-xs flex-1 min-w-0 xl:flex-none xl:w-auto text-center truncate cursor-pointer"
@@ -1629,7 +1871,7 @@ export default function ManagerPOSPage() {
                   </span>
                 </button>
 
-                {/* ✨ Reload & Time (Desktop only) */}
+                {/* Reload & Time (Desktop only) */}
                 <div className="hidden sm:flex items-center gap-2 bg-slate-50 border border-slate-100 rounded-full px-3 py-1.5 shrink-0 ml-auto xl:ml-0">
                   <div className="flex flex-col">
                     <span className="text-[9px] text-slate-400 font-bold flex items-center gap-1">
@@ -1642,38 +1884,34 @@ export default function ManagerPOSPage() {
                   <button
                     onClick={() => {
                       if (catalogType === 'SLAB') {
-                        setSlabsList([])
-                        handleSwitchCatalog('SLAB')
+                        handleSwitchCatalog('SLAB', true, true)
                       } else if (catalogType === 'FURNITURE') {
-                        setFurnitureList([])
-                        handleSwitchCatalog('FURNITURE')
+                        handleSwitchCatalog('FURNITURE', true, true)
                       } else {
                         loadData(false, true)
                       }
                     }}
                     disabled={loadingDb || loadingCatalog}
-                    className="ml-1 p-1.5 bg-white border border-slate-200 text-amber-600 rounded-full hover:bg-amber-50 hover:border-amber-300 disabled:opacity-50 transition-all cursor-pointer shadow-xs"
+                    className="ml-1 p-1.5 bg-white border border-slate-200 text-slate-600 rounded-full hover:bg-slate-100 hover:border-slate-300 disabled:opacity-50 transition-all cursor-pointer shadow-xs"
                     title="รีโหลดข้อมูลสินค้าและสต็อกสดจากคลัง"
                   >
                     <RefreshCw className={`w-3.5 h-3.5 ${(loadingDb || loadingCatalog) ? 'animate-spin text-slate-400' : ''}`} />
                   </button>
                 </div>
 
-                {/* ✨ Mobile-only compact reload button */}
+                {/* Mobile-only compact reload button */}
                 <button
                   onClick={() => {
                     if (catalogType === 'SLAB') {
-                      setSlabsList([])
-                      handleSwitchCatalog('SLAB')
+                      handleSwitchCatalog('SLAB', true, true)
                     } else if (catalogType === 'FURNITURE') {
-                      setFurnitureList([])
-                      handleSwitchCatalog('FURNITURE')
+                      handleSwitchCatalog('FURNITURE', true, true)
                     } else {
                       loadData(false, true)
                     }
                   }}
                   disabled={loadingDb || loadingCatalog}
-                  className="flex sm:hidden p-2.5 bg-slate-100 hover:bg-slate-200 text-amber-600 rounded-full disabled:opacity-50 transition-all cursor-pointer shadow-xs shrink-0"
+                  className="flex sm:hidden p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-full disabled:opacity-50 transition-all cursor-pointer shadow-xs shrink-0"
                   title="รีโหลดข้อมูลสินค้าและสต็อกสดจากคลัง"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${(loadingDb || loadingCatalog) ? 'animate-spin text-slate-400' : ''}`} />
@@ -1681,14 +1919,14 @@ export default function ManagerPOSPage() {
               </div>
               
               <div className="flex items-center gap-2 w-full xl:w-auto">
-                {/* 🛋️ ปุ่มใหม่: เพิ่มสินค้านอก & เฟอร์นิเจอร์ */}
+                {/* ปุ่มเพิ่มสินค้านอก & เฟอร์นิเจอร์ */}
                 <button
                   type="button"
                   onClick={() => setIsExternalModalOpen(true)}
-                  className="px-3.5 py-2 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 bg-slate-900 hover:bg-slate-800 text-white shadow-xs hover:shadow-md active:scale-95"
+                  className="px-3.5 py-2 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 bg-[#1E293B] hover:bg-slate-800 text-white shadow-xs active:scale-95"
                   title="เพิ่มสินค้านอกแคตตาล็อก หรือเลือกสินค้าเฟอร์นิเจอร์"
                 >
-                  <Armchair className="w-3.5 h-3.5 text-amber-300" />
+                  <Armchair className="w-3.5 h-3.5 text-slate-300" />
                   <span>+ สินค้านอก / เฟอร์</span>
                 </button>
 
@@ -1698,31 +1936,63 @@ export default function ManagerPOSPage() {
                     onClick={() => setSelectedCategory(prev => prev === 'SETS' ? 'ALL' : 'SETS')}
                     className={`px-3.5 py-2 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 shadow-2xs ${
                       selectedCategory === 'SETS'
-                        ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md'
-                        : 'bg-white border border-purple-200 text-purple-700 hover:bg-purple-50'
+                        ? 'bg-[#1E293B] text-white shadow-xs'
+                        : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
                     }`}
                   >
-                    <Sparkles className="w-3.5 h-3.5" />
+                    <Layers className="w-3.5 h-3.5" />
                     <span>สินค้าจัดเซ็ต ({sets.length})</span>
                   </button>
                 )}
 
                 <div className="w-full xl:w-72 shrink-0 relative">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
                     type="text"
                     placeholder={
                       catalogType === 'SLAB'
-                        ? "ค้นหาแผ่นไม้ (รหัส ZLB, ขนาด, ไม้วอลนัท, โอ๊ค...)"
+                        ? "ค้นหาแผ่นไม้ (SKU, Barcode, ZLB, ขนาด, ไม้วอลนัท...)"
                         : catalogType === 'FURNITURE'
-                          ? "ค้นหาเฟอร์นิเจอร์ (เก้าอี้, โต๊ะ, ตู้...)"
-                          : (selectedCategory === 'SETS' ? "ค้นหาชื่อเซ็ต หรือหมวด..." : "ค้นหาชื่อสินค้าที่นี่...")
+                          ? "ค้นหาเฟอร์นิเจอร์ (SKU, Barcode, เก้าอี้, โต๊ะ...)"
+                          : (selectedCategory === 'SETS' ? "ค้นหาชื่อเซ็ต หรือหมวด..." : "ค้นหาชื่อสินค้า, SKU หรือ Barcode...")
                     }
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-5 pr-10 py-2.5 bg-slate-50 rounded-full text-sm outline-none focus:bg-white focus:ring-2 focus:ring-amber-200 transition-all"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && searchQuery.trim()) {
+                        const q = searchQuery.trim().toLowerCase()
+                        const qCompact = q.replace(/[-_\s/×x*]/g, '')
+                        const exactMatch = activeProducts.find(p => {
+                          const sku = (p.sku || '').toLowerCase()
+                          const bc = (p.barcode || '').toLowerCase()
+                          return (
+                            sku === q ||
+                            bc === q ||
+                            (qCompact.length >= 2 &&
+                              (sku.replace(/[-_\s/×x*]/g, '') === qCompact ||
+                                bc.replace(/[-_\s/×x*]/g, '') === qCompact))
+                          )
+                        })
+                        if (exactMatch) {
+                          e.preventDefault()
+                          handleProductClick(exactMatch)
+                        }
+                      }
+                    }}
+                    className="w-full pl-9 pr-10 py-2.5 bg-slate-50 border border-slate-200/80 rounded-full text-xs text-slate-800 outline-none focus:bg-white focus:border-slate-400 focus:ring-2 focus:ring-slate-200 transition-all"
                   />
+                  {searchQuery && !isSearching && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                      title="ล้างคำค้นหา"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
                   {isSearching && (
-                    <div className="absolute right-3.5 top-1/2 -translate-y-1/2 text-amber-500 pointer-events-none">
+                    <div className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none">
                       <Loader2 className="w-4 h-4 animate-spin" />
                     </div>
                   )}
@@ -1730,11 +2000,11 @@ export default function ManagerPOSPage() {
               </div>
             </div>
 
-            {/* 🌟 Row 2: ตัวกรองตามแคตตาล็อก */}
+            {/* Row 2: ตัวกรองตามแคตตาล็อก */}
             {catalogType === 'SLAB' ? (
               <div className="w-full pt-2 border-t border-slate-100 flex flex-col gap-2">
-                <div className="flex items-center justify-between gap-2 overflow-x-auto no-scrollbar pb-1">
-                  <div className="flex items-center gap-1.5">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1 flex-1 min-w-0">
                     <button
                       type="button"
                       onClick={() => setSelectedWoodMaterial('ALL')}
@@ -1744,7 +2014,7 @@ export default function ManagerPOSPage() {
                           : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
                       }`}
                     >
-                      ทั้งหมด ({slabsList.length})
+                      ทั้งหมด ({slabsCatalogCount || slabsTotalCount})
                     </button>
                     {slabSubcategories.slice(0, 8).map(mat => (
                       <button
@@ -1753,8 +2023,8 @@ export default function ManagerPOSPage() {
                         onClick={() => setSelectedWoodMaterial(prev => prev === mat ? 'ALL' : mat)}
                         className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
                           selectedWoodMaterial === mat
-                            ? 'bg-[#84492C] text-white shadow-2xs'
-                            : 'bg-stone-100 hover:bg-stone-200 text-stone-700'
+                            ? 'bg-[#1E293B] text-white shadow-2xs'
+                            : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
                         }`}
                       >
                         {mat}
@@ -1774,8 +2044,9 @@ export default function ManagerPOSPage() {
                     )}
                   </div>
 
-                  <div className="text-[11px] font-bold text-amber-900 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200 shrink-0 hidden sm:flex items-center gap-1">
-                    <span>📜 มีค่าใบกำกับไม้ ฿5,000 (มัดจำ 50%)</span>
+                  <div className="text-[11px] font-semibold text-slate-600 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200 shrink-0 hidden sm:flex items-center gap-1.5">
+                    <FileCheck className="w-3.5 h-3.5 text-slate-500" />
+                    <span>มีค่าใบกำกับไม้ ฿5,000 (มัดจำ 50%)</span>
                   </div>
                 </div>
               </div>
@@ -1790,7 +2061,7 @@ export default function ManagerPOSPage() {
                       : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
                   }`}
                 >
-                  ทั้งหมด ({furnitureList.length})
+                  ทั้งหมด ({furnitureCatalogCount || furnitureTotalCount})
                 </button>
                 {furnitureSubcategories.map(cat => (
                   <button
@@ -1799,8 +2070,8 @@ export default function ManagerPOSPage() {
                     onClick={() => setSelectedCategory(prev => prev === cat ? 'ALL' : cat)}
                     className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
                       selectedCategory === cat
-                        ? 'bg-[#84492C] text-white shadow-2xs'
-                        : 'bg-stone-100 hover:bg-stone-200 text-stone-700'
+                        ? 'bg-[#1E293B] text-white shadow-2xs'
+                        : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
                     }`}
                   >
                     {cat}
@@ -1849,7 +2120,7 @@ export default function ManagerPOSPage() {
                   onSelectLocation={(loc) => {
                     setSelectedLocation(loc)
                     const bName = loc === 'ALL' ? 'ทุกสาขาทั่วประเทศ' : branches.find(b => b.id === loc)?.branch_name || 'สาขาที่เลือก'
-                    toast.info(`📍 แสดงสต็อก: ${bName}`)
+                    toast.info(`แสดงสต็อก: ${bName}`)
                   }}
                 />
 
@@ -1857,27 +2128,27 @@ export default function ManagerPOSPage() {
                 {hasActiveStorefrontFilters && (
                   <div className="flex items-center gap-1.5 shrink-0 overflow-x-auto [scrollbar-width:none] py-0.5">
                     {storefrontCategory !== 'All' && storefrontCategory !== 'ALL' && (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-bold rounded-full whitespace-nowrap">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-slate-100 border border-slate-200 text-slate-700 text-[10px] font-bold rounded-full whitespace-nowrap">
                         หมวด: {storefrontCategory}
                       </span>
                     )}
                     {selectedBrands.length > 0 && (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-bold rounded-full whitespace-nowrap">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-slate-100 border border-slate-200 text-slate-700 text-[10px] font-bold rounded-full whitespace-nowrap">
                         แบรนด์ ({selectedBrands.length})
                       </span>
                     )}
                     {selectedColors.length > 0 && (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-bold rounded-full whitespace-nowrap">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-slate-100 border border-slate-200 text-slate-700 text-[10px] font-bold rounded-full whitespace-nowrap">
                         สี ({selectedColors.length})
                       </span>
                     )}
                     {selectedMaterials.length > 0 && (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-bold rounded-full whitespace-nowrap">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-slate-100 border border-slate-200 text-slate-700 text-[10px] font-bold rounded-full whitespace-nowrap">
                         วัสดุ ({selectedMaterials.length})
                       </span>
                     )}
                     {hasActiveDimensions(dimensionFilter) && (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-bold rounded-full whitespace-nowrap">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-slate-100 border border-slate-200 text-slate-700 text-[10px] font-bold rounded-full whitespace-nowrap">
                         ขนาด
                       </span>
                     )}
@@ -1888,15 +2159,15 @@ export default function ManagerPOSPage() {
           </div>
 
           {selectedCategory === 'SETS' ? (
-            /* 📦 ตารางแสดงสินค้าจัดเซ็ต (Sets Grid) */
+            /* ตารางแสดงสินค้าจัดเซ็ต (Sets Grid) */
             <div className="w-full">
               <div className="flex items-center justify-between mb-3 px-1">
                 <div>
                   <h2 className="text-sm font-black text-slate-800 flex items-center gap-1.5">
-                    <Sparkles className="w-4 h-4 text-purple-600" />
+                    <Layers className="w-4 h-4 text-slate-700" />
                     รายการสินค้าจัดเซ็ต (Sets Promotion)
                   </h2>
-                  <p className="text-[11px] text-slate-400">คลิก "หยิบทั้งเซ็ตลงบิล" เพื่อเพิ่มสินค้าครบชุดลงตะกร้าพร้อมรับส่วนลดทันที</p>
+                  <p className="text-[11px] text-slate-400">คลิก &quot;หยิบทั้งเซ็ตลงบิล&quot; เพื่อเพิ่มสินค้าครบชุดลงตะกร้าพร้อมรับส่วนลดทันที</p>
                 </div>
                 <button
                   onClick={() => setSelectedCategory('ALL')}
@@ -1918,8 +2189,8 @@ export default function ManagerPOSPage() {
                     return (
                       <div
                         key={bundle.id}
-                        className={`bg-white rounded-3xl p-3.5 border transition-all duration-300 flex flex-col justify-between shadow-xs hover:shadow-xl hover:-translate-y-0.5 ${
-                          isCompletedInCart ? 'border-emerald-400 ring-2 ring-emerald-200 bg-emerald-50/20' : 'border-slate-200 hover:border-purple-300'
+                        className={`bg-white rounded-3xl p-3.5 border transition-all duration-300 flex flex-col justify-between shadow-xs hover:shadow-md hover:-translate-y-0.5 ${
+                          isCompletedInCart ? 'border-slate-800 ring-1 ring-slate-800/20 bg-slate-50/40' : 'border-slate-200 hover:border-slate-400'
                         }`}
                       >
                         <div>
@@ -1930,33 +2201,34 @@ export default function ManagerPOSPage() {
                             ) : (
                               <span className="text-xs text-slate-300 font-medium">ไม่มีรูปเซ็ต</span>
                             )}
-                            <div className="absolute top-2.5 left-2.5 bg-purple-900/85 text-white text-[10px] font-bold px-2 py-0.5 rounded-lg backdrop-blur-xs flex items-center gap-1 shadow-sm">
-                              <Sparkles className="w-3 h-3 text-amber-300" />
+                            <div className="absolute top-2.5 left-2.5 bg-slate-900/85 text-white text-[10px] font-bold px-2 py-0.5 rounded-lg backdrop-blur-xs flex items-center gap-1 shadow-xs">
+                              <Layers className="w-3 h-3 text-slate-300" />
                               เซ็ต {bundle.items.length} ชิ้น
                             </div>
                             {bundle.discountPercent > 0 && (
-                              <div className="absolute top-2.5 right-2.5 bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-[10px] font-black px-2 py-0.5 rounded-lg shadow-sm animate-pulse">
+                              <div className="absolute top-2.5 right-2.5 bg-emerald-700 text-white text-[10px] font-bold px-2 py-0.5 rounded-lg shadow-xs">
                                 ลดทันที {bundle.discountPercent}%
                               </div>
                             )}
                             {isCompletedInCart && (
-                              <div className="absolute bottom-2.5 right-2.5 bg-emerald-600 text-white text-[9px] font-bold px-2 py-0.5 rounded-md shadow-xs">
-                                ✓ ในบิลครบเซ็ตแล้ว
+                              <div className="absolute bottom-2.5 right-2.5 bg-slate-900 text-white text-[9px] font-bold px-2 py-0.5 rounded-md shadow-xs flex items-center gap-1">
+                                <Check className="w-2.5 h-2.5" /> ในบิลครบเซ็ตแล้ว
                               </div>
                             )}
                           </div>
 
                           {/* ชื่อเซ็ตและหมวด */}
                           <div className="px-0.5">
-                            <span className="text-[10px] text-purple-700 font-bold uppercase tracking-wider bg-purple-50 px-2 py-0.5 rounded-md border border-purple-100 inline-block mb-1">
+                            <span className="text-[10px] text-slate-600 font-bold uppercase tracking-wider bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200 inline-block mb-1">
                               {bundle.categoryName}
                             </span>
                             <h3 className="font-extrabold text-slate-800 text-xs sm:text-sm leading-snug line-clamp-2">
                               {bundle.name}
                             </h3>
                             {bundle.promoTitle && (
-                              <p className="text-[11px] text-emerald-700 font-bold mt-0.5">
-                                🎉 {bundle.promoTitle}
+                              <p className="text-[11px] text-slate-600 font-semibold mt-0.5 flex items-center gap-1">
+                                <Tag className="w-3 h-3 text-slate-500 shrink-0" />
+                                <span>{bundle.promoTitle}</span>
                               </p>
                             )}
                           </div>
@@ -1984,7 +2256,7 @@ export default function ManagerPOSPage() {
                                   </div>
                                   <div className="flex items-center gap-1 shrink-0">
                                     {isUnpricedOrOutOfStock ? (
-                                      <span className="text-[8px] px-1.5 py-0.5 rounded bg-red-50 text-red-600 font-bold border border-red-100">
+                                      <span className="text-[8px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-bold border border-slate-200">
                                         หมดสต็อก
                                       </span>
                                     ) : itMyBranchQty > 0 ? (
@@ -1992,7 +2264,7 @@ export default function ManagerPOSPage() {
                                         ฿{Number(it.price).toLocaleString()}
                                       </span>
                                     ) : (
-                                      <span className="text-[8px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 font-bold border border-amber-200 flex items-center gap-0.5">
+                                      <span className="text-[8px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-bold border border-slate-200 flex items-center gap-0.5">
                                         <MapPin className="w-2 h-2" /> ดึงสาขา
                                       </span>
                                     )}
@@ -2011,7 +2283,7 @@ export default function ManagerPOSPage() {
                                 ฿{bundle.totalOriginalPrice.toLocaleString()}
                               </span>
                             )}
-                            <div className="text-sm sm:text-base font-black text-purple-700 font-mono">
+                            <div className="text-sm sm:text-base font-black text-slate-900 font-mono">
                               ฿{bundle.totalPrice.toLocaleString()}
                             </div>
                           </div>
@@ -2038,7 +2310,7 @@ export default function ManagerPOSPage() {
                               <button
                                 type="button"
                                 onClick={() => addSetToCart(bundle)}
-                                className="px-3.5 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold text-xs rounded-xl shadow-xs cursor-pointer transition-all active:scale-95 flex items-center gap-1 shrink-0"
+                                className="px-3.5 py-2 bg-[#1E293B] hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-xs cursor-pointer transition-all active:scale-95 flex items-center gap-1 shrink-0"
                               >
                                 <Plus className="w-3.5 h-3.5 stroke-[3]" />
                                 {readyItemsCount < bundle.items.length 
@@ -2054,7 +2326,7 @@ export default function ManagerPOSPage() {
               </div>
             </div>
           ) : (
-            /* 📦 ตารางแสดงสินค้าเดี่ยวปกติ */
+            /* ตารางแสดงสินค้าเดี่ยวปกติ */
             <>
               <div className="grid grid-cols-4 md:grid-cols-5 xl:grid-cols-6 gap-2 sm:gap-4 w-full">
                 {activeProducts.length === 0 && !loadingDb && !loadingCatalog ? (
@@ -2070,6 +2342,30 @@ export default function ManagerPOSPage() {
                           : 'ไม่พบสินค้าที่ตรงกับเงื่อนไขการค้นหา'}
                     </p>
                     <p className="text-xs text-slate-400 mt-1">ลองเปลี่ยนคำค้นหา หรือรีเซ็ตตัวกรอง</p>
+                    {searchQuery.trim() && (
+                      <div className="flex flex-wrap items-center justify-center gap-2 mt-3">
+                        {catalogType !== 'SLAB' && (
+                          <button
+                            type="button"
+                            onClick={() => handleSwitchCatalog('SLAB', false, true)}
+                            className="px-3.5 py-2 rounded-xl bg-[#1E293B] hover:bg-slate-800 text-white text-xs font-bold cursor-pointer transition-all shadow-xs flex items-center gap-1.5"
+                          >
+                            <Layers className="w-3.5 h-3.5" />
+                            <span>ค้นหา &quot;{searchQuery.trim()}&quot; ในหมวดแผ่นไม้ (ZENSLABS)</span>
+                          </button>
+                        )}
+                        {catalogType !== 'FURNITURE' && (
+                          <button
+                            type="button"
+                            onClick={() => handleSwitchCatalog('FURNITURE', false, true)}
+                            className="px-3.5 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold cursor-pointer transition-all shadow-xs flex items-center gap-1.5"
+                          >
+                            <Armchair className="w-3.5 h-3.5" />
+                            <span>ค้นหาในหมวดเฟอร์นิเจอร์</span>
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ) : (
                   activeProducts.map((product) => {
@@ -2077,43 +2373,44 @@ export default function ManagerPOSPage() {
                     const branchStock = product.stocks?.find(s => s.branch_id === targetBranch)
                     const currentBranchQty = branchStock ? Number(branchStock.qty) : 0
                     const totalStock = product.stocks ? product.stocks.reduce((sum, s) => sum + Number(s.qty), 0) : 0
-                    const isSlabProduct = Boolean(product.isSlab || product.category_id === 'SLABS' || (product.sku && (product.sku.startsWith('ZLB-') || product.sku.startsWith('LEG-'))))
+                    const isSlabProduct = Boolean(product.isSlab || product.category_id === 'SLABS' || (product.sku && (product.sku.startsWith('ZLB-') || product.sku.startsWith('WOODSLABS') || product.sku.startsWith('LEG-'))))
+                    const otherStockBranches = (product.stocks || []).filter(s => s.branch_id !== targetBranch && Number(s.qty) > 0)
+                    const primaryOtherBranchName = otherStockBranches.length === 1
+                      ? branches.find(b => b.id === otherStockBranches[0].branch_id)?.branch_name
+                      : undefined
 
                     return (
                       <div
                         key={product.id}
                         onClick={() => handleProductClick(product)}
-                        className={`bg-white rounded-[20px] p-2 flex flex-col shadow-xs cursor-pointer border transition-all duration-300 group relative ${
-                          isSlabProduct 
-                            ? 'border-amber-100 hover:border-amber-500 hover:shadow-amber-100 hover:shadow-lg hover:-translate-y-1' 
-                            : 'border-slate-100 hover:border-amber-400 hover:shadow-lg hover:-translate-y-1'
-                        }`}
+                        className="bg-white rounded-[20px] p-2 flex flex-col shadow-xs cursor-pointer border border-slate-200/70 hover:border-slate-400 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 group relative"
                       >
                         <div className="relative w-full aspect-square bg-slate-50 rounded-2xl overflow-hidden mb-2 flex items-center justify-center">
                           {product.image_url ? (
-                            <img id={`product-img-${product.id}`} src={product.image_url} alt={product.name} className="object-cover w-full h-full transition-transform duration-500 group-hover:scale-110" />
+                            <img id={`product-img-${product.id}`} loading="lazy" src={product.image_url} alt={product.name} className="object-cover w-full h-full transition-transform duration-500 group-hover:scale-105" />
                           ) : (
                             <span className="text-xs text-slate-300 font-medium">ไม่มีรูป</span>
                           )}
-                          {isSlabProduct && (
-                            <div className="absolute top-2 left-2 bg-[#1c130d]/90 text-amber-300 border border-amber-500/40 text-[8px] font-black px-1.5 py-0.5 rounded-md backdrop-blur-xs flex items-center gap-0.5 shadow-xs z-10">
-                              <span>🪵</span> ZENSLABS
-                            </div>
-                          )}
                           {currentBranchQty > 0 ? (
-                            <div className="absolute top-2 right-2 bg-slate-900/80 text-white text-[9px] px-1.5 py-0.5 rounded-md backdrop-blur-xs font-bold">
+                            <div className="absolute top-2 right-2 max-w-[calc(100%-16px)] bg-slate-900/85 text-white text-[9px] px-2 py-0.5 rounded-md backdrop-blur-xs font-bold shadow-xs truncate">
                               เหลือ {currentBranchQty}
                             </div>
                           ) : totalStock > 0 ? (
-                            <div className="absolute top-2 right-2 bg-amber-600 text-white text-[9px] px-1.5 py-0.5 rounded-md backdrop-blur-xs font-bold shadow-xs flex items-center gap-0.5">
-                              <MapPin className="w-2.5 h-2.5" /> ดึงสาขา ({totalStock})
+                            <div
+                              className="absolute top-2 right-2 max-w-[calc(100%-16px)] bg-stone-800/90 text-white text-[9px] px-2 py-0.5 rounded-md backdrop-blur-xs font-bold shadow-xs flex items-center gap-1"
+                              title={primaryOtherBranchName ? `มีของที่ ${primaryOtherBranchName} (${totalStock} ชิ้น)` : `ดึงจากสาขาอื่น (${totalStock} ชิ้น)`}
+                            >
+                              <MapPin className="w-2.5 h-2.5 shrink-0 text-stone-300" />
+                              <span className="truncate">
+                                {primaryOtherBranchName ? `${primaryOtherBranchName} (${totalStock})` : `ดึงสาขา (${totalStock})`}
+                              </span>
                             </div>
                           ) : isSlabProduct ? (
-                            <div className="absolute top-2 right-2 bg-amber-950/80 text-amber-200 text-[8px] px-1.5 py-0.5 rounded-md backdrop-blur-xs font-bold shadow-xs border border-amber-800/50">
+                            <div className="absolute top-2 right-2 max-w-[calc(100%-16px)] bg-white/95 text-slate-800 text-[9px] px-2 py-0.5 rounded-md backdrop-blur-xs font-bold shadow-xs border border-slate-200/90 truncate">
                               พร้อมส่ง / Pre-order
                             </div>
                           ) : (
-                            <div className="absolute top-2 right-2 bg-slate-700/80 text-white text-[9px] px-1.5 py-0.5 rounded-md backdrop-blur-xs font-bold shadow-xs">
+                            <div className="absolute top-2 right-2 max-w-[calc(100%-16px)] bg-slate-700/80 text-white text-[9px] px-2 py-0.5 rounded-md backdrop-blur-xs font-bold shadow-xs truncate">
                               เสนอราคา (0)
                             </div>
                           )}
@@ -2122,9 +2419,16 @@ export default function ManagerPOSPage() {
                           <h3 className="font-bold text-slate-800 text-[10px] sm:text-xs truncate w-full" title={product.name}>
                             {product.name}
                           </h3>
+                          {(product.sku || product.barcode) && (
+                            <div className="text-[9px] text-slate-500 font-mono truncate mt-0.5" title={`SKU: ${product.sku || '-'}${product.barcode ? ` | Barcode: ${product.barcode}` : ''}`}>
+                              {product.sku || product.barcode}
+                              {product.barcode && product.sku && product.barcode !== product.sku ? ` • ${product.barcode}` : ''}
+                            </div>
+                          )}
                           {product.specs?.dimensions && (
-                            <div className="text-[9px] text-amber-900 font-mono font-bold bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200/50 w-fit mt-0.5 truncate max-w-full">
-                              📐 {product.specs.dimensions}
+                            <div className="text-[9px] text-slate-700 font-mono font-semibold bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200/70 w-fit mt-0.5 truncate max-w-full flex items-center gap-1">
+                              <Ruler className="w-2.5 h-2.5 text-slate-400 shrink-0" />
+                              <span className="truncate">{product.specs.dimensions}</span>
                             </div>
                           )}
                           {(product.specs?.material || product.product_sup) && (
@@ -2137,15 +2441,15 @@ export default function ManagerPOSPage() {
                               {product.discount_label && (
                                 <div className="flex items-center gap-1 mb-0.5">
                                   <span className="text-[9px] text-slate-400 line-through">฿{product.original_price.toLocaleString()}</span>
-                                  <span className="text-[8px] bg-orange-50 text-orange-600 px-1 rounded font-black">{product.discount_label}</span>
+                                  <span className="text-[8px] bg-slate-100 text-slate-700 border border-slate-200 px-1 rounded font-bold">{product.discount_label}</span>
                                 </div>
                               )}
                               {Number(product.price) <= 0 ? (
-                                <div className="text-rose-600 font-bold text-[10px] bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200 w-fit">
+                                <div className="text-slate-600 font-bold text-[10px] bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 w-fit">
                                   ยังไม่ตั้งราคา (0 ฿)
                                 </div>
                               ) : (
-                                <div className="text-amber-700 font-black text-xs sm:text-sm">฿{product.price.toLocaleString()}</div>
+                                <div className="text-slate-900 font-black text-xs sm:text-sm">฿{product.price.toLocaleString()}</div>
                               )}
                             </div>
                           </div>
@@ -2156,26 +2460,24 @@ export default function ManagerPOSPage() {
                 )}
               </div>
 
-              {/* 🌀 Sentinel element for Infinite Scroll (เฉพาะหน้าพรอพ) */}
-              {catalogType === 'PROP' && (
-                <div ref={observerTargetRef} className="h-6 w-full flex items-center justify-center my-3 pointer-events-none">
-                  {isLoadingMore && (
-                    <div className="flex items-center gap-2 text-xs text-amber-700 font-bold py-2 bg-amber-50 px-4 rounded-full border border-amber-200/60 shadow-2xs">
-                      <Loader2 className="w-4 h-4 animate-spin text-amber-600" />
-                      กำลังโหลดสินค้าเพิ่มเติม...
-                    </div>
-                  )}
-                </div>
-              )}
+              {/* Sentinel element for Infinite Scroll (รองรับทุกแคตตาล็อก: พรอพ, เฟอร์นิเจอร์, แผ่นไม้สแลป) */}
+              <div ref={observerTargetRef} className="h-6 w-full flex items-center justify-center my-3 pointer-events-none">
+                {isLoadingMore && (
+                  <div className="flex items-center gap-2 text-xs text-slate-600 font-bold py-2 bg-slate-100 px-4 rounded-full border border-slate-200 shadow-2xs">
+                    <Loader2 className="w-4 h-4 animate-spin text-slate-500" />
+                    กำลังโหลดสินค้าเพิ่มเติม...
+                  </div>
+                )}
+              </div>
 
-              {/* ✨ แถบสถานะการโหลดและปุ่มโหลดเพิ่มเติม */}
+              {/* แถบสถานะการโหลดและปุ่มโหลดเพิ่มเติม */}
               <div className="w-full flex flex-col sm:flex-row items-center justify-between gap-3 p-4 bg-white rounded-2xl border border-slate-100 shadow-2xs mt-1 mb-24 lg:mb-4">
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-slate-600 font-bold">
-                    แสดง {activeProducts.length} จาก {displayedTotalCount} รายการ ({selectedLocation === 'ALL' ? 'พร้อมส่งทุกสาขา' : branches.find(b => b.id === selectedLocation)?.branch_name || 'สาขาที่เลือก'})
+                    แสดง {activeProducts.length.toLocaleString()} จาก {displayedTotalCount.toLocaleString()} รายการ ({selectedLocation === 'ALL' ? 'พร้อมส่งทุกสาขา' : branches.find(b => b.id === selectedLocation)?.branch_name || 'สาขาที่เลือก'})
                   </span>
                 </div>
-                {catalogType === 'PROP' && hasMore && (
+                {activeHasMore && (
                   <button
                     type="button"
                     disabled={isLoadingMore}
@@ -2184,12 +2486,13 @@ export default function ManagerPOSPage() {
                   >
                     {isLoadingMore ? (
                       <>
-                        <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" />
-                        กำลังโหลด...
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-300" />
+                        <span>กำลังโหลด...</span>
                       </>
                     ) : (
                       <>
-                        📦 โหลดสินค้าเพิ่มอีก (เหลืออีก {Math.max(0, totalCount - products.length)} รายการ)
+                        <Package className="w-3.5 h-3.5 text-slate-300" />
+                        <span>โหลดสินค้าเพิ่มอีก (เหลืออีก {Math.max(0, displayedTotalCount - activeProducts.length).toLocaleString()} รายการ)</span>
                       </>
                     )}
                   </button>
@@ -2222,16 +2525,16 @@ export default function ManagerPOSPage() {
             </button>
             <button
               onClick={() => handleSaleModeChange('DELIVERY')}
-              className={`py-2 text-xs font-black rounded-xl transition-all flex items-center justify-center gap-1.5 ${saleMode === 'DELIVERY' ? 'bg-amber-600 text-white shadow-xs' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'}`}
+              className={`py-2 text-xs font-black rounded-xl transition-all flex items-center justify-center gap-1.5 ${saleMode === 'DELIVERY' ? 'bg-[#1E293B] text-white shadow-xs' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'}`}
             >
               <Truck className="w-4 h-4" /> ให้ร้านส่งให้
             </button>
           </div>
 
-          <div className="p-4 pb-3 border-b border-slate-50 flex justify-between items-center">
+          <div className="p-4 pb-3 border-b border-slate-100 flex justify-between items-center">
             <h2 id="cart-icon-target" className="text-sm font-bold text-slate-800 flex items-center gap-1.5 transition-transform">
-              <Receipt className="w-4 h-4" /> รายการใบสรุปขาย
-              <span className="bg-amber-50 text-amber-700 font-bold text-[10px] px-2 py-0.5 rounded-full">{cart.length} รายการ</span>
+              <Receipt className="w-4 h-4 text-slate-700" /> รายการใบสรุปขาย
+              <span className="bg-slate-100 text-slate-700 border border-slate-200 font-bold text-[10px] px-2 py-0.5 rounded-full">{cart.length} รายการ</span>
             </h2>
             <div className="flex items-center gap-2">
               {cart.length > 0 && (
@@ -2239,7 +2542,7 @@ export default function ManagerPOSPage() {
                   {!isConfirmingClear ? (
                     <button
                       onClick={() => setIsConfirmingClear(true)}
-                      className="text-[11px] text-red-500 hover:text-red-700 font-bold flex items-center gap-1 transition-colors px-2 py-1 rounded-lg hover:bg-red-50 cursor-pointer"
+                      className="text-[11px] text-slate-500 hover:text-red-600 font-bold flex items-center gap-1 transition-colors px-2 py-1 rounded-lg hover:bg-red-50 cursor-pointer"
                     >
                       <Trash2 className="w-3.5 h-3.5" /> ลบทั้งหมด
                     </button>
@@ -2300,17 +2603,17 @@ export default function ManagerPOSPage() {
               </div>
             ) : (
               <div className="flex flex-col gap-2 py-1">
-                {/* 🎉 แถบแจ้งเตือนเมื่อซื้อครบเซ็ตโปรโมชั่น */}
+                {/* แถบแจ้งเตือนเมื่อซื้อครบเซ็ตโปรโมชั่น */}
                 {completedSetPromotions.length > 0 && (
                   <div className="space-y-1.5 mb-1">
                     {completedSetPromotions.map((sp, idx) => (
-                      <div key={idx} className="p-2 bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-xl text-xs flex items-center justify-between text-emerald-900 font-bold shadow-2xs">
+                      <div key={idx} className="p-2 bg-slate-100 border border-slate-200 rounded-xl text-xs flex items-center justify-between text-slate-800 font-bold shadow-2xs">
                         <span className="flex items-center gap-1.5 min-w-0 truncate">
-                          <Sparkles className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          <Layers className="w-3.5 h-3.5 text-slate-600 shrink-0" />
                           <span className="truncate">ครบเซ็ต: {sp.set.name}</span>
                         </span>
-                        <span className="text-emerald-700 font-black shrink-0 ml-1.5 bg-white px-2 py-0.5 rounded-md border border-emerald-200">
-                          {sp.discountAmount > 0 ? `-฿${sp.discountAmount.toLocaleString()}` : '✓ ครบชุด'}
+                        <span className="text-emerald-700 font-black shrink-0 ml-1.5 bg-white px-2 py-0.5 rounded-md border border-slate-200">
+                          {sp.discountAmount > 0 ? `-฿${sp.discountAmount.toLocaleString()}` : 'ครบชุด'}
                         </span>
                       </div>
                     ))}
@@ -2330,8 +2633,9 @@ export default function ManagerPOSPage() {
                        </span>
                     )}
                     {item.fulfill_branch_id !== myBranchId && (
-                       <span className="absolute -top-2 -left-1 bg-orange-100 text-orange-700 border border-orange-200 text-[8px] px-1.5 py-0.5 rounded-md font-bold shadow-2xs z-10">
-                         ดึง: {item.fulfill_branch_name}
+                       <span className="absolute -top-2 -left-1 bg-slate-800 text-white text-[8px] px-1.5 py-0.5 rounded-md font-bold shadow-2xs z-10 flex items-center gap-0.5">
+                         <MapPin className="w-2 h-2 text-slate-300" />
+                         <span>ดึง: {item.fulfill_branch_name}</span>
                        </span>
                     )}
                     <div className="w-12 h-12 bg-white rounded-xl overflow-hidden border border-slate-100 shrink-0 flex items-center justify-center">
@@ -2351,22 +2655,22 @@ export default function ManagerPOSPage() {
                       </div>
                       <div className="flex flex-wrap items-center gap-1 mt-0.5">
                         {item.isExternal && (
-                          <span className="text-[8px] bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded-md font-bold border border-indigo-200">
-                            ✍️ สินค้านอก
+                          <span className="text-[8px] bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded-md font-bold border border-slate-200 flex items-center gap-0.5">
+                            <Tag className="w-2 h-2 text-slate-500" /> สินค้านอก
                           </span>
                         )}
                         {(item.isFurniture || item.category_id === 'furniture') && !item.isExternal && !item.isSlab && (
-                          <span className="text-[8px] bg-amber-50 text-amber-800 px-1.5 py-0.5 rounded-md font-bold border border-amber-200">
-                            🛋️ เฟอร์นิเจอร์
+                          <span className="text-[8px] bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded-md font-bold border border-slate-200 flex items-center gap-0.5">
+                            <Armchair className="w-2 h-2 text-slate-500" /> เฟอร์นิเจอร์
                           </span>
                         )}
                         {(item.isSlab || item.category_id === 'SLABS' || (item.sku && (item.sku.startsWith('ZLB-') || item.sku.startsWith('LEG-')))) && (
-                          <span className="text-[8px] bg-[#1c130d] text-amber-300 px-1.5 py-0.5 rounded-md font-bold border border-amber-600/40">
-                            🪵 ZENSLABS
+                          <span className="text-[8px] bg-slate-900 text-white px-1.5 py-0.5 rounded-md font-bold flex items-center gap-0.5">
+                            <Layers className="w-2 h-2 text-slate-300" /> ZENSLABS
                           </span>
                         )}
                         {item.specs?.dimensions && (
-                          <span className="text-[8px] text-amber-900 bg-amber-50 px-1.5 py-0.5 rounded font-mono font-bold border border-amber-200/50">
+                          <span className="text-[8px] text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded font-mono font-semibold border border-slate-200/80">
                             {item.specs.dimensions}
                           </span>
                         )}
@@ -2375,15 +2679,15 @@ export default function ManagerPOSPage() {
                           const actualQty = branchStock ? Number(branchStock.qty) : 0
                           if (!item.isExternal && !item.isFurniture && !item.isSlab && item.category_id !== 'furniture' && item.category_id !== 'SLABS' && actualQty <= 0) {
                             return (
-                              <span className="text-[8px] bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded-md font-bold border border-amber-200">
-                                📋 เสนอราคา (สต็อก 0)
+                              <span className="text-[8px] bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded-md font-bold border border-slate-200 flex items-center gap-0.5">
+                                <FileText className="w-2 h-2 text-slate-500" /> เสนอราคา (สต็อก 0)
                               </span>
                             )
                           }
                           return null
                         })()}
                         {(Boolean(item.discount_id) || Boolean(item.discount_label) || item.price < item.original_price) && (
-                          <span className="text-[8px] bg-orange-50 text-orange-600 px-1.5 py-0.5 rounded-md font-bold border border-orange-100">
+                          <span className="text-[8px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded-md font-bold border border-slate-200">
                             {item.discount_label || 'ลดรายชิ้น'} (ไม่ร่วมโค้ดลด)
                           </span>
                         )}
@@ -2393,18 +2697,18 @@ export default function ManagerPOSPage() {
                           <button
                             type="button"
                             onClick={() => openSetPriceModal(item, item.cartItemId, item.fulfill_branch_id, item.quantity)}
-                            className="px-2 py-0.5 rounded-lg bg-rose-500 hover:bg-rose-600 text-white font-black text-[10px] animate-pulse flex items-center gap-1 shadow-xs cursor-pointer"
+                            className="px-2 py-0.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold text-[10px] flex items-center gap-1 shadow-xs cursor-pointer"
                             title="สินค้านี้ยังไม่มีราคา คลิกเพื่อตั้งราคาขายและบันทึกลงฐานข้อมูล"
                           >
                             <Tag className="w-2.5 h-2.5" /> ตั้งราคาขาย (0 ฿)
                           </button>
                         ) : (
                           <div className="flex items-center gap-1">
-                            <p className="text-[11px] text-amber-700 font-extrabold">{(item.price * item.quantity).toLocaleString()} ฿</p>
+                            <p className="text-[11px] text-slate-900 font-extrabold">{(item.price * item.quantity).toLocaleString()} ฿</p>
                             <button
                               type="button"
                               onClick={() => openSetPriceModal(item, item.cartItemId, item.fulfill_branch_id, item.quantity)}
-                              className="text-slate-300 hover:text-amber-600 transition-colors p-0.5 cursor-pointer"
+                              className="text-slate-400 hover:text-slate-700 transition-colors p-0.5 cursor-pointer"
                               title="แก้ไขราคาขายสินค้าและบันทึกลงฐานข้อมูล"
                             >
                               <Edit3 className="w-2.5 h-2.5" />
@@ -2426,17 +2730,17 @@ export default function ManagerPOSPage() {
 
           <div className="p-4 bg-slate-50/60 border-t border-slate-100 flex flex-col justify-end shrink-0">
             
-            {/* ✨ ข้อมูลลูกค้าแบบย่อ (ดีไซน์มินิมอล) */}
+            {/* ข้อมูลลูกค้าแบบย่อ (ดีไซน์มินิมอล) */}
             <div className="flex items-center justify-between py-2 border-b border-slate-200/60 text-xs">
               <div className="flex flex-col min-w-0">
                 <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1">
-                  {saleMode === 'DELIVERY' ? <Truck className="w-3 h-3 text-amber-600" /> : <Store className="w-3 h-3 text-slate-500" />}
+                  {saleMode === 'DELIVERY' ? <Truck className="w-3 h-3 text-slate-600" /> : <Store className="w-3 h-3 text-slate-500" />}
                   {saleMode === 'DELIVERY' ? 'ข้อมูลสำหรับจัดส่ง' : 'ลูกค้ารับหน้าร้าน'}
                 </span>
                 <span className="text-slate-700 font-semibold truncate text-[11px] mt-0.5 flex items-center gap-1.5 flex-wrap">
                   <span>{shippingName ? `${shippingName} (${shippingPhone})` : 'ยังไม่ได้ระบุลูกค้า'}</span>
                   {deliveryFee > 0 && (
-                    <span className="px-1.5 py-0.2 rounded bg-blue-50 text-blue-700 text-[10px] font-bold border border-blue-200">
+                    <span className="px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 text-[10px] font-bold border border-slate-200">
                       {isShippingWaived ? `ค่าส่ง 0 ฿ (ต้นทุน ฿${deliveryFee.toLocaleString()})` : `ค่าส่ง ฿${deliveryFee.toLocaleString()}`}
                     </span>
                   )}
@@ -2452,23 +2756,23 @@ export default function ManagerPOSPage() {
               </div>
               <button 
                 onClick={() => setIsCustomerFormOpen(true)}
-                className="text-[10px] text-amber-700 hover:text-amber-800 font-bold px-2 py-1 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer shrink-0 ml-2"
+                className="text-[10px] text-slate-700 hover:text-slate-900 font-bold px-2.5 py-1 bg-white border border-slate-200 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer shrink-0 ml-2"
               >
                 {shippingName ? 'แก้ไข' : 'ระบุลูกค้า'}
               </button>
             </div>
 
-            {/* 🎟️ แถบปุ่มส่วนลด & คูปอง (แตะเพื่อเปิด Modal ส่วนลด) */}
+            {/* แถบปุ่มส่วนลด & คูปอง (แตะเพื่อเปิด Modal ส่วนลด) */}
             {Boolean(appliedCoupon) || totalSpecialDiscountAmount !== 0 ? (
               <div 
                 onClick={() => setIsDiscountModalOpen(true)}
-                className="p-2.5 bg-emerald-50 hover:bg-emerald-100/70 border border-emerald-200 rounded-xl flex items-center justify-between cursor-pointer transition-colors mb-2 text-xs"
+                className="p-2.5 bg-slate-100 hover:bg-slate-200/70 border border-slate-200 rounded-xl flex items-center justify-between cursor-pointer transition-colors my-2 text-xs"
               >
                 <div className="flex items-center gap-2 min-w-0">
-                  <Ticket className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <Ticket className="w-4 h-4 text-slate-700 shrink-0" />
                   <div className="flex items-center gap-1.5 truncate">
                     {appliedCoupon && (
-                      <span className="font-bold text-emerald-900 font-mono text-[10px] bg-white px-1.5 py-0.5 rounded border border-emerald-200">
+                      <span className="font-bold text-slate-800 font-mono text-[10px] bg-white px-1.5 py-0.5 rounded border border-slate-200">
                         {appliedCoupon.code}
                       </span>
                     )}
@@ -2488,7 +2792,7 @@ export default function ManagerPOSPage() {
                       setSpecialDiscountPercent('0')
                       toast.success('ล้างส่วนลดทั้งหมดแล้ว')
                     }}
-                    className="p-1 hover:bg-emerald-200/60 rounded-lg text-slate-400 hover:text-red-500 transition-colors"
+                    className="p-1 hover:bg-slate-200 rounded-lg text-slate-400 hover:text-red-500 transition-colors"
                     title="ล้างส่วนลดทั้งหมด"
                   >
                     <X className="w-3.5 h-3.5" />
@@ -2498,28 +2802,28 @@ export default function ManagerPOSPage() {
             ) : (
               <div 
                 onClick={() => setIsDiscountModalOpen(true)}
-                className="p-2.5 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between cursor-pointer transition-colors mb-2 text-xs"
+                className="p-2.5 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between cursor-pointer transition-colors my-2 text-xs"
               >
                 <div className="flex items-center gap-2 text-slate-600 font-bold">
                   <Ticket className="w-4 h-4 text-slate-400" />
                   <span>ใส่คูปอง / ส่วนลดพิเศษท้ายบิล</span>
                 </div>
-                <div className="flex items-center gap-1 text-indigo-600 font-bold text-[11px]">
+                <div className="flex items-center gap-1 text-slate-700 font-bold text-[11px]">
                   <span>เพิ่มส่วนลด</span>
-                  <span className="text-sm leading-none">›</span>
+                  <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
                 </div>
               </div>
             )}
 
             <div className="space-y-1.5 text-xs font-semibold text-slate-500 mb-4">
               <div className="flex justify-between"><span>ยอดรวมสินค้า</span><span>{totalOriginalPrice.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span></div>
-              {promotionDiscountAmount > 0 && <div className="flex justify-between text-orange-600"><span>ส่วนลดสินค้า</span><span>- {promotionDiscountAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span></div>}
-              {totalSetDiscountAmount > 0 && <div className="flex justify-between text-emerald-600 font-bold"><span>ส่วนลดเซ็ตโปรโมชั่น</span><span>- {totalSetDiscountAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span></div>}
+              {promotionDiscountAmount > 0 && <div className="flex justify-between text-slate-700"><span>ส่วนลดสินค้า</span><span>- {promotionDiscountAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span></div>}
+              {totalSetDiscountAmount > 0 && <div className="flex justify-between text-emerald-700 font-bold"><span>ส่วนลดเซ็ตโปรโมชั่น</span><span>- {totalSetDiscountAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span></div>}
               {couponDiscountAmount > 0 && (
-                <div className="flex justify-between text-purple-600 font-bold">
+                <div className="flex justify-between text-emerald-700 font-bold">
                   <span className="flex items-center gap-1.5">
                     {appliedCoupon?.isTopUp && (
-                      <span className="bg-amber-100 text-amber-800 text-[9px] px-1.5 py-0.5 rounded font-black tracking-wide">
+                      <span className="bg-slate-200 text-slate-800 text-[9px] px-1.5 py-0.5 rounded font-black tracking-wide">
                         TOP-UP
                       </span>
                     )}
@@ -2529,19 +2833,19 @@ export default function ManagerPOSPage() {
                 </div>
               )}
               {totalSpecialDiscountAmount !== 0 && (
-                <div className={`flex justify-between ${totalSpecialDiscountAmount > 0 ? 'text-red-500' : 'text-emerald-600'}`}>
+                <div className={`flex justify-between ${totalSpecialDiscountAmount > 0 ? 'text-slate-700' : 'text-emerald-700'}`}>
                   <span>{totalSpecialDiscountAmount > 0 ? 'ส่วนลดพิเศษ' : 'ปัดเศษเพิ่ม'}</span>
                   <span>{totalSpecialDiscountAmount > 0 ? '-' : '+'} {Math.abs(totalSpecialDiscountAmount).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span>
                 </div>
               )}
               {deliveryFee > 0 && (
                 <>
-                  <div className="flex justify-between text-blue-600 font-bold">
-                    <span className="flex items-center gap-1"><Truck className="w-3.5 h-3.5" /> ค่าจัดส่ง</span>
+                  <div className="flex justify-between text-slate-700 font-bold">
+                    <span className="flex items-center gap-1"><Truck className="w-3.5 h-3.5 text-slate-500" /> ค่าจัดส่ง</span>
                     <span>+ {deliveryFee.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span>
                   </div>
                   {isShippingWaived && (
-                    <div className="flex justify-between text-emerald-600 font-bold">
+                    <div className="flex justify-between text-emerald-700 font-bold">
                       <span className="flex items-center gap-1">ส่วนลดค่าจัดส่ง (ยอดสินค้าหลังลดครบ 20,000฿)</span>
                       <span>- {deliveryFee.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span>
                     </div>
@@ -2549,29 +2853,33 @@ export default function ManagerPOSPage() {
                 </>
               )}
               {woodPermitFee > 0 && (
-                <div className="flex justify-between items-center text-amber-950 font-bold bg-amber-100/70 px-2.5 py-1.5 rounded-xl border border-amber-300 shadow-2xs">
-                  <span className="flex items-center gap-1">📜 ค่าใบกำกับไม้ (Slab Permit Fee)</span>
+                <div className="flex justify-between items-center text-slate-800 font-bold bg-slate-100 px-2.5 py-1.5 rounded-xl border border-slate-200 shadow-2xs">
+                  <span className="flex items-center gap-1.5">
+                    <FileCheck className="w-3.5 h-3.5 text-slate-500" />
+                    <span>ค่าใบกำกับไม้ (Slab Permit Fee)</span>
+                  </span>
                   <span className="font-black">+ {woodPermitFee.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span>
                 </div>
               )}
               <div className="flex justify-between pt-1 border-t border-dashed border-slate-200"><span>ยอดก่อนภาษี (Subtotal)</span><span>{(grandTotal / 1.07).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span></div>
               <div className="flex justify-between"><span>ภาษีมูลค่าเพิ่ม (VAT 7%)</span><span>{(grandTotal - (grandTotal / 1.07)).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span></div>
               <div className="flex justify-between text-xs font-bold text-slate-800 pt-3 mt-1 border-t border-dashed border-slate-200">
-                <span>ยอดสุทธิใบขาย (Grand Total)</span><span className="text-base text-amber-700 font-black">{grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span>
+                <span>ยอดสุทธิใบขาย (Grand Total)</span><span className="text-base text-slate-900 font-black">{grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span>
               </div>
               {hasSlabInCart && (
-                <div className="mt-3 p-3 bg-gradient-to-br from-purple-50 via-indigo-50/60 to-amber-50/40 border border-purple-200 rounded-2xl space-y-1.5">
-                  <div className="flex items-center justify-between pb-1.5 border-b border-purple-100">
-                    <span className="text-[11px] font-black text-purple-950 flex items-center gap-1">
-                      <span>🪵</span> เงื่อนไขมัดจำงานไม้ ZENSLABS
+                <div className="mt-3 p-3 bg-slate-100/80 border border-slate-200/90 rounded-2xl space-y-1.5">
+                  <div className="flex items-center justify-between pb-1.5 border-b border-slate-200">
+                    <span className="text-[11px] font-black text-slate-800 flex items-center gap-1.5">
+                      <Layers className="w-3.5 h-3.5 text-slate-600" />
+                      <span>เงื่อนไขมัดจำงานไม้ ZENSLABS</span>
                     </span>
-                    <span className="text-[10px] bg-purple-200/90 text-purple-900 font-extrabold px-2 py-0.5 rounded-md">
+                    <span className="text-[10px] bg-slate-800 text-white font-bold px-2 py-0.5 rounded-md">
                       มัดจำ 50%
                     </span>
                   </div>
                   <div className="flex justify-between items-center text-xs pt-0.5">
-                    <span className="font-bold text-purple-900">ยอดมัดจำ (50%):</span>
-                    <span className="font-black text-sm text-purple-700">
+                    <span className="font-bold text-slate-700">ยอดมัดจำ (50%):</span>
+                    <span className="font-black text-sm text-slate-900">
                       {deposit50Percent.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿
                     </span>
                   </div>
@@ -2581,37 +2889,31 @@ export default function ManagerPOSPage() {
                       {remaining50Percent.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿
                     </span>
                   </div>
-                  <p className="text-[9px] text-purple-600/90 mt-1 font-medium leading-tight">
+                  <p className="text-[9px] text-slate-500 mt-1 font-medium leading-tight">
                     * รวมค่าใบกำกับไม้ ฿5,000.00 แล้ว จัดเตรียมเอกสารและไม้ตามเงื่อนไข
                   </p>
                 </div>
               )}
             </div>
 
-            {/* ✨ เพิ่มปุ่มเสนอราคามาไว้ตรงนี้ */}
+            {/* ปุ่มสร้างใบเสนอราคา */}
             <div className="flex flex-col gap-2">
               {cart.some(item => !item.price || Number(item.price) <= 0) && (
-                <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-[11px] font-bold flex items-center gap-1.5 animate-pulse">
+                <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-[11px] font-bold flex items-center gap-1.5">
                   <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600" />
                   <span>ไม่สามารถสร้างใบเสนอราคาได้: มีสินค้าที่ยังไม่ได้ตั้งราคา (0 ฿) กรุณาตั้งราคาก่อน</span>
                 </div>
               )}
               {cart.length > 0 && !cart.some(item => !item.price || Number(item.price) <= 0) && grandTotal <= 0 && (
-                <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-700 text-[11px] font-bold flex items-center gap-1.5">
-                  <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600" />
+                <div className="p-2.5 bg-slate-100 border border-slate-200 rounded-xl text-slate-700 text-[11px] font-bold flex items-center gap-1.5">
+                  <AlertTriangle className="w-4 h-4 shrink-0 text-slate-600" />
                   <span>ยอดสุทธิของใบเสนอราคาต้องมากกว่า 0 บาท</span>
                 </div>
               )}
               <button
                 onClick={handlePreCheckout}
                 disabled={submitting || cart.length === 0}
-                className={`w-full py-3.5 text-white rounded-xl font-bold text-xs transition-all shadow-md shadow-slate-200 disabled:opacity-40 disabled:shadow-none cursor-pointer flex items-center justify-center gap-1.5 ${
-                  cart.some(item => !item.price || Number(item.price) <= 0)
-                    ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-200'
-                    : editOrderId 
-                      ? 'bg-orange-600 hover:bg-orange-700' 
-                      : 'bg-[#1E293B] hover:bg-slate-800'
-                }`}
+                className="w-full py-3.5 bg-[#1E293B] hover:bg-slate-800 text-white rounded-xl font-bold text-xs transition-all shadow-md shadow-slate-200 disabled:opacity-40 disabled:shadow-none cursor-pointer flex items-center justify-center gap-1.5"
               >
                 {submitting ? 'กำลังบันทึกข้อมูลออเดอร์...' : (
                   cart.some(item => !item.price || Number(item.price) <= 0) ? (
@@ -2630,18 +2932,18 @@ export default function ManagerPOSPage() {
       </div>
     </div>
 
-      {/* 🚀 Modal ข้อมูลลูกค้า */}
+      {/* Modal ข้อมูลลูกค้า */}
       {isCustomerFormOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
           <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             {/* Modal Header */}
-            <div className={`px-6 py-4 border-b flex justify-between items-center ${saleMode === 'DELIVERY' ? 'bg-amber-50/70 border-amber-200' : 'bg-slate-50 border-slate-100'}`}>
+            <div className="px-6 py-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
               <div className="flex items-center gap-2.5">
-                <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${saleMode === 'DELIVERY' ? 'bg-amber-100 text-amber-700' : 'bg-slate-200 text-slate-700'}`}>
+                <div className="w-9 h-9 rounded-xl bg-slate-200/80 text-slate-700 flex items-center justify-center">
                   {saleMode === 'DELIVERY' ? <Truck className="w-5 h-5" /> : <Store className="w-5 h-5" />}
                 </div>
                 <div>
-                  <h3 className={`font-bold text-sm ${saleMode === 'DELIVERY' ? 'text-amber-950' : 'text-slate-800'}`}>
+                  <h3 className="font-bold text-sm text-slate-800">
                     {saleMode === 'DELIVERY' ? 'ระบุข้อมูลสำหรับจัดส่งสินค้า' : 'ระบุข้อมูลลูกค้ารับหน้าร้าน'}
                   </h3>
                   <p className="text-[11px] text-slate-400">
@@ -2670,22 +2972,23 @@ export default function ManagerPOSPage() {
                 }}
                 className="w-full text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 py-2.5 px-4 rounded-xl font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
               >
-                ⚡ ไม่ระบุเบอร์โทร/ที่อยู่ (ใส่ "-")
+                <User className="w-3.5 h-3.5 text-slate-500" />
+                <span>ไม่ระบุเบอร์โทร/ที่อยู่ (ใส่ &quot;-&quot;)</span>
               </button>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {/* 1. เลข Invoice / รหัสออเดอร์ */}
-                <div className={`rounded-2xl border p-3.5 flex flex-col justify-between ${editOrderId ? 'border-orange-200 bg-orange-50/60' : 'border-amber-200 bg-amber-50/50'}`}>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3.5 flex flex-col justify-between">
                   <label className="mb-1.5 flex items-center justify-between text-[11px] font-bold text-slate-700">
-                    <span className="flex items-center gap-1"><FileText className="w-3.5 h-3.5 text-amber-600" /> เลข Invoice / รหัสบิล</span>
-                    <span className="text-[9px] font-normal text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">ระบุเองได้</span>
+                    <span className="flex items-center gap-1"><FileText className="w-3.5 h-3.5 text-slate-500" /> เลข Invoice / รหัสบิล</span>
+                    <span className="text-[9px] font-semibold text-slate-600 bg-slate-200/70 px-1.5 py-0.5 rounded">ระบุเองได้</span>
                   </label>
                   <input
                     type="text"
                     placeholder="เว้นว่างเพื่อให้ระบบสร้างเลข INV อัตโนมัติ"
                     value={customOrderCode}
                     onChange={e => setCustomOrderCode(e.target.value.toUpperCase().replace(/\s/g, ''))}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 font-mono text-xs uppercase outline-none transition-colors focus:border-amber-400 font-bold"
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 font-mono text-xs uppercase outline-none transition-colors focus:border-slate-400 font-bold"
                   />
                   <p className="mt-1.5 text-[9px] leading-tight text-slate-400">
                     {editOrderId ? 'แก้เลขได้ขณะที่บิลยังรอชำระเงิน' : 'เลขต้องไม่ซ้ำ หากเว้นว่างระบบจะสร้างให้อัตโนมัติ'}
@@ -2693,19 +2996,13 @@ export default function ManagerPOSPage() {
                 </div>
 
                 {/* 2. ค่าจัดส่ง / ค่าบริการส่ง (บาท) */}
-                <div className="rounded-2xl border border-blue-200 bg-blue-50/50 p-3.5 flex flex-col justify-between">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3.5 flex flex-col justify-between">
                   <div className="flex items-center justify-between mb-1.5">
-                    <label className="text-[11px] font-bold text-blue-900 flex items-center gap-1.5">
-                      <Truck className="w-4 h-4 text-blue-600" />
+                    <label className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
+                      <Truck className="w-4 h-4 text-slate-500" />
                       <span>ค่าจัดส่ง / ค่าบริการส่ง (บาท)</span>
                     </label>
-                    <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
-                      isShippingWaived && deliveryFee > 0
-                        ? 'bg-amber-100 text-amber-800'
-                        : deliveryFee > 0
-                          ? 'bg-blue-100 text-blue-700'
-                          : 'bg-slate-100 text-slate-600'
-                    }`}>
+                    <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-slate-200/70 text-slate-700">
                       {isShippingWaived && deliveryFee > 0
                         ? `฿${deliveryFee.toLocaleString()} (ไม่คิดค่าส่งลูกค้า)`
                         : deliveryFee > 0
@@ -2729,7 +3026,7 @@ export default function ManagerPOSPage() {
                           setShippingCost(cleanVal || '0');
                         }
                       }}
-                      className="w-full rounded-xl border border-slate-200 bg-white pl-7 pr-3 py-2 text-xs font-black text-slate-800 outline-none transition-colors focus:border-blue-500"
+                      className="w-full rounded-xl border border-slate-200 bg-white pl-7 pr-3 py-2 text-xs font-black text-slate-800 outline-none transition-colors focus:border-slate-400"
                     />
                   </div>
                   <div className="flex items-center gap-1.5 mt-2 flex-wrap">
@@ -2740,8 +3037,8 @@ export default function ManagerPOSPage() {
                         onClick={() => setShippingCost(amt === 0 ? '0' : amt.toString())}
                         className={`px-2 py-0.5 rounded-lg text-[9px] font-bold transition-all cursor-pointer ${
                           deliveryFee === amt
-                            ? 'bg-blue-600 text-white shadow-xs'
-                            : 'bg-white border border-slate-200 text-slate-600 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300'
+                            ? 'bg-[#1E293B] text-white shadow-xs'
+                            : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 hover:border-slate-300'
                         }`}
                       >
                         {amt === 0 ? '0฿' : `${amt}฿`}
@@ -2750,10 +3047,10 @@ export default function ManagerPOSPage() {
                   </div>
 
                   {isOrderOver20k && (
-                    <div className="mt-2.5 p-2 rounded-xl bg-amber-100/70 border border-amber-300/80 flex items-center justify-between gap-2">
+                    <div className="mt-2.5 p-2 rounded-xl bg-white border border-slate-200 flex items-center justify-between gap-2">
                       <div className="flex items-center gap-1.5 min-w-0">
-                        <span className="text-amber-800 text-xs">💡</span>
-                        <span className="text-[10px] font-bold text-amber-950 leading-tight">
+                        <Info className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                        <span className="text-[10px] font-semibold text-slate-700 leading-tight">
                           ยอดสินค้าสุทธิหลังหักส่วนลดครบ 20,000 ฿ ขึ้นไป ไม่คิดค่าส่งกับลูกค้า (บันทึกเฉพาะข้อมูลต้นทุน)
                         </span>
                       </div>
@@ -2762,9 +3059,9 @@ export default function ManagerPOSPage() {
                           type="checkbox"
                           checked={waiveShippingFee}
                           onChange={e => setWaiveShippingFee(e.target.checked)}
-                          className="rounded text-amber-600 focus:ring-amber-500 w-3.5 h-3.5 cursor-pointer"
+                          className="rounded text-slate-800 focus:ring-slate-500 w-3.5 h-3.5 cursor-pointer"
                         />
-                        <span className="text-[10px] font-bold text-amber-900">ยกเว้นเก็บลูกค้า</span>
+                        <span className="text-[10px] font-bold text-slate-800">ยกเว้นเก็บลูกค้า</span>
                       </label>
                     </div>
                   )}
@@ -2778,7 +3075,7 @@ export default function ManagerPOSPage() {
                     placeholder="ระบุชื่อลูกค้า..." 
                     value={shippingName} 
                     onChange={e => setShippingName(e.target.value)} 
-                    className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-amber-400 focus:bg-white transition-colors" 
+                    className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-slate-400 focus:bg-white transition-colors" 
                   />
                 </div>
 
@@ -2790,7 +3087,7 @@ export default function ManagerPOSPage() {
                     placeholder="ระบุเบอร์โทร..." 
                     value={shippingPhone} 
                     onChange={e => setShippingPhone(e.target.value)} 
-                    className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-amber-400 focus:bg-white transition-colors" 
+                    className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-slate-400 focus:bg-white transition-colors" 
                   />
                 </div>
 
@@ -2802,7 +3099,7 @@ export default function ManagerPOSPage() {
                     value={shippingAddress} 
                     onChange={e => setShippingAddress(e.target.value)} 
                     rows={3} 
-                    className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-amber-400 focus:bg-white transition-colors resize-none" 
+                    className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-slate-400 focus:bg-white transition-colors resize-none" 
                   />
                 </div>
               </div>
@@ -2810,29 +3107,29 @@ export default function ManagerPOSPage() {
               {/* 6. ส่วนข้อมูลใบกำกับภาษี */}
               <div className="pt-4 border-t border-slate-100 space-y-3">
                 <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                  <FileText className="w-4 h-4 text-amber-600"/> ข้อมูลสำหรับออกใบกำกับภาษี (ถ้ามี)
+                  <FileText className="w-4 h-4 text-slate-500"/> ข้อมูลสำหรับออกใบกำกับภาษี (ถ้ามี)
                 </h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                   <div>
                     <label className="text-[10px] font-bold text-slate-500 mb-1 block">ชื่อบริษัท (ภาษาไทย) <span className="text-xs font-normal text-slate-400">(ไม่บังคับ)</span></label>
-                    <input type="text" placeholder="ระบุชื่อบริษัทภาษาไทย..." value={companyNameTh} onChange={e => setCompanyNameTh(e.target.value)} className="w-full text-xs p-2.5 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-amber-400 focus:bg-white transition-colors" />
+                    <input type="text" placeholder="ระบุชื่อบริษัทภาษาไทย..." value={companyNameTh} onChange={e => setCompanyNameTh(e.target.value)} className="w-full text-xs p-2.5 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-slate-400 focus:bg-white transition-colors" />
                   </div>
                   <div>
                     <label className="text-[10px] font-bold text-slate-500 mb-1 block">ชื่อบริษัท (ภาษาอังกฤษ) <span className="text-xs font-normal text-slate-400">(ไม่บังคับ)</span></label>
-                    <input type="text" placeholder="ระบุชื่อบริษัทภาษาอังกฤษ..." value={companyNameEn} onChange={e => setCompanyNameEn(e.target.value)} className="w-full text-xs p-2.5 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-amber-400 focus:bg-white transition-colors" />
+                    <input type="text" placeholder="ระบุชื่อบริษัทภาษาอังกฤษ..." value={companyNameEn} onChange={e => setCompanyNameEn(e.target.value)} className="w-full text-xs p-2.5 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-slate-400 focus:bg-white transition-colors" />
                   </div>
                   {(companyNameTh.trim() !== '' || companyNameEn.trim() !== '') && (
                     <>
                       <div className="sm:col-span-2">
                         <label className="text-[10px] font-bold text-slate-500 mb-1 block">ที่อยู่บริษัท <span className="text-red-500">*</span></label>
-                        <textarea placeholder="ระบุที่อยู่บริษัทสำหรับออกใบกำกับภาษี..." value={companyAddress} onChange={e => setCompanyAddress(e.target.value)} rows={2} className="w-full text-xs p-2.5 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-amber-400 focus:bg-white transition-colors resize-none" />
+                        <textarea placeholder="ระบุที่อยู่บริษัทสำหรับออกใบกำกับภาษี..." value={companyAddress} onChange={e => setCompanyAddress(e.target.value)} rows={2} className="w-full text-xs p-2.5 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-slate-400 focus:bg-white transition-colors resize-none" />
                       </div>
                       <div className="sm:col-span-2">
                         <div className="flex justify-between items-end mb-1">
                           <label className="text-[10px] font-bold text-slate-500 block">เลขประจำตัวผู้เสียภาษี (13 หลัก) <span className="text-xs font-normal text-slate-400">(ไม่บังคับ)</span></label>
-                          <span className={`text-[9px] font-bold ${taxId.length === 13 ? 'text-emerald-500' : 'text-slate-400'}`}>{taxId.length}/13</span>
+                          <span className={`text-[9px] font-bold ${taxId.length === 13 ? 'text-emerald-600' : 'text-slate-400'}`}>{taxId.length}/13</span>
                         </div>
-                        <input type="text" placeholder="ระบุเลขประจำตัวผู้เสียภาษี..." value={taxId} onChange={e => setTaxId(e.target.value.replace(/\D/g, ''))} maxLength={13} className="w-full text-xs p-2.5 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-amber-400 focus:bg-white transition-colors" />
+                        <input type="text" placeholder="ระบุเลขประจำตัวผู้เสียภาษี..." value={taxId} onChange={e => setTaxId(e.target.value.replace(/\D/g, ''))} maxLength={13} className="w-full text-xs p-2.5 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-slate-400 focus:bg-white transition-colors" />
                       </div>
                     </>
                   )}
@@ -2854,7 +3151,7 @@ export default function ManagerPOSPage() {
                         src={`https://www.openstreetmap.org/export/embed.html?bbox=${longitude-0.002},${latitude-0.002},${longitude+0.002},${latitude+0.002}&layer=mapnik&marker=${latitude},${longitude}`}
                         className="pointer-events-none" 
                       />
-                      <div className="absolute bottom-2 right-2 bg-white/90 backdrop-blur-sm px-2 py-1 rounded-md text-[9px] font-bold text-amber-700 shadow-sm border border-amber-200">
+                      <div className="absolute bottom-2 right-2 bg-white/90 backdrop-blur-sm px-2 py-1 rounded-md text-[9px] font-bold text-slate-700 shadow-sm border border-slate-200">
                         พิกัดถูกบันทึกแล้ว
                       </div>
                     </div>
@@ -2871,7 +3168,7 @@ export default function ManagerPOSPage() {
                     className={`w-full flex items-center justify-center gap-1.5 p-3 text-xs font-bold rounded-xl border transition-all cursor-pointer ${
                       latitude && longitude 
                         ? 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50' 
-                        : 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100 hover:border-amber-300 shadow-sm'
+                        : 'bg-slate-100 border-slate-200 text-slate-800 hover:bg-slate-200 shadow-2xs'
                     }`}
                   >
                     <MapPin className="w-4 h-4" />
@@ -2886,7 +3183,7 @@ export default function ManagerPOSPage() {
               <div className="flex items-center gap-2 text-xs text-slate-500 flex-wrap">
                 <span>สินค้า: <strong className="text-slate-700">฿{totalFinalPrice.toLocaleString()}</strong></span>
                 <span>·</span>
-                <span>ค่าส่ง: <strong className={deliveryFeeCharged > 0 ? "text-blue-600" : "text-slate-700"}>
+                <span>ค่าส่ง: <strong className="text-slate-700">
                   {isShippingWaived && deliveryFee > 0 
                     ? `0 ฿ (ต้นทุน ฿${deliveryFee.toLocaleString()})` 
                     : deliveryFee > 0 
@@ -2894,14 +3191,14 @@ export default function ManagerPOSPage() {
                       : '0 ฿'}
                 </strong></span>
                 <span>·</span>
-                <span>สุทธิ: <strong className="text-amber-700 font-black text-sm">฿{grandTotal.toLocaleString()}</strong></span>
+                <span>สุทธิ: <strong className="text-slate-900 font-black text-sm">฿{grandTotal.toLocaleString()}</strong></span>
               </div>
               <button 
                 onClick={() => {
                   setIsCustomerFormOpen(false)
                   setTimeout(() => handlePreCheckout(), 100)
                 }} 
-                className="w-full sm:w-auto px-6 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold text-xs transition-colors shadow-md shadow-amber-200 cursor-pointer"
+                className="w-full sm:w-auto px-6 py-2.5 bg-[#1E293B] hover:bg-slate-800 text-white rounded-xl font-bold text-xs transition-colors shadow-sm cursor-pointer"
               >
                 บันทึกข้อมูลและดำเนินการต่อ
               </button>
@@ -2910,33 +3207,33 @@ export default function ManagerPOSPage() {
         </div>
       )}
 
-      {/* 🔍 Modal แจ้งเตือนสต็อกสาขาอื่น */}
+      {/* Modal แจ้งเตือนสต็อกสาขาอื่น */}
       {nearbyModal.isOpen && nearbyModal.product && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
-          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden flex flex-col">
-            <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-              <h3 className="font-bold text-slate-800 text-sm flex items-center gap-1.5">
-                <AlertTriangle className="w-4 h-4 text-orange-500" /> สินค้าสาขาเราหมดแล้ว
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden flex flex-col border border-slate-200">
+            <div className="p-4 px-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+              <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-slate-600" /> สินค้าสาขาเราหมดแล้ว
               </h3>
               <button onClick={() => setNearbyModal({ isOpen: false, product: null, nearbyStocks: [], isLoading: false })} className="text-slate-400 hover:text-slate-700 font-bold">
                 <X className="w-4 h-4" />
               </button>
             </div>
             <div className="p-5">
-              <p className="text-sm font-bold text-slate-700 mb-1">{nearbyModal.product.name}</p>
-              <p className="text-xs text-slate-500 mb-4">รหัส: {nearbyModal.product.sku}</p>
+              <p className="text-sm font-bold text-slate-800 mb-1">{nearbyModal.product.name}</p>
+              <p className="text-xs text-slate-500 mb-4 font-mono">รหัส: {nearbyModal.product.sku}</p>
               <div className="space-y-2">
-                <p className="text-xs font-bold text-amber-700 flex items-center gap-1">
-                  <MapPin className="w-3.5 h-3.5" /> พบสินค้าในสาขาอื่น (คลิกเพื่อดึงของมาส่งบ้านลูกค้า):
+                <p className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                  <MapPin className="w-3.5 h-3.5 text-slate-500" /> พบสินค้าในสาขาอื่น (คลิกเพื่อดึงของมาส่งบ้านลูกค้า):
                 </p>
                 {nearbyModal.isLoading ? (
                   <div className="flex items-center justify-center py-8 gap-2 text-slate-400 font-bold text-xs">
-                    <span className="animate-spin rounded-full h-4 w-4 border-2 border-slate-300 border-t-amber-600" />
+                    <span className="animate-spin rounded-full h-4 w-4 border-2 border-slate-300 border-t-slate-800" />
                     กำลังตรวจสอบสต็อกสาขาอื่น...
                   </div>
                 ) : nearbyModal.nearbyStocks.length === 0 ? (
-                  <div className="text-center py-8 text-slate-500 font-semibold text-xs border border-dashed border-slate-200 rounded-2xl bg-slate-50/50 flex flex-col items-center justify-center gap-1.5">
-                    <AlertTriangle className="w-5 h-5 text-amber-500" />
+                  <div className="text-center py-8 text-slate-500 font-semibold text-xs border border-dashed border-slate-200 rounded-xl bg-slate-50/50 flex flex-col items-center justify-center gap-1.5">
+                    <AlertTriangle className="w-5 h-5 text-slate-400" />
                     ไม่พบสินค้านี้ในคลังของสาขาอื่นเลยครับ
                   </div>
                 ) : (
@@ -2946,12 +3243,12 @@ export default function ManagerPOSPage() {
                       <button
                         key={stock.branch_id || stock.id || Math.random()}
                         onClick={() => handleSelectNearbyBranch(stock)}
-                        className="w-full flex justify-between items-center bg-white border border-amber-100 hover:border-amber-400 hover:bg-amber-50 p-3 rounded-xl transition-all cursor-pointer group shadow-2xs hover:shadow-md"
+                        className="w-full flex justify-between items-center bg-white border border-slate-200 hover:border-slate-900 hover:bg-slate-50 p-3 rounded-xl transition-all cursor-pointer group shadow-2xs"
                       >
-                        <span className="text-xs font-bold text-slate-700 group-hover:text-amber-800">
+                        <span className="text-xs font-bold text-slate-700 group-hover:text-slate-900">
                           {stock.branch_name || 'ไม่ทราบชื่อสาขา'}
                         </span>
-                        <span className="text-xs font-black text-amber-700 bg-amber-50 group-hover:bg-white px-2 py-1 rounded border border-transparent group-hover:border-amber-200 transition-colors">
+                        <span className="text-xs font-black text-slate-800 bg-slate-100 group-hover:bg-slate-900 group-hover:text-white px-2.5 py-1 rounded-md border border-slate-200 transition-colors">
                           มี {displayAmount} ชิ้น
                         </span>
                       </button>
@@ -2968,7 +3265,7 @@ export default function ManagerPOSPage() {
                     setNearbyModal({ isOpen: false, product: null, nearbyStocks: [], isLoading: false })
                   }
                 }}
-                className="w-full py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold text-xs transition-all cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
+                className="w-full py-2.5 bg-[#1E293B] hover:bg-slate-800 text-white rounded-xl font-bold text-xs transition-all cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
               >
                 <FileText className="w-3.5 h-3.5" /> เพิ่มลงตะกร้าสาขาเรา (สต็อก 0 เพื่อออกใบเสนอราคา)
               </button>
@@ -2980,34 +3277,34 @@ export default function ManagerPOSPage() {
         </div>
       )}
 
-      {/* ✨ Modal ยืนยันการสร้างใบเสนอราคา */}
+      {/* Modal ยืนยันการสร้างใบเสนอราคา */}
       {isConfirmCheckoutOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
-          <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden flex flex-col p-6 items-center text-center">
-            <div className="w-16 h-16 bg-amber-50 text-amber-700 rounded-full flex items-center justify-center mb-4">
-              <FileText className="w-8 h-8" />
+          <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden flex flex-col p-6 items-center text-center border border-slate-200">
+            <div className="w-14 h-14 bg-slate-100 text-slate-800 rounded-2xl flex items-center justify-center mb-4 border border-slate-200">
+              <FileText className="w-7 h-7" />
             </div>
-            <h3 className="font-bold text-slate-800 text-lg mb-2">
+            <h3 className="font-bold text-slate-900 text-base mb-1.5">
               {editOrderId ? 'ยืนยันบันทึกการแก้ไขบิล?' : 'ยืนยันสร้างใบเสนอราคา?'}
             </h3>
-            <p className="text-slate-500 text-xs mb-4 px-4 leading-relaxed">
+            <p className="text-slate-500 text-xs mb-4 px-3 leading-relaxed">
               กรุณาตรวจสอบรายการสินค้าและยอดเงินให้ถูกต้องก่อนกดยืนยัน ระบบจะทำการบันทึกบิลและตัดสต็อกทันที
             </p>
 
             {/* สรุปยอดเงินในโมดอลยืนยัน */}
-            <div className="w-full mb-4 bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 text-xs space-y-1.5 text-left">
+            <div className="w-full mb-4 bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-xs space-y-1.5 text-left">
               <div className="flex justify-between text-slate-500">
                 <span>ยอดรวมสินค้า:</span>
                 <span className="font-semibold text-slate-700">{totalFinalPrice.toLocaleString()} ฿</span>
               </div>
               {deliveryFee > 0 && (
                 <>
-                  <div className="flex justify-between text-blue-600 font-bold">
-                    <span className="flex items-center gap-1"><Truck className="w-3.5 h-3.5" /> ค่าจัดส่ง:</span>
+                  <div className="flex justify-between text-slate-700 font-bold">
+                    <span className="flex items-center gap-1"><Truck className="w-3.5 h-3.5 text-slate-500" /> ค่าจัดส่ง:</span>
                     <span>+{deliveryFee.toLocaleString()} ฿</span>
                   </div>
                   {isShippingWaived && (
-                    <div className="flex justify-between text-emerald-600 font-bold">
+                    <div className="flex justify-between text-emerald-700 font-bold">
                       <span>ส่วนลดค่าจัดส่ง (ยอดหลังลดครบ 20,000฿):</span>
                       <span>-{deliveryFee.toLocaleString()} ฿</span>
                     </div>
@@ -3015,47 +3312,47 @@ export default function ManagerPOSPage() {
                 </>
               )}
               {woodPermitFee > 0 && (
-                <div className="flex justify-between text-amber-950 font-bold bg-amber-100/70 p-2 rounded-xl border border-amber-300">
-                  <span>📜 ค่าใบกำกับไม้ (Slab Permit Fee):</span>
+                <div className="flex justify-between text-slate-800 font-bold bg-slate-100 p-2 rounded-lg border border-slate-200">
+                  <span className="flex items-center gap-1.5"><FileCheck className="w-3.5 h-3.5 text-slate-500" /> ค่าใบกำกับไม้ (Slab Permit Fee):</span>
                   <span>+{woodPermitFee.toLocaleString()} ฿</span>
                 </div>
               )}
-              <div className="flex justify-between text-slate-800 font-black text-sm pt-2 border-t border-slate-200">
+              <div className="flex justify-between text-slate-900 font-black text-sm pt-2 border-t border-slate-200">
                 <span>ยอดสุทธิทั้งสิ้น:</span>
-                <span className="text-amber-700">{grandTotal.toLocaleString()} ฿</span>
+                <span className="text-slate-900">{grandTotal.toLocaleString()} ฿</span>
               </div>
               {hasSlabInCart && (
-                <div className="mt-2 pt-2 border-t border-dashed border-purple-200 flex justify-between items-center text-purple-900 font-bold bg-purple-50/70 p-2 rounded-xl">
+                <div className="mt-2 pt-2 border-t border-dashed border-slate-300 flex justify-between items-center text-slate-800 font-bold bg-slate-100 p-2 rounded-lg">
                   <span>มัดจำ 50% (เริ่มจัดเตรียม/ใบกำกับไม้):</span>
-                  <span className="text-purple-700 font-black">{deposit50Percent.toLocaleString()} ฿</span>
+                  <span className="text-slate-900 font-black">{deposit50Percent.toLocaleString()} ฿</span>
                 </div>
               )}
             </div>
 
             {!editOrderId && (
-              <div className="w-full mb-6 text-left">
+              <div className="w-full mb-5 text-left">
                 <label className="text-[10px] font-bold text-slate-500 mb-1 block">เลข Invoice / รหัสออเดอร์ (ระบุเองได้)</label>
                 <input 
                   type="text" 
                   placeholder="เช่น INV-1234 (ลบแล้วตั้งเองได้)" 
                   value={customOrderCode}
                   onChange={e => setCustomOrderCode(e.target.value.toUpperCase().replace(/\s/g, ''))}
-                  className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-amber-400 focus:bg-white transition-colors uppercase font-mono" 
+                  className="w-full text-xs p-2.5 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-slate-900 focus:bg-white transition-colors uppercase font-mono" 
                 />
               </div>
             )}
 
-            <div className="flex gap-3 w-full">
+            <div className="flex gap-2.5 w-full">
               <button
                 onClick={() => setIsConfirmCheckoutOpen(false)}
-                className="flex-1 py-3 bg-white border border-slate-200 text-slate-600 rounded-xl font-bold text-xs hover:bg-slate-50 transition-all cursor-pointer"
+                className="flex-1 py-2.5 bg-white border border-slate-200 text-slate-600 rounded-xl font-bold text-xs hover:bg-slate-50 transition-all cursor-pointer"
               >
                 ยกเลิก
               </button>
               <button
                 onClick={handleCheckout}
                 disabled={submitting}
-                className="flex-1 py-3 bg-[#B8834A] hover:bg-[#84492C] text-white rounded-xl font-bold text-xs transition-all cursor-pointer shadow-md shadow-amber-200 flex items-center justify-center gap-1.5"
+                className="flex-1 py-2.5 bg-[#1E293B] hover:bg-slate-800 text-white rounded-xl font-bold text-xs transition-all cursor-pointer shadow-sm flex items-center justify-center gap-1.5"
               >
                 {submitting ? 'กำลังบันทึก...' : <><Save className="w-4 h-4" /> ยืนยันสร้าง</>}
               </button>
@@ -3064,13 +3361,13 @@ export default function ManagerPOSPage() {
         </div>
       )}
 
-      {/* ✨ Modal แสดงใบเสนอราคาแบบ Iframe กลางจอ */}
+      {/* Modal แสดงใบเสนอราคาแบบ Iframe กลางจอ */}
       {successPrintUrl && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 md:p-8">
-          <div className="bg-white w-full max-w-4xl h-full max-h-[90vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col">
+          <div className="bg-white w-full max-w-4xl h-full max-h-[90vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col border border-slate-200">
             <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
               <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
-                <Printer className="w-4 h-4 text-amber-700" /> เอกสารการขาย
+                <Printer className="w-4 h-4 text-slate-700" /> เอกสารการขาย
               </h3>
               <div className="flex items-center gap-2">
                 <button 
@@ -3080,13 +3377,13 @@ export default function ManagerPOSPage() {
                       iframe.contentWindow.print();
                     }
                   }}
-                  className="bg-[#B8834A] hover:bg-[#84492C] text-white font-bold py-1.5 px-4 rounded-lg text-xs transition-colors flex items-center gap-1.5 shadow-sm"
+                  className="bg-[#1E293B] hover:bg-slate-800 text-white font-bold py-1.5 px-4 rounded-lg text-xs transition-colors flex items-center gap-1.5 shadow-xs"
                 >
                   <Printer className="w-3.5 h-3.5" /> สั่งพิมพ์
                 </button>
                 <button 
                   onClick={() => setSuccessPrintUrl(null)} 
-                  className="text-slate-400 hover:text-red-500 font-bold bg-white w-8 h-8 rounded-full flex items-center justify-center shadow-sm border border-slate-100 transition-colors"
+                  className="text-slate-400 hover:text-red-500 font-bold bg-white w-8 h-8 rounded-lg flex items-center justify-center shadow-2xs border border-slate-200 transition-colors"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -3104,7 +3401,7 @@ export default function ManagerPOSPage() {
         </div>
       )}
 
-      {/* ✨ Modal เลือกแผนที่ (MapPicker) */}
+      {/* Modal เลือกแผนที่ (MapPicker) */}
       {showMap && (
         <MapPicker
           initialLat={latitude}
@@ -3118,14 +3415,14 @@ export default function ManagerPOSPage() {
         />
       )}
 
-      {/* 🎟️ Modal ส่วนลดและคูปองท้ายบิล */}
+      {/* Modal ส่วนลดและคูปองท้ายบิล */}
       {isDiscountModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
-          <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden border border-slate-200">
             {/* Header */}
-            <div className="p-4 px-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/70">
+            <div className="p-4 px-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-200 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-xl bg-slate-100 text-slate-700 border border-slate-200 flex items-center justify-center">
                   <Ticket className="w-4 h-4" />
                 </div>
                 <div>
@@ -3136,7 +3433,7 @@ export default function ManagerPOSPage() {
               <button 
                 type="button"
                 onClick={() => setIsDiscountModalOpen(false)} 
-                className="p-1.5 hover:bg-slate-200 text-slate-400 hover:text-slate-600 rounded-full transition-colors cursor-pointer"
+                className="p-1.5 hover:bg-slate-200 text-slate-400 hover:text-slate-600 rounded-lg transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -3147,8 +3444,8 @@ export default function ManagerPOSPage() {
               {/* 1. คูปองส่วนลด */}
               <div className="space-y-2.5">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
-                    🎟️ คูปองส่วนลด (Coupon Code)
+                  <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                    <Ticket className="w-3.5 h-3.5 text-slate-500" /> คูปองส่วนลด (Coupon Code)
                   </span>
                   {cart.length > 0 && (
                     <span className="text-[10px] text-slate-400 font-medium">
@@ -3167,12 +3464,12 @@ export default function ManagerPOSPage() {
 
                 {/* แจ้งเตือนเมื่อสินค้าทุกชิ้นในบิลมีส่วนลดรายชิ้นอยู่แล้ว */}
                 {cart.length > 0 && eligibleForCouponSubtotal <= 0 && (
-                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 space-y-1">
-                    <div className="flex items-center gap-1.5 font-bold text-amber-800">
-                      <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 space-y-1">
+                    <div className="flex items-center gap-1.5 font-bold text-slate-800">
+                      <AlertTriangle className="w-4 h-4 text-slate-600 shrink-0" />
                       <span>ไม่สามารถใช้คูปองส่วนลดกับบิลนี้ได้</span>
                     </div>
-                    <p className="text-[11px] text-amber-700 leading-relaxed pl-5.5">
+                    <p className="text-[11px] text-slate-500 leading-relaxed pl-5.5">
                       สินค้าทุกชิ้นในบิลนี้ได้รับส่วนลดรายชิ้น/ราคาโปรโมชั่นไปแล้ว ตามกฎจะไม่สามารถนำคูปองมาลดทับซ้อนได้ครับ (หากต้องการลดเพิ่ม ให้ใช้ &quot;ส่วนลดพิเศษท้ายบิล&quot; ด้านล่าง)
                     </p>
                   </div>
@@ -3180,22 +3477,22 @@ export default function ManagerPOSPage() {
 
                 {/* แจ้งเตือนเมื่อมีสินค้าบางชิ้นที่ลดรายชิ้นไปแล้ว */}
                 {cart.length > 0 && eligibleForCouponSubtotal > 0 && eligibleForCouponSubtotal < totalFinalPriceBeforeSpecial && (
-                  <div className="p-2.5 bg-blue-50/70 border border-blue-200/70 rounded-xl text-xs text-blue-900 space-y-0.5">
-                    <div className="flex items-center gap-1.5 font-semibold text-blue-800 text-[11px]">
-                      <Info className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                  <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 space-y-0.5">
+                    <div className="flex items-center gap-1.5 font-semibold text-slate-800 text-[11px]">
+                      <Info className="w-3.5 h-3.5 text-slate-500 shrink-0" />
                       <span>คำนวณเฉพาะสินค้าที่ไม่มีส่วนลดรายชิ้น</span>
                     </div>
-                    <p className="text-[10px] text-blue-700 leading-relaxed pl-5">
+                    <p className="text-[10px] text-slate-500 leading-relaxed pl-5">
                       ยอดรวมบิล ฿{totalFinalPriceBeforeSpecial.toLocaleString()} มีสินค้าลดราคาแล้ว ฿{(totalFinalPriceBeforeSpecial - eligibleForCouponSubtotal).toLocaleString()} ➔ ส่วนลดคูปองจะคิดจากยอด <strong>฿{eligibleForCouponSubtotal.toLocaleString()}</strong> เท่านั้น
                     </p>
                   </div>
                 )}
 
                 {appliedCoupon ? (
-                  <div className="flex flex-col gap-2 p-3 bg-emerald-50 border border-emerald-200 rounded-2xl text-xs">
+                  <div className="flex flex-col gap-2 p-3 bg-emerald-50/70 border border-emerald-200 rounded-xl text-xs">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2 min-w-0">
-                        <Ticket className="w-4 h-4 text-emerald-600 shrink-0" />
+                        <Ticket className="w-4 h-4 text-emerald-700 shrink-0" />
                         <div className="min-w-0">
                           <div className="font-bold text-emerald-900 font-mono text-sm truncate">{appliedCoupon.code}</div>
                           <div className="text-[11px] text-emerald-700 font-medium truncate">{appliedCoupon.title}</div>
@@ -3224,7 +3521,7 @@ export default function ManagerPOSPage() {
                           <div className="flex items-center justify-between text-emerald-950 font-semibold">
                             <span>ขั้นบันไดที่ได้รับ:</span>
                             {currentSub < lowestMin ? (
-                              <span className="text-amber-700 font-bold">ยอดสินค้าปกติไม่ถึงขั้นต่ำ ฿{lowestMin.toLocaleString()}</span>
+                              <span className="text-slate-700 font-bold">ยอดสินค้าปกติไม่ถึงขั้นต่ำ ฿{lowestMin.toLocaleString()}</span>
                             ) : (
                               <span className="font-mono text-emerald-800">
                                 {appliedCoupon.discountType === 'percentage' ? `ลด ${appliedCoupon.discountValue}%` : `ลด ฿${Number(appliedCoupon.discountValue).toLocaleString()}`}
@@ -3243,18 +3540,18 @@ export default function ManagerPOSPage() {
                     {appliedCoupon.attribution && (
                       <div className="pt-2 border-t border-emerald-200/60 flex flex-wrap items-center gap-1.5 text-[10px]">
                         {appliedCoupon.attribution.leadSales && (
-                          <span className="bg-purple-100/90 text-purple-800 font-bold px-2 py-0.5 rounded-md border border-purple-200">
-                            👤 เซลล์: {appliedCoupon.attribution.leadSales}
+                          <span className="bg-slate-100 text-slate-700 font-bold px-2 py-0.5 rounded-md border border-slate-200 flex items-center gap-1">
+                            <User className="w-3 h-3 text-slate-500" /> เซลล์: {appliedCoupon.attribution.leadSales}
                           </span>
                         )}
                         {appliedCoupon.attribution.partnerCompany && (
-                          <span className="bg-blue-100/90 text-blue-800 font-bold px-2 py-0.5 rounded-md border border-blue-200">
-                            🏢 บ.: {appliedCoupon.attribution.partnerCompany}
+                          <span className="bg-slate-100 text-slate-700 font-bold px-2 py-0.5 rounded-md border border-slate-200 flex items-center gap-1">
+                            <Building2 className="w-3 h-3 text-slate-500" /> บ.: {appliedCoupon.attribution.partnerCompany}
                           </span>
                         )}
                         {appliedCoupon.attribution.partnerSales && (
-                          <span className="bg-amber-100/90 text-amber-800 font-bold px-2 py-0.5 rounded-md border border-amber-200">
-                            🤝 เซลล์คู่ค้า: {appliedCoupon.attribution.partnerSales}
+                          <span className="bg-slate-100 text-slate-700 font-bold px-2 py-0.5 rounded-md border border-slate-200 flex items-center gap-1">
+                            <Users className="w-3 h-3 text-slate-500" /> เซลล์คู่ค้า: {appliedCoupon.attribution.partnerSales}
                           </span>
                         )}
                       </div>
@@ -3279,13 +3576,13 @@ export default function ManagerPOSPage() {
                           if (couponErrorMsg) setCouponErrorMsg(null)
                         }}
                         onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleApplyCoupon(); } }}
-                        className="flex-1 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold uppercase outline-none focus:bg-white focus:border-purple-600 focus:ring-2 focus:ring-purple-600/20 transition-all placeholder:font-normal placeholder:normal-case disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+                        className="flex-1 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold uppercase outline-none focus:bg-white focus:border-slate-900 transition-all placeholder:font-normal placeholder:normal-case disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                       />
                       <button
                         type="button"
                         disabled={isValidatingCoupon || !couponInput.trim() || cart.length === 0 || eligibleForCouponSubtotal <= 0}
                         onClick={handleApplyCoupon}
-                        className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-40 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 flex items-center gap-1.5 disabled:cursor-not-allowed"
+                        className="px-4 py-2.5 bg-[#1E293B] hover:bg-slate-800 disabled:opacity-40 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 flex items-center gap-1.5 disabled:cursor-not-allowed"
                       >
                         {isValidatingCoupon ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : 'ใช้โค้ด'}
                       </button>
@@ -3308,8 +3605,8 @@ export default function ManagerPOSPage() {
               {/* 2. ส่วนลดพิเศษท้ายบิล */}
               <div className="space-y-2 pt-2 border-t border-slate-100">
                 <div className="flex justify-between items-center">
-                  <span className="text-xs font-bold text-slate-600 uppercase tracking-wider block">
-                    ✨ ส่วนลดพิเศษท้ายบิล (Special Discount)
+                  <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                    <Percent className="w-3.5 h-3.5 text-slate-500" /> ส่วนลดพิเศษท้ายบิล (Special Discount)
                   </span>
                   {cart.length > 0 && (
                     <button 
@@ -3319,9 +3616,9 @@ export default function ManagerPOSPage() {
                         setCalculatedRoundingBaht(null)
                         setIsRoundingModalOpen(true)
                       }}
-                      className="text-[11px] bg-indigo-50 text-indigo-600 hover:bg-indigo-100 px-2.5 py-1 rounded-lg flex items-center gap-1.5 font-bold transition-colors cursor-pointer"
+                      className="text-[11px] bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200 px-2.5 py-1 rounded-lg flex items-center gap-1.5 font-bold transition-colors cursor-pointer"
                     >
-                      <Sparkles className="w-3.5 h-3.5" />
+                      <Calculator className="w-3.5 h-3.5 text-slate-600" />
                       ผู้ช่วยปัดเศษ
                     </button>
                   )}
@@ -3329,7 +3626,7 @@ export default function ManagerPOSPage() {
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <span className="text-[10px] text-slate-400 font-bold">ระบุเป็นจำนวนเงิน (฿)</span>
-                    <div className="flex items-center bg-slate-50 border border-slate-200 focus-within:bg-white focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-500/20 rounded-xl px-3 py-2 transition-all">
+                    <div className="flex items-center bg-slate-50 border border-slate-200 focus-within:bg-white focus-within:border-slate-900 rounded-xl px-3 py-2 transition-all">
                       <span className="text-xs text-slate-400 font-bold mr-2">฿</span>
                       <input
                         type="number"
@@ -3350,7 +3647,7 @@ export default function ManagerPOSPage() {
                   </div>
                   <div className="space-y-1">
                     <span className="text-[10px] text-slate-400 font-bold">ระบุเป็นเปอร์เซ็นต์ (%)</span>
-                    <div className="flex items-center bg-slate-50 border border-slate-200 focus-within:bg-white focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-500/20 rounded-xl px-3 py-2 transition-all">
+                    <div className="flex items-center bg-slate-50 border border-slate-200 focus-within:bg-white focus-within:border-slate-900 rounded-xl px-3 py-2 transition-all">
                       <span className="text-xs text-slate-400 font-bold mr-2">%</span>
                       <input
                         type="number"
@@ -3375,7 +3672,7 @@ export default function ManagerPOSPage() {
               </div>
 
               {/* 3. พรีวิวสรุปคำนวณยอด (Live Calculation Preview Card) */}
-              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-1.5 text-xs">
+              <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5 text-xs">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
                   สรุปยอดคำนวณ
                 </span>
@@ -3384,39 +3681,39 @@ export default function ManagerPOSPage() {
                   <span>{totalOriginalPrice.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span>
                 </div>
                 {promotionDiscountAmount > 0 && (
-                  <div className="flex justify-between text-orange-600 font-medium">
+                  <div className="flex justify-between text-emerald-700 font-medium">
                     <span>ส่วนลดสินค้าหน้าร้าน (รายชิ้น)</span>
                     <span>- {promotionDiscountAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span>
                   </div>
                 )}
                 {totalSetDiscountAmount > 0 && (
-                  <div className="flex justify-between text-emerald-600 font-medium">
+                  <div className="flex justify-between text-emerald-700 font-medium">
                     <span>ส่วนลดโปรเซ็ต</span>
                     <span>- {totalSetDiscountAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span>
                   </div>
                 )}
                 {appliedCoupon && (
                   couponDiscountAmount > 0 ? (
-                    <div className="flex justify-between text-purple-600 font-bold">
+                    <div className="flex justify-between text-emerald-700 font-bold">
                       <span>ส่วนลดคูปอง ({appliedCoupon.code})</span>
                       <span>- {couponDiscountAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span>
                     </div>
                   ) : (
-                    <div className="flex justify-between text-amber-700 font-medium text-[11px] bg-amber-50 px-2 py-1 rounded-lg border border-amber-200/60">
+                    <div className="flex justify-between text-slate-700 font-medium text-[11px] bg-slate-100 px-2 py-1 rounded-lg border border-slate-200">
                       <span>คูปอง ({appliedCoupon.code})</span>
                       <span>ยังไม่ถึงขั้นต่ำ (ส่วนลด 0 ฿)</span>
                     </div>
                   )
                 )}
                 {totalSpecialDiscountAmount !== 0 && (
-                  <div className={`flex justify-between font-bold ${totalSpecialDiscountAmount > 0 ? 'text-red-500' : 'text-emerald-600'}`}>
+                  <div className={`flex justify-between font-bold ${totalSpecialDiscountAmount > 0 ? 'text-rose-600' : 'text-emerald-700'}`}>
                     <span>{totalSpecialDiscountAmount > 0 ? 'ส่วนลดพิเศษท้ายบิล' : 'ปัดเศษเพิ่ม'}</span>
                     <span>{totalSpecialDiscountAmount > 0 ? '-' : '+'} {Math.abs(totalSpecialDiscountAmount).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span>
                   </div>
                 )}
-                <div className="flex justify-between text-xs font-bold text-slate-800 pt-2 border-t border-dashed border-slate-200">
+                <div className="flex justify-between text-xs font-bold text-slate-900 pt-2 border-t border-dashed border-slate-200">
                   <span>ยอดสุทธิใบขาย (Grand Total)</span>
-                  <span className="text-base text-amber-700 font-black">
+                  <span className="text-base text-slate-900 font-black">
                     {grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿
                   </span>
                 </div>
@@ -3428,7 +3725,7 @@ export default function ManagerPOSPage() {
               <button
                 type="button"
                 onClick={() => setIsDiscountModalOpen(false)}
-                className="w-full py-2.5 bg-[#1E293B] hover:bg-slate-800 text-white rounded-xl font-bold text-xs transition-colors shadow-sm cursor-pointer"
+                className="w-full py-2.5 bg-[#1E293B] hover:bg-slate-800 text-white rounded-xl font-bold text-xs transition-colors shadow-xs cursor-pointer"
               >
                 ตกลง / ปิดหน้าต่าง
               </button>
@@ -3437,30 +3734,32 @@ export default function ManagerPOSPage() {
         </div>
       )}
 
-      {/* ✨ Modal ผู้ช่วยปัดเศษ */}
+      {/* Modal ผู้ช่วยปัดเศษ */}
       {isRoundingModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="px-5 py-4 border-b border-slate-100 flex justify-between items-center bg-indigo-50/50">
-              <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                <span className="text-indigo-500 bg-white p-1.5 rounded-lg shadow-sm">✨</span>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden flex flex-col max-h-[90vh] border border-slate-200">
+            <div className="px-5 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+              <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
+                <span className="text-slate-700 bg-white p-1.5 rounded-lg border border-slate-200 shadow-2xs">
+                  <Calculator className="w-4 h-4" />
+                </span>
                 ผู้ช่วยปัดเศษยอดสุทธิ
               </h3>
-              <button onClick={() => setIsRoundingModalOpen(false)} className="text-slate-400 hover:text-slate-600 bg-white hover:bg-slate-50 p-1.5 rounded-lg transition-colors">
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+              <button onClick={() => setIsRoundingModalOpen(false)} className="text-slate-400 hover:text-slate-600 bg-white hover:bg-slate-100 p-1.5 rounded-lg border border-slate-200 transition-colors">
+                <X className="w-4 h-4" />
               </button>
             </div>
             
             <div className="p-5 space-y-5 overflow-y-auto">
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
                 <div className="text-xs text-slate-500 font-semibold mb-1">ยอดสุทธิปัจจุบัน (รวม VAT)</div>
-                <div className="text-2xl font-black text-slate-800">
+                <div className="text-2xl font-black text-slate-900">
                   {totalFinalPrice.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-sm font-medium text-slate-500">฿</span>
                 </div>
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-bold text-slate-700 block">
+                <label className="text-xs font-bold text-slate-700 block">
                   คุณต้องการปัดเศษให้เหลือเท่าไหร่?
                 </label>
                 <div className="relative">
@@ -3468,7 +3767,7 @@ export default function ManagerPOSPage() {
                     type="number"
                     value={targetRoundingTotal}
                     onChange={(e) => setTargetRoundingTotal(e.target.value)}
-                    className="w-full text-lg font-bold text-indigo-700 bg-white border-2 border-indigo-200 rounded-xl px-4 py-3 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all"
+                    className="w-full text-lg font-bold text-slate-900 bg-white border border-slate-300 rounded-xl px-4 py-2.5 outline-none focus:border-slate-900 transition-all"
                     placeholder="เช่น 4980"
                   />
                   <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">฿</div>
@@ -3483,8 +3782,8 @@ export default function ManagerPOSPage() {
                     
                     if (target <= 0) {
                       return (
-                        <div className="text-xs text-rose-500 bg-rose-50 p-3 rounded-lg font-medium flex items-start gap-2">
-                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+                        <div className="text-xs text-rose-600 bg-rose-50 p-3 rounded-lg font-medium flex items-start gap-2 border border-rose-200">
+                          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
                           ยอดเป้าหมายต้องมากกว่า 0 ครับ
                         </div>
                       );
@@ -3500,25 +3799,23 @@ export default function ManagerPOSPage() {
 
                     // 3. คำนวณเป็นบาท (฿) ใหม่ทั้งหมด
                     const targetBahtFormatted = parseFloat(totalDiscountNeeded.toFixed(2));
-
-                    const isRoundUp = totalDiscountNeeded < 0;
                     
                     return (
-                      <div className="bg-indigo-50/50 border border-indigo-100 rounded-xl p-4 space-y-4">
-                        <div className="text-xs text-indigo-700 font-bold flex items-center gap-1.5">
-                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>
+                      <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-4">
+                        <div className="text-xs text-slate-800 font-bold flex items-center gap-1.5">
+                          <Check className="w-4 h-4 text-emerald-600" />
                           คำนวณยอดเป้าหมาย {target.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿ สำเร็จ!
                         </div>
                         
                         <div className="text-[10px] text-slate-500 leading-normal">
-                          ระบบช่วยคำนวณสัดส่วนภาษี (VAT 7%) เรียบร้อยแล้ว นายสามารถเลือกปรับแต่งรูปแบบส่วนลด/ส่วนเพิ่ม ได้ 2 รูปแบบดังนี้ครับ:
+                          ระบบช่วยคำนวณสัดส่วนภาษี (VAT 7%) เรียบร้อยแล้ว สามารถเลือกปรับแต่งรูปแบบส่วนลด/ส่วนเพิ่ม ได้ 2 รูปแบบดังนี้ครับ:
                         </div>
 
                         {/* รูปแบบที่ 1: ปรับเป็นเปอร์เซ็นต์ */}
-                        <div className="bg-white p-3 rounded-xl border border-slate-100 space-y-2 shadow-2xs">
+                        <div className="bg-white p-3 rounded-xl border border-slate-200 space-y-2 shadow-2xs">
                           <div className="flex justify-between items-center text-xs">
                             <span className="font-bold text-slate-700">รูปแบบที่ 1: ปรับเป็นเปอร์เซ็นต์ (%)</span>
-                            <span className={`font-black ${targetPercentFormatted > 0 ? 'text-red-500' : 'text-emerald-600'}`}>
+                            <span className={`font-black ${targetPercentFormatted > 0 ? 'text-rose-600' : 'text-emerald-700'}`}>
                               {targetPercentFormatted > 0 ? '-' : '+'} {Math.abs(targetPercentFormatted)} %
                             </span>
                           </div>
@@ -3528,17 +3825,17 @@ export default function ManagerPOSPage() {
                               setSpecialDiscountBaht('0');
                               setIsRoundingModalOpen(false);
                             }}
-                            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-3 rounded-lg text-[11px] transition-colors cursor-pointer"
+                            className="w-full bg-[#1E293B] hover:bg-slate-800 text-white font-bold py-2 px-3 rounded-lg text-[11px] transition-colors cursor-pointer"
                           >
                             ใช้ส่วนลด {Math.abs(targetPercentFormatted)} % (ล้างช่องบาท)
                           </button>
                         </div>
 
                         {/* รูปแบบที่ 2: ปรับเป็นบาท */}
-                        <div className="bg-white p-3 rounded-xl border border-slate-100 space-y-2 shadow-2xs">
+                        <div className="bg-white p-3 rounded-xl border border-slate-200 space-y-2 shadow-2xs">
                           <div className="flex justify-between items-center text-xs">
                             <span className="font-bold text-slate-700">รูปแบบที่ 2: ปรับเป็นบาท (฿)</span>
-                            <span className={`font-black ${targetBahtFormatted > 0 ? 'text-red-500' : 'text-emerald-600'}`}>
+                            <span className={`font-black ${targetBahtFormatted > 0 ? 'text-rose-600' : 'text-emerald-700'}`}>
                               {targetBahtFormatted > 0 ? '-' : '+'} {Math.abs(targetBahtFormatted)} ฿
                             </span>
                           </div>
@@ -3548,7 +3845,7 @@ export default function ManagerPOSPage() {
                               setSpecialDiscountPercent('0');
                               setIsRoundingModalOpen(false);
                             }}
-                            className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2 px-3 rounded-lg text-[11px] transition-colors cursor-pointer"
+                            className="w-full bg-slate-700 hover:bg-slate-800 text-white font-bold py-2 px-3 rounded-lg text-[11px] transition-colors cursor-pointer"
                           >
                             ใช้ส่วนลด {Math.abs(targetBahtFormatted)} ฿ (ล้างช่อง %)
                           </button>
@@ -3563,22 +3860,22 @@ export default function ManagerPOSPage() {
         </div>
       )}
 
-      {/* 📱 ปุ่มลอยสำหรับมือถือ (เปิดตะกร้าในรูปแบบโมดอล) */}
+      {/* ปุ่มลอยสำหรับมือถือ (เปิดตะกร้าในรูปแบบโมดอล) */}
       <div className="lg:hidden fixed bottom-6 right-6 z-40">
         <button 
           onClick={() => setIsMobileCartOpen(true)} 
-          className="bg-[#B8834A] hover:bg-[#84492C] text-white rounded-full p-4 shadow-2xl shadow-amber-900/30 flex items-center justify-center relative transition-transform active:scale-95"
+          className="bg-[#1E293B] hover:bg-slate-800 text-white rounded-full p-4 shadow-2xl flex items-center justify-center relative transition-transform active:scale-95"
         >
           <Receipt className="w-6 h-6" />
           {cart.length > 0 && (
-            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center border-2 border-[#F4F7F9] shadow-sm">
+            <span className="absolute -top-1 -right-1 bg-rose-600 text-white text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center border-2 border-[#F4F7F9] shadow-xs">
               {cart.length}
             </span>
           )}
         </button>
       </div>
 
-      {/* 🛋️ โมดอลเพิ่มสินค้านอก & เฟอร์นิเจอร์ */}
+      {/* โมดอลเพิ่มสินค้านอก & เฟอร์นิเจอร์ */}
       <ExternalProductModal
         isOpen={isExternalModalOpen}
         onClose={() => setIsExternalModalOpen(false)}
@@ -3589,39 +3886,39 @@ export default function ManagerPOSPage() {
         }}
       />
 
-      {/* 🏷️ โมดอลกำหนดราคาขายสินค้าลงฐานข้อมูลจริง */}
+      {/* โมดอลกำหนดราคาขายสินค้าลงฐานข้อมูลจริง */}
       {priceModal.isOpen && priceModal.product && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
-          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden flex flex-col border border-slate-200">
             {/* Modal Header */}
-            <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-gradient-to-r from-amber-50 to-orange-50">
+            <div className="p-4 px-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-xs">
-                  <Tag className="w-5 h-5" />
+                <div className="w-9 h-9 rounded-xl bg-slate-900 text-white flex items-center justify-center shadow-2xs">
+                  <Tag className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="font-extrabold text-slate-800 text-sm">
+                  <h3 className="font-bold text-slate-800 text-sm">
                     {Number(priceModal.product.price) <= 0 ? 'ระบุราคาขายสินค้า (ยังไม่มีราคา)' : 'แก้ไขราคาขายสินค้า'}
                   </h3>
                   <p className="text-[11px] text-slate-500">
-                    บันทึกราคาลงฐานข้อมูล Supabase ทันที
+                    บันทึกราคาลงฐานข้อมูลทันที
                   </p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setPriceModal({ isOpen: false, product: null, initialPrice: '', cartItemId: null })}
-                className="text-slate-400 hover:text-slate-700 font-bold p-1 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                className="text-slate-400 hover:text-slate-700 font-bold p-1 rounded-lg hover:bg-slate-200 transition-colors cursor-pointer"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
             {/* Modal Body */}
             <div className="p-5 space-y-4">
               {/* Product Info Preview */}
-              <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-100">
-                <div className="w-14 h-14 bg-white rounded-xl overflow-hidden border border-slate-200 shrink-0 flex items-center justify-center">
+              <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <div className="w-14 h-14 bg-white rounded-lg overflow-hidden border border-slate-200 shrink-0 flex items-center justify-center">
                   {priceModal.product.image_url ? (
                     <img src={priceModal.product.image_url} alt={priceModal.product.name} className="w-full h-full object-cover" />
                   ) : (
@@ -3637,8 +3934,8 @@ export default function ManagerPOSPage() {
                   </p>
                   <div className="flex items-center gap-1.5 mt-1">
                     {Number(priceModal.product.price) <= 0 ? (
-                      <span className="text-[10px] bg-rose-50 text-rose-700 px-2 py-0.5 rounded-md font-bold border border-rose-200">
-                        ⚠️ ราคาเดิม: 0 ฿
+                      <span className="text-[10px] bg-rose-50 text-rose-700 px-2 py-0.5 rounded-md font-bold border border-rose-200 flex items-center gap-1">
+                        <AlertTriangle className="w-3 h-3" /> ราคาเดิม: 0 ฿
                       </span>
                     ) : (
                       <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md font-semibold">
@@ -3669,14 +3966,14 @@ export default function ManagerPOSPage() {
                         handleSaveProductPrice()
                       }
                     }}
-                    className="w-full pl-4 pr-14 py-3 bg-white border-2 border-amber-300 focus:border-amber-500 focus:ring-4 focus:ring-amber-100 rounded-2xl outline-none text-base font-black text-slate-800 transition-all shadow-2xs"
+                    className="w-full pl-4 pr-14 py-2.5 bg-white border border-slate-300 focus:border-slate-900 rounded-xl outline-none text-base font-black text-slate-800 transition-all shadow-2xs"
                   />
                   <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
                     ฿ บาท
                   </span>
                 </div>
-                <p className="text-[10px] text-amber-700 mt-1.5 flex items-center gap-1">
-                  <span>💡</span> ราคานี้จะถูกบันทึกลงฐานข้อมูลสินค้าส่วนกลาง และใช้สำหรับออกบิลนี้ทันที
+                <p className="text-[10px] text-slate-500 mt-1.5 flex items-center gap-1.5">
+                  <Info className="w-3.5 h-3.5 text-slate-400 shrink-0" /> ราคานี้จะถูกบันทึกลงฐานข้อมูลสินค้าส่วนกลาง และใช้สำหรับออกบิลนี้ทันที
                 </p>
               </div>
 
@@ -3688,7 +3985,7 @@ export default function ManagerPOSPage() {
                     key={preset}
                     type="button"
                     onClick={() => setModalInputPrice(String(preset))}
-                    className="text-[11px] px-2.5 py-1 bg-slate-100 hover:bg-amber-100 hover:text-amber-800 text-slate-600 rounded-lg font-semibold transition-colors cursor-pointer"
+                    className="text-[11px] px-2.5 py-1 bg-slate-100 hover:bg-slate-900 hover:text-white text-slate-600 rounded-lg font-semibold transition-colors cursor-pointer"
                   >
                     +{preset}
                   </button>
@@ -3710,7 +4007,7 @@ export default function ManagerPOSPage() {
                 type="button"
                 onClick={handleSaveProductPrice}
                 disabled={isSavingPrice || !modalInputPrice || Number(modalInputPrice) <= 0}
-                className="px-5 py-2.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-bold text-xs transition-all shadow-md shadow-amber-200 flex items-center gap-1.5 cursor-pointer"
+                className="px-5 py-2.5 bg-[#1E293B] hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-bold text-xs transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
               >
                 {isSavingPrice ? (
                   <>

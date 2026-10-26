@@ -43,7 +43,7 @@ interface PosCache {
 }
 
 let posCache: PosCache | null = null;
-const CACHE_TTL = 5 * 60 * 1000; // แคชไว้ 5 นาที
+const CACHE_TTL = 10 * 60 * 1000; // แคชไว้ 10 นาที เพื่อประหยัดทรัพยากรเซิร์ฟเวอร์สูงสุด
 
 interface FurnitureCache {
   timestamp: number;
@@ -52,7 +52,7 @@ interface FurnitureCache {
   brands: string[];
 }
 let furnitureCache: FurnitureCache | null = null;
-const FURNITURE_CACHE_TTL = 5 * 60 * 1000; // แคชเฟอร์นิเจอร์ไว้ 5 นาที
+const FURNITURE_CACHE_TTL = 10 * 60 * 1000; // แคชเฟอร์นิเจอร์ไว้ 10 นาที
 
 interface SlabsCache {
   timestamp: number;
@@ -61,7 +61,7 @@ interface SlabsCache {
   brands: string[];
 }
 let slabsCache: SlabsCache | null = null;
-const SLABS_CACHE_TTL = 5 * 60 * 1000; // แคชแผ่นไม้สแลปไว้ 5 นาที
+const SLABS_CACHE_TTL = 10 * 60 * 1000; // แคชแผ่นไม้สแลปไว้ 10 นาที
 
 export async function clearPosCache() {
   posCache = null;
@@ -309,11 +309,24 @@ function filterAndSortPosProducts(
   } = options;
 
   const query = searchQuery.trim().toLowerCase();
+  const queryCompact = query.replace(/[-_\s/×x*]/g, '');
 
   const filtered = products.filter(p => {
     if (query) {
-      const matchSearch = (p.name || '').toLowerCase().includes(query) || (p.sku || '').toLowerCase().includes(query);
-      if (!matchSearch) return false;
+      const nameStr = String(p.name || '').toLowerCase();
+      const skuStr = String(p.sku || '').toLowerCase();
+      const barcodeStr = String(p.barcode || '').toLowerCase();
+      const supStr = String(p.product_sup || '').toLowerCase();
+      const matchDirect =
+        nameStr.includes(query) ||
+        skuStr.includes(query) ||
+        barcodeStr.includes(query) ||
+        supStr.includes(query);
+      const matchCompact =
+        queryCompact.length >= 2 &&
+        (skuStr.replace(/[-_\s/×x*]/g, '').includes(queryCompact) ||
+          barcodeStr.replace(/[-_\s/×x*]/g, '').includes(queryCompact));
+      if (!matchDirect && !matchCompact) return false;
     }
 
     if (selectedCategory !== 'ALL' && p.product_sup !== selectedCategory) return false;
@@ -361,17 +374,18 @@ function filterAndSortPosProducts(
     const bTotalStock = b.stocks?.reduce((sum: number, s: any) => sum + Number(s.qty), 0) || 0;
 
     const getStockTier = (locStock: number, totalStock: number) => {
-      if (selectedLocation === 'ALL') {
-        return totalStock > 0 ? 0 : 1;
-      }
-      if (locStock > 0) return 0;
-      if (totalStock > 0) return 1;
-      return 2;
+      if (locStock > 0) return 0; // มีสต็อกที่สาขาเรา/สาขาที่เลือก
+      if (totalStock > 0) return 1; // สาขาเราไม่มี แต่ดึงสต็อกจากสาขาอื่นที่มีได้
+      return 2; // สต็อก 0 ทุกสาขา
     };
 
     const aTier = getStockTier(Number(aLocStock), Number(aTotalStock));
     const bTier = getStockTier(Number(bLocStock), Number(bTotalStock));
     if (aTier !== bTier) return aTier - bTier;
+
+    const aHasPrice = Number(a.price) > 0 ? 0 : 1;
+    const bHasPrice = Number(b.price) > 0 ? 0 : 1;
+    if (aHasPrice !== bHasPrice) return aHasPrice - bHasPrice;
 
     const aCatOrder = getStorefrontCategoryOrder(a.product_sup);
     const bCatOrder = getStorefrontCategoryOrder(b.product_sup);
@@ -433,7 +447,7 @@ export async function getPosProductsPage(params: {
   });
 
   const page = Math.max(1, params.page || 1);
-  const pageSize = Math.max(1, params.pageSize || 48);
+  const pageSize = Math.max(1, params.pageSize || 100);
   const startIndex = (page - 1) * pageSize;
   const pagedProducts = filtered.slice(startIndex, startIndex + pageSize);
 
@@ -441,6 +455,7 @@ export async function getPosProductsPage(params: {
     success: true,
     products: pagedProducts,
     totalCount: filtered.length,
+    catalogTotalCount: posCache.products.length,
     page,
     pageSize,
     hasMore: (startIndex + pageSize) < filtered.length,
@@ -467,19 +482,21 @@ export async function getPosData(forceRefresh: boolean = false) {
     return { success: false, error: cacheRes.error || "เกิดข้อผิดพลาดในการโหลดข้อมูล" };
   }
 
-  // ✨ ส่งสินค้า 48 ชิ้นแรกที่จัดลำดับตามสาขาของพนักงาน เพื่อให้เปิดหน้าเว็บได้เร็วเสี้ยววินาที (< 250ms)
+  // ส่งสินค้า 100 ชิ้นแรกที่จัดลำดับตามสต็อกสาขาของพนักงาน (สาขาเรามีของ -> ดึงสาขาอื่น -> สต็อก 0)
   const filtered = filterAndSortPosProducts(posCache.products, {
     selectedLocation: branchId,
     myBranchId: branchId,
   });
 
-  const initialProducts = filtered.slice(0, 48);
+  const initialPageSize = 100;
+  const initialProducts = filtered.slice(0, initialPageSize);
 
   return { 
     success: true, 
     products: initialProducts, 
     totalCount: filtered.length,
-    hasMore: filtered.length > 48,
+    catalogTotalCount: posCache.products.length,
+    hasMore: filtered.length > initialPageSize,
     branches: posCache.branches, 
     categories: posCache.categories, 
     sets: posCache.sets || [],
@@ -491,222 +508,476 @@ export async function getPosData(forceRefresh: boolean = false) {
   };
 }
 
-export async function getFurnitureProducts(forceRefresh: boolean = false) {
-  const cookieStore = await cookies()
-  const supabase = createServerClient(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!, {
-    cookies: { getAll() { return cookieStore.getAll() } }
-  })
+// ฟังก์ชันค้นหาและจัดเรียงอัจฉริยะสำหรับแคตตาล็อกเฟอร์นิเจอร์และแผ่นไม้สแลป (ทำงานบน Server Memory Cache เร็วระดับ < 5ms)
+function filterAndSortCatalogItems(
+  items: any[],
+  options: {
+    searchQuery?: string;
+    selectedSubcategory?: string;
+    selectedLocation?: number | 'ALL';
+    myBranchId: number;
+  }
+) {
+  const {
+    searchQuery = '',
+    selectedSubcategory = 'ALL',
+    selectedLocation = 'ALL',
+    myBranchId = 1,
+  } = options;
 
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { success: false, error: "Unauthorized" }
+  const targetBranch = selectedLocation === 'ALL' ? myBranchId : selectedLocation;
+  const q = searchQuery.trim().toLowerCase();
+  const qCompact = q.replace(/[-_\s/×x*]/g, '');
 
-  const now = Date.now();
-  if (!forceRefresh && furnitureCache && (now - furnitureCache.timestamp < FURNITURE_CACHE_TTL)) {
-    return {
-      success: true,
-      products: furnitureCache.products,
-      subcategories: furnitureCache.subcategories,
-      brands: furnitureCache.brands,
-      fromCache: true
+  const matchesSearch = (p: any) => {
+    if (!q) return true;
+    const fields = [
+      p.name,
+      p.sku,
+      p.barcode,
+      p.product_sup,
+      p.brand,
+      p.specs?.dimensions,
+      p.specs?.size,
+      p.specs?.material,
+      p.specs?.sku,
+      p.specs?.barcode,
+      p.specs?.code,
+    ]
+      .filter(Boolean)
+      .map((v) => String(v).toLowerCase());
+
+    if (fields.some((f) => f.includes(q))) return true;
+    if (qCompact.length >= 2 && fields.some((f) => f.replace(/[-_\s/×x*]/g, '').includes(qCompact))) {
+      return true;
     }
+    return false;
+  };
+
+  let filtered = items;
+  if (selectedSubcategory && selectedSubcategory !== 'ALL') {
+    filtered = items.filter(
+      (p) => p.product_sup === selectedSubcategory || p.specs?.material === selectedSubcategory
+    );
   }
 
-  const { data: furnitureData, error: furnError } = await supabase
-    .from('products')
-    .select(`
-      id, name, sku, price, image_url, barcode, specs, category_id,
-      collection_groups ( product_sup, tag, image_url, cover_image_url ),
-      stock ( branch_id, qty )
-    `)
-    .in('category_id', ['furniture', 'SLABS'])
-    .order('name', { ascending: true })
-
-  if (furnError) {
-    return { success: false, error: "เกิดข้อผิดพลาดในการโหลดข้อมูลเฟอร์นิเจอร์และแผ่นไม้: " + furnError.message }
+  if (q) {
+    let searched = filtered.filter(matchesSearch);
+    // หากเลือกหมวดย่อย/เนื้อไม้ค้างไว้ แล้วค้นหา SKU หรือ Barcode ที่อยู่อีกหมวดไม่เจอ ให้ค้นหาจากทั้งแคตตาล็อกให้อัตโนมัติ
+    if (searched.length === 0 && selectedSubcategory !== 'ALL') {
+      searched = items.filter(matchesSearch);
+    }
+    filtered = searched;
   }
 
-  const subcatSet = new Set<string>()
-  const brandSet = new Set<string>()
+  return [...filtered].sort((a, b) => {
+    if (q) {
+      const getSearchRank = (item: any) => {
+        const sku = String(item.sku || '').toLowerCase();
+        const bc = String(item.barcode || '').toLowerCase();
+        const skuCompact = sku.replace(/[-_\s/×x*]/g, '');
+        const bcCompact = bc.replace(/[-_\s/×x*]/g, '');
 
-  const formattedFurniture = (furnitureData || []).map(p => {
-    const rawCol = Array.isArray(p.collection_groups) ? p.collection_groups[0] : p.collection_groups
-    const isSlab = p.category_id === 'SLABS' || (p.sku && (p.sku.startsWith('ZLB-') || p.sku.startsWith('LEG-')))
-    const specs = (p.specs && typeof p.specs === 'object') ? p.specs : {}
-
-    let resolvedImage: string | null = null
-    if (p.image_url && typeof p.image_url === 'string' && p.image_url.trim() !== '') {
-      resolvedImage = p.image_url
-    } else if (Array.isArray(specs.images) && specs.images.length > 0 && specs.images[0]?.path) {
-      resolvedImage = specs.images[0].path
-    } else if (rawCol?.image_url) {
-      resolvedImage = rawCol.image_url
-    } else if (rawCol?.cover_image_url) {
-      resolvedImage = rawCol.cover_image_url
+        if (sku === q || bc === q || (qCompact.length >= 2 && (skuCompact === qCompact || bcCompact === qCompact))) {
+          return 0; // ตรงกับ SKU หรือ Barcode เป๊ะๆ
+        }
+        if (sku.startsWith(q) || bc.startsWith(q) || (qCompact.length >= 2 && (skuCompact.startsWith(qCompact) || bcCompact.startsWith(qCompact)))) {
+          return 1; // ขึ้นต้นด้วย SKU หรือ Barcode
+        }
+        if (sku.includes(q) || bc.includes(q) || (qCompact.length >= 2 && (skuCompact.includes(qCompact) || bcCompact.includes(qCompact)))) {
+          return 2; // มีคำค้นอยู่ใน SKU หรือ Barcode
+        }
+        return 3;
+      };
+      const aRank = getSearchRank(a);
+      const bRank = getSearchRank(b);
+      if (aRank !== bRank) return aRank - bRank;
     }
 
-    let subcat = rawCol?.product_sup
-    if (!subcat) {
-      subcat = isSlab ? (specs.material || 'แผ่นไม้ / Wood Slabs') : 'เฟอร์นิเจอร์ทั่วไป'
-    }
-    subcatSet.add(subcat)
+    const aLocStock = Number(a.stocks?.find((s: any) => s.branch_id === targetBranch)?.qty || 0);
+    const bLocStock = Number(b.stocks?.find((s: any) => s.branch_id === targetBranch)?.qty || 0);
+    const aTotalStock = a.stocks?.reduce((sum: number, s: any) => sum + Number(s.qty || 0), 0) || 0;
+    const bTotalStock = b.stocks?.reduce((sum: number, s: any) => sum + Number(s.qty || 0), 0) || 0;
 
-    const brand = getProductBrand(p)
-    if (brand && brand !== 'ทั่วไป') {
-      brandSet.add(brand)
-    }
+    const getTier = (loc: number, total: number) => {
+      if (loc > 0) return 0; // มีสต็อกที่สาขาเรา
+      if (total > 0) return 1; // สาขาเราไม่มี แต่ดึงสต็อกจากสาขาอื่นที่มีของได้
+      return 2; // สต็อก 0 ทุกสาขา
+    };
 
-    return {
-      id: p.id,
-      name: p.name,
-      sku: p.sku,
-      original_price: Number(p.price) || 0,
-      price: Number(p.price) || 0,
-      discount_label: '',
-      image_url: resolvedImage,
-      barcode: p.barcode || null,
-      product_sup: subcat,
-      category_id: p.category_id || (isSlab ? 'SLABS' : 'furniture'),
-      isFurniture: p.category_id === 'furniture' || (!isSlab && p.sku?.startsWith('EMBER-')),
-      isSlab,
-      stocks: Array.isArray(p.stock) ? p.stock : [],
-      specs: specs,
-      brand: brand || (isSlab ? 'ZENSLABS' : 'Ember & Ash')
-    }
-  })
+    const aTier = getTier(aLocStock, aTotalStock);
+    const bTier = getTier(bLocStock, bTotalStock);
+    if (aTier !== bTier) return aTier - bTier;
 
-  // รับประกันว่ามีชื่อแบรนด์หลักเสมอ
-  if (formattedFurniture.some(p => p.isFurniture || p.sku?.startsWith('EMBER-'))) {
-    brandSet.add('Ember & Ash')
-  }
-  if (formattedFurniture.some(p => p.isSlab || p.sku?.startsWith('ZLB-') || p.sku?.startsWith('LEG-'))) {
-    brandSet.add('ZENSLABS')
-  }
+    const aHasPrice = Number(a.price) > 0 ? 0 : 1;
+    const bHasPrice = Number(b.price) > 0 ? 0 : 1;
+    if (aHasPrice !== bHasPrice) return aHasPrice - bHasPrice;
 
-  const subcategories = Array.from(subcatSet).sort()
-  const brands = Array.from(brandSet).sort()
+    if (aTotalStock !== bTotalStock) return bTotalStock - aTotalStock;
 
-  furnitureCache = {
-    timestamp: now,
-    products: formattedFurniture,
-    subcategories,
-    brands
-  }
-
-  return {
-    success: true,
-    products: formattedFurniture,
-    subcategories,
-    brands
-  }
+    return String(a.name || '').localeCompare(String(b.name || ''));
+  });
 }
 
-export async function getSlabsProducts(forceRefresh: boolean = false) {
-  const cookieStore = await cookies()
-  const supabase = createServerClient(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!, {
-    cookies: { getAll() { return cookieStore.getAll() } }
-  })
+export async function getFurnitureProducts(
+  optionsOrForceRefresh:
+    | boolean
+    | {
+        page?: number;
+        pageSize?: number;
+        searchQuery?: string;
+        selectedCategory?: string;
+        selectedLocation?: number | 'ALL';
+        forceRefresh?: boolean;
+        onlyFurniture?: boolean;
+      } = false
+) {
+  const isOptionsObj = typeof optionsOrForceRefresh === 'object' && optionsOrForceRefresh !== null;
+  const forceRefresh = isOptionsObj ? Boolean(optionsOrForceRefresh.forceRefresh) : Boolean(optionsOrForceRefresh);
 
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { success: false, error: "Unauthorized" }
+  const cookieStore = await cookies();
+  const supabase = createServerClient(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!, {
+    cookies: { getAll() { return cookieStore.getAll(); } }
+  });
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: "Unauthorized" };
+
+  const { data: profile } = await supabase.from('profiles').select('branch_id').eq('user_id', user.id).single();
+  const myBranchId = profile?.branch_id || 1;
 
   const now = Date.now();
-  if (!forceRefresh && slabsCache && (now - slabsCache.timestamp < SLABS_CACHE_TTL)) {
-    return {
-      success: true,
-      products: slabsCache.products,
-      subcategories: slabsCache.subcategories,
-      brands: slabsCache.brands,
-      fromCache: true
-    }
-  }
-
-  // ดึงสินค้าแผ่นไม้สแลปทั้งหมด (category_id = 'SLABS' รวมถึงขาโต๊ะ LEG-) ครอบคลุม 1,032+ ชิ้น
-  const { data: slabsData, error: slabsError } = await supabase
-    .from('products')
-    .select(`
-      id, name, sku, price, image_url, barcode, specs, category_id,
+  if (forceRefresh || !furnitureCache || (now - furnitureCache.timestamp >= FURNITURE_CACHE_TTL)) {
+    // ดึง 2 ช่วง (0..999 และ 1000..1999) แบบคู่ขนานโดยไม่ต้องเสียรอบยิง COUNT ก่อน
+    const selectCols = `
+      id, name, sku, price, image_url, barcode, specs, category_id, length_cm, width_cm, thickness_cm,
       collection_groups ( product_sup, tag, image_url, cover_image_url ),
       stock ( branch_id, qty )
-    `)
-    .or("category_id.eq.SLABS,sku.ilike.ZLB-%,sku.ilike.LEG-%")
-    .order('name', { ascending: true })
-    .range(0, 2500)
+    `;
+    const [res0, res1] = await Promise.all([
+      supabase.from('products').select(selectCols).in('category_id', ['furniture', 'SLABS']).order('id', { ascending: true }).range(0, 999),
+      supabase.from('products').select(selectCols).in('category_id', ['furniture', 'SLABS']).order('id', { ascending: true }).range(1000, 1999),
+    ]);
 
-  if (slabsError) {
-    return { success: false, error: "เกิดข้อผิดพลาดในการโหลดข้อมูลแผ่นไม้ ZENSLABS: " + slabsError.message }
+    if (res0.error) {
+      return { success: false, error: "เกิดข้อผิดพลาดในการโหลดข้อมูลเฟอร์นิเจอร์: " + res0.error.message };
+    }
+
+    const furnitureData: any[] = [...(res0.data || []), ...(res1.data || [])];
+    if (res1.data && res1.data.length === 1000) {
+      const res2 = await supabase.from('products').select(selectCols).in('category_id', ['furniture', 'SLABS']).order('id', { ascending: true }).range(2000, 2999);
+      if (res2.data && res2.data.length > 0) furnitureData.push(...res2.data);
+    }
+
+    const subcatSet = new Set<string>();
+    const brandSet = new Set<string>();
+
+    const formattedFurniture = furnitureData.map((p) => {
+      const rawCol = Array.isArray(p.collection_groups) ? p.collection_groups[0] : p.collection_groups;
+      const isSlab = p.category_id === 'SLABS' || (p.sku && (p.sku.startsWith('ZLB-') || p.sku.startsWith('WOODSLABS') || p.sku.startsWith('LEG-')));
+      const rawSpecs = (p.specs && typeof p.specs === 'object') ? p.specs : {};
+      const resolvedDimensions =
+        rawSpecs.dimensions ||
+        rawSpecs.size ||
+        rawSpecs.size_raw ||
+        ((p.length_cm || rawSpecs.length_cm) && (p.width_cm || rawSpecs.width_cm)
+          ? `${p.length_cm || rawSpecs.length_cm}-${p.width_cm || rawSpecs.width_cm}${
+              p.thickness_cm || rawSpecs.thickness_cm ? `-${p.thickness_cm || rawSpecs.thickness_cm}` : ''
+            } MM`
+          : undefined);
+
+      let resolvedImage: string | null = null;
+      if (p.image_url && typeof p.image_url === 'string' && p.image_url.trim() !== '') {
+        resolvedImage = p.image_url;
+      } else if (Array.isArray(rawSpecs.images) && rawSpecs.images.length > 0 && rawSpecs.images[0]?.path) {
+        resolvedImage = rawSpecs.images[0].path;
+      } else if (rawCol?.image_url) {
+        resolvedImage = rawCol.image_url;
+      } else if (rawCol?.cover_image_url) {
+        resolvedImage = rawCol.cover_image_url;
+      }
+
+      let subcat = rawCol?.product_sup;
+      if (!subcat) {
+        subcat = isSlab ? (rawSpecs.material || 'แผ่นไม้ / Wood Slabs') : 'เฟอร์นิเจอร์ทั่วไป';
+      }
+      subcatSet.add(subcat);
+
+      const brand = getProductBrand(p);
+      if (brand && brand !== 'ทั่วไป') {
+        brandSet.add(brand);
+      }
+
+      return {
+        id: p.id,
+        name: p.name,
+        sku: p.sku || '',
+        original_price: Number(p.price) || 0,
+        price: Number(p.price) || 0,
+        discount_label: '',
+        image_url: resolvedImage,
+        barcode: p.barcode || null,
+        product_sup: subcat,
+        category_id: p.category_id || (isSlab ? 'SLABS' : 'furniture'),
+        isFurniture: p.category_id === 'furniture' || (!isSlab && p.sku?.startsWith('EMBER-')),
+        isSlab,
+        stocks: Array.isArray(p.stock) ? p.stock : [],
+        specs: {
+          dimensions: resolvedDimensions || null,
+          size: rawSpecs.size || resolvedDimensions || null,
+          material: rawSpecs.material || null,
+          color: rawSpecs.color || rawSpecs.colour || null,
+          brand: rawSpecs.brand || rawSpecs.Brand || null,
+          width_cm: p.width_cm || rawSpecs.width_cm || null,
+          length_cm: p.length_cm || rawSpecs.length_cm || null,
+          thickness_cm: p.thickness_cm || rawSpecs.thickness_cm || null,
+          sku: rawSpecs.sku || null,
+          barcode: rawSpecs.barcode || null,
+          code: rawSpecs.code || null,
+        },
+        brand: brand || (isSlab ? 'ZENSLABS' : 'Ember & Ash'),
+      };
+    });
+
+    if (formattedFurniture.some((p) => p.isFurniture || p.sku?.startsWith('EMBER-'))) {
+      brandSet.add('Ember & Ash');
+    }
+    if (formattedFurniture.some((p) => p.isSlab || p.sku?.startsWith('ZLB-') || p.sku?.startsWith('LEG-'))) {
+      brandSet.add('ZENSLABS');
+    }
+
+    furnitureCache = {
+      timestamp: now,
+      products: formattedFurniture,
+      subcategories: Array.from(subcatSet).sort(),
+      brands: Array.from(brandSet).sort(),
+    };
   }
 
-  const subcatSet = new Set<string>()
+  let basePool = furnitureCache.products;
+  let subcats = furnitureCache.subcategories;
 
-  const formattedSlabs = (slabsData || []).map(p => {
-    const rawCol = Array.isArray(p.collection_groups) ? p.collection_groups[0] : p.collection_groups
-    const specs = (p.specs && typeof p.specs === 'object') ? p.specs : {}
-
-    // ค้นหารูปภาพความละเอียดสูงจาก specs.images[0].path หรือ image_url หรือ collection
-    let resolvedImage: string | null = null
-    if (p.image_url && typeof p.image_url === 'string' && p.image_url.trim() !== '') {
-      resolvedImage = p.image_url
-    } else if (Array.isArray(specs.images) && specs.images.length > 0 && specs.images[0]?.path) {
-      resolvedImage = specs.images[0].path
-    } else if (rawCol?.image_url) {
-      resolvedImage = rawCol.image_url
-    } else if (rawCol?.cover_image_url) {
-      resolvedImage = rawCol.cover_image_url
+  if (isOptionsObj && optionsOrForceRefresh.onlyFurniture) {
+    const onlyFurn = basePool.filter((p: any) => !p.isSlab && p.category_id !== 'SLABS');
+    if (onlyFurn.length > 0) {
+      basePool = onlyFurn;
+      subcats = Array.from(new Set(onlyFurn.map((p: any) => p.product_sup).filter(Boolean))).sort() as string[];
     }
+  }
 
-    // กำหนดประเภทเนื้อไม้ / หมวดหมู่ย่อย (เช่น Black Walnut, White Oak, Maple, ขาโต๊ะ)
-    let materialCategory = specs.material || rawCol?.product_sup
-    const lowerName = (p.name || '').toLowerCase()
-    const skuLower = (p.sku || '').toLowerCase()
-    if (!materialCategory) {
-      if (lowerName.includes('walnut')) materialCategory = 'North American Black Walnut'
-      else if (lowerName.includes('oak')) materialCategory = 'French White Oak'
-      else if (lowerName.includes('maple')) materialCategory = 'European Maple Wood'
-      else if (lowerName.includes('olive')) materialCategory = 'Italian Olive Wood'
-      else if (lowerName.includes('teak')) materialCategory = 'Burmese Teak'
-      else if (lowerName.includes('afromosia')) materialCategory = 'Afromosia'
-      else if (lowerName.includes('leg') || lowerName.includes('stand') || skuLower.startsWith('leg')) materialCategory = 'ขาโต๊ะ / ขาตั้ง (Leg & Stand)'
-      else materialCategory = 'แผ่นไม้ / Wood Slabs'
-    } else if (skuLower.startsWith('leg') || lowerName.includes('leg') || lowerName.includes('ขาโต๊ะ') || lowerName.includes('stand')) {
-      materialCategory = 'ขาโต๊ะ / ขาตั้ง (Leg & Stand)'
-    }
-    subcatSet.add(materialCategory)
+  const filtered = filterAndSortCatalogItems(basePool, {
+    searchQuery: isOptionsObj ? optionsOrForceRefresh.searchQuery : '',
+    selectedSubcategory: isOptionsObj ? optionsOrForceRefresh.selectedCategory : 'ALL',
+    selectedLocation: isOptionsObj ? optionsOrForceRefresh.selectedLocation : myBranchId,
+    myBranchId,
+  });
+
+  if (isOptionsObj && (optionsOrForceRefresh.page !== undefined || optionsOrForceRefresh.pageSize !== undefined)) {
+    const page = Math.max(1, optionsOrForceRefresh.page || 1);
+    const pageSize = Math.max(1, optionsOrForceRefresh.pageSize || 100);
+    const startIndex = (page - 1) * pageSize;
+    const pagedProducts = filtered.slice(startIndex, startIndex + pageSize);
 
     return {
-      id: p.id,
-      name: p.name,
-      sku: p.sku,
-      original_price: Number(p.price) || 0,
-      price: Number(p.price) || 0,
-      discount_label: '',
-      image_url: resolvedImage,
-      barcode: p.barcode || null,
-      product_sup: materialCategory,
-      category_id: 'SLABS',
-      isFurniture: false,
-      isSlab: true,
-      stocks: Array.isArray(p.stock) ? p.stock : [],
-      specs: specs,
-      brand: 'ZENSLABS'
-    }
-  })
-
-  const subcategories = Array.from(subcatSet).sort()
-  const brands = ['ZENSLABS']
-
-  slabsCache = {
-    timestamp: now,
-    products: formattedSlabs,
-    subcategories,
-    brands
+      success: true,
+      products: pagedProducts,
+      totalCount: filtered.length,
+      catalogTotalCount: basePool.length,
+      page,
+      pageSize,
+      hasMore: startIndex + pageSize < filtered.length,
+      subcategories: subcats,
+      brands: furnitureCache.brands,
+    };
   }
 
   return {
     success: true,
-    products: formattedSlabs,
-    subcategories,
-    brands
+    products: filtered,
+    totalCount: filtered.length,
+    catalogTotalCount: basePool.length,
+    hasMore: false,
+    subcategories: subcats,
+    brands: furnitureCache.brands,
+  };
+}
+
+export async function getSlabsProducts(
+  optionsOrForceRefresh:
+    | boolean
+    | {
+        page?: number;
+        pageSize?: number;
+        searchQuery?: string;
+        selectedWoodMaterial?: string;
+        selectedLocation?: number | 'ALL';
+        forceRefresh?: boolean;
+      } = false
+) {
+  const isOptionsObj = typeof optionsOrForceRefresh === 'object' && optionsOrForceRefresh !== null;
+  const forceRefresh = isOptionsObj ? Boolean(optionsOrForceRefresh.forceRefresh) : Boolean(optionsOrForceRefresh);
+
+  const cookieStore = await cookies();
+  const supabase = createServerClient(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!, {
+    cookies: { getAll() { return cookieStore.getAll(); } }
+  });
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: "Unauthorized" };
+
+  const { data: profile } = await supabase.from('profiles').select('branch_id').eq('user_id', user.id).single();
+  const myBranchId = profile?.branch_id || 1;
+
+  const now = Date.now();
+  if (forceRefresh || !slabsCache || (now - slabsCache.timestamp >= SLABS_CACHE_TTL)) {
+    const slabOrFilter = "category_id.eq.SLABS,sku.ilike.ZLB%,sku.ilike.WOODSLABS%,sku.ilike.LEG-%";
+    const selectCols = `
+      id, name, sku, price, image_url, barcode, specs, category_id, length_cm, width_cm, thickness_cm,
+      collection_groups ( product_sup, tag, image_url, cover_image_url ),
+      stock ( branch_id, qty )
+    `;
+
+    // ยิงดึง 2 ช่วง (0..999 และ 1000..1999) พร้อมกันโดยไม่ต้องเสียรอบยิง COUNT ก่อน
+    const [res0, res1] = await Promise.all([
+      supabase.from('products').select(selectCols).or(slabOrFilter).order('id', { ascending: true }).range(0, 999),
+      supabase.from('products').select(selectCols).or(slabOrFilter).order('id', { ascending: true }).range(1000, 1999),
+    ]);
+
+    if (res0.error) {
+      return { success: false, error: "เกิดข้อผิดพลาดในการโหลดข้อมูลแผ่นไม้ ZENSLABS: " + res0.error.message };
+    }
+
+    const rawRows: any[] = [...(res0.data || []), ...(res1.data || [])];
+    if (res1.data && res1.data.length === 1000) {
+      const res2 = await supabase.from('products').select(selectCols).or(slabOrFilter).order('id', { ascending: true }).range(2000, 2999);
+      if (res2.data && res2.data.length > 0) rawRows.push(...res2.data);
+    }
+
+    const seenIds = new Set<number>();
+    const slabsData: any[] = [];
+    for (const row of rawRows) {
+      if (!seenIds.has(row.id)) {
+        seenIds.add(row.id);
+        slabsData.push(row);
+      }
+    }
+
+    const subcatSet = new Set<string>();
+
+    const formattedSlabs = slabsData.map((p) => {
+      const rawCol = Array.isArray(p.collection_groups) ? p.collection_groups[0] : p.collection_groups;
+      const rawSpecs = (p.specs && typeof p.specs === 'object') ? p.specs : {};
+
+      const resolvedDimensions =
+        rawSpecs.dimensions ||
+        rawSpecs.size ||
+        rawSpecs.size_raw ||
+        ((p.length_cm || rawSpecs.length_cm) && (p.width_cm || rawSpecs.width_cm)
+          ? `${p.length_cm || rawSpecs.length_cm}-${p.width_cm || rawSpecs.width_cm}${
+              p.thickness_cm || rawSpecs.thickness_cm ? `-${p.thickness_cm || rawSpecs.thickness_cm}` : ''
+            } MM`
+          : undefined);
+
+      let resolvedImage: string | null = null;
+      if (p.image_url && typeof p.image_url === 'string' && p.image_url.trim() !== '') {
+        resolvedImage = p.image_url;
+      } else if (Array.isArray(rawSpecs.images) && rawSpecs.images.length > 0 && rawSpecs.images[0]?.path) {
+        resolvedImage = rawSpecs.images[0].path;
+      } else if (rawCol?.image_url) {
+        resolvedImage = rawCol.image_url;
+      } else if (rawCol?.cover_image_url) {
+        resolvedImage = rawCol.cover_image_url;
+      }
+
+      let materialCategory = rawSpecs.material || rawCol?.product_sup;
+      const lowerName = (p.name || '').toLowerCase();
+      const skuLower = (p.sku || '').toLowerCase();
+      if (!materialCategory) {
+        if (lowerName.includes('walnut')) materialCategory = 'North American Black Walnut';
+        else if (lowerName.includes('oak')) materialCategory = 'French White Oak';
+        else if (lowerName.includes('maple')) materialCategory = 'European Maple Wood';
+        else if (lowerName.includes('olive')) materialCategory = 'Italian Olive Wood';
+        else if (lowerName.includes('teak')) materialCategory = 'Burmese Teak';
+        else if (lowerName.includes('afromosia')) materialCategory = 'Afromosia';
+        else if (lowerName.includes('leg') || lowerName.includes('stand') || skuLower.startsWith('leg')) materialCategory = 'ขาโต๊ะ / ขาตั้ง (Leg & Stand)';
+        else materialCategory = 'แผ่นไม้ / Wood Slabs';
+      } else if (skuLower.startsWith('leg') || lowerName.includes('leg') || lowerName.includes('ขาโต๊ะ') || lowerName.includes('stand')) {
+        materialCategory = 'ขาโต๊ะ / ขาตั้ง (Leg & Stand)';
+      }
+      subcatSet.add(materialCategory);
+
+      return {
+        id: p.id,
+        name: p.name,
+        sku: p.sku || '',
+        original_price: Number(p.price) || 0,
+        price: Number(p.price) || 0,
+        discount_label: '',
+        image_url: resolvedImage,
+        barcode: p.barcode || null,
+        product_sup: materialCategory,
+        category_id: 'SLABS',
+        isFurniture: false,
+        isSlab: true,
+        stocks: Array.isArray(p.stock) ? p.stock : [],
+        specs: {
+          dimensions: resolvedDimensions || null,
+          size: rawSpecs.size || resolvedDimensions || null,
+          material: rawSpecs.material || materialCategory || null,
+          width_cm: p.width_cm || rawSpecs.width_cm || null,
+          length_cm: p.length_cm || rawSpecs.length_cm || null,
+          thickness_cm: p.thickness_cm || rawSpecs.thickness_cm || null,
+          sku: rawSpecs.sku || null,
+          barcode: rawSpecs.barcode || null,
+          code: rawSpecs.code || null,
+        },
+        brand: 'ZENSLABS',
+      };
+    });
+
+    slabsCache = {
+      timestamp: now,
+      products: formattedSlabs,
+      subcategories: Array.from(subcatSet).sort(),
+      brands: ['ZENSLABS'],
+    };
   }
+
+  const filtered = filterAndSortCatalogItems(slabsCache.products, {
+    searchQuery: isOptionsObj ? optionsOrForceRefresh.searchQuery : '',
+    selectedSubcategory: isOptionsObj ? optionsOrForceRefresh.selectedWoodMaterial : 'ALL',
+    selectedLocation: isOptionsObj ? optionsOrForceRefresh.selectedLocation : myBranchId,
+    myBranchId,
+  });
+
+  if (isOptionsObj && (optionsOrForceRefresh.page !== undefined || optionsOrForceRefresh.pageSize !== undefined)) {
+    const page = Math.max(1, optionsOrForceRefresh.page || 1);
+    const pageSize = Math.max(1, optionsOrForceRefresh.pageSize || 100);
+    const startIndex = (page - 1) * pageSize;
+    const pagedProducts = filtered.slice(startIndex, startIndex + pageSize);
+
+    return {
+      success: true,
+      products: pagedProducts,
+      totalCount: filtered.length,
+      catalogTotalCount: slabsCache.products.length,
+      page,
+      pageSize,
+      hasMore: startIndex + pageSize < filtered.length,
+      subcategories: slabsCache.subcategories,
+      brands: slabsCache.brands,
+    };
+  }
+
+  return {
+    success: true,
+    products: filtered,
+    totalCount: filtered.length,
+    catalogTotalCount: slabsCache.products.length,
+    hasMore: false,
+    subcategories: slabsCache.subcategories,
+    brands: slabsCache.brands,
+  };
 }
 
 export async function createOrGetCustomProduct(payload: {

@@ -131,17 +131,41 @@ export default function ExternalProductModal({
     }
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim()
-      list = list.filter(
-        (p) =>
-          p.name?.toLowerCase().includes(q) ||
-          p.sku?.toLowerCase().includes(q) ||
-          p.product_sup?.toLowerCase().includes(q) ||
-          (p.brand && String(p.brand).toLowerCase().includes(q)) ||
-          (p.specs?.material && String(p.specs.material).toLowerCase().includes(q))
-      )
+      const qCompact = q.replace(/[-_\s/×x*]/g, '')
+      list = list.filter((p) => {
+        const fields = [
+          p.name,
+          p.sku,
+          p.barcode,
+          p.product_sup,
+          p.brand,
+          p.specs?.dimensions,
+          p.specs?.size,
+          p.specs?.material
+        ]
+          .filter(Boolean)
+          .map((v) => String(v).toLowerCase())
+
+        if (fields.some((f) => f.includes(q))) return true
+        if (qCompact.length >= 2 && fields.some((f) => f.replace(/[-_\s/×x*]/g, '').includes(qCompact))) return true
+        return false
+      })
     }
-    return list
-  }, [furnitureList, selectedBrand, selectedSubcat, searchQuery])
+    return [...list].sort((a, b) => {
+      const aLoc = Number(a.stocks?.find((s: any) => s.branch_id === selectedBranchId)?.qty || 0)
+      const bLoc = Number(b.stocks?.find((s: any) => s.branch_id === selectedBranchId)?.qty || 0)
+      const aTotal = a.stocks?.reduce((sum: number, s: any) => sum + Number(s.qty || 0), 0) || 0
+      const bTotal = b.stocks?.reduce((sum: number, s: any) => sum + Number(s.qty || 0), 0) || 0
+      const aTier = aLoc > 0 ? 0 : aTotal > 0 ? 1 : 2
+      const bTier = bLoc > 0 ? 0 : bTotal > 0 ? 1 : 2
+      if (aTier !== bTier) return aTier - bTier
+      const aHasPrice = Number(a.price) > 0 ? 0 : 1
+      const bHasPrice = Number(b.price) > 0 ? 0 : 1
+      if (aHasPrice !== bHasPrice) return aHasPrice - bHasPrice
+      if (aTotal !== bTotal) return bTotal - aTotal
+      return String(a.name || '').localeCompare(String(b.name || ''))
+    })
+  }, [furnitureList, selectedBrand, selectedSubcat, searchQuery, selectedBranchId])
 
   // สุ่ม SKU อัตโนมัติสำหรับ Custom Item
   const generateRandomSku = () => {
