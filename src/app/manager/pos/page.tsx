@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import { getPosData, getPosProductsPage, processCheckout, CheckoutPayload, getNearbyStock, getOrderForEdit, PosSetBundle, validatePosCoupon, updateProductPrice, getSlabsProducts, getFurnitureProducts } from '@/actions/pos'
-import { FolderOpen, Store, Truck, Receipt, MapPin, Save, AlertTriangle, AlertCircle, Info, X, Plus, Minus, FileText, Trash2, Printer, RefreshCw, Clock, Menu, Sparkles, Ticket, SlidersHorizontal, Armchair, Tag, Edit3, Loader2, Layers, Package, Ruler, FileCheck, Calculator, User, Building2, Users, Percent, Check, ChevronRight, Search, Box } from 'lucide-react'
+import { FolderOpen, Store, Truck, Receipt, MapPin, Save, AlertTriangle, AlertCircle, Info, X, Plus, Minus, FileText, Trash2, Printer, RefreshCw, Clock, Menu, Sparkles, Ticket, SlidersHorizontal, Armchair, Tag, Edit3, Loader2, Layers, Package, Ruler, FileCheck, Calculator, User, Building2, Users, Percent, Check, ChevronRight, Search, Box, Camera } from 'lucide-react'
 import { toast } from 'sonner'
 import StorefrontFilterDrawer from '@/components/pos/StorefrontFilterDrawer'
 import StorefrontFilterBar from '@/components/pos/StorefrontFilterBar'
@@ -24,6 +24,8 @@ import {
 
 // โหลด Component แผนที่แบบไม่ทำ SSR
 const MapPicker = dynamic(() => import('@/components/MapPicker'), { ssr: false })
+// โหลด Component สแกนกล้องแบบไม่ทำ SSR
+const CameraScannerModal = dynamic(() => import('@/components/pos/CameraScannerModal'), { ssr: false })
 
 interface Branch { id: number; branch_name: string }
 interface Product {
@@ -156,6 +158,7 @@ export default function ManagerPOSPage() {
   } | null>(null)
   const [isValidatingCoupon, setIsValidatingCoupon] = useState(false)
   const [couponErrorMsg, setCouponErrorMsg] = useState<string | null>(null)
+  const [isCameraScannerOpen, setIsCameraScannerOpen] = useState(false)
 
   // ตัวเลือกสีและวัสดุจากเซิร์ฟเวอร์เพื่อให้ครอบคลุมสินค้าทั้งหมด 5,000 ชิ้น
   const storefrontColorOptions = useMemo(() => {
@@ -1390,22 +1393,20 @@ export default function ManagerPOSPage() {
   const totalFinalPriceBeforeSpecial = cart.reduce((sum, item) => sum + item.price * item.quantity, 0)
   const promotionDiscountAmount = totalOriginalPrice - totalFinalPriceBeforeSpecial
 
-  // 🏷️ ยอดสินค้าที่ไม่มีส่วนลดรายชิ้น (มีสิทธิ์เข้าร่วมโค้ดลด ตามกฎ: สินค้าที่ลดรายชิ้นแล้วจะไม่ร่วมโค้ดลด)
+  // 🏷️ ฐานคำนวณคูปองแบบลด 2 ชั้น (On-top 2-Tier Compound Discount):
+  // ชั้นที่ 1: หักส่วนลดสินค้าหน้าร้าน (รายชิ้น) และส่วนลดเซ็ตออกก่อน
+  // ชั้นที่ 2: นำยอดคงเหลือหลังหักชั้นที่ 1 มาใช้เป็นฐานคำนวณส่วนลดคูปอง (เช่น ลด 45% เหลือ 5,000 บาท แล้วนำคูปองมาลดอีก 15% จาก 5,000 บาท)
   const eligibleForCouponSubtotal = useMemo(() => {
-    return cart
-      .filter(item => {
-        const hasItemDiscount = Boolean(item.discount_id) || Boolean(item.discount_label) || (item.original_price > item.price)
-        return !hasItemDiscount
-      })
-      .reduce((sum, item) => sum + (item.price * item.quantity), 0)
-  }, [cart])
+    return Math.max(0, totalFinalPriceBeforeSpecial - totalSetDiscountAmount)
+  }, [totalFinalPriceBeforeSpecial, totalSetDiscountAmount])
 
-  // 🎟️ ฟังก์ชันตรวจสอบและใช้โค้ดคูปอง
-  const handleApplyCoupon = async () => {
+  // 🎟️ ฟังก์ชันตรวจสอบและใช้โค้ดคูปอง (รองรับทั้งการพิมพ์และสแกนผ่านกล้อง)
+  const handleApplyCoupon = async (codeOverride?: string) => {
     setCouponErrorMsg(null)
-    if (!couponInput.trim()) {
-      setCouponErrorMsg("กรุณากรอกรหัสคูปอง")
-      toast.warning("กรุณากรอกรหัสคูปอง")
+    const codeToValidate = (typeof codeOverride === 'string' ? codeOverride : couponInput).trim()
+    if (!codeToValidate) {
+      setCouponErrorMsg("กรุณากรอกหรือสแกนรหัสคูปอง")
+      toast.warning("กรุณากรอกหรือสแกนรหัสคูปอง")
       return
     }
 
@@ -1423,7 +1424,7 @@ export default function ManagerPOSPage() {
     }
 
     setIsValidatingCoupon(true)
-    const res = await validatePosCoupon(couponInput.trim(), currentSubtotal, eligibleForCouponSubtotal)
+    const res = await validatePosCoupon(codeToValidate, currentSubtotal, eligibleForCouponSubtotal)
     setIsValidatingCoupon(false)
 
     if (res.success && res.coupon) {
@@ -3649,11 +3650,11 @@ export default function ManagerPOSPage() {
               <div className="space-y-2.5">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                    <Ticket className="w-3.5 h-3.5 text-slate-500" /> คูปองส่วนลด (Coupon Code)
+                    <Ticket className="w-3.5 h-3.5 text-slate-500" /> คูปองส่วนลด On-top (Coupon Code)
                   </span>
                   {cart.length > 0 && (
-                    <span className="text-[10px] text-slate-400 font-medium">
-                      ยอดที่ร่วมคำนวณคูปอง: <strong className="text-slate-800 font-mono">฿{eligibleForCouponSubtotal.toLocaleString()}</strong>
+                    <span className="text-[10px] text-slate-500 font-medium">
+                      ฐานคิดคูปอง (หลังหักส่วนลดชั้นแรก): <strong className="text-slate-900 font-mono">฿{eligibleForCouponSubtotal.toLocaleString()}</strong>
                     </span>
                   )}
                 </div>
@@ -3666,28 +3667,15 @@ export default function ManagerPOSPage() {
                   </div>
                 )}
 
-                {/* แจ้งเตือนเมื่อสินค้าทุกชิ้นในบิลมีส่วนลดรายชิ้นอยู่แล้ว */}
-                {cart.length > 0 && eligibleForCouponSubtotal <= 0 && (
-                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 space-y-1">
-                    <div className="flex items-center gap-1.5 font-bold text-slate-800">
-                      <AlertTriangle className="w-4 h-4 text-slate-600 shrink-0" />
-                      <span>ไม่สามารถใช้คูปองส่วนลดกับบิลนี้ได้</span>
-                    </div>
-                    <p className="text-[11px] text-slate-500 leading-relaxed pl-5.5">
-                      สินค้าทุกชิ้นในบิลนี้ได้รับส่วนลดรายชิ้น/ราคาโปรโมชั่นไปแล้ว ตามกฎจะไม่สามารถนำคูปองมาลดทับซ้อนได้ครับ (หากต้องการลดเพิ่ม ให้ใช้ &quot;ส่วนลดพิเศษท้ายบิล&quot; ด้านล่าง)
-                    </p>
-                  </div>
-                )}
-
-                {/* แจ้งเตือนเมื่อมีสินค้าบางชิ้นที่ลดรายชิ้นไปแล้ว */}
-                {cart.length > 0 && eligibleForCouponSubtotal > 0 && eligibleForCouponSubtotal < totalFinalPriceBeforeSpecial && (
+                {/* อธิบายการคิดส่วนลดแบบ 2 ชั้น (On-top) เมื่อสินค้ามีส่วนลดรายชิ้นอยู่แล้ว */}
+                {cart.length > 0 && promotionDiscountAmount > 0 && (
                   <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 space-y-0.5">
-                    <div className="flex items-center gap-1.5 font-semibold text-slate-800 text-[11px]">
-                      <Info className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                      <span>คำนวณเฉพาะสินค้าที่ไม่มีส่วนลดรายชิ้น</span>
+                    <div className="flex items-center gap-1.5 font-semibold text-slate-900 text-[11px]">
+                      <Info className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+                      <span>คำนวณส่วนลดแบบ 2 ชั้น (On-top Compound Discount)</span>
                     </div>
                     <p className="text-[10px] text-slate-500 leading-relaxed pl-5">
-                      ยอดรวมบิล ฿{totalFinalPriceBeforeSpecial.toLocaleString()} มีสินค้าลดราคาแล้ว ฿{(totalFinalPriceBeforeSpecial - eligibleForCouponSubtotal).toLocaleString()} ➔ ส่วนลดคูปองจะคิดจากยอด <strong>฿{eligibleForCouponSubtotal.toLocaleString()}</strong> เท่านั้น
+                      ราคาเต็ม ฿{totalOriginalPrice.toLocaleString()} หักส่วนลดชั้นแรกแล้ว -฿{promotionDiscountAmount.toLocaleString()} เหลือยอดสุทธิ <strong>฿{eligibleForCouponSubtotal.toLocaleString()}</strong> ➔ คูปองจะนำมาคำนวณลดชั้นที่ 2 จากยอดคงเหลือ <strong>฿{eligibleForCouponSubtotal.toLocaleString()}</strong>
                     </p>
                   </div>
                 )}
@@ -3772,7 +3760,7 @@ export default function ManagerPOSPage() {
                             ? "กรุณาเลือกสินค้าก่อน..."
                             : eligibleForCouponSubtotal <= 0
                               ? "ไม่สามารถใช้คูปองได้ (สินค้ามีส่วนลดครบแล้ว)"
-                              : "กรอกโค้ดส่วนลด..."
+                              : "กรอกโค้ด (กด Enter) หรือกดกล้องสแกน..."
                         }
                         value={couponInput}
                         onChange={(e) => {
@@ -3784,11 +3772,16 @@ export default function ManagerPOSPage() {
                       />
                       <button
                         type="button"
-                        disabled={isValidatingCoupon || !couponInput.trim() || cart.length === 0 || eligibleForCouponSubtotal <= 0}
-                        onClick={handleApplyCoupon}
-                        className="px-4 py-2.5 bg-[#1E293B] hover:bg-slate-800 disabled:opacity-40 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 flex items-center gap-1.5 disabled:cursor-not-allowed"
+                        disabled={isValidatingCoupon || cart.length === 0 || eligibleForCouponSubtotal <= 0}
+                        onClick={() => setIsCameraScannerOpen(true)}
+                        className="px-3.5 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 disabled:opacity-40 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 flex items-center justify-center gap-1.5 shadow-sm disabled:cursor-not-allowed"
+                        title="เปิดกล้องสแกน QR Code คูปอง (สำหรับ iPad / มือถือ)"
                       >
-                        {isValidatingCoupon ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : 'ใช้โค้ด'}
+                        {isValidatingCoupon ? (
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Camera className="w-4 h-4" />
+                        )}
                       </button>
                     </div>
 
@@ -3886,7 +3879,7 @@ export default function ManagerPOSPage() {
                 </div>
                 {promotionDiscountAmount > 0 && (
                   <div className="flex justify-between text-emerald-700 font-medium">
-                    <span>ส่วนลดสินค้าหน้าร้าน (รายชิ้น)</span>
+                    <span>ชั้นที่ 1: ส่วนลดสินค้าหน้าร้าน (รายชิ้น)</span>
                     <span>- {promotionDiscountAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span>
                   </div>
                 )}
@@ -3896,10 +3889,16 @@ export default function ManagerPOSPage() {
                     <span>- {totalSetDiscountAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span>
                   </div>
                 )}
+                {(promotionDiscountAmount > 0 || totalSetDiscountAmount > 0) && (
+                  <div className="flex justify-between text-slate-700 font-semibold pt-1 border-t border-dotted border-slate-200">
+                    <span>ยอดคงเหลือหลังลดชั้นที่ 1 (ฐานคิดคูปอง On-top)</span>
+                    <span>{eligibleForCouponSubtotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span>
+                  </div>
+                )}
                 {appliedCoupon && (
                   couponDiscountAmount > 0 ? (
                     <div className="flex justify-between text-emerald-700 font-bold">
-                      <span>ส่วนลดคูปอง ({appliedCoupon.code})</span>
+                      <span>ชั้นที่ 2: ส่วนลดคูปอง On-top ({appliedCoupon.code})</span>
                       <span>- {couponDiscountAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span>
                     </div>
                   ) : (
@@ -4232,6 +4231,17 @@ export default function ManagerPOSPage() {
           </div>
         </div>
       )}
+
+      {/* 📷 Modal สแกนกล้องสำหรับอ่าน QR Code / บาร์โค้ด คูปอง */}
+      <CameraScannerModal
+        isOpen={isCameraScannerOpen}
+        onClose={() => setIsCameraScannerOpen(false)}
+        onScan={(scannedCode) => {
+          setCouponInput(scannedCode)
+          handleApplyCoupon(scannedCode)
+        }}
+        title="สแกน QR Code คูปองส่วนลด"
+      />
 
     </div>
   )

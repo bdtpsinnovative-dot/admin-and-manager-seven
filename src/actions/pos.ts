@@ -1097,7 +1097,7 @@ export async function validatePosCoupon(code: string, currentSubtotal: number, e
     if (promo.usage_limit && promo.used_count >= promo.usage_limit) {
       return { success: false, error: "คูปองนี้ถูกใช้งานครบจำนวนสิทธิ์แล้ว" }
     }
-    let isTopUp = false;
+    let isTopUp = true;
     let isTiered = false;
     let tiers: any[] = [];
     let attribution: {
@@ -1113,7 +1113,9 @@ export async function validatePosCoupon(code: string, currentSubtotal: number, e
     try {
       if (promo.description && promo.description.trim().startsWith('{')) {
         const parsed = JSON.parse(promo.description);
-        isTopUp = Boolean(parsed.is_top_up || parsed.isTopUp);
+        if (parsed.is_top_up !== undefined || parsed.isTopUp !== undefined) {
+          isTopUp = parsed.is_top_up !== false && parsed.isTopUp !== false;
+        }
         if (parsed.is_tiered && Array.isArray(parsed.tiers) && parsed.tiers.length > 0) {
           isTiered = true;
           tiers = parsed.tiers;
@@ -1126,28 +1128,19 @@ export async function validatePosCoupon(code: string, currentSubtotal: number, e
             note: parsed.note || '',
             isTiered,
             tiers,
-            isTopUp,
+            isTopUp: true,
           };
         }
       }
     } catch {}
 
-    if (!isTopUp && (promo.title.toLowerCase().includes('top up') || promo.title.toLowerCase().includes('top-up') || promo.title.includes('ลด On-top') || promo.title.includes('Top up') || promo.title.includes('Top-up'))) {
-      isTopUp = true;
-    }
-
-    // 🏷️ ฐานคำนวณส่วนลด:
-    // หากเป็นคูปองแบบ Top-up (On-top) สามารถลดเพิ่มจากยอดขายปัจจุบัน (currentSubtotal) ได้เลย แม้สินค้าในบิลจะลด 50% แล้วก็ตาม
-    // หากไม่ใช่ Top-up จะคิดเฉพาะสินค้าที่ไม่มีส่วนลดรายชิ้น (eligibleSubtotal)
-    const calcBase = isTopUp 
-      ? currentSubtotal 
-      : (eligibleSubtotal !== undefined ? eligibleSubtotal : currentSubtotal);
+    // 🏷️ ฐานคำนวณส่วนลดแบบ 2 ชั้น (On-top 2-Tier Compound Discount):
+    // ชั้นที่ 1: หักส่วนลดรายชิ้น/โปรเซ็ตออกก่อน ได้ยอดคงเหลือ currentSubtotal (เช่น ลด 45% เหลือ 5,000 บาท)
+    // ชั้นที่ 2: นำคูปองมาคำนวณลดจากยอดคงเหลือ currentSubtotal (เช่น ลดเพิ่มอีก 15% ของ 5,000 บาท) เพื่อไม่ให้ลดทับซ้อนจากราคาเต็ม
+    const calcBase = currentSubtotal > 0 ? currentSubtotal : (eligibleSubtotal || 0);
 
     if (calcBase <= 0) {
-      if (isTopUp) {
-        return { success: false, error: "ยอดรวมสินค้าในบิลต้องมากกว่า 0 บาท" }
-      }
-      return { success: false, error: "สินค้าในบิลมีส่วนลดรายชิ้นอยู่แล้ว จึงไม่สามารถใช้โค้ดลดร่วมได้ครับ (ต้องใช้โค้ดประเภท Top-up เท่านั้น)" }
+      return { success: false, error: "ยอดรวมสินค้าในบิลต้องมากกว่า 0 บาท" }
     }
 
     let discountAmount = 0;
@@ -1232,16 +1225,11 @@ export async function validatePosCoupon(code: string, currentSubtotal: number, e
       return { success: false, error: "ส่วนลดนี้หมดอายุแล้ว" }
     }
 
-    const isTopUp = Boolean(disc.name && (disc.name.toLowerCase().includes('top up') || disc.name.toLowerCase().includes('top-up') || disc.name.includes('on-top') || disc.name.includes('Top up')));
-    const calcBase = isTopUp 
-      ? currentSubtotal 
-      : (eligibleSubtotal !== undefined ? eligibleSubtotal : currentSubtotal);
+    const isTopUp = true;
+    const calcBase = currentSubtotal > 0 ? currentSubtotal : (eligibleSubtotal || 0);
 
     if (calcBase <= 0) {
-      if (isTopUp) {
-        return { success: false, error: "ยอดรวมสินค้าในบิลต้องมากกว่า 0 บาท" }
-      }
-      return { success: false, error: "สินค้าในบิลมีส่วนลดรายชิ้นอยู่แล้ว จึงไม่สามารถใช้โค้ดลดร่วมได้ครับ (ต้องใช้โค้ดประเภท Top-up เท่านั้น)" }
+      return { success: false, error: "ยอดรวมสินค้าในบิลต้องมากกว่า 0 บาท" }
     }
 
     let discountAmount = 0

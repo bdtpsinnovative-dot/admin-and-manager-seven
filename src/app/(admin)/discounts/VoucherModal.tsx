@@ -29,17 +29,17 @@ import {
 export interface VoucherItem {
   id: string | number;
   title: string;
-  coupon_code?: string;
+  coupon_code?: string | null;
   is_tiered?: boolean;
   tiers?: Array<{
     min_spend: number | string;
-    discount_type: "percentage" | "fixed";
+    discount_type: "percentage" | "fixed" | "fixed_amount";
     discount_value: number | string;
   }>;
-  discount_type?: "percentage" | "fixed";
+  discount_type?: "percentage" | "fixed" | "fixed_amount";
   discount_value?: number | string;
-  min_spend?: number | string;
-  max_discount_amount?: number | string;
+  min_spend?: number | string | null;
+  max_discount_amount?: number | string | null;
   collection_name?: string | null;
   collection_image?: string | null;
   image_url?: string | null;
@@ -52,7 +52,26 @@ export interface VoucherItem {
   start_date?: string | null;
   end_date?: string | null;
   usage_limit?: number | null;
-  description?: string;
+  used_count?: number | null;
+  is_active?: boolean;
+  description?: string | null;
+}
+
+export function isVoucherItemUsable(v: Partial<VoucherItem> | any): boolean {
+  if (v.is_active === false) return false;
+  if (v.end_date) {
+    const endMs = new Date(v.end_date).getTime();
+    if (!isNaN(endMs) && endMs < Date.now()) return false;
+  }
+  if (
+    v.usage_limit !== null &&
+    v.usage_limit !== undefined &&
+    Number(v.usage_limit) > 0 &&
+    Number(v.used_count || 0) >= Number(v.usage_limit)
+  ) {
+    return false;
+  }
+  return true;
 }
 
 interface VoucherModalProps {
@@ -97,15 +116,28 @@ function buildQrStickers(
 
 interface VoucherPairItem {
   left: VoucherItem;
-  right: VoucherItem;
+  right: VoucherItem | null;
   id: string;
 }
 
 function buildVoucherPairs(vouchers: VoucherItem[], autoFill: boolean): VoucherPairItem[] {
   if (!vouchers || vouchers.length === 0) return [];
-  const targetPairs = autoFill ? 5 : Math.max(1, Math.ceil(vouchers.length / 2));
-  const pairs: VoucherPairItem[] = [];
+  if (!autoFill) {
+    const pairs: VoucherPairItem[] = [];
+    for (let i = 0; i < vouchers.length; i += 2) {
+      const left = vouchers[i];
+      const right = i + 1 < vouchers.length ? vouchers[i + 1] : null;
+      pairs.push({
+        left,
+        right,
+        id: `pair_${i}_${left.id}_${right ? right.id : "empty"}`,
+      });
+    }
+    return pairs;
+  }
 
+  const targetPairs = 5;
+  const pairs: VoucherPairItem[] = [];
   for (let i = 0; i < targetPairs; i++) {
     if (vouchers.length === 1) {
       pairs.push({
@@ -128,6 +160,25 @@ function buildVoucherPairs(vouchers: VoucherItem[], autoFill: boolean): VoucherP
   }
 
   return pairs;
+}
+
+function buildSheetCards(
+  vouchers: VoucherItem[],
+  layout: SheetLayout,
+  autoFill: boolean
+): VoucherItem[] {
+  if (!vouchers || vouchers.length === 0) return [];
+  if (!autoFill) return vouchers;
+  const target = layout === "8_business_cards" ? 8 : 10;
+  const result: VoucherItem[] = [];
+  for (let i = 0; i < target; i++) {
+    const v = vouchers[i % vouchers.length];
+    result.push({
+      ...v,
+      id: `${v.id}_card_${i}`,
+    });
+  }
+  return result;
 }
 
 function getBrandLogoSrc(brand: BrandLogoChoice = "dual", theme: ThemeType = "ivory") {
@@ -167,10 +218,10 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
   const [viewMode, setViewMode] = useState<ViewMode>("sheet_a4");
   const [theme, setTheme] = useState<ThemeType>("ivory");
   const [brandChoice, setBrandChoice] = useState<BrandLogoChoice>("dual");
-  const [sheetLayout, setSheetLayout] = useState<SheetLayout>("duo_5_pairs");
-  const [singleFormat, setSingleFormat] = useState<SingleFormat>("duo_pair");
+  const [sheetLayout, setSheetLayout] = useState<SheetLayout>("10_business_cards");
+  const [singleFormat, setSingleFormat] = useState<SingleFormat>("business_card");
   const [qrStickerSize, setQrStickerSize] = useState<QrStickerSize>("5x6_cm");
-  const [autoFillSheet, setAutoFillSheet] = useState(true);
+  const [autoFillSheet, setAutoFillSheet] = useState(false);
   const [showPhoto, setShowPhoto] = useState(true);
   const [customImage, setCustomImage] = useState<string | null>(null);
   const [qrCodes, setQrCodes] = useState<Record<string, string>>({});
@@ -180,6 +231,37 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
   const singleVoucherRef = useRef<HTMLDivElement>(null);
   const sheetA4Ref = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Filter to only usable vouchers (active, not expired, and remaining quota > 0)
+  const usableVouchers = useMemo(() => {
+    if (!vouchers || vouchers.length === 0) return [];
+    const valid = vouchers.filter(isVoucherItemUsable);
+    const baseList = valid.length > 0 ? valid : vouchers;
+
+    // If a single voucher code was opened and has a specific remaining usage quota (e.g. 2 uses),
+    // expand to its remaining usable count (capped at 54 for a single sheet)
+    if (baseList.length === 1) {
+      const item = baseList[0];
+      const limit = Number(item.usage_limit || 0);
+      const used = Number(item.used_count || 0);
+      const remaining = limit > 1 ? Math.min(54, Math.max(1, limit - used)) : 1;
+      if (remaining > 1) {
+        return Array.from({ length: remaining }, (_, idx) => ({
+          ...item,
+          id: `${item.id}_quota_${idx}`,
+        }));
+      }
+    }
+
+    return baseList;
+  }, [vouchers]);
+
+  useEffect(() => {
+    if (isOpen) {
+      setCurrentIndex(0);
+      setAutoFillSheet(false);
+    }
+  }, [isOpen, vouchers]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -195,13 +277,14 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
 
   // Generate QR codes for all vouchers
   useEffect(() => {
-    if (!isOpen || vouchers.length === 0) return;
+    if (!isOpen || usableVouchers.length === 0) return;
     let isMounted = true;
 
     async function generateQRs() {
       const qrs: Record<string, string> = {};
-      for (const v of vouchers) {
+      for (const v of usableVouchers) {
         const code = v.coupon_code || String(v.id);
+        if (qrs[code]) continue;
         try {
           const url = await QRCode.toDataURL(code, {
             width: 320,
@@ -223,21 +306,26 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
     return () => {
       isMounted = false;
     };
-  }, [isOpen, vouchers]);
+  }, [isOpen, usableVouchers]);
 
   const duoPairs = useMemo(
-    () => buildVoucherPairs(vouchers, autoFillSheet),
-    [vouchers, autoFillSheet]
+    () => buildVoucherPairs(usableVouchers, autoFillSheet),
+    [usableVouchers, autoFillSheet]
+  );
+
+  const sheetCards = useMemo(
+    () => buildSheetCards(usableVouchers, sheetLayout, autoFillSheet),
+    [usableVouchers, sheetLayout, autoFillSheet]
   );
 
   const qrStickers = useMemo(
-    () => buildQrStickers(vouchers, qrStickerSize, autoFillSheet),
-    [vouchers, qrStickerSize, autoFillSheet]
+    () => buildQrStickers(usableVouchers, qrStickerSize, autoFillSheet),
+    [usableVouchers, qrStickerSize, autoFillSheet]
   );
 
-  if (!isOpen || vouchers.length === 0) return null;
+  if (!isOpen || usableVouchers.length === 0) return null;
 
-  const currentVoucher = vouchers[currentIndex] || vouchers[0];
+  const currentVoucher = usableVouchers[currentIndex] || usableVouchers[0];
 
   const copyCode = (code: string) => {
     navigator.clipboard?.writeText(code);
@@ -614,7 +702,7 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
                 พิมพ์นามบัตรและคูปองส่วนลด
               </h2>
               <span className="px-2 py-0.5 rounded-md bg-stone-100 text-stone-600 text-xs font-mono font-medium">
-                {vouchers.length} ใบ
+                ใช้งานได้ {usableVouchers.length} ใบ
               </span>
             </div>
             <p className="text-xs text-stone-500 mt-0.5">
@@ -877,11 +965,11 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
                   className={`px-2.5 py-1.5 rounded-md transition text-xs cursor-pointer border ${
                     autoFillSheet
                       ? "bg-amber-50 border-amber-300 text-amber-900 font-semibold shadow-2xs"
-                      : "bg-white border-stone-200 text-stone-600 hover:text-stone-900 font-medium"
+                      : "bg-white border-stone-900 text-stone-900 font-semibold shadow-2xs"
                   }`}
-                  title="เปิดเพื่อเติมคูปองให้เต็มแผ่น 5 คู่ (10 ใบ) บน A4 อัตโนมัติ ป้องกันพื้นที่ว่างโล่ง"
+                  title="ค่าเริ่มต้นจะแสดงเฉพาะจำนวนคูปองที่ใช้งานได้จริง กดเพื่อสลับเป็นพิมพ์ซ้ำให้เต็มแผ่น A4"
                 >
-                  {autoFillSheet ? "✓ เต็มแผ่น (5 คู่)" : "ตามที่เลือก"}
+                  {autoFillSheet ? "โหมด: พิมพ์ซ้ำเต็มแผ่น A4" : `✓ ตามจำนวนที่ใช้งานได้ (${usableVouchers.length} ใบ)`}
                 </button>
               </div>
             )}
@@ -899,9 +987,9 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
                           ? "bg-white text-stone-900 font-semibold shadow-2xs"
                           : "text-stone-600 hover:text-stone-900"
                       }`}
-                      title="กว้าง 5 ซม. สูง 6 ซม. (50 × 60 มม.) พิมพ์ได้ 12 ดวงต่อแผ่น A4"
+                      title="กว้าง 5 ซม. สูง 6 ซม. (50 × 60 มม.) พิมพ์ได้สูงสุด 12 ดวงต่อแผ่น A4"
                     >
-                      5 × 6 ซม. (12 ดวง)
+                      5 × 6 ซม.
                     </button>
                     <button
                       type="button"
@@ -911,9 +999,9 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
                           ? "bg-white text-stone-900 font-semibold shadow-2xs"
                           : "text-stone-600 hover:text-stone-900 font-medium"
                       }`}
-                      title="สี่เหลี่ยม 1 นิ้ว (2.54 × 2.54 ซม.) พิมพ์ได้ 54 ดวงต่อแผ่น A4"
+                      title="สี่เหลี่ยม 1 นิ้ว (2.54 × 2.54 ซม.) พิมพ์ได้สูงสุด 54 ดวงต่อแผ่น A4"
                     >
-                      1 นิ้ว (54 ดวง)
+                      1 นิ้ว
                     </button>
                     <button
                       type="button"
@@ -923,9 +1011,9 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
                           ? "bg-white text-stone-900 font-semibold shadow-2xs"
                           : "text-stone-600 hover:text-stone-900 font-medium"
                       }`}
-                      title="สี่เหลี่ยม 1.5 นิ้ว (3.81 × 3.81 ซม.) พิมพ์ได้ 24 ดวงต่อแผ่น A4"
+                      title="สี่เหลี่ยม 1.5 นิ้ว (3.81 × 3.81 ซม.) พิมพ์ได้สูงสุด 24 ดวงต่อแผ่น A4"
                     >
-                      1.5 นิ้ว (24 ดวง)
+                      1.5 นิ้ว
                     </button>
                     <button
                       type="button"
@@ -935,9 +1023,9 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
                           ? "bg-white text-stone-900 font-semibold shadow-2xs"
                           : "text-stone-600 hover:text-stone-900 font-medium"
                       }`}
-                      title="สี่เหลี่ยม 2 นิ้ว (5.08 × 5.08 ซม.) พิมพ์ได้ 12 ดวงต่อแผ่น A4"
+                      title="สี่เหลี่ยม 2 นิ้ว (5.08 × 5.08 ซม.) พิมพ์ได้สูงสุด 12 ดวงต่อแผ่น A4"
                     >
-                      2 นิ้ว (12 ดวง)
+                      2 นิ้ว
                     </button>
                   </div>
                 </div>
@@ -948,13 +1036,13 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
                   className={`px-2.5 py-1.5 rounded-md transition text-xs cursor-pointer border ${
                     autoFillSheet
                       ? "bg-amber-50 border-amber-300 text-amber-900 font-semibold shadow-2xs"
-                      : "bg-white border-stone-200 text-stone-600 hover:text-stone-900 font-medium"
+                      : "bg-white border-stone-900 text-stone-900 font-semibold shadow-2xs"
                   }`}
-                  title="เปิดเพื่อพิมพ์สติกเกอร์ให้เต็มแผ่น A4 อัตโนมัติ"
+                  title="ค่าเริ่มต้นจะแสดงเฉพาะจำนวนคูปองที่ใช้งานได้จริง กดเพื่อสลับเป็นพิมพ์ซ้ำให้เต็มแผ่น A4"
                 >
                   {autoFillSheet
-                    ? `✓ เต็มแผ่น (${getStickerTargetCount(qrStickerSize)} ดวง)`
-                    : `ตามที่เลือก (${vouchers.length} ดวง)`}
+                    ? `โหมด: พิมพ์ซ้ำเต็มแผ่น (${getStickerTargetCount(qrStickerSize)} ดวง)`
+                    : `✓ ตามจำนวนที่ใช้งานได้ (${usableVouchers.length} ดวง)`}
                 </button>
               </div>
             )}
@@ -1051,7 +1139,7 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
                   </div>
                 )}
 
-                {vouchers.length > 1 && (
+                {usableVouchers.length > 1 && (
                   <div className="flex items-center gap-1.5 bg-stone-200/60 p-0.5 rounded-lg">
                     <button
                       type="button"
@@ -1062,12 +1150,12 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
                       <ChevronLeft className="w-4 h-4" />
                     </button>
                     <span className="text-xs font-mono font-medium text-stone-700 px-1">
-                      {currentIndex + 1} / {vouchers.length}
+                      {currentIndex + 1} / {usableVouchers.length}
                     </span>
                     <button
                       type="button"
-                      onClick={() => setCurrentIndex((prev) => Math.min(vouchers.length - 1, prev + 1))}
-                      disabled={currentIndex === vouchers.length - 1}
+                      onClick={() => setCurrentIndex((prev) => Math.min(usableVouchers.length - 1, prev + 1))}
+                      disabled={currentIndex === usableVouchers.length - 1}
                       className="w-6 h-6 rounded flex items-center justify-center text-stone-600 disabled:opacity-30 hover:bg-white transition cursor-pointer"
                     >
                       <ChevronRight className="w-4 h-4" />
@@ -1100,24 +1188,18 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
                   <DuoVoucherPair
                     voucherLeft={currentVoucher}
                     voucherRight={
-                      vouchers.length > 1
-                        ? vouchers[(currentIndex + 1) % vouchers.length]
-                        : currentVoucher
+                      usableVouchers.length > 1
+                        ? usableVouchers[(currentIndex + 1) % usableVouchers.length]
+                        : null
                     }
                     qrCodeLeft={qrCodes[currentVoucher.coupon_code || String(currentVoucher.id)]}
                     qrCodeRight={
-                      qrCodes[
-                        (vouchers.length > 1
-                          ? vouchers[(currentIndex + 1) % vouchers.length]
-                          : currentVoucher
-                        ).coupon_code ||
-                          String(
-                            (vouchers.length > 1
-                              ? vouchers[(currentIndex + 1) % vouchers.length]
-                              : currentVoucher
-                            ).id
-                          )
-                      ]
+                      usableVouchers.length > 1
+                        ? qrCodes[
+                            usableVouchers[(currentIndex + 1) % usableVouchers.length].coupon_code ||
+                              String(usableVouchers[(currentIndex + 1) % usableVouchers.length].id)
+                          ]
+                        : undefined
                     }
                     theme={theme}
                     brandChoice={brandChoice}
@@ -1218,7 +1300,7 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
                       ? "6.5mm"
                       : "12mm",
                   justifyContent: "center",
-                  alignContent: "center",
+                  alignContent: "start",
                   backgroundColor: "#ffffff",
                 }}
               >
@@ -1248,12 +1330,12 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
                 ref={sheetA4Ref}
                 className={`bg-white border border-stone-300 shadow-2xl mx-auto box-border ${
                   sheetLayout === "duo_5_pairs"
-                    ? "w-full max-w-[794px] min-h-[1123px] flex flex-col gap-3.5 p-6"
+                    ? "w-full max-w-[794px] min-h-[1123px] flex flex-col justify-start gap-3.5 p-6"
                     : sheetLayout === "10_business_cards"
-                    ? "w-full max-w-[794px] min-h-[1123px] grid grid-cols-2 gap-x-4 gap-y-3.5 p-6"
+                    ? "w-full max-w-[794px] min-h-[1123px] grid grid-cols-2 content-start items-start gap-x-4 gap-y-3.5 p-6"
                     : sheetLayout === "8_business_cards"
-                    ? "w-full max-w-[794px] min-h-[1123px] grid grid-cols-2 gap-x-5 gap-y-4 p-6"
-                    : "w-full max-w-[794px] min-h-[1123px] grid grid-cols-2 gap-6 p-8"
+                    ? "w-full max-w-[794px] min-h-[1123px] grid grid-cols-2 content-start items-start gap-x-5 gap-y-4 p-6"
+                    : "w-full max-w-[794px] min-h-[1123px] grid grid-cols-2 content-start items-start gap-6 p-8"
                 }`}
                 style={{
                   width: "100%",
@@ -1268,7 +1350,11 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
                         voucherLeft={pair.left}
                         voucherRight={pair.right}
                         qrCodeLeft={qrCodes[pair.left.coupon_code || String(pair.left.id)]}
-                        qrCodeRight={qrCodes[pair.right.coupon_code || String(pair.right.id)]}
+                        qrCodeRight={
+                          pair.right
+                            ? qrCodes[pair.right.coupon_code || String(pair.right.id)]
+                            : undefined
+                        }
                         theme={theme}
                         brandChoice={brandChoice}
                         showPhoto={showPhoto}
@@ -1292,7 +1378,7 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
                     </div>
                   ))
                 ) : (
-                  vouchers.map((v, idx) => (
+                  sheetCards.map((v, idx) => (
                     <div key={v.id || idx} className="relative flex flex-col">
                       <VoucherCard
                         voucher={v}
@@ -1333,22 +1419,22 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
             {viewMode === "single" ? (
               singleFormat === "qr_sticker" ? (
                 <span>
-                  สติกเกอร์ QR Code ({qrStickerSize === "5x6_cm" ? "5 × 6 ซม." : qrStickerSize === "1_inch" ? "1 นิ้ว" : qrStickerSize === "1.5_inch" ? "1.5 นิ้ว" : "2 นิ้ว"}) • รหัส: {currentVoucher.coupon_code} ({currentIndex + 1}/{vouchers.length})
+                  สติกเกอร์ QR Code ({qrStickerSize === "5x6_cm" ? "5 × 6 ซม." : qrStickerSize === "1_inch" ? "1 นิ้ว" : qrStickerSize === "1.5_inch" ? "1.5 นิ้ว" : "2 นิ้ว"}) • รหัส: {currentVoucher.coupon_code} ({currentIndex + 1}/{usableVouchers.length})
                 </span>
               ) : singleFormat === "duo_pair" ? (
                 <span>คูปองจับคู่ (Duo Paired) • Terra Home & ZenSlab</span>
               ) : (
                 <span>
-                  ใบที่ {currentIndex + 1} จาก {vouchers.length} ใบ
+                  ใบที่ {currentIndex + 1} จาก {usableVouchers.length} ใบ
                 </span>
               )
             ) : viewMode === "qr_stickers" ? (
               <span>
-                แผ่นสติกเกอร์ QR Code A4 ขนาด {qrStickerSize === "5x6_cm" ? "กว้าง 5 × สูง 6 ซม. (12 ดวง)" : qrStickerSize === "1_inch" ? "1 นิ้ว (54 ดวง)" : qrStickerSize === "1.5_inch" ? "1.5 นิ้ว (24 ดวง)" : "2 นิ้ว (12 ดวง)"}
+                แผ่นสติกเกอร์ QR Code A4 • แสดง {qrStickers.length} ดวง ({autoFillSheet ? "โหมดเต็มแผ่น" : "ตามจำนวนที่ใช้งานได้จริง"})
               </span>
             ) : (
               <span>
-                กระดาษ A4 ({sheetLayout === "duo_5_pairs" ? "5 ชุดคูปองคู่ (10 ใบ)" : sheetLayout === "10_business_cards" ? "10 ใบนามบัตร" : "8 ใบ"})
+                กระดาษ A4 • แสดง {sheetLayout === "duo_5_pairs" ? `${duoPairs.reduce((acc, p) => acc + (p.right ? 2 : 1), 0)} ใบ (${duoPairs.length} คู่)` : `${sheetCards.length} ใบ`} ({autoFillSheet ? "โหมดเต็มแผ่น" : "ตามจำนวนที่ใช้งานได้จริง"})
               </span>
             )}
           </div>
@@ -1840,7 +1926,7 @@ function VoucherCard({
 // =========================================================================
 interface DuoVoucherPairProps {
   voucherLeft: VoucherItem;
-  voucherRight: VoucherItem;
+  voucherRight?: VoucherItem | null;
   qrCodeLeft?: string;
   qrCodeRight?: string;
   theme: ThemeType;
@@ -1915,18 +2001,24 @@ function DuoVoucherPair({
 
         {/* Right Voucher Card */}
         <div className="flex-1 min-w-0">
-          <VoucherCard
-            voucher={voucherRight}
-            qrCodeUrl={qrCodeRight}
-            theme={theme}
-            brandLogo={rightBrand}
-            showPhoto={showPhoto}
-            customImage={customImage}
-            onPhotoClick={onPhotoClick}
-            copiedCode={copiedCode}
-            onCopy={onCopy}
-            size={size}
-          />
+          {voucherRight ? (
+            <VoucherCard
+              voucher={voucherRight}
+              qrCodeUrl={qrCodeRight}
+              theme={theme}
+              brandLogo={rightBrand}
+              showPhoto={showPhoto}
+              customImage={customImage}
+              onPhotoClick={onPhotoClick}
+              copiedCode={copiedCode}
+              onCopy={onCopy}
+              size={size}
+            />
+          ) : (
+            <div className="min-h-[155px] h-full rounded-xl border border-dashed border-stone-300 flex items-center justify-center text-[11px] font-prompt text-stone-400 bg-stone-50/50 print:invisible">
+              ว่าง (ไม่มีคูปองใบที่ 2)
+            </div>
+          )}
         </div>
       </div>
     </div>

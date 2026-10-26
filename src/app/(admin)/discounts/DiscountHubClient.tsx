@@ -83,7 +83,7 @@ import {
 
 const R2_BASE = "https://pub-258bd10e7e8c4a7690a74c54cfbdef93.r2.dev/";
 
-import VoucherModal from "./VoucherModal";
+import VoucherModal, { isVoucherItemUsable } from "./VoucherModal";
 
 function getImageUrl(url: string | null | undefined): string | null {
   if (!url) return null;
@@ -2775,7 +2775,7 @@ export default function DiscountHubClient({
   const [terraFormEndDate, setTerraFormEndDate] = useState<string>("");
   const [terraFormUsageLimit, setTerraFormUsageLimit] = useState<string>("");
   const [terraFormIsActive, setTerraFormIsActive] = useState<boolean>(true);
-  const [terraFormIsTopUp, setTerraFormIsTopUp] = useState<boolean>(false);
+  const [terraFormIsTopUp, setTerraFormIsTopUp] = useState<boolean>(true);
   const [terraCollectionSearch, setTerraCollectionSearch] = useState("");
   const [terraCategoryFilter, setTerraCategoryFilter] = useState<string>("all");
   const [formInlineError, setFormInlineError] = useState<string | null>(null);
@@ -2799,7 +2799,7 @@ export default function DiscountHubClient({
   const [batchStartDate, setBatchStartDate] = useState<string>("");
   const [batchEndDate, setBatchEndDate] = useState<string>("");
   const [batchUsageLimit, setBatchUsageLimit] = useState<number>(1);
-  const [batchIsTopUp, setBatchIsTopUp] = useState<boolean>(false);
+  const [batchIsTopUp, setBatchIsTopUp] = useState<boolean>(true);
   const [batchInlineError, setBatchInlineError] = useState<string | null>(null);
   const [batchCopiedIndex, setBatchCopiedIndex] = useState<number | null>(null);
 
@@ -2867,11 +2867,13 @@ export default function DiscountHubClient({
   };
 
   const handleToggleSelectAllCoupons = () => {
-    const couponPromos = filteredTerraPromotions.filter((p) => p.coupon_code);
-    if (selectedVoucherIds.size >= couponPromos.length && couponPromos.length > 0) {
+    const usableCoupons = filteredTerraPromotions.filter(
+      (p) => Boolean(p.coupon_code) && isVoucherItemUsable(p)
+    );
+    if (selectedVoucherIds.size >= usableCoupons.length && usableCoupons.length > 0) {
       setSelectedVoucherIds(new Set());
     } else {
-      setSelectedVoucherIds(new Set(couponPromos.map((p) => p.id)));
+      setSelectedVoucherIds(new Set(usableCoupons.map((p) => p.id)));
     }
   };
 
@@ -2881,7 +2883,9 @@ export default function DiscountHubClient({
   };
 
   const handleOpenSelectedVouchersModal = () => {
-    const selected = terraPromotions.filter((p) => selectedVoucherIds.has(p.id) && p.coupon_code);
+    const selected = terraPromotions.filter(
+      (p) => selectedVoucherIds.has(p.id) && Boolean(p.coupon_code) && isVoucherItemUsable(p)
+    );
     if (selected.length === 0) return;
     setActiveModalVouchers(selected);
     setIsVoucherModalOpen(true);
@@ -3049,7 +3053,7 @@ export default function DiscountHubClient({
   }, [terraPromotions, terraSearch, terraFilterTab]);
 
   const couponPromos = useMemo(
-    () => filteredTerraPromotions.filter((p) => p.coupon_code),
+    () => filteredTerraPromotions.filter((p) => Boolean(p.coupon_code) && isVoucherItemUsable(p)),
     [filteredTerraPromotions]
   );
   const isAllCouponsSelected =
@@ -3095,7 +3099,7 @@ export default function DiscountHubClient({
     setTerraFormEndDate("");
     setTerraFormUsageLimit("");
     setTerraFormIsActive(true);
-    setTerraFormIsTopUp(false);
+    setTerraFormIsTopUp(true);
     setTerraCollectionSearch("");
     setTerraCategoryFilter("all");
     setIsTerraModalOpen(true);
@@ -3341,6 +3345,12 @@ export default function DiscountHubClient({
 
       const updated = await getTerraPromotions();
       setTerraPromotions(updated);
+      const newlyCreatedIds = updated
+        .filter((p) => res.codes!.includes(p.coupon_code || ""))
+        .map((p) => p.id);
+      if (newlyCreatedIds.length > 0) {
+        setSelectedVoucherIds(new Set(newlyCreatedIds));
+      }
       triggerToast("success", "สร้างรหัสสำเร็จ!", `สร้างรหัสส่วนลด ${res.codes.length} โค้ดเรียบร้อยแล้ว`);
     });
   };
@@ -4044,7 +4054,7 @@ export default function DiscountHubClient({
                   >
                     {isAllCouponsSelected && <Check className="w-3 h-3 text-white" />}
                   </span>
-                  <span>{isAllCouponsSelected ? "ยกเลิกการเลือกทั้งหมด" : "เลือกคูปองทั้งหมดเพื่อแจก"}</span>
+                  <span>{isAllCouponsSelected ? "ยกเลิกการเลือกทั้งหมด" : `เลือกคูปองที่ใช้งานได้ทั้งหมด (${couponPromos.length} ใบ)`}</span>
                 </button>
 
                 {selectedVoucherIds.size > 0 && (
@@ -4100,12 +4110,18 @@ export default function DiscountHubClient({
                 const isPercent = promo.discount_type === "percentage";
                 const isExpired =
                   promo.end_date && new Date(promo.end_date).toISOString() < new Date().toISOString();
+                const isExhausted =
+                  promo.usage_limit !== null &&
+                  promo.usage_limit !== undefined &&
+                  Number(promo.usage_limit) > 0 &&
+                  Number(promo.used_count || 0) >= Number(promo.usage_limit);
+                const isUsableVoucher = Boolean(promo.coupon_code) && isVoucherItemUsable(promo);
                 const isTopUpPromo = Boolean(promo.is_top_up || promo.attribution?.is_top_up);
 
                 return (
                   <div
                     key={promo.id}
-                    className={`group relative flex flex-col justify-between rounded-2xl border bg-white overflow-hidden transition-all duration-200 shadow-xs hover:shadow-md ${!promo.is_active
+                    className={`group relative flex flex-col justify-between rounded-2xl border bg-white overflow-hidden transition-all duration-200 shadow-xs hover:shadow-md ${!promo.is_active || isExhausted
                       ? "opacity-60 border-slate-200 bg-slate-50/70"
                       : !isAuto
                         ? "border-slate-200/90 hover:border-amber-500"
@@ -4116,7 +4132,7 @@ export default function DiscountHubClient({
                     <div className="p-4 pb-0">
                       <div className="flex items-center justify-between gap-3 mb-3">
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          {promo.coupon_code && (
+                          {isUsableVoucher && (
                             <input
                               type="checkbox"
                               checked={selectedVoucherIds.has(promo.id)}
@@ -4153,6 +4169,12 @@ export default function DiscountHubClient({
                           {isExpired && (
                             <span className="inline-flex items-center gap-1 rounded-md bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-700 border border-rose-200">
                               หมดอายุ
+                            </span>
+                          )}
+
+                          {isExhausted && (
+                            <span className="inline-flex items-center gap-1 rounded-md bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-700 border border-slate-300">
+                              ใช้ครบสิทธิ์แล้ว
                             </span>
                           )}
                         </div>
@@ -4343,7 +4365,7 @@ export default function DiscountHubClient({
 
                       {/* Action Rail */}
                       <div className="mt-3 flex items-center justify-end gap-1.5 border-t border-slate-100 pt-2.5">
-                        {promo.coupon_code && (
+                        {isUsableVoucher && (
                           <button
                             type="button"
                             onClick={() => handleOpenSingleVoucherModal(promo)}
@@ -5494,15 +5516,33 @@ export default function DiscountHubClient({
                     </div>
                   </div>
 
-                  {/* Copy for LINE Button */}
-                  <button
-                    type="button"
-                    onClick={handleCopyAllBatchCodes}
-                    className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-bold text-white hover:bg-slate-800 active:scale-98 transition shadow-xs cursor-pointer"
-                  >
-                    <Share2 className="w-4 h-4" />
-                    <span>คัดลอกข้อความทั้งหมดสำหรับส่ง LINE</span>
-                  </button>
+                  {/* Copy for LINE & Print Batch Buttons */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <button
+                      type="button"
+                      onClick={handleCopyAllBatchCodes}
+                      className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-bold text-white hover:bg-slate-800 active:scale-98 transition shadow-xs cursor-pointer"
+                    >
+                      <Share2 className="w-4 h-4" />
+                      <span>คัดลอกข้อความสำหรับส่ง LINE</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const batchVouchers = terraPromotions.filter(
+                          (p) => batchCreatedResult.codes.includes(p.coupon_code || "") && isVoucherItemUsable(p)
+                        );
+                        if (batchVouchers.length > 0) {
+                          setActiveModalVouchers(batchVouchers);
+                          setIsVoucherModalOpen(true);
+                        }
+                      }}
+                      className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-amber-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-amber-700 active:scale-98 transition shadow-xs cursor-pointer"
+                    >
+                      <Ticket className="w-4 h-4" />
+                      <span>พิมพ์คูปอง / QR ชุดนี้ ({batchCreatedResult.codes.length} ใบ)</span>
+                    </button>
+                  </div>
 
                   {/* Individual Codes Box */}
                   <div className="rounded-xl border border-slate-200 overflow-hidden">
