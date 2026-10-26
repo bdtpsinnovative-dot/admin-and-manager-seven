@@ -40,6 +40,50 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
 
   const subtotal = totalItemsPriceFromDb ?? totalItemsPrice;
   const totalSpecialDiscount = totalSpecialDiscountFromDb !== null ? totalSpecialDiscountFromDb : (specialDiscountBaht + specialDiscountPercentAmount);
+
+  // 🎟️ แยกประเภทส่วนลดจาก discount_snapshot และฐานข้อมูล
+  const snapshot = data?.discount_snapshot;
+
+  // 1. ส่วนลดคูปอง (Coupon Discount)
+  const couponObj = snapshot?.coupon;
+  const couponCode = couponObj?.code || null;
+  const couponDiscountAmount = Number(couponObj?.discount_amount || 0);
+
+  // 2. ส่วนลดเซ็ตโปรโมชั่น (Set Promotion Discount)
+  const setDiscountAmount = Number(snapshot?.set_discount_amount || 0);
+
+  // 3. ส่วนลดพิเศษท้ายบิล (Special Discount / Rounding Adjustment)
+  const specialPercent = Number(data?.special_discount_percent ?? snapshot?.special_discount?.percent ?? 0);
+  const specialBaht = Number(data?.special_discount_baht ?? snapshot?.special_discount?.baht ?? 0);
+
+  let specialDiscountAmount = 0;
+  if (specialPercent > 0 || specialBaht !== 0) {
+    if (specialPercent > 0) {
+      const baseBeforeSpecial = Math.max(0, subtotal - (totalSpecialDiscount - specialBaht));
+      const afterBaht = Math.max(0, baseBeforeSpecial - specialBaht);
+      specialDiscountAmount = specialBaht + (afterBaht * (specialPercent / 100));
+    } else {
+      specialDiscountAmount = specialBaht;
+    }
+  }
+
+  // 4. ส่วนลดสินค้า / โปรโมชั่นระดับสินค้า (Item / Promotion Discount)
+  let itemPromotionDiscount = Math.max(
+    0,
+    Math.round((totalSpecialDiscount - couponDiscountAmount - setDiscountAmount - specialDiscountAmount) * 100) / 100
+  );
+
+  // Fallback สำหรับบิลเก่าที่ไม่มี snapshot แยกประเภท
+  if (
+    couponDiscountAmount === 0 &&
+    setDiscountAmount === 0 &&
+    itemPromotionDiscount === 0 &&
+    specialDiscountAmount === 0 &&
+    totalSpecialDiscount > 0
+  ) {
+    specialDiscountAmount = totalSpecialDiscount;
+  }
+
   const netGoodsPrice = Math.max(0, subtotal - totalSpecialDiscount);
   const isOrderEligibleOver20k = netGoodsPrice >= 20000;
   const shippingCost = Number(data?.discount_snapshot?.shipping_cost || 0);
@@ -366,6 +410,52 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
               <div className="w-[330px]">
                 <table className="w-full text-[9px] border-collapse border border-neutral-300">
                   <tbody>
+                    {totalSpecialDiscount > 0 && (
+                      <>
+                        <tr className="border-b border-neutral-300">
+                          <td className="py-1 px-2.5 font-medium text-neutral-700">Subtotal (ราคาสินค้ารวม)</td>
+                          <td className="py-1 px-2.5 text-right font-mono font-semibold text-neutral-900 w-32">
+                            {subtotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+                        </tr>
+                        {itemPromotionDiscount > 0 && (
+                          <tr className="border-b border-neutral-300 text-red-600">
+                            <td className="py-1 px-2.5 font-medium">ส่วนลดสินค้า / โปรโมชั่น</td>
+                            <td className="py-1 px-2.5 text-right font-mono font-semibold">
+                              - {itemPromotionDiscount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                          </tr>
+                        )}
+                        {setDiscountAmount > 0 && (
+                          <tr className="border-b border-neutral-300 text-red-600">
+                            <td className="py-1 px-2.5 font-medium">ส่วนลดเซ็ตโปรโมชั่น</td>
+                            <td className="py-1 px-2.5 text-right font-mono font-semibold">
+                              - {setDiscountAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                          </tr>
+                        )}
+                        {couponDiscountAmount > 0 && (
+                          <tr className="border-b border-neutral-300 text-red-600">
+                            <td className="py-1 px-2.5 font-medium">ส่วนลดคูปอง {couponCode ? `(${couponCode})` : ''}</td>
+                            <td className="py-1 px-2.5 text-right font-mono font-semibold">
+                              - {couponDiscountAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                          </tr>
+                        )}
+                        {specialDiscountAmount !== 0 && (
+                          <tr className={`border-b border-neutral-300 ${specialDiscountAmount > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                            <td className="py-1 px-2.5 font-medium">
+                              {specialDiscountAmount > 0 
+                                ? `ส่วนลดพิเศษท้ายบิล${specialPercent > 0 ? ` (${specialPercent}%)` : ''}` 
+                                : 'ยอดปัดเศษ'}
+                            </td>
+                            <td className="py-1 px-2.5 text-right font-mono font-semibold">
+                              {specialDiscountAmount > 0 ? '-' : '+'} {Math.abs(specialDiscountAmount).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                          </tr>
+                        )}
+                      </>
+                    )}
                     <tr className="border-b border-neutral-300">
                       <td className="py-1 px-2.5 font-medium text-neutral-700">Total (ราคารวมก่อน VAT)</td>
                       <td className="py-1 px-2.5 text-right font-mono font-semibold text-neutral-900 w-32">
@@ -461,10 +551,45 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
                       <span>Subtotal</span>
                       <span>{subtotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                     </div>
-                    <div className={`flex justify-between py-0.5 text-[9px] ${totalSpecialDiscount > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-                      <span>{totalSpecialDiscount > 0 ? 'Special Discount' : 'Rounding Surcharge'}</span>
-                      <span>{totalSpecialDiscount > 0 ? '-' : '+'} {Math.abs(totalSpecialDiscount).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                    </div>
+
+                    {/* 1. ส่วนลดสินค้า / โปรโมชั่นระดับสินค้า */}
+                    {itemPromotionDiscount > 0 && (
+                      <div className="flex justify-between py-0.5 text-[9px] text-red-600">
+                        <span>Item / Promotion Discount</span>
+                        <span>- {itemPromotionDiscount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      </div>
+                    )}
+
+                    {/* 2. ส่วนลดเซ็ตโปรโมชั่น */}
+                    {setDiscountAmount > 0 && (
+                      <div className="flex justify-between py-0.5 text-[9px] text-red-600">
+                        <span>Set Promotion Discount</span>
+                        <span>- {setDiscountAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      </div>
+                    )}
+
+                    {/* 3. คูปองส่วนลด */}
+                    {couponDiscountAmount > 0 && (
+                      <div className="flex justify-between py-0.5 text-[9px] text-red-600 font-medium">
+                        <span>Coupon Discount {couponCode ? `(${couponCode})` : ''}</span>
+                        <span>- {couponDiscountAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      </div>
+                    )}
+
+                    {/* 4. ส่วนลดพิเศษท้ายบิล / ปัดเศษ */}
+                    {specialDiscountAmount !== 0 && (
+                      <div className={`flex justify-between py-0.5 text-[9px] ${specialDiscountAmount > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                        <span>
+                          {specialDiscountAmount > 0 
+                            ? `Special Discount${specialPercent > 0 ? ` (${specialPercent}%)` : ''}` 
+                            : 'Rounding Adjustment'}
+                        </span>
+                        <span>
+                          {specialDiscountAmount > 0 ? '-' : '+'} {Math.abs(specialDiscountAmount).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                    )}
+
                     <div className="flex justify-between py-0.5 text-[9px] text-neutral-500 border-t border-neutral-100">
                       <span>Subtotal (Before VAT)</span>
                       <span>{subTotalWithoutVat.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>

@@ -377,7 +377,7 @@ export default function DispatchMonitorPage() {
                           )}
                           {order.discount_snapshot?.coupon && (
                             <span className="px-1.5 py-0.5 bg-purple-50 text-purple-700 border border-purple-200 rounded text-[10px] font-bold inline-flex items-center gap-1">
-                              🎟️ โค้ด: {order.discount_snapshot.coupon.code} (-฿{Number(order.discount_snapshot.coupon.amount || order.discount_snapshot.coupon.discountAmount || 0).toLocaleString()})
+                              🎟️ โค้ด: {order.discount_snapshot.coupon.code} (-฿{Number(order.discount_snapshot.coupon.discount_amount ?? order.discount_snapshot.coupon.discountAmount ?? order.discount_snapshot.coupon.amount ?? 0).toLocaleString()})
                             </span>
                           )}
                           {order.status === 'CANCELLED' && order.discount_snapshot?.cancel_reason && (
@@ -583,9 +583,23 @@ export default function DispatchMonitorPage() {
                                   🎟️ ใช้โค้ดส่วนลด: <span className="font-mono font-black">{order.discount_snapshot.coupon.code}</span>
                                 </span>
                                 <span className="font-black text-purple-700 bg-white px-2 py-0.5 rounded-md border border-purple-200">
-                                  -฿{Number(order.discount_snapshot.coupon.amount || order.discount_snapshot.coupon.discountAmount || 0).toLocaleString()}
+                                  -฿{Number(order.discount_snapshot.coupon.discount_amount ?? order.discount_snapshot.coupon.discountAmount ?? order.discount_snapshot.coupon.amount ?? 0).toLocaleString()}
                                 </span>
                               </div>
+                              {(order.discount_snapshot.coupon.partner_company || order.discount_snapshot.coupon.lead_sales || order.discount_snapshot.coupon.partner_sales) && (
+                                <div className="flex flex-wrap gap-1.5 text-[10px] text-purple-800 pt-0.5">
+                                  {order.discount_snapshot.coupon.partner_company && (
+                                    <span className="bg-purple-100/70 px-1.5 py-0.5 rounded font-medium">
+                                      🏢 คู่ค้า: {order.discount_snapshot.coupon.partner_company}
+                                    </span>
+                                  )}
+                                  {(order.discount_snapshot.coupon.lead_sales || order.discount_snapshot.coupon.partner_sales) && (
+                                    <span className="bg-purple-100/70 px-1.5 py-0.5 rounded font-medium">
+                                      👤 เซลล์: {order.discount_snapshot.coupon.lead_sales || order.discount_snapshot.coupon.partner_sales}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
                               <p className="text-[10px] text-purple-600 font-medium">
                                 {order.status === 'PENDING' 
                                   ? '⏳ สิทธิ์คูปองจะถูกนับใช้งาน (used_count +1) เมื่อกด "ยืนยันรับชำระเงิน & ตัดสต็อก" สำเร็จ' 
