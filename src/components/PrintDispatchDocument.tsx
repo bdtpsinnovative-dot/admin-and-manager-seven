@@ -54,18 +54,19 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
   const vatAmount = vatAmountFromDb ?? (grandTotal - (grandTotal / 1.07));
   const subTotalWithoutVat = grandTotal - vatAmount;
 
-  // 🪵 ตรวจสอบว่าเป็นบิลไม้แผ่นสแลป (Wood Slabs / ZENSLABS)
-  const isSlabDoc = data?.order_items?.some((item: any) => {
-    const cat = (item.products?.category_id || '').toLowerCase();
-    const sku = (item.products?.sku || '').toUpperCase();
-    const name = (item.products?.name || '').toLowerCase();
-    const sup = (item.products?.collection_groups?.product_sup || '').toLowerCase();
+  // 🪵 ตรวจสอบว่าเป็นบิลไม้แผ่นสแลป (Wood Slabs / ZENSLABS) เท่านั้น (ไม่รวมพรอพที่มีคำว่า Wood/ไม้ ในชื่อสินค้า)
+  const isSlabDoc = Boolean(data?.discount_snapshot?.is_slab_order) || Boolean(data?.order_items?.some((item: any) => {
+    const cat = (item.products?.category_id || '').toUpperCase().trim();
+    const sku = (item.products?.sku || '').toUpperCase().trim();
     const isSlabItem = Boolean(item.isSlab || item.products?.isSlab);
-    return isSlabItem || cat === 'slabs' || cat.includes('slab') || cat.includes('rough') ||
-           sku.startsWith('ZLB-') || sku.startsWith('WOOD-') ||
-           name.includes('slab') || name.includes('สแลป') || name.includes('แผ่นไม้') ||
-           sup.includes('slab') || sup.includes('แผ่นไม้');
-  });
+    return (
+      isSlabItem ||
+      cat === 'SLABS' ||
+      sku.startsWith('ZLB-') ||
+      sku.startsWith('WOODSLABS') ||
+      sku.startsWith('LEG-')
+    );
+  }));
 
   const woodPermitFee = isSlabDoc
     ? Number(data?.wood_permit_fee ?? data?.discount_snapshot?.wood_permit_fee ?? 5000)
@@ -75,23 +76,25 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
     ? Number(data?.deposit_percent ?? data?.discount_snapshot?.deposit_percent ?? 50)
     : 100;
 
-  // สำหรับ Slab: Grand Total = ยอดสินค้าสุทธิ (รวม VAT) + ค่าขนส่ง (ถ้ามี) + ค่าใบกำกับไม้ (5,000)
-  const finalGrandTotal = isSlabDoc ? (grandTotal + woodPermitFee) : grandTotal;
-  const depositAmount = isSlabDoc ? (finalGrandTotal * (depositPercent / 100)) : finalGrandTotal;
-  const remainingBalance = isSlabDoc ? (finalGrandTotal - depositAmount) : 0;
+  // ถ้ายอด total_amount จากฐานข้อมูลถูกบันทึกมาจากหน้า POS ที่มี is_slab_order แล้ว ยอดนั้นจะรวมค่าใบกำกับไม้ 5,000 ไว้แล้ว
+  const dbAlreadyIncludesPermit = Boolean(data?.discount_snapshot?.is_slab_order && grandTotalFromDb !== null);
+  const goodsTotalWithVat = isSlabDoc && dbAlreadyIncludesPermit
+    ? Math.max(0, grandTotal - woodPermitFee - shippingCharged)
+    : grandTotal;
+  const finalGrandTotal = isSlabDoc
+    ? (dbAlreadyIncludesPermit ? grandTotal : (grandTotal + woodPermitFee))
+    : grandTotal;
 
-  // 🪵 ตรวจสอบว่าเป็นบิลไม้ (Wood Slabs) หรือไม้ร่วมกับเฟอร์นิเจอร์ (Wood + Furniture)
-  const isZenslabDoc = isSlabDoc || data?.order_items?.some((item: any) => {
-    const cat = (item.products?.category_id || '').toLowerCase();
-    const sku = (item.products?.sku || '').toUpperCase();
-    const name = (item.products?.name || '').toLowerCase();
-    const sup = (item.products?.collection_groups?.product_sup || '').toLowerCase();
-    const isFurn = Boolean(item.isFurniture || item.products?.isFurniture);
-    return isFurn || cat === 'furniture' || cat.includes('slab') || cat.includes('rough') ||
-           sku.startsWith('WOOD') || sku.startsWith('EMBER') ||
-           name.includes('slab') || name.includes('wood') || name.includes('ไม้') ||
-           sup.includes('wood') || sup.includes('slab') || sup.includes('furniture');
-  });
+  const savedDepositAmount = Number(data?.discount_snapshot?.deposit_amount || 0);
+  const depositAmount = isSlabDoc
+    ? (savedDepositAmount > 0 && savedDepositAmount <= finalGrandTotal
+        ? savedDepositAmount
+        : Math.round(finalGrandTotal * (depositPercent / 100) * 100) / 100)
+    : finalGrandTotal;
+  const remainingBalance = isSlabDoc ? Math.max(0, Math.round((finalGrandTotal - depositAmount) * 100) / 100) : 0;
+
+  // โลโก้หัวบิล: แสดง ZENSLAB เฉพาะเมื่อมีสินค้าหมวดแผ่นไม้ ZENSLABS ในบิลเท่านั้น นอกนั้นเป็น TERRA HOME STUDIO
+  const isZenslabDoc = isSlabDoc;
 
   const logoSrc = isZenslabDoc ? '/logo.zenslab.png' : '/logo.terra.home.png';
   const logoAlt = isZenslabDoc ? 'ZENSLAB Logo' : 'Terra Home Studio Logo';
@@ -387,7 +390,7 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
                     <tr className="border-b border-neutral-300">
                       <td className="py-1 px-2.5 font-medium text-neutral-700">ราคา(สินค้า)ทั้งหมด รวมภาษี</td>
                       <td className="py-1 px-2.5 text-right font-mono font-semibold text-neutral-900">
-                        {grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        {goodsTotalWithVat.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </td>
                     </tr>
                     <tr className="border-b border-neutral-300">

@@ -193,6 +193,8 @@ export default function ManagerPOSPage() {
   const [shippingCost, setShippingCost] = useState<string>('') // 🚚 ค่าจัดส่ง / ค่าบริการส่ง
   const [waiveShippingFee, setWaiveShippingFee] = useState<boolean>(true) // 🚚 ยกเว้นค่าส่งเมื่อยอดครบ 20,000฿
   const [isCustomerFormOpen, setIsCustomerFormOpen] = useState(false) // ซ่อนฟอร์มไว้ก่อน ประหยัดที่!
+  const [slabDepositPercent, setSlabDepositPercent] = useState<string>('50') // 💰 เปอร์เซ็นต์มัดจำแผ่นไม้ (ขั้นต่ำ 50% - 100%)
+  const [slabDepositCustomBaht, setSlabDepositCustomBaht] = useState<string>('') // 💰 ยอดเงินมัดจำระบุเอง (บาท)
   
   // ✨ State สำหรับโมดอลส่วนลดและคูปอง
   const [isDiscountModalOpen, setIsDiscountModalOpen] = useState(false)
@@ -371,31 +373,107 @@ export default function ManagerPOSPage() {
     loadData(true, false, initialCatalog, initialWood, initialCat)
   }, [])
 
-  // ✨ ฟังก์ชันโหลดบิลเก่ามาแก้ไข
+  // ฟังก์ชันโหลดบิลเก่ามาแก้ไข (ดึงข้อมูลสินค้าครบถ้วนจากฐานข้อมูลโดยตรงแม้สินค้าไม่อยู่ใน 100 รายการแรก)
   async function loadOrderForEdit(orderCode: string) {
     const res = await getOrderForEdit(orderCode)
     if (res.success && res.order) {
        const newCart: CartItem[] = []
+       let hasSlabItem = false
+       let hasFurnitureItem = false
+
        res.order.order_items.forEach((item: any) => {
-          const product = products.find(p => p.id === item.product_id)
-          if (product) {
-            newCart.push({
-               ...product,
-               cartItemId: `${product.id}-${item.fulfill_branch_id}`,
-               quantity: item.qty,
-               fulfill_branch_id: item.fulfill_branch_id,
-               fulfill_branch_name: item.branches?.branch_name || 'สาขา',
-               price: item.price_at_sale,
-               original_price: product.original_price, 
-               discount_id: item.discount_id,
-               discount_name: item.discount_name
-            })
+          const clientProduct =
+            products.find(p => p.id === item.product_id) ||
+            slabsList.find(p => p.id === item.product_id) ||
+            furnitureList.find(p => p.id === item.product_id)
+
+          const dbProd = item.products
+          if (!clientProduct && !dbProd) return
+
+          const rawSpecs = dbProd?.specs || clientProduct?.specs || {}
+          let resolvedImg = clientProduct?.image_url || dbProd?.image_url || null
+          if (!resolvedImg && Array.isArray(rawSpecs.images) && rawSpecs.images.length > 0) {
+            const firstImg = rawSpecs.images[0]
+            resolvedImg = typeof firstImg === 'string' ? firstImg : (firstImg?.url || null)
           }
+
+          const skuStr = String(clientProduct?.sku || dbProd?.sku || '').toUpperCase().trim()
+          const catStr = String(clientProduct?.category_id || dbProd?.category_id || '').toUpperCase().trim()
+          const isSlab = Boolean(
+            clientProduct?.isSlab ||
+            catStr === 'SLABS' ||
+            skuStr.startsWith('ZLB-') ||
+            skuStr.startsWith('WOODSLABS') ||
+            skuStr.startsWith('LEG-')
+          )
+          const isFurniture = !isSlab && Boolean(
+            clientProduct?.isFurniture ||
+            catStr === 'FURNITURE' ||
+            skuStr.startsWith('EMBER-')
+          )
+
+          if (isSlab) hasSlabItem = true
+          if (isFurniture) hasFurnitureItem = true
+
+          const dbStocks = Array.isArray(dbProd?.stock)
+            ? dbProd.stock.map((s: any) => ({ branch_id: Number(s.branch_id), qty: Number(s.qty) }))
+            : (clientProduct?.stocks || [])
+
+          const salePrice = Number(item.price_at_sale ?? clientProduct?.price ?? dbProd?.price ?? 0)
+          const discountPerPiece = Number(item.discount_amount_per_piece || 0)
+          const baseOriginalPrice = clientProduct?.original_price
+            ? Number(clientProduct.original_price)
+            : discountPerPiece > 0
+              ? salePrice + discountPerPiece
+              : Number(dbProd?.price || salePrice)
+
+          const discountPercent = baseOriginalPrice > salePrice && baseOriginalPrice > 0
+            ? Math.round(((baseOriginalPrice - salePrice) / baseOriginalPrice) * 100)
+            : 0
+
+          const productObj: Product = clientProduct || {
+            id: Number(item.product_id || dbProd.id),
+            name: dbProd.name || 'สินค้า',
+            sku: dbProd.sku || '',
+            original_price: baseOriginalPrice,
+            price: salePrice,
+            discount_label: discountPercent > 0 ? `ลด ${discountPercent}%` : '',
+            image_url: resolvedImg,
+            barcode: dbProd.barcode || rawSpecs.barcode || null,
+            product_sup: dbProd.collection_groups?.product_sup || rawSpecs.product_sup || rawSpecs.subcategory || null,
+            stocks: dbStocks,
+            specs: rawSpecs,
+            category_id: dbProd.category_id || (isSlab ? 'SLABS' : isFurniture ? 'furniture' : 'prop'),
+            isSlab,
+            isFurniture,
+          }
+
+          newCart.push({
+             ...productObj,
+             cartItemId: `${productObj.id}-${item.fulfill_branch_id}`,
+             quantity: Number(item.qty || 1),
+             fulfill_branch_id: Number(item.fulfill_branch_id),
+             fulfill_branch_name: item.branches?.branch_name || branches.find(b => b.id === Number(item.fulfill_branch_id))?.branch_name || 'สาขา',
+             price: salePrice,
+             original_price: baseOriginalPrice,
+             discount_id: item.discount_id,
+             discount_name: item.discount_name,
+             isSlab,
+             isFurniture,
+          })
        })
+
        setCart(newCart)
        setEditOrderId(res.order.id)
        setEditOrderCode(res.order.order_code)
        setCustomOrderCode(res.order.order_code)
+
+       // สลับไปแท็บแคตตาล็อกที่ตรงกับสินค้าในบิลอัตโนมัติ
+       if (hasSlabItem && catalogType !== 'SLAB') {
+         handleSwitchCatalog('SLAB')
+       } else if (!hasSlabItem && hasFurnitureItem && catalogType !== 'FURNITURE') {
+         handleSwitchCatalog('FURNITURE')
+       }
        
        if (res.order.shipping_name) setShippingName(res.order.shipping_name)
        if (res.order.shipping_phone) setShippingPhone(res.order.shipping_phone)
@@ -433,8 +511,36 @@ export default function ManagerPOSPage() {
         } else {
           setShippingCost('')
         }
+        if (res.order.discount_snapshot?.deposit_percent !== undefined && res.order.discount_snapshot?.deposit_percent !== null) {
+          setSlabDepositPercent(String(res.order.discount_snapshot.deposit_percent))
+        } else {
+          setSlabDepositPercent('50')
+        }
+        if (res.order.discount_snapshot?.deposit_amount !== undefined && res.order.discount_snapshot?.deposit_amount !== null) {
+          setSlabDepositCustomBaht(String(res.order.discount_snapshot.deposit_amount))
+        } else {
+          setSlabDepositCustomBaht('')
+        }
+        if (res.order.discount_snapshot?.coupon?.code) {
+          const snapCoupon = res.order.discount_snapshot.coupon
+          setCouponInput(snapCoupon.code)
+          setAppliedCoupon({
+            id: snapCoupon.id || null,
+            code: snapCoupon.code,
+            title: `คูปอง ${snapCoupon.code}`,
+            discountType: 'fixed_amount',
+            discountValue: Number(snapCoupon.discount_amount || 0),
+            discountAmount: Number(snapCoupon.discount_amount || 0),
+            attribution: (snapCoupon.lead_sales || snapCoupon.partner_company || snapCoupon.partner_sales) ? {
+              leadSales: snapCoupon.lead_sales || '',
+              partnerCompany: snapCoupon.partner_company || '',
+              partnerSales: snapCoupon.partner_sales || '',
+              note: snapCoupon.note || '',
+            } : null,
+          })
+        }
         
-        toast.success(`โหลดข้อมูลบิล ${orderCode} เพื่อแก้ไขแล้ว`)
+        toast.success(`โหลดข้อมูลบิล ${orderCode} (${newCart.length} รายการ) เพื่อแก้ไขแล้ว`)
     } else {
        toast.error(res.error || "ไม่สามารถโหลดบิลนี้ได้")
     }
@@ -1467,9 +1573,26 @@ export default function ManagerPOSPage() {
   const woodPermitFee = hasSlabInCart ? 5000 : 0
   const grandTotal = totalFinalPrice + deliveryFeeCharged + woodPermitFee
 
-  // 💰 ยอดมัดจำ 50% และคงเหลือวันส่งมอบ สำหรับสินค้าแผ่นไม้ ZENSLABS
-  const deposit50Percent = Math.round(grandTotal * 0.5 * 100) / 100
-  const remaining50Percent = Math.round((grandTotal - deposit50Percent) * 100) / 100
+  // 💰 ยอดมัดจำแผ่นไม้ ZENSLABS (ขั้นต่ำ 50% สูงสุด 100% — เลือกได้ทั้ง % และระบุยอดบาท)
+  const minDeposit50Baht = Math.round(grandTotal * 0.5 * 100) / 100
+  const rawDepPercent = Number(slabDepositPercent)
+  const effectiveDepositPercent = !isNaN(rawDepPercent)
+    ? Math.min(100, Math.max(50, rawDepPercent))
+    : 50
+  const hasCustomDepositBaht = slabDepositCustomBaht.trim() !== '' && !isNaN(Number(slabDepositCustomBaht))
+  const rawCustomDepositBaht = hasCustomDepositBaht ? Number(slabDepositCustomBaht) : 0
+  const isDepositUnderMinimum = hasSlabInCart && (
+    (hasCustomDepositBaht && rawCustomDepositBaht < minDeposit50Baht) ||
+    (!hasCustomDepositBaht && !isNaN(rawDepPercent) && rawDepPercent < 50)
+  )
+  const slabDepositAmount = hasCustomDepositBaht
+    ? Math.min(grandTotal, Math.max(0, Math.round(rawCustomDepositBaht * 100) / 100))
+    : Math.round(grandTotal * (effectiveDepositPercent / 100) * 100) / 100
+  const slabDisplayPercent = grandTotal > 0
+    ? Math.round((slabDepositAmount / grandTotal) * 10000) / 100
+    : effectiveDepositPercent
+  const deposit50Percent = slabDepositAmount
+  const remaining50Percent = Math.max(0, Math.round((grandTotal - slabDepositAmount) * 100) / 100)
 
   const handlePreCheckout = () => {
     if (cart.length === 0) return
@@ -1484,6 +1607,11 @@ export default function ManagerPOSPage() {
 
     if (grandTotal <= 0) {
       toast.error("ไม่สามารถสร้างใบเสนอราคาได้: ยอดสุทธิของใบเสนอราคาต้องมากกว่า 0 บาทครับ")
+      return
+    }
+
+    if (hasSlabInCart && (slabDepositAmount < minDeposit50Baht || isDepositUnderMinimum)) {
+      toast.error(`ยอดมัดจำแผ่นไม้ต้องไม่ต่ำกว่า 50% (ขั้นต่ำ ฿${minDeposit50Baht.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}) ครับ`)
       return
     }
 
@@ -1585,6 +1713,8 @@ export default function ManagerPOSPage() {
         taxId: taxId.trim() || null,
         isSlabOrder: hasSlabInCart,
         woodPermitFee: woodPermitFee,
+        depositPercent: hasSlabInCart ? slabDisplayPercent : undefined,
+        depositAmount: hasSlabInCart ? slabDepositAmount : undefined,
         items: cart.map(item => ({
           productId: item.id,
           qty: item.quantity,
@@ -1626,6 +1756,8 @@ export default function ManagerPOSPage() {
         setTaxId('')
         setSpecialDiscountPercent('0')
         setSpecialDiscountBaht('0')
+        setSlabDepositPercent('50')
+        setSlabDepositCustomBaht('')
         setCustomOrderCode('')
         setLatitude(null)
         setLongitude(null)
@@ -2864,18 +2996,93 @@ export default function ManagerPOSPage() {
                 <span>ยอดสุทธิใบขาย (Grand Total)</span><span className="text-base text-slate-900 font-black">{grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span>
               </div>
               {hasSlabInCart && (
-                <div className="mt-3 p-3 bg-slate-100/80 border border-slate-200/90 rounded-2xl space-y-1.5">
+                <div className="mt-3 p-3 bg-slate-100/80 border border-slate-200/90 rounded-2xl space-y-2">
                   <div className="flex items-center justify-between pb-1.5 border-b border-slate-200">
                     <span className="text-[11px] font-black text-slate-800 flex items-center gap-1.5">
                       <Layers className="w-3.5 h-3.5 text-slate-600" />
                       <span>เงื่อนไขมัดจำงานไม้ ZENSLABS</span>
                     </span>
                     <span className="text-[10px] bg-slate-800 text-white font-bold px-2 py-0.5 rounded-md">
-                      มัดจำ 50%
+                      มัดจำ {slabDisplayPercent}%
                     </span>
                   </div>
-                  <div className="flex justify-between items-center text-xs pt-0.5">
-                    <span className="font-bold text-slate-700">ยอดมัดจำ (50%):</span>
+
+                  {/* ปุ่มลัดเลือก % มัดจำ (50% - 100%) */}
+                  <div className="flex items-center gap-1 pt-0.5">
+                    {[50, 60, 70, 80, 100].map((pct) => {
+                      const isActive = !hasCustomDepositBaht && Number(slabDepositPercent) === pct
+                      return (
+                        <button
+                          key={pct}
+                          type="button"
+                          onClick={() => {
+                            setSlabDepositPercent(String(pct))
+                            setSlabDepositCustomBaht('')
+                          }}
+                          className={`flex-1 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer border ${
+                            isActive
+                              ? 'bg-[#1E293B] text-white border-[#1E293B] shadow-2xs'
+                              : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                          }`}
+                        >
+                          {pct === 100 ? '100% (เต็ม)' : `${pct}%`}
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  {/* ช่องกรอกปรับมัดจำเอง: ระบุเป็น % หรือ ระบุเป็นจำนวนเงินบาท */}
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <div>
+                      <label className="text-[9px] text-slate-500 font-bold block mb-0.5">ระบุ % (ขั้นต่ำ 50%)</label>
+                      <div className="flex items-center bg-white border border-slate-200 focus-within:border-slate-800 rounded-lg px-2 py-1">
+                        <input
+                          type="number"
+                          min={50}
+                          max={100}
+                          step="any"
+                          value={hasCustomDepositBaht ? slabDisplayPercent : slabDepositPercent}
+                          onChange={(e) => {
+                            setSlabDepositCustomBaht('')
+                            setSlabDepositPercent(e.target.value)
+                          }}
+                          onBlur={() => {
+                            const val = Number(slabDepositPercent)
+                            if (isNaN(val) || val < 50) setSlabDepositPercent('50')
+                            else if (val > 100) setSlabDepositPercent('100')
+                          }}
+                          className="w-full text-[11px] font-bold text-slate-800 outline-none bg-transparent"
+                        />
+                        <span className="text-[10px] text-slate-400 font-bold ml-1">%</span>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-[9px] text-slate-500 font-bold block mb-0.5">หรือระบุยอดมัดจำ (฿)</label>
+                      <div className="flex items-center bg-white border border-slate-200 focus-within:border-slate-800 rounded-lg px-2 py-1">
+                        <span className="text-[10px] text-slate-400 font-bold mr-1">฿</span>
+                        <input
+                          type="number"
+                          min={minDeposit50Baht}
+                          max={grandTotal}
+                          step="any"
+                          placeholder={minDeposit50Baht.toFixed(0)}
+                          value={slabDepositCustomBaht}
+                          onChange={(e) => setSlabDepositCustomBaht(e.target.value)}
+                          className="w-full text-[11px] font-bold text-slate-800 outline-none bg-transparent placeholder:font-normal placeholder:text-slate-300"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {isDepositUnderMinimum && (
+                    <div className="text-[10px] text-rose-600 font-bold bg-rose-50 border border-rose-200 px-2 py-1 rounded-lg flex items-center gap-1">
+                      <AlertTriangle className="w-3 h-3 shrink-0" />
+                      <span>มัดจำขั้นต่ำ 50% คือ ฿{minDeposit50Baht.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+                  )}
+
+                  <div className="flex justify-between items-center text-xs pt-1 border-t border-slate-200/80">
+                    <span className="font-bold text-slate-700">ยอดมัดจำ ({slabDisplayPercent}%):</span>
                     <span className="font-black text-sm text-slate-900">
                       {deposit50Percent.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿
                     </span>
@@ -2886,8 +3093,8 @@ export default function ManagerPOSPage() {
                       {remaining50Percent.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿
                     </span>
                   </div>
-                  <p className="text-[9px] text-slate-500 mt-1 font-medium leading-tight">
-                    * รวมค่าใบกำกับไม้ ฿5,000.00 แล้ว จัดเตรียมเอกสารและไม้ตามเงื่อนไข
+                  <p className="text-[9px] text-slate-500 mt-0.5 font-medium leading-tight">
+                    * รวมค่าใบกำกับไม้ ฿5,000.00 แล้ว (มัดจำขั้นต่ำ 50% สามารถปรับเพิ่มได้ตามที่ลูกค้าต้องการ)
                   </p>
                 </div>
               )}
@@ -3320,7 +3527,7 @@ export default function ManagerPOSPage() {
               </div>
               {hasSlabInCart && (
                 <div className="mt-2 pt-2 border-t border-dashed border-slate-300 flex justify-between items-center text-slate-800 font-bold bg-slate-100 p-2 rounded-lg">
-                  <span>มัดจำ 50% (เริ่มจัดเตรียม/ใบกำกับไม้):</span>
+                  <span>มัดจำ {slabDisplayPercent}% (เริ่มจัดเตรียม/ใบกำกับไม้):</span>
                   <span className="text-slate-900 font-black">{deposit50Percent.toLocaleString()} ฿</span>
                 </div>
               )}

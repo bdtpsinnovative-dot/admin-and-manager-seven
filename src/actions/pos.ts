@@ -1303,6 +1303,10 @@ export interface CheckoutPayload {
   vatAmount?: number;               // ✨ ยอดภาษี VAT (7%)
   setDiscountAmount?: number;       // 📦 มูลค่าส่วนลดเซ็ต
   appliedSetPromos?: any[];         // 📦 ข้อมูลเซ็ตโปรโมชั่นที่ได้รับ
+  isSlabOrder?: boolean;            // 🪵 บิลแผ่นไม้ ZENSLABS
+  woodPermitFee?: number;           // 📜 ค่าใบกำกับไม้
+  depositPercent?: number;          // 💰 เปอร์เซ็นต์มัดจำ (ขั้นต่ำ 50% - 100%)
+  depositAmount?: number;           // 💰 ยอดเงินมัดจำที่ระบุ (บาท)
   items: {
     productId: number; 
     qty: number; 
@@ -1394,9 +1398,13 @@ export async function processCheckout(payload: CheckoutPayload): Promise<Checkou
       }
     }
     if (isSlabOrder) {
+      const reqPercent = Number(payload.depositPercent)
+      const safePercent = !isNaN(reqPercent) && reqPercent >= 50 && reqPercent <= 100
+        ? Math.round(reqPercent * 100) / 100
+        : 50
       discountSnapshot.is_slab_order = true
       discountSnapshot.wood_permit_fee = 5000
-      discountSnapshot.deposit_percent = 50
+      discountSnapshot.deposit_percent = safePercent
     }
     if (payload.couponCode) {
       discountSnapshot.coupon = {
@@ -1465,8 +1473,19 @@ export async function processCheckout(payload: CheckoutPayload): Promise<Checkou
       : Math.round((finalTotalAmount - (finalTotalAmount / 1.07)) * 100) / 100
 
     if (isSlabOrder) {
-      discountSnapshot.deposit_amount = Math.round(finalTotalAmount * 0.5 * 100) / 100
-      discountSnapshot.remaining_balance = Math.round((finalTotalAmount - discountSnapshot.deposit_amount) * 100) / 100
+      const minDeposit = Math.round(finalTotalAmount * 0.5 * 100) / 100
+      const reqAmount = Number(payload.depositAmount)
+      const safePercent = Number(discountSnapshot.deposit_percent || 50)
+      const calculatedByPercent = Math.round(finalTotalAmount * (safePercent / 100) * 100) / 100
+      const effectiveDeposit = !isNaN(reqAmount) && reqAmount >= minDeposit && reqAmount <= finalTotalAmount
+        ? Math.round(reqAmount * 100) / 100
+        : calculatedByPercent
+
+      discountSnapshot.deposit_amount = effectiveDeposit
+      discountSnapshot.remaining_balance = Math.max(0, Math.round((finalTotalAmount - effectiveDeposit) * 100) / 100)
+      if (finalTotalAmount > 0 && !isNaN(reqAmount) && reqAmount >= minDeposit) {
+        discountSnapshot.deposit_percent = Math.round((effectiveDeposit / finalTotalAmount) * 10000) / 100
+      }
     }
 
     let order;
@@ -1667,7 +1686,12 @@ export async function getOrderForEdit(orderCode: string) {
       id, order_code, status, shipping_name, shipping_phone, shipping_address, latitude, longitude, company_name_th, company_name_en, company_address, tax_id, special_discount_percent, special_discount_baht, discount_snapshot,
       order_items (
         id, product_id, qty, price_at_sale, fulfill_branch_id, discount_id, discount_name, discount_amount_per_piece,
-        branches!order_items_fulfill_branch_fk ( branch_name )
+        branches!order_items_fulfill_branch_fk ( branch_name ),
+        products!order_items_product_fk (
+          id, name, sku, price, image_url, barcode, specs, width_cm, length_cm, thickness_cm, category_id,
+          collection_groups ( product_sup ),
+          stock ( branch_id, qty )
+        )
       )
     `)
     .eq('order_code', orderCode)
