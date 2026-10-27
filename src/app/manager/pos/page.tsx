@@ -3,11 +3,12 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import { getPosData, getPosProductsPage, processCheckout, CheckoutPayload, getNearbyStock, getOrderForEdit, PosSetBundle, validatePosCoupon, updateProductPrice, getSlabsProducts, getFurnitureProducts } from '@/actions/pos'
-import { FolderOpen, Store, Truck, Receipt, MapPin, Save, AlertTriangle, AlertCircle, Info, X, Plus, Minus, FileText, Trash2, Printer, RefreshCw, Clock, Menu, Sparkles, Ticket, SlidersHorizontal, Armchair, Tag, Edit3, Loader2, Layers, Package, Ruler, FileCheck, Calculator, User, Building2, Users, Percent, Check, ChevronRight, Search, Box, Camera } from 'lucide-react'
+import { FolderOpen, Store, Truck, Receipt, MapPin, Save, AlertTriangle, AlertCircle, Info, X, Plus, Minus, FileText, Trash2, Printer, RefreshCw, Clock, Menu, Sparkles, Ticket, SlidersHorizontal, Armchair, Tag, Edit3, Loader2, Layers, Package, Ruler, FileCheck, Calculator, User, Building2, Users, Percent, Check, ChevronRight, Search, Box, Camera, Lock, ShieldAlert } from 'lucide-react'
 import { toast } from 'sonner'
 import StorefrontFilterDrawer from '@/components/pos/StorefrontFilterDrawer'
 import StorefrontFilterBar from '@/components/pos/StorefrontFilterBar'
 import ExternalProductModal from '@/components/pos/ExternalProductModal'
+import { getMaxSpecialDiscountPercent, getMaxSpecialDiscountBaht, getNextSpecialDiscountTier, QUICK_PERCENT_OPTIONS } from '@/lib/specialDiscountTiers'
 import {
   matchesStorefrontCategory,
   productColorValues,
@@ -1550,6 +1551,66 @@ export default function ManagerPOSPage() {
   // หักโปรโมชั่นเซ็ต และคูปอง ก่อนคำนวณส่วนลดพิเศษท้ายบิล
   const priceAfterPromos = Math.max(0, totalFinalPriceBeforeSpecial - totalSetDiscountAmount - couponDiscountAmount)
 
+  // 🏷️ คำนวณเพดานส่วนลดพิเศษท้ายบิลตามขั้นบันไดยอดซื้อ (Special Discount Tiers)
+  const maxAllowedSpecialPercent = useMemo(() => {
+    return getMaxSpecialDiscountPercent(priceAfterPromos)
+  }, [priceAfterPromos])
+
+  const maxAllowedSpecialBaht = useMemo(() => {
+    return getMaxSpecialDiscountBaht(priceAfterPromos)
+  }, [priceAfterPromos])
+
+  const nextSpecialTierInfo = useMemo(() => {
+    return getNextSpecialDiscountTier(priceAfterPromos)
+  }, [priceAfterPromos])
+
+  // ป้องกันค้างส่วนลดเดิมที่เกินสิทธิ์เมื่อมีการลดจำนวนสินค้าในตะกร้า
+  useEffect(() => {
+    if (cart.length === 0) return
+
+    const currentP = Number(specialDiscountPercent || 0)
+    if (currentP > maxAllowedSpecialPercent) {
+      setSpecialDiscountPercent(maxAllowedSpecialPercent.toString())
+    }
+
+    const currentB = Number(specialDiscountBaht || 0)
+    if (currentB > maxAllowedSpecialBaht && maxAllowedSpecialBaht > 0) {
+      setSpecialDiscountBaht(maxAllowedSpecialBaht.toString())
+    }
+  }, [maxAllowedSpecialPercent, maxAllowedSpecialBaht, cart.length, specialDiscountPercent, specialDiscountBaht])
+
+  const handleSpecialPercentChange = (val: string) => {
+    if (val === '') {
+      setSpecialDiscountPercent('')
+      return
+    }
+    const num = Number(val)
+    if (isNaN(num) || num < 0) return
+    if (num > maxAllowedSpecialPercent) {
+      toast.warning(`ยอดซื้อ ฿${priceAfterPromos.toLocaleString()} ได้รับสิทธิ์ลดพิเศษสูงสุด ${maxAllowedSpecialPercent}% ครับ`)
+      setSpecialDiscountPercent(maxAllowedSpecialPercent.toString())
+    } else {
+      const cleanVal = val.length > 1 && val.startsWith('0') && !val.includes('.') ? val.replace(/^0+/, '') : val
+      setSpecialDiscountPercent(cleanVal || '0')
+    }
+  }
+
+  const handleSpecialBahtChange = (val: string) => {
+    if (val === '') {
+      setSpecialDiscountBaht('')
+      return
+    }
+    const num = Number(val)
+    if (isNaN(num) || num < 0) return
+    if (num > maxAllowedSpecialBaht) {
+      toast.warning(`ยอดซื้อ ฿${priceAfterPromos.toLocaleString()} ลดพิเศษได้สูงสุด ฿${maxAllowedSpecialBaht.toLocaleString()} (${maxAllowedSpecialPercent}%) ครับ`)
+      setSpecialDiscountBaht(maxAllowedSpecialBaht.toString())
+    } else {
+      const cleanVal = val.length > 1 && val.startsWith('0') && !val.includes('.') ? val.replace(/^0+/, '') : val
+      setSpecialDiscountBaht(cleanVal || '0')
+    }
+  }
+
   const discountBaht = Number(specialDiscountBaht || 0)
   const discountPercent = Number(specialDiscountPercent || 0)
   const afterBaht = Math.max(0, priceAfterPromos - discountBaht)
@@ -1613,6 +1674,18 @@ export default function ManagerPOSPage() {
 
     if (hasSlabInCart && (slabDepositAmount < minDeposit50Baht || isDepositUnderMinimum)) {
       toast.error(`ยอดมัดจำแผ่นไม้ต้องไม่ต่ำกว่า 50% (ขั้นต่ำ ฿${minDeposit50Baht.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}) ครับ`)
+      return
+    }
+
+    // 🛡️ ตรวจสอบเพดานส่วนลดพิเศษท้ายบิลตามขั้นบันไดยอดซื้อ
+    if (discountPercent > maxAllowedSpecialPercent) {
+      toast.error(`ส่วนลดพิเศษ (${discountPercent}%) เกินสิทธิ์ขั้นบันไดสูงสุด ${maxAllowedSpecialPercent}% สำหรับยอดซื้อนี้ครับ`)
+      setIsDiscountModalOpen(true)
+      return
+    }
+    if (discountBaht > maxAllowedSpecialBaht && maxAllowedSpecialBaht > 0) {
+      toast.error(`ส่วนลดพิเศษ (฿${discountBaht.toLocaleString()}) เกินสิทธิ์ขั้นบันไดสูงสุด ฿${maxAllowedSpecialBaht.toLocaleString()} สำหรับยอดซื้อนี้ครับ`)
+      setIsDiscountModalOpen(true)
       return
     }
 
@@ -3800,7 +3873,7 @@ export default function ManagerPOSPage() {
               </div>
 
               {/* 2. ส่วนลดพิเศษท้ายบิล */}
-              <div className="space-y-2 pt-2 border-t border-slate-100">
+              <div className="space-y-3 pt-3 border-t border-slate-100">
                 <div className="flex justify-between items-center">
                   <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
                     <Percent className="w-3.5 h-3.5 text-slate-500" /> ส่วนลดพิเศษท้ายบิล (Special Discount)
@@ -3820,47 +3893,126 @@ export default function ManagerPOSPage() {
                     </button>
                   )}
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+
+                {/* กล่องแสดงสิทธิ์ขั้นบันไดส่วนลดพิเศษ (Tier Banner) */}
+                {cart.length > 0 && (
+                  <div className="p-3 bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-300/70 rounded-xl space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <Sparkles className="w-4 h-4 text-amber-600 shrink-0" />
+                        <span className="text-xs font-bold text-amber-950">
+                          สิทธิ์ลดพิเศษสูงสุด: <span className="text-amber-700 font-extrabold text-sm font-mono">{maxAllowedSpecialPercent}%</span>
+                        </span>
+                        <span className="text-[11px] text-slate-500 font-mono">
+                          (ไม่เกิน ฿{maxAllowedSpecialBaht.toLocaleString()})
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full border border-amber-200">
+                        เพดานขั้นบันได
+                      </span>
+                    </div>
+
+                    {nextSpecialTierInfo ? (
+                      <p className="text-[11px] text-amber-900 leading-snug">
+                        💡 ซื้อเพิ่มอีก <strong className="font-mono text-amber-950 font-bold">฿{nextSpecialTierInfo.diff.toLocaleString()}</strong> เพื่อปลดล็อกส่วนลด <strong className="font-mono text-amber-950 font-bold">{nextSpecialTierInfo.nextMaxPercent}%</strong>
+                      </p>
+                    ) : (
+                      <p className="text-[11px] text-emerald-700 font-medium leading-snug">
+                        ✓ ยอดซื้อระดับสูงสุด — ปลดล็อกสิทธิ์ส่วนลดขั้นสูงสุด 30% เรียบร้อยแล้ว
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* ปุ่มเลือกเปอร์เซ็นต์ด่วน (Quick Percent Buttons) สะดวกมากสำหรับ iPad */}
+                {cart.length > 0 && (
+                  <div className="space-y-1.5">
+                    <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">
+                      เลือกเปอร์เซ็นต์ส่วนลดด่วน:
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSpecialDiscountPercent('0')
+                          setSpecialDiscountBaht('0')
+                        }}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer border ${
+                          (!specialDiscountPercent || specialDiscountPercent === '0') && (!specialDiscountBaht || specialDiscountBaht === '0')
+                            ? 'bg-slate-900 text-white border-slate-900 shadow-2xs'
+                            : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
+                        }`}
+                      >
+                        ไม่ลด (0%)
+                      </button>
+
+                      {QUICK_PERCENT_OPTIONS.map((pct) => {
+                        const isUnlocked = pct <= maxAllowedSpecialPercent
+                        const isSelected = specialDiscountPercent === pct.toString() && (!specialDiscountBaht || specialDiscountBaht === '0')
+
+                        return (
+                          <button
+                            key={pct}
+                            type="button"
+                            disabled={!isUnlocked}
+                            onClick={() => {
+                              if (isUnlocked) {
+                                setSpecialDiscountPercent(pct.toString())
+                                setSpecialDiscountBaht('0')
+                              }
+                            }}
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1 border ${
+                              isSelected
+                                ? 'bg-amber-600 text-white border-amber-600 shadow-2xs'
+                                : isUnlocked
+                                  ? 'bg-white text-slate-700 border-slate-200 hover:border-amber-400 hover:bg-amber-50/50 cursor-pointer'
+                                  : 'bg-slate-100/60 text-slate-300 border-slate-200/60 cursor-not-allowed'
+                            }`}
+                            title={isUnlocked ? `กดใช้ส่วนลด ${pct}%` : `ยอดซื้อยังไม่ถึงเกณฑ์ (ปลดล็อกที่ขั้นสูงกว่า)`}
+                          >
+                            {!isUnlocked && <Lock className="w-3 h-3 text-slate-300" />}
+                            <span>{pct}%</span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* ช่องกรอกตัวเลขแบบกำหนดเอง (พร้อมล็อกเพดานป้องกันกรอกเกิน) */}
+                <div className="grid grid-cols-2 gap-3 pt-1">
                   <div className="space-y-1">
-                    <span className="text-[10px] text-slate-400 font-bold">ระบุเป็นจำนวนเงิน (฿)</span>
+                    <div className="flex justify-between items-center">
+                      <span className="text-[10px] text-slate-500 font-bold">ระบุเป็นจำนวนเงิน (฿)</span>
+                      <span className="text-[9px] text-slate-400 font-mono">สูงสุด ฿{maxAllowedSpecialBaht.toLocaleString()}</span>
+                    </div>
                     <div className="flex items-center bg-slate-50 border border-slate-200 focus-within:bg-white focus-within:border-slate-900 rounded-xl px-3 py-2 transition-all">
                       <span className="text-xs text-slate-400 font-bold mr-2">฿</span>
                       <input
                         type="number"
                         placeholder="0"
+                        min="0"
+                        max={maxAllowedSpecialBaht}
                         value={specialDiscountBaht}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          if (val === '') {
-                            setSpecialDiscountBaht('');
-                          } else {
-                            const cleanVal = val.length > 1 && val.startsWith('0') && !val.includes('.') ? val.replace(/^0+/, '') : val;
-                            setSpecialDiscountBaht(cleanVal || '0');
-                          }
-                        }}
+                        onChange={(e) => handleSpecialBahtChange(e.target.value)}
                         className="w-full text-xs outline-none bg-transparent font-bold text-slate-800 p-0 border-none"
                       />
                     </div>
                   </div>
                   <div className="space-y-1">
-                    <span className="text-[10px] text-slate-400 font-bold">ระบุเป็นเปอร์เซ็นต์ (%)</span>
+                    <div className="flex justify-between items-center">
+                      <span className="text-[10px] text-slate-500 font-bold">ระบุเป็นเปอร์เซ็นต์ (%)</span>
+                      <span className="text-[9px] text-slate-400 font-mono">สูงสุด {maxAllowedSpecialPercent}%</span>
+                    </div>
                     <div className="flex items-center bg-slate-50 border border-slate-200 focus-within:bg-white focus-within:border-slate-900 rounded-xl px-3 py-2 transition-all">
                       <span className="text-xs text-slate-400 font-bold mr-2">%</span>
                       <input
                         type="number"
                         min="0"
-                        max="100"
+                        max={maxAllowedSpecialPercent}
                         placeholder="0"
                         value={specialDiscountPercent}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          if (val === '') {
-                            setSpecialDiscountPercent('');
-                          } else if (Number(val) >= 0 && Number(val) <= 100) {
-                            const cleanVal = val.length > 1 && val.startsWith('0') && !val.includes('.') ? val.replace(/^0+/, '') : val;
-                            setSpecialDiscountPercent(cleanVal || '0');
-                          }
-                        }}
+                        onChange={(e) => handleSpecialPercentChange(e.target.value)}
                         className="w-full text-xs outline-none bg-transparent font-bold text-slate-800 p-0 border-none"
                       />
                     </div>
@@ -4022,16 +4174,23 @@ export default function ManagerPOSPage() {
                               {targetPercentFormatted > 0 ? '-' : '+'} {Math.abs(targetPercentFormatted)} %
                             </span>
                           </div>
-                          <button
-                            onClick={() => {
-                              setSpecialDiscountPercent(targetPercentFormatted.toString());
-                              setSpecialDiscountBaht('0');
-                              setIsRoundingModalOpen(false);
-                            }}
-                            className="w-full bg-[#1E293B] hover:bg-slate-800 text-white font-bold py-2 px-3 rounded-lg text-[11px] transition-colors cursor-pointer"
-                          >
-                            ใช้ส่วนลด {Math.abs(targetPercentFormatted)} % (ล้างช่องบาท)
-                          </button>
+                          {targetPercentFormatted > maxAllowedSpecialPercent ? (
+                            <div className="p-2 bg-rose-50 border border-rose-200 rounded-lg text-rose-700 text-[10px] flex items-center gap-1.5">
+                              <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                              <span>ส่วนลด {targetPercentFormatted}% เกินสิทธิ์ขั้นบันไดสูงสุด ({maxAllowedSpecialPercent}%) ของบิลนี้</span>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                setSpecialDiscountPercent(targetPercentFormatted.toString());
+                                setSpecialDiscountBaht('0');
+                                setIsRoundingModalOpen(false);
+                              }}
+                              className="w-full bg-[#1E293B] hover:bg-slate-800 text-white font-bold py-2 px-3 rounded-lg text-[11px] transition-colors cursor-pointer"
+                            >
+                              ใช้ส่วนลด {Math.abs(targetPercentFormatted)} % (ล้างช่องบาท)
+                            </button>
+                          )}
                         </div>
 
                         {/* รูปแบบที่ 2: ปรับเป็นบาท */}
@@ -4042,16 +4201,23 @@ export default function ManagerPOSPage() {
                               {targetBahtFormatted > 0 ? '-' : '+'} {Math.abs(targetBahtFormatted)} ฿
                             </span>
                           </div>
-                          <button
-                            onClick={() => {
-                              setSpecialDiscountBaht(targetBahtFormatted.toString());
-                              setSpecialDiscountPercent('0');
-                              setIsRoundingModalOpen(false);
-                            }}
-                            className="w-full bg-slate-700 hover:bg-slate-800 text-white font-bold py-2 px-3 rounded-lg text-[11px] transition-colors cursor-pointer"
-                          >
-                            ใช้ส่วนลด {Math.abs(targetBahtFormatted)} ฿ (ล้างช่อง %)
-                          </button>
+                          {targetBahtFormatted > maxAllowedSpecialBaht && maxAllowedSpecialBaht > 0 ? (
+                            <div className="p-2 bg-rose-50 border border-rose-200 rounded-lg text-rose-700 text-[10px] flex items-center gap-1.5">
+                              <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                              <span>ส่วนลด ฿{targetBahtFormatted.toLocaleString()} เกินสิทธิ์ขั้นบันไดสูงสุด (฿{maxAllowedSpecialBaht.toLocaleString()}) ของบิลนี้</span>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                setSpecialDiscountBaht(targetBahtFormatted.toString());
+                                setSpecialDiscountPercent('0');
+                                setIsRoundingModalOpen(false);
+                              }}
+                              className="w-full bg-slate-700 hover:bg-slate-800 text-white font-bold py-2 px-3 rounded-lg text-[11px] transition-colors cursor-pointer"
+                            >
+                              ใช้ส่วนลด {Math.abs(targetBahtFormatted)} ฿ (ล้างช่อง %)
+                            </button>
+                          )}
                         </div>
                       </div>
                     );
