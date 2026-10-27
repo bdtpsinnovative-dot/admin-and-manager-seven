@@ -1519,9 +1519,9 @@ function VoucherCard({
   const dateRange =
     voucher.start_date || voucher.end_date
       ? `${voucher.start_date ? new Date(voucher.start_date).toLocaleDateString("th-TH") : "ทันที"} – ${
-          voucher.end_date ? new Date(voucher.end_date).toLocaleDateString("th-TH") : "ไม่จำกัด"
+          voucher.end_date ? new Date(voucher.end_date).toLocaleDateString("th-TH") : "ไม่มีวันหมดอายุ"
         }`
-      : "ไม่จำกัดระยะเวลา";
+      : "ไม่มีวันหมดอายุ";
 
   // 100% Explicit High-Contrast Styling (ZERO reliance on dark: classes, ensuring crystal-clear text!)
   const styles = {
@@ -2039,17 +2039,17 @@ interface QrStickerProps {
 }
 
 function formatStickerExpiry(endDate?: string | null): string {
-  if (!endDate) return "ใช้ได้ตลอด";
+  if (!endDate) return "ไม่มีวันหมดอายุ";
   try {
     const d = new Date(endDate);
-    if (isNaN(d.getTime())) return "ใช้ได้ตลอด";
+    if (isNaN(d.getTime())) return "ไม่มีวันหมดอายุ";
     return `หมดอายุ: ${d.toLocaleDateString("th-TH", {
       day: "numeric",
       month: "short",
       year: "2-digit",
     })}`;
   } catch {
-    return "ใช้ได้ตลอด";
+    return "ไม่มีวันหมดอายุ";
   }
 }
 
