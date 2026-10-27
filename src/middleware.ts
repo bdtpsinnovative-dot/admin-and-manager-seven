@@ -72,6 +72,10 @@ export async function middleware(request: NextRequest) {
     )
     const result = await Promise.race([getUserPromise, timeoutPromise])
     user = result.data?.user ?? null
+    if (result.error) {
+      // หากเกิด Auth Error ชั่วคราว (เช่น เน็ตกระตุก, Supabase 502/504 หรือแย่ง Refresh Token)
+      isAuthTimeoutOrError = true
+    }
   } catch (err) {
     isAuthTimeoutOrError = true
   }

@@ -74,13 +74,7 @@ export default function LoginPage() {
         try { accounts = JSON.parse(raw) } catch { accounts = [] }
       }
 
-      // ล้าง jan@gmail.com ที่เคยถูก hardcode ไว้ในเครื่องออกอัตโนมัติ
-      accounts = (accounts || []).filter(
-        a => a && a.email && a.email.toLowerCase() !== 'jan@gmail.com'
-      )
-
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(accounts))
-      setSavedAccounts(accounts)
+      setSavedAccounts(accounts || [])
     } catch {
       setSavedAccounts([])
     } finally {

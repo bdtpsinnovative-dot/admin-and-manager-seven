@@ -314,10 +314,28 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
     [usableVouchers, autoFillSheet]
   );
 
+  const duoPairPages = useMemo(() => {
+    const pageSize = 5;
+    const pages: VoucherPairItem[][] = [];
+    for (let i = 0; i < duoPairs.length; i += pageSize) {
+      pages.push(duoPairs.slice(i, i + pageSize));
+    }
+    return pages.length > 0 ? pages : [[]];
+  }, [duoPairs]);
+
   const sheetCards = useMemo(
     () => buildSheetCards(usableVouchers, sheetLayout, autoFillSheet),
     [usableVouchers, sheetLayout, autoFillSheet]
   );
+
+  const sheetCardsPages = useMemo(() => {
+    const pageSize = sheetLayout === "8_business_cards" ? 8 : 10;
+    const pages: VoucherItem[][] = [];
+    for (let i = 0; i < sheetCards.length; i += pageSize) {
+      pages.push(sheetCards.slice(i, i + pageSize));
+    }
+    return pages.length > 0 ? pages : [[]];
+  }, [sheetCards, sheetLayout]);
 
   const qrStickers = useMemo(() => {
     let list = usableVouchers;
@@ -483,7 +501,7 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
     const printElement =
       viewMode === "single"
         ? singleVoucherRef.current
-        : sheetA4Ref.current || document.getElementById("voucher-print-area");
+        : document.getElementById("voucher-print-area") || sheetA4Ref.current;
 
     if (!printElement) {
       window.print();
@@ -501,7 +519,8 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
     iframe.style.left = "-10000px";
     iframe.style.top = "0";
     iframe.style.width = "210mm";
-    iframe.style.height = "297mm";
+    iframe.style.height = "100%";
+    iframe.style.minHeight = "100vh";
     iframe.style.border = "0";
     iframe.style.opacity = "0";
     iframe.style.pointerEvents = "none";
@@ -622,12 +641,23 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
               page-break-inside: avoid !important;
             }
 
+            #voucher-print-area {
+              display: block !important;
+              width: 100% !important;
+              max-width: 210mm !important;
+              margin: 0 auto !important;
+              padding: 0 !important;
+            }
+
             .page-sheet {
               break-after: page !important;
               page-break-after: always !important;
+              break-inside: avoid !important;
+              page-break-inside: avoid !important;
               min-height: 0 !important;
               box-shadow: none !important;
               border: none !important;
+              margin: 0 auto !important;
             }
 
             .page-sheet:last-child {
@@ -1386,90 +1416,112 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
           {/* MODE 3: A4 SHEET (MULTI-VOUCHER WITH SCISSOR CUT LINES)         */}
           {/* ============================================================== */}
           {viewMode === "sheet_a4" && (
-            <div id="voucher-print-area" className="w-full flex flex-col items-center">
-              <div
-                ref={sheetA4Ref}
-                className={`bg-white border border-stone-300 shadow-2xl mx-auto box-border ${
-                  sheetLayout === "duo_5_pairs"
-                    ? "w-full max-w-[794px] min-h-[1123px] flex flex-col justify-start gap-3.5 p-6"
-                    : sheetLayout === "10_business_cards"
-                    ? "w-full max-w-[794px] min-h-[1123px] grid grid-cols-2 content-start items-start gap-x-4 gap-y-3.5 p-6"
-                    : sheetLayout === "8_business_cards"
-                    ? "w-full max-w-[794px] min-h-[1123px] grid grid-cols-2 content-start items-start gap-x-5 gap-y-4 p-6"
-                    : "w-full max-w-[794px] min-h-[1123px] grid grid-cols-2 content-start items-start gap-6 p-8"
-                }`}
-                style={{
-                  width: "100%",
-                  maxWidth: "210mm",
-                  backgroundColor: "#ffffff",
-                }}
-              >
-                {sheetLayout === "duo_5_pairs" ? (
-                  duoPairs.map((pair, idx) => (
-                    <div key={pair.id || idx} className="relative flex flex-col">
-                      <DuoVoucherPair
-                        voucherLeft={pair.left}
-                        voucherRight={pair.right}
-                        qrCodeLeft={qrCodes[pair.left.coupon_code || String(pair.left.id)]}
-                        qrCodeRight={
-                          pair.right
-                            ? qrCodes[pair.right.coupon_code || String(pair.right.id)]
-                            : undefined
-                        }
-                        theme={theme}
-                        brandChoice={brandChoice}
-                        showPhoto={showPhoto}
-                        customImage={customImage}
-                        onPhotoClick={() => fileInputRef.current?.click()}
-                        copiedCode={copiedCode}
-                        onCopy={copyCode}
-                        size="business_card"
-                      />
+            <div id="voucher-print-area" className="w-full flex flex-col items-center gap-6 print:gap-0">
+              {sheetLayout === "duo_5_pairs" ? (
+                duoPairPages.map((pagePairs, pageIdx) => (
+                  <div
+                    key={pageIdx}
+                    ref={pageIdx === 0 ? sheetA4Ref : undefined}
+                    className="page-sheet bg-white border border-stone-300 shadow-2xl mx-auto box-border print:border-none print:shadow-none w-full max-w-[794px] min-h-[1123px] flex flex-col justify-start gap-3.5 p-6"
+                    style={{
+                      width: "100%",
+                      maxWidth: "210mm",
+                      backgroundColor: "#ffffff",
+                      breakAfter: pageIdx < duoPairPages.length - 1 ? "page" : "auto",
+                      pageBreakAfter: pageIdx < duoPairPages.length - 1 ? "always" : "auto",
+                      pageBreakInside: "avoid",
+                      breakInside: "avoid",
+                    }}
+                  >
+                    {pagePairs.map((pair, idx) => (
+                      <div key={pair.id || idx} className="relative flex flex-col">
+                        <DuoVoucherPair
+                          voucherLeft={pair.left}
+                          voucherRight={pair.right}
+                          qrCodeLeft={qrCodes[pair.left.coupon_code || String(pair.left.id)]}
+                          qrCodeRight={
+                            pair.right
+                              ? qrCodes[pair.right.coupon_code || String(pair.right.id)]
+                              : undefined
+                          }
+                          theme={theme}
+                          brandChoice={brandChoice}
+                          showPhoto={showPhoto}
+                          customImage={customImage}
+                          onPhotoClick={() => fileInputRef.current?.click()}
+                          copiedCode={copiedCode}
+                          onCopy={copyCode}
+                          size="business_card"
+                        />
 
-                      {idx < duoPairs.length - 1 && (
-                        <div className="flex items-center justify-center my-1 opacity-50 hover:opacity-100 transition print:opacity-60">
+                        {idx < pagePairs.length - 1 && (
+                          <div className="flex items-center justify-center my-1 opacity-50 hover:opacity-100 transition print:opacity-60">
+                            <div className="w-full border-b border-dashed border-stone-400" />
+                            <span className="flex items-center gap-1 text-[7.5px] font-prompt font-semibold text-stone-500 uppercase px-2 shrink-0">
+                              <Scissors className="w-2.5 h-2.5" />
+                              <span>ตัดตามรอยเพื่อแจกเป็นคู่ (DUO PAIR #{pageIdx * 5 + idx + 1})</span>
+                            </span>
+                            <div className="w-full border-b border-dashed border-stone-400" />
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ))
+              ) : (
+                sheetCardsPages.map((pageCards, pageIdx) => (
+                  <div
+                    key={pageIdx}
+                    ref={pageIdx === 0 ? sheetA4Ref : undefined}
+                    className={`page-sheet bg-white border border-stone-300 shadow-2xl mx-auto box-border print:border-none print:shadow-none ${
+                      sheetLayout === "10_business_cards"
+                        ? "w-full max-w-[794px] min-h-[1123px] grid grid-cols-2 content-start items-start gap-x-4 gap-y-3.5 p-6"
+                        : sheetLayout === "8_business_cards"
+                        ? "w-full max-w-[794px] min-h-[1123px] grid grid-cols-2 content-start items-start gap-x-5 gap-y-4 p-6"
+                        : "w-full max-w-[794px] min-h-[1123px] grid grid-cols-2 content-start items-start gap-6 p-8"
+                    }`}
+                    style={{
+                      width: "100%",
+                      maxWidth: "210mm",
+                      backgroundColor: "#ffffff",
+                      breakAfter: pageIdx < sheetCardsPages.length - 1 ? "page" : "auto",
+                      pageBreakAfter: pageIdx < sheetCardsPages.length - 1 ? "always" : "auto",
+                      pageBreakInside: "avoid",
+                      breakInside: "avoid",
+                    }}
+                  >
+                    {pageCards.map((v, idx) => (
+                      <div key={v.id || idx} className="relative flex flex-col">
+                        <VoucherCard
+                          voucher={v}
+                          qrCodeUrl={qrCodes[v.coupon_code || String(v.id)]}
+                          theme={theme}
+                          brandLogo={brandChoice}
+                          showPhoto={showPhoto}
+                          customImage={customImage}
+                          onPhotoClick={() => fileInputRef.current?.click()}
+                          copiedCode={copiedCode}
+                          onCopy={copyCode}
+                          size={
+                            sheetLayout === "10_business_cards"
+                              ? "business_card"
+                              : sheetLayout === "8_business_cards"
+                              ? "business_card_tall"
+                              : "medium"
+                          }
+                        />
+
+                        {/* Dotted Cut Guidelines */}
+                        <div className="absolute -bottom-2 left-0 right-0 flex items-center justify-center opacity-40 hover:opacity-100 transition print:opacity-50">
                           <div className="w-full border-b border-dashed border-stone-400" />
-                          <span className="flex items-center gap-1 text-[7.5px] font-prompt font-semibold text-stone-500 uppercase px-2 shrink-0">
-                            <Scissors className="w-2.5 h-2.5" />
-                            <span>ตัดตามรอยเพื่อแจกเป็นคู่ (DUO PAIR #{idx + 1})</span>
-                          </span>
+                          <Scissors className="w-3 h-3 text-stone-500 mx-1 shrink-0 rotate-90" />
                           <div className="w-full border-b border-dashed border-stone-400" />
                         </div>
-                      )}
-                    </div>
-                  ))
-                ) : (
-                  sheetCards.map((v, idx) => (
-                    <div key={v.id || idx} className="relative flex flex-col">
-                      <VoucherCard
-                        voucher={v}
-                        qrCodeUrl={qrCodes[v.coupon_code || String(v.id)]}
-                        theme={theme}
-                        brandLogo={brandChoice}
-                        showPhoto={showPhoto}
-                        customImage={customImage}
-                        onPhotoClick={() => fileInputRef.current?.click()}
-                        copiedCode={copiedCode}
-                        onCopy={copyCode}
-                        size={
-                          sheetLayout === "10_business_cards"
-                            ? "business_card"
-                            : sheetLayout === "8_business_cards"
-                            ? "business_card_tall"
-                            : "medium"
-                        }
-                      />
-
-                      {/* Dotted Cut Guidelines */}
-                      <div className="absolute -bottom-2 left-0 right-0 flex items-center justify-center opacity-40 hover:opacity-100 transition print:opacity-50">
-                        <div className="w-full border-b border-dashed border-stone-400" />
-                        <Scissors className="w-3 h-3 text-stone-500 mx-1 shrink-0 rotate-90" />
-                        <div className="w-full border-b border-dashed border-stone-400" />
                       </div>
-                    </div>
-                  ))
-                )}
-              </div>
+                    ))}
+                  </div>
+                ))
+              )}
             </div>
           )}
         </div>
@@ -1491,7 +1543,7 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
               )
             ) : viewMode === "qr_stickers" ? (
               <span>
-                แผ่นสติกเกอร์ QR Code A4 • แสดง {qrStickers.length} ดวง ({autoFillSheet ? "โหมดเต็มแผ่น" : "ตามจำนวนที่ใช้งานได้จริง"})
+                แผ่นสติกเกอร์ QR Code A4 • แสดง {qrStickers.length} ดวง ({qrStickerPages.length} หน้า) • {autoFillSheet ? "โหมดพิมพ์ซ้ำเต็มแผ่น" : "ตามจำนวนที่ใช้งานได้จริง"}
               </span>
             ) : (
               <span>
