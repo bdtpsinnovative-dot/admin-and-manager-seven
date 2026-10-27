@@ -78,12 +78,40 @@ import {
   updateTerraPromotion,
   toggleTerraPromotion,
   deleteTerraPromotion,
+  toggleBatchTerraPromotion,
+  deleteBatchTerraPromotions,
   getTerraPromotions,
 } from "@/actions/terra-promotions";
 
 const R2_BASE = "https://pub-258bd10e7e8c4a7690a74c54cfbdef93.r2.dev/";
 
 import VoucherModal, { isVoucherItemUsable } from "./VoucherModal";
+
+
+export interface TerraBatchGroup {
+  batchId: string;
+  title: string;
+  leadSales: string;
+  partnerCompany: string;
+  partnerSales: string;
+  note?: string;
+  isTiered: boolean;
+  tiers?: any[];
+  isTopUp: boolean;
+  discountType: "percentage" | "fixed_amount";
+  discountValue: number;
+  minSpend?: number | null;
+  maxDiscountAmount?: number | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  isActive: boolean;
+  allActive: boolean;
+  totalCount: number;
+  usedCount: number;
+  usableCount: number;
+  createdAt: string;
+  items: TerraPromotion[];
+}
 
 function getImageUrl(url: string | null | undefined): string | null {
   if (!url) return null;
@@ -2829,8 +2857,11 @@ export default function DiscountHubClient({
   const [deleteConfirmItem, setDeleteConfirmItem] = useState<{
     id: string | number;
     title: string;
-    type: "pos" | "terra";
+    type: "pos" | "terra" | "terra_batch";
+    batchId?: string;
   } | null>(null);
+  const [terraViewMode, setTerraViewMode] = useState<"batch" | "flat">("batch");
+  const [expandedBatchIds, setExpandedBatchIds] = useState<Set<string>>(new Set());
 
   // Feedback Notification Toast (Always at top layer z-[99999])
   const [toast, setToast] = useState<{
@@ -3016,6 +3047,17 @@ export default function DiscountHubClient({
           setPosDiscounts((prev) => prev.filter((d) => d.id !== Number(id)));
           triggerToast("success", "ลบสำเร็จ", `ลบส่วนลด "${title}" ออกจากระบบแล้ว`);
         }
+      } else if (type === "terra_batch") {
+        const bId = deleteConfirmItem.batchId || String(id);
+        const res = await deleteBatchTerraPromotions(bId);
+        if (res.success) {
+          setTerraPromotions((prev) =>
+            prev.filter((p) => p.batch_id !== bId && p.attribution?.batch_id !== bId)
+          );
+          triggerToast("success", "ลบสำเร็จ", `ลบคูปองทั้งชุด "${title}" เรียบร้อยแล้ว`);
+        } else {
+          triggerToast("error", "ข้อผิดพลาด", res.error || "ไม่สามารถลบคูปองทั้งชุดได้");
+        }
       } else {
         const res = await deleteTerraPromotion(String(id));
         if (res.success) {
@@ -3030,6 +3072,104 @@ export default function DiscountHubClient({
   };
 
   // ── Terra Filtered List ────────────────────────────────────────────────────
+
+  const toggleExpandBatch = (batchId: string) => {
+    setExpandedBatchIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(batchId)) {
+        next.delete(batchId);
+      } else {
+        next.add(batchId);
+      }
+      return next;
+    });
+  };
+
+  const handleToggleBatchStatus = async (batchId: string, currentStatus: boolean) => {
+    startTransition(async () => {
+      const res = await toggleBatchTerraPromotion(batchId, currentStatus);
+      if (res.success) {
+        setTerraPromotions((prev) =>
+          prev.map((p) =>
+            p.batch_id === batchId || p.attribution?.batch_id === batchId
+              ? { ...p, is_active: !currentStatus }
+              : p
+          )
+        );
+        triggerToast("success", "สำเร็จ", `เปลี่ยนสถานะคูปองทั้งชุดแล้ว`);
+      } else {
+        triggerToast("error", "ข้อผิดพลาด", res.error || "ไม่สามารถเปลี่ยนสถานะได้");
+      }
+    });
+  };
+
+  const handleOpenBatchVouchersModal = (group: TerraBatchGroup) => {
+    const usableInBatch = group.items.filter(
+      (p) => Boolean(p.coupon_code) && isVoucherItemUsable(p)
+    );
+    if (usableInBatch.length === 0) {
+      triggerToast("error", "ไม่มีคูปองที่ใช้งานได้", "คูปองในชุดนี้ถูกใช้งานครบแล้ว หรือหมดอายุแล้ว");
+      return;
+    }
+    setActiveModalVouchers(usableInBatch);
+    setIsVoucherModalOpen(true);
+  };
+
+  const handleCopyBatchToLine = (group: TerraBatchGroup) => {
+    const headerTitle = group.partnerCompany
+      ? `รหัสส่วนลดพิเศษสำหรับ ${group.partnerCompany}`
+      : group.title;
+    const discountSummary = group.isTiered && group.tiers
+      ? `ขั้นบันได: ` +
+        group.tiers
+          .map(
+            (t: any) =>
+              `ซื้อครบ ฿${Number(t.min_spend).toLocaleString()} ลด ${
+                t.discount_type === "percentage"
+                  ? `${t.discount_value}%`
+                  : `฿${Number(t.discount_value).toLocaleString()}`
+              }`
+          )
+          .join(" | ") +
+        (group.maxDiscountAmount
+          ? ` (ลดสูงสุด ฿${Number(group.maxDiscountAmount).toLocaleString()})`
+          : "")
+      : group.discountType === "percentage"
+      ? `${group.discountValue}% (ลดสูงสุด ${
+          group.maxDiscountAmount
+            ? `฿${Number(group.maxDiscountAmount).toLocaleString()}`
+            : "ไม่จำกัด"
+        })`
+      : `฿${Number(group.discountValue).toLocaleString()}`;
+    const expiresSummary = group.endDate
+      ? new Date(group.endDate).toLocaleDateString("th-TH")
+      : "ไม่มีกำหนดหมดอายุ";
+
+    const lines = [
+      headerTitle,
+      `เซลล์ผู้ดูแล: ${group.leadSales}`,
+      group.partnerSales ? `ผู้ติดต่อ: ${group.partnerSales}` : "",
+      `ส่วนลด: ${discountSummary}`,
+      `หมดอายุ: ${expiresSummary}`,
+      group.note ? `หมายเหตุ: ${group.note}` : "",
+      "----------------------------------------",
+      `รหัสคูปอง (ทั้งหมด ${group.totalCount} ใบ | เหลือพร้อมใช้ ${group.usableCount} ใบ):`,
+      ...group.items.map((item, idx) => {
+        const isUsable = isVoucherItemUsable(item);
+        return `${idx + 1}. ${item.coupon_code || "—"}${
+          isUsable ? "" : " (ใช้แล้ว/หมดอายุ)"
+        }`;
+      }),
+      "----------------------------------------",
+      "นำรหัสไปใช้ที่จุดขาย (POS) หรือทางแชทสั่งซื้อสินค้าได้ทันที",
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    navigator.clipboard?.writeText(lines);
+    triggerToast("success", "คัดลอกสำเร็จ", `คัดลอกข้อมูลชุดคูปองสำหรับส่ง LINE แล้ว`);
+  };
+
   const filteredTerraPromotions = useMemo(() => {
     return terraPromotions.filter((p) => {
       const q = terraSearch.trim().toLowerCase();
@@ -3056,6 +3196,69 @@ export default function DiscountHubClient({
     () => filteredTerraPromotions.filter((p) => Boolean(p.coupon_code) && isVoucherItemUsable(p)),
     [filteredTerraPromotions]
   );
+
+  const { batchGroups, standalonePromotions } = useMemo(() => {
+    const batchMap = new Map<string, TerraPromotion[]>();
+    const standalone: TerraPromotion[] = [];
+
+    filteredTerraPromotions.forEach((p) => {
+      const bId = p.batch_id || p.attribution?.batch_id;
+      if (bId) {
+        if (!batchMap.has(bId)) {
+          batchMap.set(bId, []);
+        }
+        batchMap.get(bId)!.push(p);
+      } else {
+        standalone.push(p);
+      }
+    });
+
+    const groups: TerraBatchGroup[] = [];
+    batchMap.forEach((items, batchId) => {
+      items.sort((a, b) => (a.coupon_code || "").localeCompare(b.coupon_code || ""));
+      const first = items[0];
+      const attr = first.attribution;
+      const totalCount = items.length;
+      const usedCount = items.filter(
+        (i) => Number(i.used_count || 0) >= (Number(i.usage_limit) || 1)
+      ).length;
+      const usableCount = items.filter((i) => isVoucherItemUsable(i)).length;
+      const anyActive = items.some((i) => i.is_active);
+      const allActive = items.every((i) => i.is_active);
+
+      groups.push({
+        batchId,
+        title: first.title,
+        leadSales: attr?.lead_sales || "ทีมขาย",
+        partnerCompany: attr?.partner_company || "",
+        partnerSales: attr?.partner_sales || "",
+        note: attr?.note || "",
+        isTiered: Boolean(first.is_tiered || attr?.is_tiered),
+        tiers: first.tiers || attr?.tiers,
+        isTopUp: Boolean(first.is_top_up || attr?.is_top_up),
+        discountType: first.discount_type,
+        discountValue: first.discount_value,
+        minSpend: first.min_spend,
+        maxDiscountAmount: first.max_discount_amount,
+        startDate: first.start_date,
+        endDate: first.end_date,
+        isActive: anyActive,
+        allActive,
+        totalCount,
+        usedCount,
+        usableCount,
+        createdAt: first.created_at,
+        items,
+      });
+    });
+
+    groups.sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+
+    return { batchGroups: groups, standalonePromotions: standalone };
+  }, [filteredTerraPromotions]);
+
   const isAllCouponsSelected =
     couponPromos.length > 0 && couponPromos.every((p) => selectedVoucherIds.has(p.id));
 
@@ -3512,6 +3715,621 @@ export default function DiscountHubClient({
       setTerraPromotions(updated);
       triggerToast("success", "บันทึกสำเร็จ!", "แก้ไขข้อมูลโค้ดส่วนลดเซลล์และพันธมิตรเรียบร้อยแล้ว");
     });
+  };
+
+
+  const renderSinglePromoCard = (promo: TerraPromotion) => {
+    const isAuto = promo.trigger_type === "auto";
+    const isPercent = promo.discount_type === "percentage";
+    const isExpired =
+      promo.end_date && new Date(promo.end_date).toISOString() < new Date().toISOString();
+    const isExhausted =
+      promo.usage_limit !== null &&
+      promo.usage_limit !== undefined &&
+      Number(promo.usage_limit) > 0 &&
+      Number(promo.used_count || 0) >= Number(promo.usage_limit);
+    const isUsableVoucher = Boolean(promo.coupon_code) && isVoucherItemUsable(promo);
+    const isTopUpPromo = Boolean(promo.is_top_up || promo.attribution?.is_top_up);
+
+    return (
+                  <div
+                    key={promo.id}
+                    className={`group relative flex flex-col justify-between rounded-2xl border bg-white overflow-hidden transition-all duration-200 shadow-xs hover:shadow-md ${!promo.is_active || isExhausted
+                      ? "opacity-60 border-slate-200 bg-slate-50/70"
+                      : !isAuto
+                        ? "border-slate-200/90 hover:border-amber-500"
+                        : "border-slate-200/90 hover:border-emerald-500"
+                      }`}
+                  >
+                    {/* Top Segment: Set Image Hero with Badges */}
+                    <div className="p-4 pb-0">
+                      <div className="flex items-center justify-between gap-3 mb-3">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {isUsableVoucher && (
+                            <input
+                              type="checkbox"
+                              checked={selectedVoucherIds.has(promo.id)}
+                              onChange={() => toggleSelectVoucher(promo.id)}
+                              className="w-4 h-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500 cursor-pointer accent-amber-600 mr-1"
+                              title="เลือกเพื่อจัดพิมพ์/ส่งออกเป็นบัตร"
+                            />
+                          )}
+                          {!isAuto ? (
+                            <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-900 border border-amber-200">
+                              <Ticket className="h-3 w-3 text-amber-600" />
+                              คูปองกรอกโค้ด
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-800 border border-emerald-200">
+                              <Zap className="h-3 w-3 text-emerald-600" />
+                              Auto-apply เซ็ต
+                            </span>
+                          )}
+
+                          {isTopUpPromo && (
+                            <span className="inline-flex items-center gap-1 rounded-md bg-amber-100 px-2 py-0.5 text-[10px] font-black text-amber-900 border border-amber-300">
+                              <Zap className="w-3 h-3 text-amber-700" />
+                              <span>TOP-UP</span>
+                            </span>
+                          )}
+
+                          {promo.is_tiered && (
+                            <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700 border border-slate-200">
+                              ขั้นบันได
+                            </span>
+                          )}
+
+                          {isExpired && (
+                            <span className="inline-flex items-center gap-1 rounded-md bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-700 border border-rose-200">
+                              หมดอายุ
+                            </span>
+                          )}
+
+                          {isExhausted && (
+                            <span className="inline-flex items-center gap-1 rounded-md bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-700 border border-slate-300">
+                              ใช้ครบสิทธิ์แล้ว
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Status Toggle Switch */}
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-semibold text-slate-400">
+                            {promo.is_active ? "เปิด" : "ปิด"}
+                          </span>
+                          <button
+                            type="button"
+                            disabled={isPending}
+                            onClick={() => handleToggleTerraStatus(promo.id, promo.is_active)}
+                            className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${promo.is_active ? "bg-emerald-600" : "bg-slate-300"
+                              }`}
+                            title={promo.is_active ? "คลิกเพื่อปิดใช้งาน" : "คลิกเพื่อเปิดใช้งาน"}
+                          >
+                            <span
+                              className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${promo.is_active ? "translate-x-4" : "translate-x-0"
+                                }`}
+                            />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Main Split Info: Photo & Headline */}
+                      <div className="flex items-start gap-3.5 bg-slate-50/90 rounded-xl p-3 border border-slate-200/80">
+                        <div className="relative h-16 w-16 rounded-lg bg-white border border-slate-200 overflow-hidden shrink-0 flex items-center justify-center">
+                          {promo.collection_image ? (
+                            <img
+                              src={getImageUrl(promo.collection_image)!}
+                              alt=""
+                              className="h-full w-full object-cover"
+                            />
+                          ) : isAuto ? (
+                            <Layers className="h-6 w-6 text-slate-300" />
+                          ) : (
+                            <Store className="h-6 w-6 text-amber-500/60" />
+                          )}
+                          <span className="absolute bottom-0 inset-x-0 bg-slate-900/80 backdrop-blur-xs text-[9px] font-bold text-white text-center py-0.5">
+                            {isAuto ? `${promo.collection_item_count || "?"} ชิ้น` : "ทั้งร้าน"}
+                          </span>
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 truncate">
+                            {promo.collection_name || (isAuto ? `เซ็ต #${promo.collection_group_id}` : "ทั้งร้านค้า (Global)")}
+                          </p>
+                          <h3 className="text-sm font-bold text-slate-900 leading-snug mt-0.5 truncate">
+                            {promo.title}
+                          </h3>
+
+                          {promo.is_tiered && promo.tiers && promo.tiers.length > 0 ? (
+                            <div className="mt-1.5 space-y-1">
+                              <div className="flex items-center gap-1 flex-wrap">
+                                {promo.tiers.map((t, idx) => (
+                                  <span
+                                    key={idx}
+                                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-slate-700 font-mono text-[10px] font-medium"
+                                  >
+                                    ≥฿{Number(t.min_spend).toLocaleString()}: {t.discount_type === "percentage" ? `${t.discount_value}%` : `฿${Number(t.discount_value).toLocaleString()}`}
+                                  </span>
+                                ))}
+                              </div>
+                              {promo.max_discount_amount && (
+                                <span className="text-[10px] text-slate-400 font-medium block">
+                                  (ลดสูงสุด ฿{Number(promo.max_discount_amount).toLocaleString()})
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="mt-1 flex items-baseline gap-1.5 flex-wrap">
+                              <span className="text-xl font-bold font-mono text-slate-900 tracking-tight">
+                                {isPercent ? `${promo.discount_value}% OFF` : `฿${Number(promo.discount_value).toLocaleString()} OFF`}
+                              </span>
+                              <span className="text-[10px] text-slate-500 font-medium truncate">
+                                {isAuto
+                                  ? `ครบ ${promo.min_sets || 1} เซ็ต`
+                                  : promo.min_spend
+                                    ? `(ขั้นต่ำ ฿${Number(promo.min_spend).toLocaleString()})`
+                                    : "(ไม่มีขั้นต่ำ)"}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Attribution Badges & Top-Up Badges */}
+                      {(promo.attribution || isTopUpPromo) && (
+                        <div className="mt-2.5 pt-2 border-t border-slate-100 flex flex-wrap items-center gap-1.5 px-1">
+                          {isTopUpPromo && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-black uppercase tracking-wider">
+                              <Zap className="w-3 h-3 text-amber-700" />
+                              <span>TOP-UP (ลด On-top)</span>
+                            </span>
+                          )}
+                          {promo.attribution && (
+                            <>
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 border border-purple-200 text-[10px] font-bold">
+                                <User className="w-3 h-3" />
+                                <span>เซลล์: {promo.attribution.lead_sales}</span>
+                              </span>
+                              {promo.attribution.partner_company && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-bold">
+                                  <Building2 className="w-3 h-3" />
+                                  <span>บริษัท: {promo.attribution.partner_company}</span>
+                                </span>
+                              )}
+                              {promo.attribution.partner_sales && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold">
+                                  <Users className="w-3 h-3" />
+                                  <span>เซลล์คู่ค้า: {promo.attribution.partner_sales}</span>
+                                </span>
+                              )}
+                              {promo.attribution.note && (
+                                <span className="text-[10px] text-slate-500 italic block w-full mt-0.5">
+                                  โน้ต: {promo.attribution.note}
+                                </span>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Description if any and no attribution */}
+                      {!promo.attribution && promo.description && (
+                        <p className="mt-2.5 text-xs text-slate-500 line-clamp-1 px-1">
+                          {promo.description}
+                        </p>
+                      )}
+
+                      {/* Coupon Voucher Strip (Tactile Ticket Box) */}
+                      {!isAuto && promo.coupon_code && (
+                        <div className="mt-3 flex items-center justify-between rounded-xl bg-amber-50/70 border border-dashed border-amber-300 p-2.5">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <Ticket className="h-4 w-4 text-amber-700 shrink-0" />
+                            <div className="min-w-0">
+                              <span className="text-[10px] text-amber-800 font-semibold block uppercase">รหัสคูปอง:</span>
+                              <span className="font-mono text-xs font-bold text-slate-900 tracking-wider uppercase truncate block">
+                                {promo.coupon_code}
+                              </span>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => copyCouponCode(promo.coupon_code!)}
+                            className="inline-flex items-center gap-1 rounded-lg bg-white px-2.5 py-1 text-xs font-bold text-slate-700 border border-amber-200 hover:bg-amber-100/60 active:bg-amber-200 transition shrink-0 shadow-2xs"
+                          >
+                            {copiedCode === promo.coupon_code ? (
+                              <>
+                                <Check className="h-3 w-3 text-emerald-600" />
+                                <span className="text-emerald-700">คัดลอกแล้ว</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="h-3 w-3 text-slate-500" />
+                                <span>คัดลอก</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Bottom Metadata & Actions */}
+                    <div className="p-4 pt-3 mt-2">
+                      <div className="space-y-1 text-[11px] text-slate-500 font-medium border-t border-slate-100 pt-2.5">
+                        <div className="flex items-center justify-between">
+                          <span className="flex items-center gap-1 text-slate-400">
+                            <Clock className="h-3 w-3" /> ระยะเวลา:
+                          </span>
+                          <span className="text-slate-700 font-semibold">
+                            {promo.start_date || promo.end_date
+                              ? `${promo.start_date ? new Date(promo.start_date).toLocaleDateString("th-TH") : "ทันที"} – ${promo.end_date ? new Date(promo.end_date).toLocaleDateString("th-TH") : "ไม่จำกัด"
+                              }`
+                              : "ไม่จำกัดระยะเวลา"}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="flex items-center gap-1 text-slate-400">
+                            <span className="w-1.5 h-1.5 rounded-full bg-slate-400" /> สถิติใช้:
+                          </span>
+                          <span className="font-mono font-bold text-slate-800">
+                            {promo.used_count} {promo.usage_limit ? `/ ${promo.usage_limit} สิทธิ์` : "ครั้ง"}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Action Rail */}
+                      <div className="mt-3 flex items-center justify-end gap-1.5 border-t border-slate-100 pt-2.5">
+                        {isUsableVoucher && (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenSingleVoucherModal(promo)}
+                            className="inline-flex items-center gap-1 rounded-lg bg-amber-50 text-amber-900 border border-amber-300 px-2.5 py-1.5 text-xs font-black hover:bg-amber-100 active:scale-95 transition shadow-2xs cursor-pointer"
+                            title="สร้างบัตรคูปองส่งเข้ามือถือ/พิมพ์ A4"
+                          >
+                            <Ticket className="h-3.5 w-3.5 text-amber-600" />
+                            <span>แจกบัตร</span>
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (promo.attribution || promo.is_tiered) {
+                              handleOpenEditPartnerModal(promo);
+                            } else {
+                              handleOpenEditTerraModal(promo);
+                            }
+                          }}
+                          className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-200 transition active:scale-95"
+                        >
+                          <Edit2 className="h-3 w-3" />
+                          แก้ไข
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDeleteConfirmItem({ id: promo.id, title: promo.title, type: "terra" })}
+                          className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-rose-50 hover:text-rose-600 transition active:scale-95"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                          ลบ
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+    );
+  };
+
+
+  const renderBatchGroupCard = (group: TerraBatchGroup) => {
+    const isExpanded = expandedBatchIds.has(group.batchId);
+    return (
+      <div
+        key={group.batchId}
+        className="rounded-2xl border border-slate-200/90 bg-white overflow-hidden shadow-xs hover:shadow-md transition-all duration-200"
+      >
+        {/* Top Banner Header */}
+        <div className="p-4 sm:p-5 border-b border-slate-100 bg-gradient-to-r from-amber-50/60 via-white to-slate-50/60">
+          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+            <div className="space-y-1.5 min-w-0 flex-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="inline-flex items-center gap-1.5 rounded-md bg-amber-100 px-2.5 py-1 text-xs font-black text-amber-900 border border-amber-300 shadow-2xs">
+                  <Package className="w-3.5 h-3.5 text-amber-700" />
+                  ชุดคูปอง ({group.totalCount} ใบ)
+                </span>
+
+                {group.isTopUp && (
+                  <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-0.5 text-[10px] font-black text-amber-900 border border-amber-300">
+                    <Zap className="w-3 h-3 text-amber-700" />
+                    TOP-UP
+                  </span>
+                )}
+
+                {group.isTiered && (
+                  <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700 border border-slate-200">
+                    ขั้นบันได
+                  </span>
+                )}
+
+                <span className="text-[11px] font-mono font-bold text-slate-400">
+                  #{group.batchId}
+                </span>
+              </div>
+
+              <h3 className="text-base font-bold text-slate-900 leading-snug tracking-tight">
+                {group.title}
+              </h3>
+
+              {/* Attribution Details */}
+              <div className="flex items-center gap-3 text-xs text-slate-600 flex-wrap pt-0.5">
+                <span className="inline-flex items-center gap-1 font-medium">
+                  <User className="w-3.5 h-3.5 text-slate-400" />
+                  เซลล์เรา: <strong className="text-slate-800">{group.leadSales}</strong>
+                </span>
+                {group.partnerCompany && (
+                  <span className="inline-flex items-center gap-1 font-medium">
+                    <Building2 className="w-3.5 h-3.5 text-amber-600" />
+                    คู่ค้า: <strong className="text-slate-800">{group.partnerCompany}</strong>
+                  </span>
+                )}
+                {group.partnerSales && (
+                  <span className="inline-flex items-center gap-1 text-slate-500">
+                    ผู้ติดต่อ: <span className="text-slate-700">{group.partnerSales}</span>
+                  </span>
+                )}
+                {group.note && (
+                  <span className="text-slate-400 italic">
+                    ({group.note})
+                  </span>
+                )}
+              </div>
+
+              {/* Tiers or Discount Value */}
+              {group.isTiered && group.tiers && group.tiers.length > 0 ? (
+                <div className="pt-1.5 flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[11px] font-bold text-slate-400">เงื่อนไข:</span>
+                  {group.tiers.map((t: any, idx: number) => (
+                    <span
+                      key={idx}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-slate-700 font-mono text-[11px] font-medium"
+                    >
+                      ≥฿{Number(t.min_spend).toLocaleString()}: {t.discount_type === "percentage" ? `${t.discount_value}%` : `฿${Number(t.discount_value).toLocaleString()}`}
+                    </span>
+                  ))}
+                  {group.maxDiscountAmount && (
+                    <span className="text-[10px] text-slate-400">
+                      (ลดสูงสุด ฿{Number(group.maxDiscountAmount).toLocaleString()})
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <div className="pt-1 flex items-baseline gap-2">
+                  <span className="text-lg font-bold font-mono text-slate-900">
+                    {group.discountType === "percentage" ? `ลด ${group.discountValue}%` : `ลด ฿${Number(group.discountValue).toLocaleString()}`}
+                  </span>
+                  {group.minSpend ? (
+                    <span className="text-xs text-slate-500">
+                      (ขั้นต่ำ ฿{Number(group.minSpend).toLocaleString()})
+                    </span>
+                  ) : null}
+                  {group.maxDiscountAmount ? (
+                    <span className="text-xs text-slate-400">
+                      (ลดสูงสุด ฿{Number(group.maxDiscountAmount).toLocaleString()})
+                    </span>
+                  ) : null}
+                </div>
+              )}
+            </div>
+
+            {/* Switch Status for whole batch */}
+            <div className="flex items-center sm:flex-col sm:items-end gap-2 shrink-0">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-500">
+                  {group.isActive ? "เปิดใช้งานทั้งชุด" : "ปิดใช้งานทั้งชุด"}
+                </span>
+                <button
+                  type="button"
+                  disabled={isPending}
+                  onClick={() => handleToggleBatchStatus(group.batchId, group.isActive)}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                    group.isActive ? "bg-emerald-600" : "bg-slate-300"
+                  }`}
+                  title={group.isActive ? "คลิกเพื่อปิดใช้งานทั้งชุด" : "คลิกเพื่อเปิดใช้งานทั้งชุด"}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${
+                      group.isActive ? "translate-x-5" : "translate-x-0"
+                    }`}
+                  />
+                </button>
+              </div>
+              <span className="text-[10px] text-slate-400 font-mono">
+                {group.startDate || group.endDate
+                  ? `${group.startDate ? new Date(group.startDate).toLocaleDateString("th-TH") : "ทันที"} – ${group.endDate ? new Date(group.endDate).toLocaleDateString("th-TH") : "ไม่จำกัด"}`
+                  : "ไม่มีกำหนดหมดอายุ"}
+              </span>
+            </div>
+          </div>
+
+          {/* Usability Counter & Progress Track */}
+          <div className="mt-4 pt-3.5 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3 sm:gap-4 text-xs flex-wrap">
+              <div className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-xs" />
+                <span className="text-slate-600 font-medium">พร้อมใช้งาน:</span>
+                <strong className="text-emerald-700 font-bold">{group.usableCount} ใบ</strong>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-slate-400" />
+                <span className="text-slate-600 font-medium">ใช้ไปแล้ว:</span>
+                <strong className="text-slate-800 font-bold">{group.usedCount} ใบ</strong>
+              </div>
+              <div className="text-slate-400 font-medium">
+                (ทั้งหมด {group.totalCount} ใบ)
+              </div>
+            </div>
+
+            <div className="w-full sm:w-56 bg-slate-100 h-2.5 rounded-full overflow-hidden flex border border-slate-200/60">
+              <div
+                className="bg-emerald-500 h-full transition-all duration-300"
+                style={{ width: `${group.totalCount > 0 ? (group.usableCount / group.totalCount) * 100 : 0}%` }}
+                title={`พร้อมใช้งาน ${group.usableCount} ใบ`}
+              />
+              <div
+                className="bg-slate-300 h-full transition-all duration-300"
+                style={{ width: `${group.totalCount > 0 ? (group.usedCount / group.totalCount) * 100 : 0}%` }}
+                title={`ใช้งานแล้ว ${group.usedCount} ใบ`}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Actions Rail */}
+        <div className="px-4 sm:px-5 py-3 bg-slate-50/80 border-t border-slate-100 flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Print only usable in batch */}
+            <button
+              type="button"
+              disabled={group.usableCount === 0}
+              onClick={() => handleOpenBatchVouchersModal(group)}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 disabled:opacity-40 text-white text-xs font-bold transition shadow-xs cursor-pointer active:scale-95"
+            >
+              <Ticket className="w-3.5 h-3.5" />
+              <span>พิมพ์ QR ทั้งชุด ({group.usableCount} ใบพร้อมใช้)</span>
+            </button>
+
+            {/* Copy LINE */}
+            <button
+              type="button"
+              onClick={() => handleCopyBatchToLine(group)}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold transition shadow-2xs cursor-pointer"
+            >
+              <Share2 className="w-3.5 h-3.5 text-slate-500" />
+              <span>คัดลอกส่ง LINE</span>
+            </button>
+
+            {/* Delete Batch */}
+            <button
+              type="button"
+              onClick={() => setDeleteConfirmItem({ id: group.batchId, title: group.title, type: "terra_batch", batchId: group.batchId })}
+              className="inline-flex items-center gap-1 px-2.5 py-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 text-xs font-semibold transition"
+              title="ลบคูปองทั้งชุดนี้"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>ลบทั้งชุด</span>
+            </button>
+          </div>
+
+          {/* Expand / Collapse Button */}
+          <button
+            type="button"
+            onClick={() => toggleExpandBatch(group.batchId)}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-xs font-bold text-slate-700 transition cursor-pointer"
+          >
+            <span>{isExpanded ? "ซ่อนรายชื่อรหัส" : `คลี่ดูรหัสในชุด (${group.totalCount} ใบ)`}</span>
+            <ChevronDown className={`w-3.5 h-3.5 text-slate-500 transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`} />
+          </button>
+        </div>
+
+        {/* Expanded Table */}
+        {isExpanded && (
+          <div className="border-t border-slate-200 bg-white p-4 animate-in fade-in duration-200">
+            <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-2xs">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px]">
+                    <th className="py-2.5 px-3 w-10 text-center">#</th>
+                    <th className="py-2.5 px-3">รหัสคูปอง</th>
+                    <th className="py-2.5 px-3">เงื่อนไขส่วนลด</th>
+                    <th className="py-2.5 px-3">สถานะการใช้งาน</th>
+                    <th className="py-2.5 px-3 text-right">การจัดการ</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {group.items.map((item, idx) => {
+                    const isUsable = isVoucherItemUsable(item);
+                    const isExhausted = Number(item.used_count || 0) >= (Number(item.usage_limit) || 1);
+                    return (
+                      <tr key={item.id} className="hover:bg-slate-50/80 transition">
+                        <td className="py-2.5 px-3 text-center text-slate-400 font-mono text-[11px]">
+                          {idx + 1}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono font-bold text-slate-900 tracking-wider">
+                              {item.coupon_code}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard?.writeText(item.coupon_code || "");
+                                triggerToast("success", "คัดลอกแล้ว", `คัดลอกรหัส ${item.coupon_code}`);
+                              }}
+                              className="text-slate-400 hover:text-slate-700 p-1 rounded"
+                              title="คัดลอกโค้ด"
+                            >
+                              <Copy className="w-3 h-3" />
+                            </button>
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-600">
+                          {item.is_tiered ? "ขั้นบันไดตามยอดซื้อ" : item.discount_type === "percentage" ? `ลด ${item.discount_value}%` : `ลด ฿${Number(item.discount_value).toLocaleString()}`}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          {isExhausted ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 font-bold text-[10px] border border-slate-200">
+                              ใช้งานแล้ว ({item.used_count}/{item.usage_limit || 1})
+                            </span>
+                          ) : isUsable ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 font-bold text-[10px] border border-emerald-200">
+                              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                              พร้อมใช้งาน
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-rose-50 text-rose-700 font-bold text-[10px] border border-rose-200">
+                              ปิดการใช้งาน / หมดอายุ
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            {isUsable && (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenSingleVoucherModal(item)}
+                                className="px-2 py-1 rounded-lg bg-amber-50 text-amber-900 border border-amber-200 hover:bg-amber-100 text-[10px] font-bold transition shadow-2xs"
+                              >
+                                พิมพ์ใบนี้
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleToggleTerraStatus(item.id, item.is_active)}
+                              className={`px-2 py-1 rounded-lg text-[10px] font-bold transition ${
+                                item.is_active
+                                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                  : "bg-slate-100 text-slate-500 border border-slate-200"
+                              }`}
+                            >
+                              {item.is_active ? "เปิด" : "ปิด"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDeleteConfirmItem({ id: item.id, title: item.title, type: "terra" })}
+                              className="p-1 text-slate-400 hover:text-rose-600 rounded-lg transition"
+                              title="ลบใบนี้"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -4080,7 +4898,45 @@ export default function DiscountHubClient({
             </div>
           )}
 
-          {/* Terra Card Grid - Hallmark Studio Passcards */}
+          {/* View Mode Switcher: Batch Groups vs Flat Cards */}
+          {batchGroups.length > 0 && (
+            <div className="flex items-center justify-between gap-3 bg-white p-2.5 rounded-2xl border border-slate-200 shadow-xs flex-wrap">
+              <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl border border-slate-200/80">
+                <button
+                  type="button"
+                  onClick={() => setTerraViewMode("batch")}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                    terraViewMode === "batch"
+                      ? "bg-white text-slate-900 shadow-xs border border-slate-200/60"
+                      : "text-slate-500 hover:text-slate-800"
+                  }`}
+                >
+                  <Package className="w-3.5 h-3.5 text-amber-600" />
+                  <span>จัดกลุ่มตามชุด/ล็อต ({batchGroups.length} ชุด)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTerraViewMode("flat")}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                    terraViewMode === "flat"
+                      ? "bg-white text-slate-900 shadow-xs border border-slate-200/60"
+                      : "text-slate-500 hover:text-slate-800"
+                  }`}
+                >
+                  <LayoutGrid className="w-3.5 h-3.5 text-blue-600" />
+                  <span>แสดงรายใบทั้งหมด ({filteredTerraPromotions.length} ใบ)</span>
+                </button>
+              </div>
+
+              <div className="text-xs text-slate-500 flex items-center gap-2">
+                <span>ทั้งหมด: <strong className="text-slate-800">{filteredTerraPromotions.length}</strong> คูปอง</span>
+                <span>•</span>
+                <span>ชุดล็อต: <strong className="text-amber-700">{batchGroups.length}</strong> ชุด</span>
+              </div>
+            </div>
+          )}
+
+          {/* Terra Promotion List */}
           {filteredTerraPromotions.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-12 text-center">
               <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-slate-100 text-slate-600 mb-3 border border-slate-200">
@@ -4103,306 +4959,31 @@ export default function DiscountHubClient({
                 </button>
               )}
             </div>
+          ) : terraViewMode === "batch" && batchGroups.length > 0 ? (
+            <div className="space-y-6">
+              {/* Batch Groups List */}
+              <div className="space-y-4">
+                {batchGroups.map(renderBatchGroupCard)}
+              </div>
+
+              {/* Standalone Promotions Section */}
+              {standalonePromotions.length > 0 && (
+                <div className="pt-4 border-t border-slate-200/80">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
+                      <Store className="w-4 h-4 text-slate-400" />
+                      <span>โปรโมชันเซ็ต & คูปองเดี่ยว ({standalonePromotions.length} รายการ)</span>
+                    </h4>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {standalonePromotions.map(renderSinglePromoCard)}
+                  </div>
+                </div>
+              )}
+            </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredTerraPromotions.map((promo) => {
-                const isAuto = promo.trigger_type === "auto";
-                const isPercent = promo.discount_type === "percentage";
-                const isExpired =
-                  promo.end_date && new Date(promo.end_date).toISOString() < new Date().toISOString();
-                const isExhausted =
-                  promo.usage_limit !== null &&
-                  promo.usage_limit !== undefined &&
-                  Number(promo.usage_limit) > 0 &&
-                  Number(promo.used_count || 0) >= Number(promo.usage_limit);
-                const isUsableVoucher = Boolean(promo.coupon_code) && isVoucherItemUsable(promo);
-                const isTopUpPromo = Boolean(promo.is_top_up || promo.attribution?.is_top_up);
-
-                return (
-                  <div
-                    key={promo.id}
-                    className={`group relative flex flex-col justify-between rounded-2xl border bg-white overflow-hidden transition-all duration-200 shadow-xs hover:shadow-md ${!promo.is_active || isExhausted
-                      ? "opacity-60 border-slate-200 bg-slate-50/70"
-                      : !isAuto
-                        ? "border-slate-200/90 hover:border-amber-500"
-                        : "border-slate-200/90 hover:border-emerald-500"
-                      }`}
-                  >
-                    {/* Top Segment: Set Image Hero with Badges */}
-                    <div className="p-4 pb-0">
-                      <div className="flex items-center justify-between gap-3 mb-3">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          {isUsableVoucher && (
-                            <input
-                              type="checkbox"
-                              checked={selectedVoucherIds.has(promo.id)}
-                              onChange={() => toggleSelectVoucher(promo.id)}
-                              className="w-4 h-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500 cursor-pointer accent-amber-600 mr-1"
-                              title="เลือกเพื่อจัดพิมพ์/ส่งออกเป็นบัตร"
-                            />
-                          )}
-                          {!isAuto ? (
-                            <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-900 border border-amber-200">
-                              <Ticket className="h-3 w-3 text-amber-600" />
-                              คูปองกรอกโค้ด
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-800 border border-emerald-200">
-                              <Zap className="h-3 w-3 text-emerald-600" />
-                              Auto-apply เซ็ต
-                            </span>
-                          )}
-
-                          {isTopUpPromo && (
-                            <span className="inline-flex items-center gap-1 rounded-md bg-amber-100 px-2 py-0.5 text-[10px] font-black text-amber-900 border border-amber-300">
-                              <Zap className="w-3 h-3 text-amber-700" />
-                              <span>TOP-UP</span>
-                            </span>
-                          )}
-
-                          {promo.is_tiered && (
-                            <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700 border border-slate-200">
-                              ขั้นบันได
-                            </span>
-                          )}
-
-                          {isExpired && (
-                            <span className="inline-flex items-center gap-1 rounded-md bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-700 border border-rose-200">
-                              หมดอายุ
-                            </span>
-                          )}
-
-                          {isExhausted && (
-                            <span className="inline-flex items-center gap-1 rounded-md bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-700 border border-slate-300">
-                              ใช้ครบสิทธิ์แล้ว
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Status Toggle Switch */}
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-semibold text-slate-400">
-                            {promo.is_active ? "เปิด" : "ปิด"}
-                          </span>
-                          <button
-                            type="button"
-                            disabled={isPending}
-                            onClick={() => handleToggleTerraStatus(promo.id, promo.is_active)}
-                            className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${promo.is_active ? "bg-emerald-600" : "bg-slate-300"
-                              }`}
-                            title={promo.is_active ? "คลิกเพื่อปิดใช้งาน" : "คลิกเพื่อเปิดใช้งาน"}
-                          >
-                            <span
-                              className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${promo.is_active ? "translate-x-4" : "translate-x-0"
-                                }`}
-                            />
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Main Split Info: Photo & Headline */}
-                      <div className="flex items-start gap-3.5 bg-slate-50/90 rounded-xl p-3 border border-slate-200/80">
-                        <div className="relative h-16 w-16 rounded-lg bg-white border border-slate-200 overflow-hidden shrink-0 flex items-center justify-center">
-                          {promo.collection_image ? (
-                            <img
-                              src={getImageUrl(promo.collection_image)!}
-                              alt=""
-                              className="h-full w-full object-cover"
-                            />
-                          ) : isAuto ? (
-                            <Layers className="h-6 w-6 text-slate-300" />
-                          ) : (
-                            <Store className="h-6 w-6 text-amber-500/60" />
-                          )}
-                          <span className="absolute bottom-0 inset-x-0 bg-slate-900/80 backdrop-blur-xs text-[9px] font-bold text-white text-center py-0.5">
-                            {isAuto ? `${promo.collection_item_count || "?"} ชิ้น` : "ทั้งร้าน"}
-                          </span>
-                        </div>
-
-                        <div className="min-w-0 flex-1">
-                          <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 truncate">
-                            {promo.collection_name || (isAuto ? `เซ็ต #${promo.collection_group_id}` : "ทั้งร้านค้า (Global)")}
-                          </p>
-                          <h3 className="text-sm font-bold text-slate-900 leading-snug mt-0.5 truncate">
-                            {promo.title}
-                          </h3>
-
-                          {promo.is_tiered && promo.tiers && promo.tiers.length > 0 ? (
-                            <div className="mt-1.5 space-y-1">
-                              <div className="flex items-center gap-1 flex-wrap">
-                                {promo.tiers.map((t, idx) => (
-                                  <span
-                                    key={idx}
-                                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-slate-700 font-mono text-[10px] font-medium"
-                                  >
-                                    ≥฿{Number(t.min_spend).toLocaleString()}: {t.discount_type === "percentage" ? `${t.discount_value}%` : `฿${Number(t.discount_value).toLocaleString()}`}
-                                  </span>
-                                ))}
-                              </div>
-                              {promo.max_discount_amount && (
-                                <span className="text-[10px] text-slate-400 font-medium block">
-                                  (ลดสูงสุด ฿{Number(promo.max_discount_amount).toLocaleString()})
-                                </span>
-                              )}
-                            </div>
-                          ) : (
-                            <div className="mt-1 flex items-baseline gap-1.5 flex-wrap">
-                              <span className="text-xl font-bold font-mono text-slate-900 tracking-tight">
-                                {isPercent ? `${promo.discount_value}% OFF` : `฿${Number(promo.discount_value).toLocaleString()} OFF`}
-                              </span>
-                              <span className="text-[10px] text-slate-500 font-medium truncate">
-                                {isAuto
-                                  ? `ครบ ${promo.min_sets || 1} เซ็ต`
-                                  : promo.min_spend
-                                    ? `(ขั้นต่ำ ฿${Number(promo.min_spend).toLocaleString()})`
-                                    : "(ไม่มีขั้นต่ำ)"}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Attribution Badges & Top-Up Badges */}
-                      {(promo.attribution || isTopUpPromo) && (
-                        <div className="mt-2.5 pt-2 border-t border-slate-100 flex flex-wrap items-center gap-1.5 px-1">
-                          {isTopUpPromo && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-black uppercase tracking-wider">
-                              <Zap className="w-3 h-3 text-amber-700" />
-                              <span>TOP-UP (ลด On-top)</span>
-                            </span>
-                          )}
-                          {promo.attribution && (
-                            <>
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 border border-purple-200 text-[10px] font-bold">
-                                <User className="w-3 h-3" />
-                                <span>เซลล์: {promo.attribution.lead_sales}</span>
-                              </span>
-                              {promo.attribution.partner_company && (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-bold">
-                                  <Building2 className="w-3 h-3" />
-                                  <span>บริษัท: {promo.attribution.partner_company}</span>
-                                </span>
-                              )}
-                              {promo.attribution.partner_sales && (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold">
-                                  <Users className="w-3 h-3" />
-                                  <span>เซลล์คู่ค้า: {promo.attribution.partner_sales}</span>
-                                </span>
-                              )}
-                              {promo.attribution.note && (
-                                <span className="text-[10px] text-slate-500 italic block w-full mt-0.5">
-                                  โน้ต: {promo.attribution.note}
-                                </span>
-                              )}
-                            </>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Description if any and no attribution */}
-                      {!promo.attribution && promo.description && (
-                        <p className="mt-2.5 text-xs text-slate-500 line-clamp-1 px-1">
-                          {promo.description}
-                        </p>
-                      )}
-
-                      {/* Coupon Voucher Strip (Tactile Ticket Box) */}
-                      {!isAuto && promo.coupon_code && (
-                        <div className="mt-3 flex items-center justify-between rounded-xl bg-amber-50/70 border border-dashed border-amber-300 p-2.5">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <Ticket className="h-4 w-4 text-amber-700 shrink-0" />
-                            <div className="min-w-0">
-                              <span className="text-[10px] text-amber-800 font-semibold block uppercase">รหัสคูปอง:</span>
-                              <span className="font-mono text-xs font-bold text-slate-900 tracking-wider uppercase truncate block">
-                                {promo.coupon_code}
-                              </span>
-                            </div>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => copyCouponCode(promo.coupon_code!)}
-                            className="inline-flex items-center gap-1 rounded-lg bg-white px-2.5 py-1 text-xs font-bold text-slate-700 border border-amber-200 hover:bg-amber-100/60 active:bg-amber-200 transition shrink-0 shadow-2xs"
-                          >
-                            {copiedCode === promo.coupon_code ? (
-                              <>
-                                <Check className="h-3 w-3 text-emerald-600" />
-                                <span className="text-emerald-700">คัดลอกแล้ว</span>
-                              </>
-                            ) : (
-                              <>
-                                <Copy className="h-3 w-3 text-slate-500" />
-                                <span>คัดลอก</span>
-                              </>
-                            )}
-                          </button>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Bottom Metadata & Actions */}
-                    <div className="p-4 pt-3 mt-2">
-                      <div className="space-y-1 text-[11px] text-slate-500 font-medium border-t border-slate-100 pt-2.5">
-                        <div className="flex items-center justify-between">
-                          <span className="flex items-center gap-1 text-slate-400">
-                            <Clock className="h-3 w-3" /> ระยะเวลา:
-                          </span>
-                          <span className="text-slate-700 font-semibold">
-                            {promo.start_date || promo.end_date
-                              ? `${promo.start_date ? new Date(promo.start_date).toLocaleDateString("th-TH") : "ทันที"} – ${promo.end_date ? new Date(promo.end_date).toLocaleDateString("th-TH") : "ไม่จำกัด"
-                              }`
-                              : "ไม่จำกัดระยะเวลา"}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="flex items-center gap-1 text-slate-400">
-                            <span className="w-1.5 h-1.5 rounded-full bg-slate-400" /> สถิติใช้:
-                          </span>
-                          <span className="font-mono font-bold text-slate-800">
-                            {promo.used_count} {promo.usage_limit ? `/ ${promo.usage_limit} สิทธิ์` : "ครั้ง"}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Action Rail */}
-                      <div className="mt-3 flex items-center justify-end gap-1.5 border-t border-slate-100 pt-2.5">
-                        {isUsableVoucher && (
-                          <button
-                            type="button"
-                            onClick={() => handleOpenSingleVoucherModal(promo)}
-                            className="inline-flex items-center gap-1 rounded-lg bg-amber-50 text-amber-900 border border-amber-300 px-2.5 py-1.5 text-xs font-black hover:bg-amber-100 active:scale-95 transition shadow-2xs cursor-pointer"
-                            title="สร้างบัตรคูปองส่งเข้ามือถือ/พิมพ์ A4"
-                          >
-                            <Ticket className="h-3.5 w-3.5 text-amber-600" />
-                            <span>แจกบัตร</span>
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (promo.attribution || promo.is_tiered) {
-                              handleOpenEditPartnerModal(promo);
-                            } else {
-                              handleOpenEditTerraModal(promo);
-                            }
-                          }}
-                          className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-200 transition active:scale-95"
-                        >
-                          <Edit2 className="h-3 w-3" />
-                          แก้ไข
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setDeleteConfirmItem({ id: promo.id, title: promo.title, type: "terra" })}
-                          className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-rose-50 hover:text-rose-600 transition active:scale-95"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                          ลบ
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+              {filteredTerraPromotions.map(renderSinglePromoCard)}
             </div>
           )}
         </section>
@@ -6200,7 +6781,7 @@ export default function DiscountHubClient({
               </div>
               <div className="flex-1 min-w-0">
                 <h3 className="text-base font-bold text-slate-900">
-                  ยืนยันการลบ{deleteConfirmItem.type === "pos" ? "ส่วนลด POS" : "โปรโมชัน Terra"}
+                  ยืนยันการลบ{deleteConfirmItem.type === "pos" ? "ส่วนลด POS" : deleteConfirmItem.type === "terra_batch" ? "คูปองทั้งชุด" : "โปรโมชัน Terra"}
                 </h3>
                 <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
                   คุณต้องการลบ <strong className="text-slate-900">&quot;{deleteConfirmItem.title}&quot;</strong> ออกจากระบบใช่หรือไม่? การกระทำนี้ไม่สามารถเรียกคืนได้

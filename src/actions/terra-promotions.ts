@@ -27,6 +27,7 @@ export type PromoAttribution = {
 
 export type TerraPromotion = {
   id: string;
+  batch_id?: string | null;
   title: string;
   description: string | null;
   attribution?: PromoAttribution | null;
@@ -207,10 +208,12 @@ export async function getTerraPromotions(): Promise<TerraPromotion[]> {
         isTopUp = true;
       }
 
+      const batchId = p.batch_id || attribution?.batch_id || null;
       const isGlobal = p.promo_scope === "global" || !p.collection_group_id || p.collection_group_id === "global";
       if (isGlobal) {
         return {
           ...p,
+          batch_id: batchId,
           attribution,
           is_tiered: isTiered,
           tiers,
@@ -232,6 +235,7 @@ export async function getTerraPromotions(): Promise<TerraPromotion[]> {
 
       return {
         ...p,
+        batch_id: batchId,
         attribution,
         is_tiered: isTiered,
         tiers,
@@ -604,12 +608,52 @@ export async function createBatchPartnerCoupons(params: BatchPartnerCouponParams
       is_active: true,
     }));
 
-    const { data: inserted, error: insertErr } = await supabaseAdmin
+    // พยายามบันทึกพร้อม batch_id ก่อน (ถ้าคอลัมน์มีแล้ว)
+    const rowsWithBatchId = rowsToInsert.map((r) => ({ ...r, batch_id: batchId }));
+    let inserted: any = null;
+    const { data: batchData, error: batchErr } = await supabaseAdmin
       .from("terra_collection_promotions")
-      .insert(rowsToInsert)
+      .insert(rowsWithBatchId)
       .select();
 
-    if (insertErr) throw insertErr;
+    if (batchErr && (batchErr.message?.includes("batch_id") || batchErr.code === "PGRST204" || batchErr.code === "42703")) {
+      // Fallback ถ้ายังไม่ได้รัน migration เพิ่มคอลัมน์ batch_id
+      const { data: fallbackData, error: fallbackErr } = await supabaseAdmin
+        .from("terra_collection_promotions")
+        .insert(rowsToInsert)
+        .select();
+      if (fallbackErr) throw fallbackErr;
+      inserted = fallbackData;
+    } else if (batchErr) {
+      throw batchErr;
+    } else {
+      inserted = batchData;
+    }
+
+    // บันทึกลงตารางแม่ coupon_batches ด้วย (ถ้ามีตาราง)
+    try {
+      await supabaseAdmin.from("coupon_batches").insert({
+        id: batchId,
+        batch_code: batchId,
+        title: defaultTitle,
+        lead_sales: cleanLeadSales,
+        partner_company: cleanPartnerCompany,
+        partner_sales: cleanPartnerSales,
+        note: cleanNote,
+        discount_type: baseDiscountType,
+        discount_value: baseDiscountValue,
+        min_spend: baseMinSpend,
+        max_discount_amount: params.max_discount_amount ? Number(params.max_discount_amount) : null,
+        is_tiered: isTiered,
+        tiers: isTiered ? validTiers : null,
+        is_top_up: Boolean(params.is_top_up),
+        total_count: generatedCodes.size,
+        start_date: params.start_date ? new Date(params.start_date).toISOString() : null,
+        end_date: params.end_date ? new Date(params.end_date).toISOString() : null,
+        usage_limit: params.usage_limit ? Number(params.usage_limit) : 1,
+        is_active: true,
+      });
+    } catch {}
 
     revalidatePath("/discounts");
     return {
@@ -880,6 +924,76 @@ export async function toggleTerraPromotion(id: string, currentStatus: boolean) {
 /**
  * 6. ลบโปรโมชัน
  */
+
+/**
+ * 6.1 เปิด/ปิด การใช้งานทั้งชุดคูปอง (Batch Toggle)
+ */
+export async function toggleBatchTerraPromotion(batchId: string, currentStatus: boolean) {
+  try {
+    const nextStatus = !currentStatus;
+    const now = new Date().toISOString();
+
+    // 1. อัปเดตผ่านคอลัมน์ batch_id (ถ้ามี)
+    await supabaseAdmin
+      .from("terra_collection_promotions")
+      .update({ is_active: nextStatus, updated_at: now })
+      .eq("batch_id", batchId);
+
+    // 2. อัปเดตผ่าน description JSON (เพื่อรองรับชุดเดิมที่มีอยู่)
+    await supabaseAdmin
+      .from("terra_collection_promotions")
+      .update({ is_active: nextStatus, updated_at: now })
+      .ilike("description", `%"batch_id":"${batchId}"%`);
+
+    // 3. อัปเดตตารางแม่ coupon_batches (ถ้ามี)
+    try {
+      await supabaseAdmin
+        .from("coupon_batches")
+        .update({ is_active: nextStatus, updated_at: now })
+        .eq("id", batchId);
+    } catch {}
+
+    revalidatePath("/discounts");
+    return { success: true, nextStatus };
+  } catch (err: any) {
+    console.error("[toggleBatchTerraPromotion] error:", err.message);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * 6.2 ลบคูปองทั้งชุด (Batch Delete)
+ */
+export async function deleteBatchTerraPromotions(batchId: string) {
+  try {
+    // 1. ลบผ่านคอลัมน์ batch_id
+    await supabaseAdmin
+      .from("terra_collection_promotions")
+      .delete()
+      .eq("batch_id", batchId);
+
+    // 2. ลบผ่าน description JSON (เพื่อรองรับชุดเดิม)
+    await supabaseAdmin
+      .from("terra_collection_promotions")
+      .delete()
+      .ilike("description", `%"batch_id":"${batchId}"%`);
+
+    // 3. ลบจากตารางแม่ coupon_batches
+    try {
+      await supabaseAdmin
+        .from("coupon_batches")
+        .delete()
+        .eq("id", batchId);
+    } catch {}
+
+    revalidatePath("/discounts");
+    return { success: true };
+  } catch (err: any) {
+    console.error("[deleteBatchTerraPromotions] error:", err.message);
+    return { success: false, error: err.message };
+  }
+}
+
 export async function deleteTerraPromotion(id: string) {
   try {
     const { error } = await supabaseAdmin
