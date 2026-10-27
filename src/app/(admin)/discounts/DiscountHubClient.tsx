@@ -6,7 +6,7 @@
  * contrast: pass (46–50) · zero gradients · crisp solid surfaces
  */
 
-import { useState, useTransition, useMemo, useEffect } from "react";
+import { useState, useTransition, useMemo, useEffect, Fragment } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import {
   Tag,
@@ -49,6 +49,7 @@ import {
   Minimize2,
   LayoutGrid,
   LayoutList,
+  ExternalLink,
 } from "lucide-react";
 
 import {
@@ -71,6 +72,7 @@ import {
 
 import {
   TerraPromotion,
+  UsedOrderInfo,
   AvailableCollectionGroup,
   createTerraPromotion,
   createBatchPartnerCoupons,
@@ -111,6 +113,7 @@ export interface TerraBatchGroup {
   usableCount: number;
   createdAt: string;
   items: TerraPromotion[];
+  usedOrders: UsedOrderInfo[];
 }
 
 function getImageUrl(url: string | null | undefined): string | null {
@@ -3226,6 +3229,16 @@ export default function DiscountHubClient({
       const anyActive = items.some((i) => i.is_active);
       const allActive = items.every((i) => i.is_active);
 
+      const allBatchOrders: UsedOrderInfo[] = [];
+      items.forEach((i) => {
+        if (i.used_orders && i.used_orders.length > 0) {
+          allBatchOrders.push(...i.used_orders);
+        }
+      });
+      const usedOrders = Array.from(
+        new Map(allBatchOrders.map((o) => [o.order_id, o])).values()
+      );
+
       groups.push({
         batchId,
         title: first.title,
@@ -3249,6 +3262,7 @@ export default function DiscountHubClient({
         usableCount,
         createdAt: first.created_at,
         items,
+        usedOrders,
       });
     });
 
@@ -3974,6 +3988,33 @@ export default function DiscountHubClient({
                             {promo.used_count} {promo.usage_limit ? `/ ${promo.usage_limit} สิทธิ์` : "ครั้ง"}
                           </span>
                         </div>
+
+                        {promo.used_orders && promo.used_orders.length > 0 && (
+                          <div className="flex items-center justify-between pt-1 border-t border-slate-100">
+                            <span className="flex items-center gap-1 text-slate-500 font-medium">
+                              <FileText className="h-3 w-3 text-slate-400" /> ใช้กับบิล:
+                            </span>
+                            <div className="flex items-center gap-1 flex-wrap justify-end">
+                              {promo.used_orders.map((ord) => (
+                                <a
+                                  key={ord.order_id}
+                                  href={`/sale/print/dispatch/${ord.order_code}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[10px] font-mono font-bold transition border ${
+                                    ord.status === "CANCELLED"
+                                      ? "bg-slate-50 text-slate-400 border-slate-200 line-through"
+                                      : "bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 shadow-2xs"
+                                  }`}
+                                  title={`คลิกเพื่อดูใบนำส่งบิล ${ord.order_code} (${ord.status})`}
+                                >
+                                  <span>🧾 {ord.order_code}</span>
+                                  <ExternalLink className="w-2.5 h-2.5" />
+                                </a>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
 
                       {/* Action Rail */}
@@ -4018,317 +4059,404 @@ export default function DiscountHubClient({
   };
 
 
-  const renderBatchGroupCard = (group: TerraBatchGroup) => {
+  const renderBatchGroupRow = (group: TerraBatchGroup) => {
     const isExpanded = expandedBatchIds.has(group.batchId);
-    return (
-      <div
-        key={group.batchId}
-        className="rounded-2xl border border-slate-200/90 bg-white overflow-hidden shadow-xs hover:shadow-md transition-all duration-200"
-      >
-        {/* Top Banner Header */}
-        <div className="p-4 sm:p-5 border-b border-slate-100 bg-gradient-to-r from-amber-50/60 via-white to-slate-50/60">
-          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
-            <div className="space-y-1.5 min-w-0 flex-1">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="inline-flex items-center gap-1.5 rounded-md bg-amber-100 px-2.5 py-1 text-xs font-black text-amber-900 border border-amber-300 shadow-2xs">
-                  <Package className="w-3.5 h-3.5 text-amber-700" />
-                  ชุดคูปอง ({group.totalCount} ใบ)
-                </span>
+    const partnerName = group.partnerCompany?.trim();
+    const cleanTitle =
+      partnerName ||
+      group.title.replace(/^ส่วนลด(ขั้นบันได)?( Top-up)? /, "").replace(/ \(เซลล์: .*\)$/, "") ||
+      group.title;
 
+    return (
+      <Fragment key={group.batchId}>
+        <tr
+          className={`group transition-colors hover:bg-slate-50/80 ${
+            isExpanded ? "bg-amber-50/20" : ""
+          }`}
+        >
+          {/* Expand Toggle Chevron Column */}
+          <td className="py-3 px-2 text-center w-10">
+            <button
+              type="button"
+              onClick={() => toggleExpandBatch(group.batchId)}
+              className="p-1 rounded-md text-slate-400 hover:text-slate-800 hover:bg-slate-100 transition cursor-pointer"
+              title={isExpanded ? "ซ่อนรายชื่อรหัส" : "คลิกเพื่อดูรหัสในชุด"}
+            >
+              <ChevronRight
+                className={`w-4 h-4 transition-transform duration-200 ${
+                  isExpanded ? "rotate-90 text-amber-600" : ""
+                }`}
+              />
+            </button>
+          </td>
+
+          {/* Batch Name & Partner Column */}
+          <td className="py-3 px-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="font-bold text-slate-900 text-sm tracking-tight">
+                  {cleanTitle}
+                </span>
                 {group.isTopUp && (
-                  <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-0.5 text-[10px] font-black text-amber-900 border border-amber-300">
-                    <Zap className="w-3 h-3 text-amber-700" />
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-black bg-amber-50 text-amber-900 border border-amber-300">
                     TOP-UP
                   </span>
                 )}
-
                 {group.isTiered && (
-                  <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700 border border-slate-200">
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
                     ขั้นบันได
                   </span>
                 )}
-
-                <span className="text-[11px] font-mono font-bold text-slate-400">
-                  #{group.batchId}
-                </span>
               </div>
-
-              <h3 className="text-base font-bold text-slate-900 leading-snug tracking-tight">
-                {group.title}
-              </h3>
-
-              {/* Attribution Details */}
-              <div className="flex items-center gap-3 text-xs text-slate-600 flex-wrap pt-0.5">
-                <span className="inline-flex items-center gap-1 font-medium">
-                  <User className="w-3.5 h-3.5 text-slate-400" />
-                  เซลล์เรา: <strong className="text-slate-800">{group.leadSales}</strong>
+              <div className="flex items-center gap-2 text-[11px] text-slate-500 flex-wrap">
+                <span>
+                  เซลล์: <strong className="text-slate-700">{group.leadSales}</strong>
                 </span>
-                {group.partnerCompany && (
-                  <span className="inline-flex items-center gap-1 font-medium">
-                    <Building2 className="w-3.5 h-3.5 text-amber-600" />
-                    คู่ค้า: <strong className="text-slate-800">{group.partnerCompany}</strong>
-                  </span>
-                )}
                 {group.partnerSales && (
-                  <span className="inline-flex items-center gap-1 text-slate-500">
-                    ผู้ติดต่อ: <span className="text-slate-700">{group.partnerSales}</span>
-                  </span>
+                  <>
+                    <span className="text-slate-300">•</span>
+                    <span>
+                      ติดต่อ: <span className="text-slate-700">{group.partnerSales}</span>
+                    </span>
+                  </>
                 )}
                 {group.note && (
-                  <span className="text-slate-400 italic">
-                    ({group.note})
+                  <>
+                    <span className="text-slate-300">•</span>
+                    <span className="text-slate-400 italic max-w-[200px] truncate" title={group.note}>
+                      {group.note}
+                    </span>
+                  </>
+                )}
+              </div>
+            </div>
+          </td>
+
+          {/* Discount Column */}
+          <td className="py-3 px-4 whitespace-nowrap">
+            {group.isTiered && group.tiers && group.tiers.length > 0 ? (
+              <div className="space-y-0.5">
+                <div className="font-mono font-bold text-slate-900 text-xs">
+                  {group.tiers[0].discount_type === "percentage"
+                    ? `${group.tiers[0].discount_value}%`
+                    : `฿${Number(group.tiers[0].discount_value).toLocaleString()}`}
+                  {" – "}
+                  {group.tiers[group.tiers.length - 1].discount_type === "percentage"
+                    ? `${group.tiers[group.tiers.length - 1].discount_value}%`
+                    : `฿${Number(group.tiers[group.tiers.length - 1].discount_value).toLocaleString()}`}
+                </div>
+                <div className="text-[10px] text-slate-400">
+                  {group.tiers.length} ขั้นบันได
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-0.5">
+                <div className="font-mono font-bold text-slate-900 text-xs">
+                  {group.discountType === "percentage"
+                    ? `ลด ${group.discountValue}%`
+                    : `ลด ฿${Number(group.discountValue).toLocaleString()}`}
+                </div>
+                {group.minSpend ? (
+                  <div className="text-[10px] text-slate-400">
+                    ขั้นต่ำ ฿{Number(group.minSpend).toLocaleString()}
+                  </div>
+                ) : (
+                  <div className="text-[10px] text-slate-400">ไม่มีขั้นต่ำ</div>
+                )}
+              </div>
+            )}
+          </td>
+
+          {/* Quota / Progress Column */}
+          <td className="py-3 px-4 whitespace-nowrap">
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5">
+                {group.usableCount > 0 ? (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                    พร้อมใช้ {group.usableCount} / {group.totalCount} ใบ
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-500 border border-slate-200">
+                    ใช้ครบแล้ว ({group.totalCount} ใบ)
                   </span>
                 )}
               </div>
+              <div className="w-24 bg-slate-100 h-1.5 rounded-full overflow-hidden flex">
+                <div
+                  className="bg-emerald-500 h-full transition-all duration-300"
+                  style={{
+                    width: `${
+                      group.totalCount > 0
+                        ? (group.usableCount / group.totalCount) * 100
+                        : 0
+                    }%`,
+                  }}
+                  title={`พร้อมใช้ ${group.usableCount} ใบ`}
+                />
+                <div
+                  className="bg-slate-300 h-full transition-all duration-300"
+                  style={{
+                    width: `${
+                      group.totalCount > 0
+                        ? (group.usedCount / group.totalCount) * 100
+                        : 0
+                    }%`,
+                  }}
+                  title={`ใช้แล้ว ${group.usedCount} ใบ`}
+                />
+              </div>
 
-              {/* Tiers or Discount Value */}
-              {group.isTiered && group.tiers && group.tiers.length > 0 ? (
-                <div className="pt-1.5 flex items-center gap-1.5 flex-wrap">
-                  <span className="text-[11px] font-bold text-slate-400">เงื่อนไข:</span>
-                  {group.tiers.map((t: any, idx: number) => (
-                    <span
-                      key={idx}
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-slate-700 font-mono text-[11px] font-medium"
+              {group.usedOrders && group.usedOrders.length > 0 && (
+                <div className="flex items-center gap-1 flex-wrap pt-0.5">
+                  <span className="text-[10px] text-slate-400">บิลที่ใช้:</span>
+                  {group.usedOrders.slice(0, 2).map((ord) => (
+                    <a
+                      key={ord.order_id}
+                      href={`/sale/print/dispatch/${ord.order_code}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold transition border ${
+                        ord.status === "CANCELLED"
+                          ? "bg-slate-50 text-slate-400 border-slate-200 line-through"
+                          : "bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 shadow-2xs"
+                      }`}
+                      title={`คลิกดูใบนำส่งบิล ${ord.order_code} (${ord.status})`}
                     >
-                      ≥฿{Number(t.min_spend).toLocaleString()}: {t.discount_type === "percentage" ? `${t.discount_value}%` : `฿${Number(t.discount_value).toLocaleString()}`}
-                    </span>
+                      <span>🧾 {ord.order_code}</span>
+                      <ExternalLink className="w-2.5 h-2.5" />
+                    </a>
                   ))}
-                  {group.maxDiscountAmount && (
-                    <span className="text-[10px] text-slate-400">
-                      (ลดสูงสุด ฿{Number(group.maxDiscountAmount).toLocaleString()})
+                  {group.usedOrders.length > 2 && (
+                    <span className="text-[10px] text-slate-400 font-mono">
+                      +{group.usedOrders.length - 2} บิล
                     </span>
                   )}
                 </div>
-              ) : (
-                <div className="pt-1 flex items-baseline gap-2">
-                  <span className="text-lg font-bold font-mono text-slate-900">
-                    {group.discountType === "percentage" ? `ลด ${group.discountValue}%` : `ลด ฿${Number(group.discountValue).toLocaleString()}`}
-                  </span>
-                  {group.minSpend ? (
-                    <span className="text-xs text-slate-500">
-                      (ขั้นต่ำ ฿{Number(group.minSpend).toLocaleString()})
-                    </span>
-                  ) : null}
-                  {group.maxDiscountAmount ? (
-                    <span className="text-xs text-slate-400">
-                      (ลดสูงสุด ฿{Number(group.maxDiscountAmount).toLocaleString()})
-                    </span>
-                  ) : null}
-                </div>
               )}
             </div>
+          </td>
 
-            {/* Switch Status for whole batch */}
-            <div className="flex items-center sm:flex-col sm:items-end gap-2 shrink-0">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-slate-500">
-                  {group.isActive ? "เปิดใช้งานทั้งชุด" : "ปิดใช้งานทั้งชุด"}
-                </span>
-                <button
-                  type="button"
-                  disabled={isPending}
-                  onClick={() => handleToggleBatchStatus(group.batchId, group.isActive)}
-                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                    group.isActive ? "bg-emerald-600" : "bg-slate-300"
+          {/* Expiry Column */}
+          <td className="py-3 px-4 text-slate-500 text-[11px] font-mono whitespace-nowrap">
+            {group.endDate ? (
+              new Date(group.endDate).toLocaleDateString("th-TH")
+            ) : (
+              <span className="text-slate-400 font-sans">ไม่มีวันหมดอายุ</span>
+            )}
+          </td>
+
+          {/* Status Switch Column */}
+          <td className="py-3 px-3 text-center whitespace-nowrap">
+            <button
+              type="button"
+              disabled={isPending}
+              onClick={() => handleToggleBatchStatus(group.batchId, group.isActive)}
+              className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                group.isActive ? "bg-emerald-600" : "bg-slate-300"
+              }`}
+              title={
+                group.isActive
+                  ? "เปิดใช้งาน (คลิกเพื่อปิด)"
+                  : "ปิดใช้งาน (คลิกเพื่อเปิด)"
+              }
+            >
+              <span
+                className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${
+                  group.isActive ? "translate-x-4" : "translate-x-0"
+                }`}
+              />
+            </button>
+          </td>
+
+          {/* Action Buttons Column */}
+          <td className="py-3 px-4 text-right whitespace-nowrap">
+            <div className="flex items-center justify-end gap-1.5">
+              {/* Print Button */}
+              <button
+                type="button"
+                disabled={group.usableCount === 0}
+                onClick={() => handleOpenBatchVouchersModal(group)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 disabled:opacity-40 text-white text-xs font-bold transition shadow-2xs cursor-pointer active:scale-95"
+                title="พิมพ์ QR Code ทั้งชุด"
+              >
+                <Ticket className="w-3.5 h-3.5 text-amber-400" />
+                <span>พิมพ์ QR</span>
+              </button>
+
+              {/* Copy LINE Button */}
+              <button
+                type="button"
+                onClick={() => handleCopyBatchToLine(group)}
+                className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 border border-slate-200 transition cursor-pointer"
+                title="คัดลอกข้อความสำหรับส่ง LINE"
+              >
+                <Share2 className="w-3.5 h-3.5" />
+              </button>
+
+              {/* Toggle Sub-codes Button */}
+              <button
+                type="button"
+                onClick={() => toggleExpandBatch(group.batchId)}
+                className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition cursor-pointer ${
+                  isExpanded
+                    ? "bg-amber-50 text-amber-900 border-amber-300 shadow-2xs"
+                    : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                }`}
+                title="ดูรายชื่อรหัสในชุดนี้"
+              >
+                <span>รหัส ({group.totalCount})</span>
+                <ChevronDown
+                  className={`w-3 h-3 transition-transform duration-200 ${
+                    isExpanded ? "rotate-180" : ""
                   }`}
-                  title={group.isActive ? "คลิกเพื่อปิดใช้งานทั้งชุด" : "คลิกเพื่อเปิดใช้งานทั้งชุด"}
-                >
-                  <span
-                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${
-                      group.isActive ? "translate-x-5" : "translate-x-0"
-                    }`}
-                  />
-                </button>
-              </div>
-              <span className="text-[10px] text-slate-400 font-mono">
-                {group.startDate || group.endDate
-                  ? `${group.startDate ? new Date(group.startDate).toLocaleDateString("th-TH") : "ทันที"} – ${group.endDate ? new Date(group.endDate).toLocaleDateString("th-TH") : "ไม่จำกัด"}`
-                  : "ไม่มีกำหนดหมดอายุ"}
-              </span>
+                />
+              </button>
+
+              {/* Delete Batch Button */}
+              <button
+                type="button"
+                onClick={() =>
+                  setDeleteConfirmItem({
+                    id: group.batchId,
+                    title: group.title,
+                    type: "terra_batch",
+                    batchId: group.batchId,
+                  })
+                }
+                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                title="ลบทั้งชุดนี้"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
             </div>
-          </div>
+          </td>
+        </tr>
 
-          {/* Usability Counter & Progress Track */}
-          <div className="mt-4 pt-3.5 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-3 sm:gap-4 text-xs flex-wrap">
-              <div className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-xs" />
-                <span className="text-slate-600 font-medium">พร้อมใช้งาน:</span>
-                <strong className="text-emerald-700 font-bold">{group.usableCount} ใบ</strong>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-slate-400" />
-                <span className="text-slate-600 font-medium">ใช้ไปแล้ว:</span>
-                <strong className="text-slate-800 font-bold">{group.usedCount} ใบ</strong>
-              </div>
-              <div className="text-slate-400 font-medium">
-                (ทั้งหมด {group.totalCount} ใบ)
-              </div>
-            </div>
-
-            <div className="w-full sm:w-56 bg-slate-100 h-2.5 rounded-full overflow-hidden flex border border-slate-200/60">
-              <div
-                className="bg-emerald-500 h-full transition-all duration-300"
-                style={{ width: `${group.totalCount > 0 ? (group.usableCount / group.totalCount) * 100 : 0}%` }}
-                title={`พร้อมใช้งาน ${group.usableCount} ใบ`}
-              />
-              <div
-                className="bg-slate-300 h-full transition-all duration-300"
-                style={{ width: `${group.totalCount > 0 ? (group.usedCount / group.totalCount) * 100 : 0}%` }}
-                title={`ใช้งานแล้ว ${group.usedCount} ใบ`}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Actions Rail */}
-        <div className="px-4 sm:px-5 py-3 bg-slate-50/80 border-t border-slate-100 flex items-center justify-between gap-2 flex-wrap">
-          <div className="flex items-center gap-2 flex-wrap">
-            {/* Print only usable in batch */}
-            <button
-              type="button"
-              disabled={group.usableCount === 0}
-              onClick={() => handleOpenBatchVouchersModal(group)}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 disabled:opacity-40 text-white text-xs font-bold transition shadow-xs cursor-pointer active:scale-95"
-            >
-              <Ticket className="w-3.5 h-3.5" />
-              <span>พิมพ์ QR ทั้งชุด ({group.usableCount} ใบพร้อมใช้)</span>
-            </button>
-
-            {/* Copy LINE */}
-            <button
-              type="button"
-              onClick={() => handleCopyBatchToLine(group)}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold transition shadow-2xs cursor-pointer"
-            >
-              <Share2 className="w-3.5 h-3.5 text-slate-500" />
-              <span>คัดลอกส่ง LINE</span>
-            </button>
-
-            {/* Delete Batch */}
-            <button
-              type="button"
-              onClick={() => setDeleteConfirmItem({ id: group.batchId, title: group.title, type: "terra_batch", batchId: group.batchId })}
-              className="inline-flex items-center gap-1 px-2.5 py-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 text-xs font-semibold transition"
-              title="ลบคูปองทั้งชุดนี้"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              <span>ลบทั้งชุด</span>
-            </button>
-          </div>
-
-          {/* Expand / Collapse Button */}
-          <button
-            type="button"
-            onClick={() => toggleExpandBatch(group.batchId)}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-xs font-bold text-slate-700 transition cursor-pointer"
-          >
-            <span>{isExpanded ? "ซ่อนรายชื่อรหัส" : `คลี่ดูรหัสในชุด (${group.totalCount} ใบ)`}</span>
-            <ChevronDown className={`w-3.5 h-3.5 text-slate-500 transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`} />
-          </button>
-        </div>
-
-        {/* Expanded Table */}
+        {/* Sub-row: Expanded Codes Grid */}
         {isExpanded && (
-          <div className="border-t border-slate-200 bg-white p-4 animate-in fade-in duration-200">
-            <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-2xs">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px]">
-                    <th className="py-2.5 px-3 w-10 text-center">#</th>
-                    <th className="py-2.5 px-3">รหัสคูปอง</th>
-                    <th className="py-2.5 px-3">เงื่อนไขส่วนลด</th>
-                    <th className="py-2.5 px-3">สถานะการใช้งาน</th>
-                    <th className="py-2.5 px-3 text-right">การจัดการ</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
+          <tr className="bg-slate-50/60 border-t border-slate-100">
+            <td colSpan={7} className="p-3 sm:px-6 sm:py-3.5">
+              <div className="bg-white rounded-xl border border-slate-200/90 shadow-2xs p-3.5 space-y-2.5">
+                {/* Drawer Header */}
+                <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-100 text-[11px]">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-slate-700">
+                      รายการรหัสคูปอง ({group.totalCount} รายการ)
+                    </span>
+                    <span className="text-slate-400">•</span>
+                    <span className="text-slate-500 font-mono text-[10px]">
+                      รหัสชุด: #{group.batchId}
+                    </span>
+                  </div>
+                  <span className="text-slate-400 text-[10px]">
+                    คลิกไอคอนเพื่อคัดลอกโค้ดเดี่ยว หรือ สั่งพิมพ์เฉพาะใบ
+                  </span>
+                </div>
+
+                {/* Compact Badges Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
                   {group.items.map((item, idx) => {
                     const isUsable = isVoucherItemUsable(item);
-                    const isExhausted = Number(item.used_count || 0) >= (Number(item.usage_limit) || 1);
+                    const isExhausted =
+                      Number(item.used_count || 0) >= (Number(item.usage_limit) || 1);
+
                     return (
-                      <tr key={item.id} className="hover:bg-slate-50/80 transition">
-                        <td className="py-2.5 px-3 text-center text-slate-400 font-mono text-[11px]">
-                          {idx + 1}
-                        </td>
-                        <td className="py-2.5 px-3">
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono font-bold text-slate-900 tracking-wider">
+                      <div
+                        key={item.id}
+                        className={`flex flex-col justify-between px-2.5 py-2 rounded-lg border text-xs transition gap-1.5 ${
+                          !item.is_active || isExhausted
+                            ? "bg-slate-50/80 border-slate-200"
+                            : "bg-white border-slate-200/90 hover:border-amber-400 shadow-2xs"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-1.5">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="text-[10px] text-slate-400 font-mono w-4 shrink-0">
+                              #{idx + 1}
+                            </span>
+                            <span className="font-mono font-bold text-slate-900 tracking-wider truncate">
                               {item.coupon_code}
                             </span>
                             <button
                               type="button"
                               onClick={() => {
                                 navigator.clipboard?.writeText(item.coupon_code || "");
-                                triggerToast("success", "คัดลอกแล้ว", `คัดลอกรหัส ${item.coupon_code}`);
+                                triggerToast(
+                                  "success",
+                                  "คัดลอกแล้ว",
+                                  `คัดลอกรหัส ${item.coupon_code}`
+                                );
                               }}
-                              className="text-slate-400 hover:text-slate-700 p-1 rounded"
+                              className="text-slate-400 hover:text-slate-700 p-0.5 rounded cursor-pointer"
                               title="คัดลอกโค้ด"
                             >
                               <Copy className="w-3 h-3" />
                             </button>
                           </div>
-                        </td>
-                        <td className="py-2.5 px-3 text-slate-600">
-                          {item.is_tiered ? "ขั้นบันไดตามยอดซื้อ" : item.discount_type === "percentage" ? `ลด ${item.discount_value}%` : `ลด ฿${Number(item.discount_value).toLocaleString()}`}
-                        </td>
-                        <td className="py-2.5 px-3">
-                          {isExhausted ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 font-bold text-[10px] border border-slate-200">
-                              ใช้งานแล้ว ({item.used_count}/{item.usage_limit || 1})
-                            </span>
-                          ) : isUsable ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 font-bold text-[10px] border border-emerald-200">
-                              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                              พร้อมใช้งาน
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-rose-50 text-rose-700 font-bold text-[10px] border border-rose-200">
-                              ปิดการใช้งาน / หมดอายุ
-                            </span>
-                          )}
-                        </td>
-                        <td className="py-2.5 px-3 text-right">
-                          <div className="flex items-center justify-end gap-1.5">
+
+                          <div className="flex items-center gap-1.5 shrink-0 ml-1">
+                            {isExhausted ? (
+                              <span className="text-[9px] font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                                ใช้แล้ว
+                              </span>
+                            ) : isUsable ? (
+                              <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                                พร้อมใช้
+                              </span>
+                            ) : (
+                              <span className="text-[9px] font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded">
+                                ปิด
+                              </span>
+                            )}
+
                             {isUsable && (
                               <button
                                 type="button"
                                 onClick={() => handleOpenSingleVoucherModal(item)}
-                                className="px-2 py-1 rounded-lg bg-amber-50 text-amber-900 border border-amber-200 hover:bg-amber-100 text-[10px] font-bold transition shadow-2xs"
+                                className="p-1 rounded text-amber-700 hover:bg-amber-50 cursor-pointer"
+                                title="พิมพ์ใบนี้"
                               >
-                                พิมพ์ใบนี้
+                                <Ticket className="w-3 h-3" />
                               </button>
                             )}
-                            <button
-                              type="button"
-                              onClick={() => handleToggleTerraStatus(item.id, item.is_active)}
-                              className={`px-2 py-1 rounded-lg text-[10px] font-bold transition ${
-                                item.is_active
-                                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                                  : "bg-slate-100 text-slate-500 border border-slate-200"
-                              }`}
-                            >
-                              {item.is_active ? "เปิด" : "ปิด"}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setDeleteConfirmItem({ id: item.id, title: item.title, type: "terra" })}
-                              className="p-1 text-slate-400 hover:text-rose-600 rounded-lg transition"
-                              title="ลบใบนี้"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
                           </div>
-                        </td>
-                      </tr>
+                        </div>
+
+                        {/* Used In Bill Details */}
+                        {item.used_orders && item.used_orders.length > 0 && (
+                          <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between text-[10px]">
+                            <span className="text-slate-400 font-medium">ใช้กับบิล:</span>
+                            <div className="flex items-center gap-1 flex-wrap justify-end">
+                              {item.used_orders.map((ord) => (
+                                <a
+                                  key={ord.order_id}
+                                  href={`/sale/print/dispatch/${ord.order_code}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded font-mono font-bold transition border ${
+                                    ord.status === "CANCELLED"
+                                      ? "bg-slate-50 text-slate-400 border-slate-200 line-through"
+                                      : "bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 shadow-2xs"
+                                  }`}
+                                  title={`คลิกเพื่อดูใบนำส่งบิล ${ord.order_code} (${ord.status})`}
+                                >
+                                  <span>🧾 {ord.order_code}</span>
+                                  <ExternalLink className="w-2.5 h-2.5" />
+                                </a>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     );
                   })}
-                </tbody>
-              </table>
-            </div>
-          </div>
+                </div>
+              </div>
+            </td>
+          </tr>
         )}
-      </div>
+      </Fragment>
     );
   };
 
@@ -4962,8 +5090,25 @@ export default function DiscountHubClient({
           ) : terraViewMode === "batch" && batchGroups.length > 0 ? (
             <div className="space-y-6">
               {/* Batch Groups List */}
-              <div className="space-y-4">
-                {batchGroups.map(renderBatchGroupCard)}
+              <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse min-w-[850px]">
+                    <thead className="bg-slate-50/90 border-b border-slate-200/80">
+                      <tr className="text-slate-500 font-bold uppercase text-[10px] tracking-wider">
+                        <th className="py-3 px-2 w-10 text-center"></th>
+                        <th className="py-3 px-4">ชุดคูปอง / พันธมิตร</th>
+                        <th className="py-3 px-4">ส่วนลด</th>
+                        <th className="py-3 px-4">โควต้า / ความคืบหน้า</th>
+                        <th className="py-3 px-4">อายุการใช้งาน</th>
+                        <th className="py-3 px-3 text-center">สถานะ</th>
+                        <th className="py-3 px-4 text-right">การจัดการ</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-xs">
+                      {batchGroups.map(renderBatchGroupRow)}
+                    </tbody>
+                  </table>
+                </div>
               </div>
 
               {/* Standalone Promotions Section */}

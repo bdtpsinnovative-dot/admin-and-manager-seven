@@ -25,6 +25,15 @@ export type PromoAttribution = {
   is_top_up?: boolean;     // โค้ดส่วนลดแบบ Top-up (ลด On-top กับสินค้าที่ลดราคาอยู่แล้วได้)
 };
 
+export type UsedOrderInfo = {
+  order_id: number;
+  order_code: string;
+  status: string;
+  total_amount: number;
+  discount_amount?: number;
+  created_at: string;
+};
+
 export type TerraPromotion = {
   id: string;
   batch_id?: string | null;
@@ -54,6 +63,7 @@ export type TerraPromotion = {
   is_tiered?: boolean;
   tiers?: DiscountTier[];
   is_top_up?: boolean;
+  used_orders?: UsedOrderInfo[];
 };
 
 export type TerraCartItem = {
@@ -173,6 +183,46 @@ export async function getTerraPromotions(): Promise<TerraPromotion[]> {
       });
     }
 
+        // ดึงบิลคำสั่งซื้อ (orders) ที่มีการใช้โค้ดส่วนลด เพื่อนำมาผูกแสดงผลว่าโค้ดนี้ถูกใช้ไปกับบิลไหน
+    const ordersByCouponId = new Map<string, UsedOrderInfo[]>();
+    const ordersByCouponCode = new Map<string, UsedOrderInfo[]>();
+
+    try {
+      const { data: usedOrdersData } = await supabaseAdmin
+        .from("orders")
+        .select("id, order_code, status, total_amount, discount_snapshot, created_at")
+        .not("discount_snapshot->coupon", "is", null)
+        .order("created_at", { ascending: false });
+
+      (usedOrdersData || []).forEach((row: any) => {
+        const coupon = row.discount_snapshot?.coupon;
+        if (!coupon) return;
+        const info: UsedOrderInfo = {
+          order_id: row.id,
+          order_code: row.order_code,
+          status: row.status,
+          total_amount: Number(row.total_amount) || 0,
+          discount_amount: Number(coupon.discount_amount || coupon.discountAmount || coupon.amount || 0),
+          created_at: row.created_at,
+        };
+
+        if (coupon.id) {
+          const k = String(coupon.id);
+          const list = ordersByCouponId.get(k) || [];
+          list.push(info);
+          ordersByCouponId.set(k, list);
+        }
+        if (coupon.code) {
+          const k = String(coupon.code).trim().toUpperCase();
+          const list = ordersByCouponCode.get(k) || [];
+          list.push(info);
+          ordersByCouponCode.set(k, list);
+        }
+      });
+    } catch (orderErr: any) {
+      console.warn("[terra-promotions] fetch used orders warning:", orderErr?.message);
+    }
+
     return promotions.map((p) => {
       let attribution: PromoAttribution | null = null;
       let isTiered = false;
@@ -208,6 +258,16 @@ export async function getTerraPromotions(): Promise<TerraPromotion[]> {
         isTopUp = true;
       }
 
+      const promoId = String(p.id);
+      const promoCode = p.coupon_code?.trim().toUpperCase();
+      const rawUsedOrders = [
+        ...(promoId ? (ordersByCouponId.get(promoId) || []) : []),
+        ...(promoCode ? (ordersByCouponCode.get(promoCode) || []) : []),
+      ];
+      const used_orders = Array.from(
+        new Map(rawUsedOrders.map((o) => [o.order_id, o])).values()
+      );
+
       const batchId = p.batch_id || attribution?.batch_id || null;
       const isGlobal = p.promo_scope === "global" || !p.collection_group_id || p.collection_group_id === "global";
       if (isGlobal) {
@@ -223,6 +283,7 @@ export async function getTerraPromotions(): Promise<TerraPromotion[]> {
           collection_image: null,
           collection_item_count: 0,
           parent_category_name: "ร้านค้าออนไลน์ Terra",
+          used_orders,
         };
       }
 
@@ -245,6 +306,7 @@ export async function getTerraPromotions(): Promise<TerraPromotion[]> {
         collection_image: img?.image_url || null,
         collection_item_count: countByImage.get(imgId) || 0,
         parent_category_name: parentName,
+        used_orders,
       };
     });
   } catch (err: any) {
