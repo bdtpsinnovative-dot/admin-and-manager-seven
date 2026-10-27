@@ -2820,7 +2820,7 @@ export default function DiscountHubClient({
   const [batchPartnerCompany, setBatchPartnerCompany] = useState("");
   const [batchPartnerSales, setBatchPartnerSales] = useState("");
   const [batchNote, setBatchNote] = useState("");
-  const [batchCount, setBatchCount] = useState<number>(10);
+  const [batchCount, setBatchCount] = useState<number>(9);
   const [batchPattern, setBatchPattern] = useState("YD-AA-####");
   const [batchTitlePrefix, setBatchTitlePrefix] = useState("");
   const [batchDiscountType, setBatchDiscountType] = useState<"percentage" | "fixed_amount">("percentage");
@@ -3603,7 +3603,7 @@ export default function DiscountHubClient({
     setBatchPartnerCompany("");
     setBatchPartnerSales("");
     setBatchNote("");
-    setBatchCount(10);
+    setBatchCount(9);
     setBatchPattern("YD-AA-####");
     setBatchTitlePrefix("");
     setBatchSingleCode("");
@@ -6496,7 +6496,7 @@ export default function DiscountHubClient({
                               </span>
                             </div>
                             <div className="flex items-center gap-1.5 flex-wrap sm:flex-nowrap">
-                              {[1, 2, 5, 10, 20].map((num) => (
+                              {[1, 3, 5, 9, 18].map((num) => (
                                 <button
                                   key={num}
                                   type="button"

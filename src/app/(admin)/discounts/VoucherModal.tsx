@@ -88,7 +88,7 @@ type BrandLogoChoice = "dual" | "terra" | "zenslab";
 type QrStickerSize = "5x6_cm" | "1_inch" | "1.5_inch" | "2_inch";
 
 function getStickerTargetCount(size: QrStickerSize): number {
-  if (size === "5x6_cm") return 12; // 3 cols x 4 rows (50mm x 60mm)
+  if (size === "5x6_cm") return 9; // 3 cols x 3 rows (50mm x 60mm) - 9 ดวงพอดี 1 แผ่น A4 ไม่ล้น ไม่โดนตัด
   if (size === "1_inch") return 54; // 6 cols x 9 rows (25.4mm x 25.4mm)
   if (size === "1.5_inch") return 24; // 4 cols x 6 rows (38.1mm x 38.1mm)
   return 12; // 3 cols x 4 rows (50.8mm x 50.8mm)
@@ -222,6 +222,7 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
   const [singleFormat, setSingleFormat] = useState<SingleFormat>("business_card");
   const [qrStickerSize, setQrStickerSize] = useState<QrStickerSize>("5x6_cm");
   const [autoFillSheet, setAutoFillSheet] = useState(false);
+  const [stickerOnlyFirstSheet, setStickerOnlyFirstSheet] = useState(true);
   const [showPhoto, setShowPhoto] = useState(true);
   const [customImage, setCustomImage] = useState<string | null>(null);
   const [qrCodes, setQrCodes] = useState<Record<string, string>>({});
@@ -318,10 +319,23 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
     [usableVouchers, sheetLayout, autoFillSheet]
   );
 
-  const qrStickers = useMemo(
-    () => buildQrStickers(usableVouchers, qrStickerSize, autoFillSheet),
-    [usableVouchers, qrStickerSize, autoFillSheet]
-  );
+  const qrStickers = useMemo(() => {
+    let list = usableVouchers;
+    const target = getStickerTargetCount(qrStickerSize);
+    if (stickerOnlyFirstSheet && list.length > target) {
+      list = list.slice(0, target);
+    }
+    return buildQrStickers(list, qrStickerSize, autoFillSheet);
+  }, [usableVouchers, qrStickerSize, autoFillSheet, stickerOnlyFirstSheet]);
+
+  const qrStickerPages = useMemo(() => {
+    const pageSize = getStickerTargetCount(qrStickerSize);
+    const pages: VoucherItem[][] = [];
+    for (let i = 0; i < qrStickers.length; i += pageSize) {
+      pages.push(qrStickers.slice(i, i + pageSize));
+    }
+    return pages.length > 0 ? pages : [[]];
+  }, [qrStickers, qrStickerSize]);
 
   if (!isOpen || usableVouchers.length === 0) return null;
 
@@ -536,7 +550,7 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
                     ? "30mm auto"
                     : "25mm auto"
                   : isQrStickers
-                  ? "5mm 6mm"
+                  ? "8mm auto"
                   : "6mm 8mm"
               };
             }
@@ -606,6 +620,19 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
             .break-inside-avoid {
               break-inside: avoid !important;
               page-break-inside: avoid !important;
+            }
+
+            .page-sheet {
+              break-after: page !important;
+              page-break-after: always !important;
+              min-height: 0 !important;
+              box-shadow: none !important;
+              border: none !important;
+            }
+
+            .page-sheet:last-child {
+              break-after: auto !important;
+              page-break-after: auto !important;
             }
           </style>
         </head>
@@ -987,9 +1014,9 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
                           ? "bg-white text-stone-900 font-semibold shadow-2xs"
                           : "text-stone-600 hover:text-stone-900"
                       }`}
-                      title="กว้าง 5 ซม. สูง 6 ซม. (50 × 60 มม.) พิมพ์ได้สูงสุด 12 ดวงต่อแผ่น A4"
+                      title="กว้าง 5 ซม. สูง 6 ซม. (50 × 60 มม.) พิมพ์ 9 ดวงต่อแผ่น A4 (3 × 3 แถว สวยงาม พอดีหน้า ไม่โดนตัด)"
                     >
-                      5 × 6 ซม.
+                      5 × 6 ซม. (9 ดวง)
                     </button>
                     <button
                       type="button"
@@ -1030,19 +1057,48 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
                   </div>
                 </div>
 
+                {usableVouchers.length > getStickerTargetCount(qrStickerSize) && (
+                  <div className="inline-flex bg-stone-200/60 p-0.5 rounded-lg text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setStickerOnlyFirstSheet(true)}
+                      className={`px-2.5 py-1.5 rounded-md transition cursor-pointer font-medium ${
+                        stickerOnlyFirstSheet
+                          ? "bg-white text-stone-900 font-semibold shadow-2xs"
+                          : "text-stone-600 hover:text-stone-900"
+                      }`}
+                      title="เอาเฉพาะ 9 ดวงแรก ให้พอดี 1 แผ่น A4 ไม่ล้นหน้า"
+                    >
+                      เอาแค่ 9 ดวง (1 แผ่น)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setStickerOnlyFirstSheet(false)}
+                      className={`px-2.5 py-1.5 rounded-md transition cursor-pointer font-medium ${
+                        !stickerOnlyFirstSheet
+                          ? "bg-white text-stone-900 font-semibold shadow-2xs"
+                          : "text-stone-600 hover:text-stone-900"
+                      }`}
+                      title={`พิมพ์ครบทั้งหมด ${usableVouchers.length} ดวง โดยแบ่งหน้าละ ${getStickerTargetCount(qrStickerSize)} ดวง`}
+                    >
+                      ทั้งหมด (${usableVouchers.length} ดวง)
+                    </button>
+                  </div>
+                )}
+
                 <button
                   type="button"
                   onClick={() => setAutoFillSheet(!autoFillSheet)}
                   className={`px-2.5 py-1.5 rounded-md transition text-xs cursor-pointer border ${
                     autoFillSheet
                       ? "bg-amber-50 border-amber-300 text-amber-900 font-semibold shadow-2xs"
-                      : "bg-white border-stone-900 text-stone-900 font-semibold shadow-2xs"
+                      : "bg-white border-stone-300 text-stone-700 hover:bg-stone-50"
                   }`}
-                  title="ค่าเริ่มต้นจะแสดงเฉพาะจำนวนคูปองที่ใช้งานได้จริง กดเพื่อสลับเป็นพิมพ์ซ้ำให้เต็มแผ่น A4"
+                  title="ค่าเริ่มต้นจะแสดงเฉพาะจำนวนคูปองที่ใช้งานได้จริง กดเพื่อสลับเป็นพิมพ์ซ้ำให้เต็ม 9 ดวง"
                 >
                   {autoFillSheet
-                    ? `โหมด: พิมพ์ซ้ำเต็มแผ่น (${getStickerTargetCount(qrStickerSize)} ดวง)`
-                    : `✓ ตามจำนวนที่ใช้งานได้ (${usableVouchers.length} ดวง)`}
+                    ? `โหมด: ซ้ำเต็ม ${getStickerTargetCount(qrStickerSize)} ดวง`
+                    : `ตามจำนวนจริง (${Math.min(qrStickers.length, usableVouchers.length)} ดวง)`}
                 </button>
               </div>
             )}
@@ -1258,66 +1314,71 @@ export default function VoucherModal({ isOpen, onClose, vouchers }: VoucherModal
           {/* MODE 2: QR CODE STICKERS SHEET (A4 5x6cm, 1", 1.5", 2")        */}
           {/* ============================================================== */}
           {viewMode === "qr_stickers" && (
-            <div id="voucher-print-area" className="w-full flex flex-col items-center">
-              <div
-                ref={sheetA4Ref}
-                className="bg-white border border-stone-300 shadow-2xl mx-auto box-border print:border-none print:shadow-none"
-                style={{
-                  width: "100%",
-                  maxWidth: "210mm",
-                  minHeight: "297mm",
-                  padding:
-                    qrStickerSize === "5x6_cm"
-                      ? "8mm 12mm"
-                      : qrStickerSize === "1_inch"
-                      ? "8mm 8mm"
-                      : qrStickerSize === "1.5_inch"
-                      ? "10mm 10mm"
-                      : "12mm 10mm",
-                  display: "grid",
-                  gridTemplateColumns:
-                    qrStickerSize === "5x6_cm"
-                      ? "repeat(3, 50mm)"
-                      : qrStickerSize === "1_inch"
-                      ? "repeat(6, 25.4mm)"
-                      : qrStickerSize === "1.5_inch"
-                      ? "repeat(4, 38.1mm)"
-                      : "repeat(3, 50.8mm)",
-                  columnGap:
-                    qrStickerSize === "5x6_cm"
-                      ? "10mm"
-                      : qrStickerSize === "1_inch"
-                      ? "6mm"
-                      : qrStickerSize === "1.5_inch"
-                      ? "9mm"
-                      : "14mm",
-                  rowGap:
-                    qrStickerSize === "5x6_cm"
-                      ? "6mm"
-                      : qrStickerSize === "1_inch"
-                      ? "4.5mm"
-                      : qrStickerSize === "1.5_inch"
-                      ? "6.5mm"
-                      : "12mm",
-                  justifyContent: "center",
-                  alignContent: "start",
-                  backgroundColor: "#ffffff",
-                }}
-              >
-                {qrStickers.map((v, idx) => (
-                  <div key={v.id || idx} className="break-inside-avoid flex items-center justify-center">
-                    <QrSticker
-                      voucher={v}
-                      qrCodeUrl={qrCodes[v.coupon_code || String(v.id)]}
-                      size={qrStickerSize}
-                      brandChoice={brandChoice}
-                      theme={theme}
-                      copiedCode={copiedCode}
-                      onCopy={copyCode}
-                    />
-                  </div>
-                ))}
-              </div>
+            <div id="voucher-print-area" className="w-full flex flex-col items-center gap-6 print:gap-0">
+              {qrStickerPages.map((pageItems, pageIdx) => (
+                <div
+                  key={pageIdx}
+                  ref={pageIdx === 0 ? sheetA4Ref : undefined}
+                  className="page-sheet bg-white border border-stone-300 shadow-2xl mx-auto box-border print:border-none print:shadow-none print:m-0"
+                  style={{
+                    width: "100%",
+                    maxWidth: "210mm",
+                    minHeight: qrStickerSize === "5x6_cm" ? "250mm" : "297mm",
+                    padding:
+                      qrStickerSize === "5x6_cm"
+                        ? "18mm 12mm 15mm 12mm"
+                        : qrStickerSize === "1_inch"
+                        ? "8mm 8mm"
+                        : qrStickerSize === "1.5_inch"
+                        ? "10mm 10mm"
+                        : "12mm 10mm",
+                    display: "grid",
+                    gridTemplateColumns:
+                      qrStickerSize === "5x6_cm"
+                        ? "repeat(3, 50mm)"
+                        : qrStickerSize === "1_inch"
+                        ? "repeat(6, 25.4mm)"
+                        : qrStickerSize === "1.5_inch"
+                        ? "repeat(4, 38.1mm)"
+                        : "repeat(3, 50.8mm)",
+                    columnGap:
+                      qrStickerSize === "5x6_cm"
+                        ? "10mm"
+                        : qrStickerSize === "1_inch"
+                        ? "6mm"
+                        : qrStickerSize === "1.5_inch"
+                        ? "9mm"
+                        : "14mm",
+                    rowGap:
+                      qrStickerSize === "5x6_cm"
+                        ? "8mm"
+                        : qrStickerSize === "1_inch"
+                        ? "4.5mm"
+                        : qrStickerSize === "1.5_inch"
+                        ? "6.5mm"
+                        : "12mm",
+                    justifyContent: "center",
+                    alignContent: "start",
+                    backgroundColor: "#ffffff",
+                    breakAfter: pageIdx < qrStickerPages.length - 1 ? "page" : "auto",
+                    pageBreakAfter: pageIdx < qrStickerPages.length - 1 ? "always" : "auto",
+                  }}
+                >
+                  {pageItems.map((v, idx) => (
+                    <div key={v.id || idx} className="break-inside-avoid flex items-center justify-center">
+                      <QrSticker
+                        voucher={v}
+                        qrCodeUrl={qrCodes[v.coupon_code || String(v.id)]}
+                        size={qrStickerSize}
+                        brandChoice={brandChoice}
+                        theme={theme}
+                        copiedCode={copiedCode}
+                        onCopy={copyCode}
+                      />
+                    </div>
+                  ))}
+                </div>
+              ))}
             </div>
           )}
 
