@@ -245,6 +245,7 @@ export interface ProductExtraFilters {
   maxW?: number
   minL?: number
   maxL?: number
+  location?: string
 }
 
 export async function getProducts(
@@ -260,9 +261,62 @@ export async function getProducts(
   const supabase = await createClient()
   const canViewCosts = await checkCanViewCosts()
 
-  let query = supabase
-    .from(TABLE_NAME)
-    .select('*, collection_groups(id, name, cover_image_url, product_sup)', { count: 'exact' })
+  const loc = extraFilters?.location?.trim().toLowerCase()
+  let query: any
+
+  if (loc === 'showroom') {
+    query = supabase
+      .from(TABLE_NAME)
+      .select('*, collection_groups(id, name, cover_image_url, product_sup), stock!inner(branch_id, qty, branches!inner(id, branch_name, branch_type))', { count: 'exact' })
+      .gt('stock.qty', 0)
+      .eq('stock.branches.branch_type', 'SHOWROOM')
+  } else if (loc === 'warehouse') {
+    query = supabase
+      .from(TABLE_NAME)
+      .select('*, collection_groups(id, name, cover_image_url, product_sup), stock!inner(branch_id, qty, branches!inner(id, branch_name, branch_type))', { count: 'exact' })
+      .gt('stock.qty', 0)
+      .eq('stock.branches.branch_type', 'FACTORY')
+  } else if (loc === 'in_stock') {
+    query = supabase
+      .from(TABLE_NAME)
+      .select('*, collection_groups(id, name, cover_image_url, product_sup), stock!inner(branch_id, qty, branches(id, branch_name, branch_type))', { count: 'exact' })
+      .gt('stock.qty', 0)
+  } else if (loc === 'out_of_stock') {
+    const { data: positiveStock } = await supabase.from('stock').select('product_id').gt('qty', 0)
+    const positiveIds = Array.from(new Set(positiveStock?.map((s: any) => s.product_id) || []))
+    query = supabase
+      .from(TABLE_NAME)
+      .select('*, collection_groups(id, name, cover_image_url, product_sup), stock(branch_id, qty, branches(id, branch_name, branch_type))', { count: 'exact' })
+    if (positiveIds.length > 0) {
+      query = query.not('id', 'in', `(${positiveIds.join(',')})`)
+    }
+  } else if (loc?.startsWith('branch_')) {
+    const branchId = parseInt(loc.replace('branch_', ''), 10)
+    query = supabase
+      .from(TABLE_NAME)
+      .select('*, collection_groups(id, name, cover_image_url, product_sup), stock!inner(branch_id, qty, branches(id, branch_name, branch_type))', { count: 'exact' })
+      .gt('stock.qty', 0)
+      .eq('stock.branch_id', branchId)
+  } else if (loc === 'both') {
+    const [whRes, srRes] = await Promise.all([
+      supabase.from('stock').select('product_id, branches!inner(branch_type)').gt('qty', 0).eq('branches.branch_type', 'FACTORY'),
+      supabase.from('stock').select('product_id, branches!inner(branch_type)').gt('qty', 0).eq('branches.branch_type', 'SHOWROOM')
+    ])
+    const whIds = new Set(whRes.data?.map((s: any) => s.product_id) || [])
+    const bothIds = Array.from(new Set((srRes.data || []).map((s: any) => s.product_id).filter((id: any) => whIds.has(id))))
+    query = supabase
+      .from(TABLE_NAME)
+      .select('*, collection_groups(id, name, cover_image_url, product_sup), stock(branch_id, qty, branches(id, branch_name, branch_type))', { count: 'exact' })
+    if (bothIds.length > 0) {
+      query = query.in('id', bothIds)
+    } else {
+      query = query.eq('id', -999999)
+    }
+  } else {
+    query = supabase
+      .from(TABLE_NAME)
+      .select('*, collection_groups(id, name, cover_image_url, product_sup), stock(branch_id, qty, branches(id, branch_name, branch_type))', { count: 'exact' })
+  }
 
   if (canViewCosts) {
     query = query.order('cost', { ascending: false, nullsFirst: false })
@@ -401,7 +455,7 @@ export async function getProducts(
     return { data: [], count: 0, hasMore: false, nextOffset: offset, error: error.message }
   }
 
-  const processedData = (data || []).map((item) => {
+  const processedData = (data || []).map((item: any) => {
     let publicUrl = null
     if (item.image_url) {
        if(item.image_url.startsWith('http')) {
@@ -420,6 +474,28 @@ export async function getProducts(
         delete cleanItem.specs.cost_th_shipping
       }
     }
+
+    const stockList = Array.isArray(item.stock) ? item.stock : []
+    const showroomStock = stockList.filter((s: any) => s.branches?.branch_type === 'SHOWROOM' && s.qty > 0)
+    const warehouseStock = stockList.filter((s: any) => s.branches?.branch_type === 'FACTORY' && s.qty > 0)
+    const showroomQty = showroomStock.reduce((acc: number, s: any) => acc + (s.qty || 0), 0)
+    const warehouseQty = warehouseStock.reduce((acc: number, s: any) => acc + (s.qty || 0), 0)
+    const totalStockQty = showroomQty + warehouseQty
+
+    cleanItem.showroom_qty = showroomQty
+    cleanItem.warehouse_qty = warehouseQty
+    cleanItem.total_stock_qty = totalStockQty
+    cleanItem.showroom_locations = showroomStock.map((s: any) => ({
+      branch_id: s.branch_id,
+      branch_name: s.branches?.branch_name || 'โชว์รูม',
+      qty: s.qty
+    }))
+    cleanItem.warehouse_locations = warehouseStock.map((s: any) => ({
+      branch_id: s.branch_id,
+      branch_name: s.branches?.branch_name || 'โกดัง',
+      qty: s.qty
+    }))
+
     return cleanItem
   })
 
@@ -590,6 +666,12 @@ export async function getCategoryFilterOptions(category: string) {
     return a.localeCompare(b)
   })
 
+  // Fetch branches for stock location filter
+  const { data: branchData } = await supabase
+    .from('branches')
+    .select('id, branch_name, branch_type')
+    .order('id', { ascending: true })
+
   const result = {
     types: Array.from(types).sort(),
     materials: Array.from(materials).sort(),
@@ -597,7 +679,12 @@ export async function getCategoryFilterOptions(category: string) {
     crafts: Array.from(crafts).sort(),
     colors: Array.from(colors).sort(),
     brands: Array.from(brands).sort(),
-    sizes: sortedSizes
+    sizes: sortedSizes,
+    branches: (branchData || []).map((b: any) => ({
+      id: b.id,
+      name: b.branch_name,
+      type: b.branch_type
+    }))
   }
 
   filterOptionsCache[category] = {
@@ -662,6 +749,28 @@ export async function getAllProductsForExport() {
         delete cleanItem.specs.cost_th_shipping
       }
     }
+
+    const stockList = Array.isArray(item.stock) ? item.stock : []
+    const showroomStock = stockList.filter((s: any) => s.branches?.branch_type === 'SHOWROOM' && s.qty > 0)
+    const warehouseStock = stockList.filter((s: any) => s.branches?.branch_type === 'FACTORY' && s.qty > 0)
+    const showroomQty = showroomStock.reduce((acc: number, s: any) => acc + (s.qty || 0), 0)
+    const warehouseQty = warehouseStock.reduce((acc: number, s: any) => acc + (s.qty || 0), 0)
+    const totalStockQty = showroomQty + warehouseQty
+
+    cleanItem.showroom_qty = showroomQty
+    cleanItem.warehouse_qty = warehouseQty
+    cleanItem.total_stock_qty = totalStockQty
+    cleanItem.showroom_locations = showroomStock.map((s: any) => ({
+      branch_id: s.branch_id,
+      branch_name: s.branches?.branch_name || 'โชว์รูม',
+      qty: s.qty
+    }))
+    cleanItem.warehouse_locations = warehouseStock.map((s: any) => ({
+      branch_id: s.branch_id,
+      branch_name: s.branches?.branch_name || 'โกดัง',
+      qty: s.qty
+    }))
+
     return cleanItem
   })
 

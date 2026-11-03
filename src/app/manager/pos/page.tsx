@@ -188,6 +188,10 @@ export default function ManagerPOSPage() {
   const [shippingPhone, setShippingPhone] = useState('')
   const [shippingAddress, setShippingAddress] = useState('')
   const [customOrderCode, setCustomOrderCode] = useState('')
+  const [customerType, setCustomerType] = useState<'INDIVIDUAL' | 'CORPORATE'>('INDIVIDUAL') // 👤 บุคคลธรรมดา หรือ 🏢 นิติบุคคล
+  const [branchType, setBranchType] = useState<'HEAD_OFFICE' | 'BRANCH'>('HEAD_OFFICE') // 🏢 สำนักงานใหญ่ หรือ สาขา
+  const [branchCode, setBranchCode] = useState('') // 🏢 รหัสสาขา (เช่น 00001)
+  const [sameAsCompanyAddress, setSameAsCompanyAddress] = useState(true) // 🚚 ใช้ที่อยู่จัดส่งเดียวกับที่อยู่บริษัท
   const [companyNameTh, setCompanyNameTh] = useState('')
   const [companyNameEn, setCompanyNameEn] = useState('')
   const [companyAddress, setCompanyAddress] = useState('')
@@ -200,6 +204,7 @@ export default function ManagerPOSPage() {
   const [isCustomerFormOpen, setIsCustomerFormOpen] = useState(false) // ซ่อนฟอร์มไว้ก่อน ประหยัดที่!
   const [slabDepositPercent, setSlabDepositPercent] = useState<string>('50') // 💰 เปอร์เซ็นต์มัดจำแผ่นไม้ (ขั้นต่ำ 50% - 100%)
   const [slabDepositCustomBaht, setSlabDepositCustomBaht] = useState<string>('') // 💰 ยอดเงินมัดจำระบุเอง (บาท)
+  const [includeWoodPermitFee, setIncludeWoodPermitFee] = useState<boolean>(true) // 📜 เลือกเก็บค่าใบกำกับไม้หรือไม่ (5,000 บาท)
   
   // ✨ State สำหรับโมดอลส่วนลดและคูปอง
   const [isDiscountModalOpen, setIsDiscountModalOpen] = useState(false)
@@ -498,6 +503,13 @@ export default function ManagerPOSPage() {
         if (res.order.company_name_en) setCompanyNameEn(res.order.company_name_en)
         if (res.order.company_address) setCompanyAddress(res.order.company_address)
         if (res.order.tax_id) setTaxId(res.order.tax_id)
+        if (res.order.discount_snapshot?.customer_type === 'CORPORATE' || res.order.company_name_th || res.order.company_name_en || res.order.tax_id) {
+          setCustomerType('CORPORATE')
+          setBranchType(res.order.discount_snapshot?.branch_type || 'HEAD_OFFICE')
+          setBranchCode(res.order.discount_snapshot?.branch_code || '')
+        } else {
+          setCustomerType('INDIVIDUAL')
+        }
         if (res.order.special_discount_percent !== undefined && res.order.special_discount_percent !== null) {
           setSpecialDiscountPercent(res.order.special_discount_percent.toString())
         } else {
@@ -528,6 +540,15 @@ export default function ManagerPOSPage() {
           setSlabDepositCustomBaht(String(res.order.discount_snapshot.deposit_amount))
         } else {
           setSlabDepositCustomBaht('')
+        }
+        if (res.order.discount_snapshot?.wood_permit_fee !== undefined) {
+          setIncludeWoodPermitFee(Number(res.order.discount_snapshot.wood_permit_fee) > 0)
+        } else {
+          setIncludeWoodPermitFee(true)
+        setCustomerType('INDIVIDUAL')
+        setBranchType('HEAD_OFFICE')
+        setBranchCode('')
+        setSameAsCompanyAddress(true)
         }
         if (res.order.discount_snapshot?.coupon?.code) {
           const snapCoupon = res.order.discount_snapshot.coupon
@@ -1635,15 +1656,15 @@ export default function ManagerPOSPage() {
     (typeof item.sku === 'string' && (item.sku.startsWith('ZLB-') || item.sku.startsWith('LEG-') || item.sku.startsWith('WOOD-')))
   )
 
-  // 📜 ค่าใบกำกับไม้ (Wood Permit Fee) 5,000.00 บาทสำหรับสินค้าแผ่นไม้สแลป
-  const woodPermitFee = hasSlabInCart ? 5000 : 0
+  // 📜 ค่าใบกำกับไม้ (Wood Permit Fee) 5,000.00 บาทสำหรับสินค้าแผ่นไม้สแลป (สามารถติ๊กเลือกเองได้ว่าจะเอาหรือไม่เอา)
+  const woodPermitFee = (hasSlabInCart && includeWoodPermitFee) ? 5000 : 0
   const grandTotal = totalFinalPrice + deliveryFeeCharged + woodPermitFee
 
   // 💰 ยอดมัดจำแผ่นไม้ ZENSLABS (ขั้นต่ำ 50% สูงสุด 100% — เลือกได้ทั้ง % และระบุยอดบาท)
   const minDeposit50Baht = Math.round(grandTotal * 0.5 * 100) / 100
   const rawDepPercent = Number(slabDepositPercent)
   const effectiveDepositPercent = !isNaN(rawDepPercent)
-    ? Math.min(100, Math.max(50, rawDepPercent))
+    ? Math.min(100, Math.max(0, rawDepPercent))
     : 50
   const hasCustomDepositBaht = slabDepositCustomBaht.trim() !== '' && !isNaN(Number(slabDepositCustomBaht))
   const rawCustomDepositBaht = hasCustomDepositBaht ? Number(slabDepositCustomBaht) : 0
@@ -1676,8 +1697,8 @@ export default function ManagerPOSPage() {
       return
     }
 
-    if (hasSlabInCart && (slabDepositAmount < minDeposit50Baht || isDepositUnderMinimum)) {
-      toast.error(`ยอดมัดจำแผ่นไม้ต้องไม่ต่ำกว่า 50% (ขั้นต่ำ ฿${minDeposit50Baht.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}) ครับ`)
+    if (hasSlabInCart && slabDepositAmount > grandTotal) {
+      toast.error("ยอดมัดจำต้องไม่เกินยอดรวมทั้งสิ้นครับ")
       return
     }
 
@@ -1693,28 +1714,61 @@ export default function ManagerPOSPage() {
       return
     }
 
-    const finalName = shippingName.trim()
-    const finalPhone = shippingPhone.trim()
-    const finalAddressText = shippingAddress.trim()
+    let finalName = shippingName.trim()
+    let finalPhone = shippingPhone.trim()
+    let finalAddressText = shippingAddress.trim()
 
-    if (!finalName || !finalPhone || !finalAddressText) {
-      toast.warning("รบกวนกรอก ชื่อ เบอร์โทร และที่อยู่ลูกค้า ให้ครบถ้วนครับ")
-      setIsCustomerFormOpen(true)
-      return
-    }
-
-    if (companyNameTh.trim() !== '' || companyNameEn.trim() !== '') {
-      if (companyAddress.trim() === '') {
-        toast.error("หากต้องการออกใบกำกับภาษี กรุณากรอกที่อยู่บริษัทให้ครบถ้วนครับ")
+    if (customerType === 'CORPORATE') {
+      const finalCompanyName = companyNameTh.trim() || companyNameEn.trim()
+      if (!finalCompanyName) {
+        toast.warning("รบกวนระบุชื่อบริษัทหรือนิติบุคคลครับ")
         setIsCustomerFormOpen(true)
         return
       }
-    }
-
-    if (taxId.trim() !== '' && taxId.trim().length !== 13) {
-      toast.error("เลขประจำตัวผู้เสียภาษี หากระบุ ต้องมี 13 หลักถ้วนครับ")
-      setIsCustomerFormOpen(true)
-      return
+      if (!companyAddress.trim()) {
+        toast.warning("รบกวนระบุที่อยู่บริษัทสำหรับออกเอกสารครับ")
+        setIsCustomerFormOpen(true)
+        return
+      }
+      if (!finalPhone) {
+        toast.warning("รบกวนระบุเบอร์โทรศัพท์ติดต่อครับ")
+        setIsCustomerFormOpen(true)
+        return
+      }
+      if (taxId.trim() !== '' && taxId.trim().length !== 13) {
+        toast.error("เลขประจำตัวผู้เสียภาษี หากระบุ ต้องมี 13 หลักถ้วนครับ")
+        setIsCustomerFormOpen(true)
+        return
+      }
+      if (branchType === 'BRANCH' && !branchCode.trim()) {
+        toast.warning("กรุณาระบุรหัสสาขาของบริษัท (เช่น 00001) ครับ")
+        setIsCustomerFormOpen(true)
+        return
+      }
+      if (!finalName) {
+        finalName = finalCompanyName
+      }
+      if (sameAsCompanyAddress || !finalAddressText) {
+        finalAddressText = companyAddress.trim()
+      }
+    } else {
+      if (!finalName || !finalPhone || !finalAddressText) {
+        toast.warning("รบกวนกรอก ชื่อ เบอร์โทร และที่อยู่ลูกค้า ให้ครบถ้วนครับ")
+        setIsCustomerFormOpen(true)
+        return
+      }
+      if (companyNameTh.trim() !== '' || companyNameEn.trim() !== '') {
+        if (companyAddress.trim() === '') {
+          toast.error("หากต้องการออกใบกำกับภาษี กรุณากรอกที่อยู่บริษัทให้ครบถ้วนครับ")
+          setIsCustomerFormOpen(true)
+          return
+        }
+      }
+      if (taxId.trim() !== '' && taxId.trim().length !== 13) {
+        toast.error("เลขประจำตัวผู้เสียภาษี หากระบุ ต้องมี 13 หลักถ้วนครับ")
+        setIsCustomerFormOpen(true)
+        return
+      }
     }
 
     if (!editOrderId && !customOrderCode) {
@@ -1789,6 +1843,9 @@ export default function ManagerPOSPage() {
         companyNameEn: companyNameEn.trim() || null,
         companyAddress: companyAddress.trim() || null,
         taxId: taxId.trim() || null,
+        customerType: customerType,
+        branchType: customerType === 'CORPORATE' ? branchType : undefined,
+        branchCode: (customerType === 'CORPORATE' && branchType === 'BRANCH') ? branchCode.trim() : undefined,
         isSlabOrder: hasSlabInCart,
         woodPermitFee: woodPermitFee,
         depositPercent: hasSlabInCart ? slabDisplayPercent : undefined,
@@ -1836,6 +1893,11 @@ export default function ManagerPOSPage() {
         setSpecialDiscountBaht('0')
         setSlabDepositPercent('50')
         setSlabDepositCustomBaht('')
+        setIncludeWoodPermitFee(true)
+        setCustomerType('INDIVIDUAL')
+        setBranchType('HEAD_OFFICE')
+        setBranchCode('')
+        setSameAsCompanyAddress(true)
         setCustomOrderCode('')
         setLatitude(null)
         setLongitude(null)
@@ -2253,7 +2315,7 @@ export default function ManagerPOSPage() {
 
                   <div className="text-[11px] font-semibold text-slate-600 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200 shrink-0 hidden sm:flex items-center gap-1.5">
                     <FileCheck className="w-3.5 h-3.5 text-slate-500" />
-                    <span>มีค่าใบกำกับไม้ ฿5,000 (มัดจำ 50%)</span>
+                    <span>ค่าใบกำกับไม้ ฿5,000 (เลือกได้ในตะกร้า)</span>
                   </div>
                 </div>
               </div>
@@ -2940,32 +3002,51 @@ export default function ManagerPOSPage() {
             {/* ข้อมูลลูกค้าแบบย่อ (ดีไซน์มินิมอล) */}
             <div className="flex items-center justify-between py-2 border-b border-slate-200/60 text-xs">
               <div className="flex flex-col min-w-0">
-                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1">
-                  {saleMode === 'DELIVERY' ? <Truck className="w-3 h-3 text-slate-600" /> : <Store className="w-3 h-3 text-slate-500" />}
-                  {saleMode === 'DELIVERY' ? 'ข้อมูลสำหรับจัดส่ง' : 'ลูกค้ารับหน้าร้าน'}
-                </span>
-                <span className="text-slate-700 font-semibold truncate text-[11px] mt-0.5 flex items-center gap-1.5 flex-wrap">
-                  <span>{shippingName ? `${shippingName} (${shippingPhone})` : 'ยังไม่ได้ระบุลูกค้า'}</span>
-                  {deliveryFee > 0 && (
-                    <span className="px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 text-[10px] font-bold border border-slate-200">
-                      {isShippingWaived ? `ค่าส่ง 0 ฿ (ต้นทุน ฿${deliveryFee.toLocaleString()})` : `ค่าส่ง ฿${deliveryFee.toLocaleString()}`}
+                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1.5 flex-wrap">
+                  {customerType === 'CORPORATE' ? (
+                    <span className="inline-flex items-center gap-1 text-blue-700 bg-blue-50 px-1.5 py-0.2 rounded font-black border border-blue-200 text-[9.5px]">
+                      <Building2 className="w-2.5 h-2.5" /> นิติบุคคล
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-slate-600 bg-slate-100 px-1.5 py-0.2 rounded font-black border border-slate-200 text-[9.5px]">
+                      <User className="w-2.5 h-2.5" /> บุคคลธรรมดา
                     </span>
                   )}
+                  <span>•</span>
+                  <span>{saleMode === 'DELIVERY' ? 'จัดส่งสินค้า' : 'รับหน้าร้าน'}</span>
                 </span>
+
+                {customerType === 'CORPORATE' ? (
+                  <div className="mt-0.5 min-w-0">
+                    <p className="text-slate-800 font-bold truncate text-[11.5px]">
+                      {companyNameTh || companyNameEn || 'ยังไม่ได้ระบุชื่อบริษัท'}
+                      {branchType === 'HEAD_OFFICE' ? ' (สนญ.)' : branchCode ? ` (สาขา ${branchCode})` : ' (สาขา)'}
+                    </p>
+                    <p className="text-slate-500 text-[10px] truncate">
+                      {taxId ? `Tax ID: ${taxId}` : 'ยังไม่ระบุ Tax ID'}
+                      {shippingName ? ` • ผู้ติดต่อ: ${shippingName}` : ''}
+                      {shippingPhone ? ` (${shippingPhone})` : ''}
+                    </p>
+                  </div>
+                ) : (
+                  <span className="text-slate-700 font-semibold truncate text-[11px] mt-0.5 flex items-center gap-1.5 flex-wrap">
+                    <span>{shippingName ? `${shippingName} (${shippingPhone})` : 'ยังไม่ได้ระบุลูกค้า'}</span>
+                  </span>
+                )}
                 {shippingAddress && saleMode === 'DELIVERY' && (
                   <span className="text-[10px] text-slate-500 truncate">{shippingAddress}</span>
                 )}
-                {(companyNameTh || companyNameEn) && (
-                   <span className="text-[9px] text-slate-400 mt-0.5 flex items-center gap-1">
-                     <FileText className="w-2.5 h-2.5"/> ขอใบกำกับภาษี ({companyNameTh || companyNameEn})
-                   </span>
+                {deliveryFee > 0 && (
+                  <span className="mt-0.5 inline-flex items-center px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 text-[9px] font-bold border border-slate-200 w-fit">
+                    {isShippingWaived ? `ค่าส่ง 0 ฿ (ต้นทุน ฿${deliveryFee.toLocaleString()})` : `ค่าส่ง ฿${deliveryFee.toLocaleString()}`}
+                  </span>
                 )}
               </div>
               <button 
                 onClick={() => setIsCustomerFormOpen(true)}
                 className="text-[10px] text-slate-700 hover:text-slate-900 font-bold px-2.5 py-1 bg-white border border-slate-200 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer shrink-0 ml-2"
               >
-                {shippingName ? 'แก้ไข' : 'ระบุลูกค้า'}
+                {(shippingName || companyNameTh || companyNameEn) ? 'แก้ไข' : 'ระบุลูกค้า'}
               </button>
             </div>
 
@@ -3059,13 +3140,34 @@ export default function ManagerPOSPage() {
                   )}
                 </>
               )}
-              {woodPermitFee > 0 && (
-                <div className="flex justify-between items-center text-slate-800 font-bold bg-slate-100 px-2.5 py-1.5 rounded-xl border border-slate-200 shadow-2xs">
-                  <span className="flex items-center gap-1.5">
-                    <FileCheck className="w-3.5 h-3.5 text-slate-500" />
-                    <span>ค่าใบกำกับไม้ (Slab Permit Fee)</span>
+              {hasSlabInCart && (
+                <div 
+                  onClick={() => setIncludeWoodPermitFee(!includeWoodPermitFee)}
+                  className={`flex justify-between items-center px-3 py-2 rounded-xl border transition-all cursor-pointer select-none ${
+                    includeWoodPermitFee 
+                      ? 'bg-amber-50/80 border-amber-300 text-amber-950 shadow-2xs' 
+                      : 'bg-slate-50 border-slate-200 text-slate-400 hover:border-slate-300'
+                  }`}
+                >
+                  <label className="flex items-center gap-2 cursor-pointer pointer-events-none">
+                    <input 
+                      type="checkbox"
+                      checked={includeWoodPermitFee}
+                      onChange={() => {}}
+                      className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500 border-slate-300 cursor-pointer pointer-events-auto"
+                    />
+                    <div className="flex flex-col">
+                      <span className={`text-[11px] font-bold ${includeWoodPermitFee ? 'text-amber-900' : 'text-slate-500'}`}>
+                        ค่าใบกำกับไม้ (Slab Permit Fee)
+                      </span>
+                      <span className="text-[9px] text-slate-400">
+                        {includeWoodPermitFee ? 'คิดค่าใบกำกับไม้ (+฿5,000)' : 'ไม่คิดค่าใบกำกับไม้ (0 ฿)'}
+                      </span>
+                    </div>
+                  </label>
+                  <span className={`font-black text-xs ${includeWoodPermitFee ? 'text-amber-800' : 'text-slate-400 line-through'}`}>
+                    {includeWoodPermitFee ? '+ 5,000.00 ฿' : '0.00 ฿'}
                   </span>
-                  <span className="font-black">+ {woodPermitFee.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span>
                 </div>
               )}
               <div className="flex justify-between pt-1 border-t border-dashed border-slate-200"><span>ยอดก่อนภาษี (Subtotal)</span><span>{(grandTotal / 1.07).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</span></div>
@@ -3112,11 +3214,11 @@ export default function ManagerPOSPage() {
                   {/* ช่องกรอกปรับมัดจำเอง: ระบุเป็น % หรือ ระบุเป็นจำนวนเงินบาท */}
                   <div className="grid grid-cols-2 gap-1.5">
                     <div>
-                      <label className="text-[9px] text-slate-500 font-bold block mb-0.5">ระบุ % (ขั้นต่ำ 50%)</label>
+                      <label className="text-[9px] text-slate-500 font-bold block mb-0.5">ระบุ % มัดจำ (มาตรฐาน 50%)</label>
                       <div className="flex items-center bg-white border border-slate-200 focus-within:border-slate-800 rounded-lg px-2 py-1">
                         <input
                           type="number"
-                          min={50}
+                          min={1}
                           max={100}
                           step="any"
                           value={hasCustomDepositBaht ? slabDisplayPercent : slabDepositPercent}
@@ -3126,7 +3228,7 @@ export default function ManagerPOSPage() {
                           }}
                           onBlur={() => {
                             const val = Number(slabDepositPercent)
-                            if (isNaN(val) || val < 50) setSlabDepositPercent('50')
+                            if (isNaN(val) || val <= 0) setSlabDepositPercent('50')
                             else if (val > 100) setSlabDepositPercent('100')
                           }}
                           className="w-full text-[11px] font-bold text-slate-800 outline-none bg-transparent"
@@ -3140,7 +3242,7 @@ export default function ManagerPOSPage() {
                         <span className="text-[10px] text-slate-400 font-bold mr-1">฿</span>
                         <input
                           type="number"
-                          min={minDeposit50Baht}
+                          min={0}
                           max={grandTotal}
                           step="any"
                           placeholder={minDeposit50Baht.toFixed(0)}
@@ -3153,9 +3255,9 @@ export default function ManagerPOSPage() {
                   </div>
 
                   {isDepositUnderMinimum && (
-                    <div className="text-[10px] text-rose-600 font-bold bg-rose-50 border border-rose-200 px-2 py-1 rounded-lg flex items-center gap-1">
+                    <div className="text-[10px] text-amber-700 font-medium bg-amber-50 border border-amber-200 px-2 py-1 rounded-lg flex items-center gap-1">
                       <AlertTriangle className="w-3 h-3 shrink-0" />
-                      <span>มัดจำขั้นต่ำ 50% คือ ฿{minDeposit50Baht.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      <span>ยอดมัดจำตามตกลง (มาตรฐาน 50% คือ ฿{minDeposit50Baht.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})</span>
                     </div>
                   )}
 
@@ -3172,7 +3274,7 @@ export default function ManagerPOSPage() {
                     </span>
                   </div>
                   <p className="text-[9px] text-slate-500 mt-0.5 font-medium leading-tight">
-                    * รวมค่าใบกำกับไม้ ฿5,000.00 แล้ว (มัดจำขั้นต่ำ 50% สามารถปรับเพิ่มได้ตามที่ลูกค้าต้องการ)
+                    * {includeWoodPermitFee ? 'รวมค่าใบกำกับไม้ ฿5,000.00 แล้ว' : 'ไม่คิดค่าใบกำกับไม้'} (ค่าเริ่มต้นมาตรฐาน 50% หรือปรับยอดมัดจำตามที่ตกลงกับลูกค้า)
                   </p>
                 </div>
               )}
@@ -3243,20 +3345,38 @@ export default function ManagerPOSPage() {
             
             {/* Modal Body */}
             <div className="p-6 overflow-y-auto space-y-4">
-              <button
-                type="button"
-                onClick={() => {
-                  setShippingPhone('-')
-                  setShippingAddress('-')
-                  if (!shippingName.trim()) {
-                    setShippingName('ลูกค้าทั่วไป')
-                  }
-                }}
-                className="w-full text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 py-2.5 px-4 rounded-xl font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-              >
-                <User className="w-3.5 h-3.5 text-slate-500" />
-                <span>ไม่ระบุเบอร์โทร/ที่อยู่ (ใส่ &quot;-&quot;)</span>
-              </button>
+              {/* แถบสลับประเภทลูกค้า: บุคคลธรรมดา / นิติบุคคล */}
+              <div className="flex bg-slate-100 p-1.5 rounded-2xl border border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setCustomerType('INDIVIDUAL')}
+                  className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                    customerType === 'INDIVIDUAL'
+                      ? 'bg-white text-slate-900 shadow-sm border border-slate-200/80'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  <User className="w-4 h-4" />
+                  <span>บุคคลธรรมดา</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCustomerType('CORPORATE')
+                    if (!companyAddress.trim() && shippingAddress.trim() && shippingAddress !== '-') {
+                      setCompanyAddress(shippingAddress.trim())
+                    }
+                  }}
+                  className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                    customerType === 'CORPORATE'
+                      ? 'bg-[#1E293B] text-white shadow-sm'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  <Building2 className="w-4 h-4" />
+                  <span>นิติบุคคล (บริษัท / หจก.)</span>
+                </button>
+              </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {/* 1. เลข Invoice / รหัสออเดอร์ */}
@@ -3348,75 +3468,264 @@ export default function ManagerPOSPage() {
                     </div>
                   )}
                 </div>
-
-                {/* 3. ชื่อลูกค้า/ผู้รับ */}
-                <div>
-                  <label className="text-[11px] font-bold text-slate-600 mb-1 block">ชื่อลูกค้า/ผู้รับ <span className="text-red-500">*</span></label>
-                  <input 
-                    type="text" 
-                    placeholder="ระบุชื่อลูกค้า..." 
-                    value={shippingName} 
-                    onChange={e => setShippingName(e.target.value)} 
-                    className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-slate-400 focus:bg-white transition-colors" 
-                  />
-                </div>
-
-                {/* 4. เบอร์โทรศัพท์ติดต่อ */}
-                <div>
-                  <label className="text-[11px] font-bold text-slate-600 mb-1 block">เบอร์โทรศัพท์ติดต่อ <span className="text-red-500">*</span></label>
-                  <input 
-                    type="text" 
-                    placeholder="ระบุเบอร์โทร..." 
-                    value={shippingPhone} 
-                    onChange={e => setShippingPhone(e.target.value)} 
-                    className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-slate-400 focus:bg-white transition-colors" 
-                  />
-                </div>
-
-                {/* 5. ที่อยู่จัดส่ง/ที่อยู่ลูกค้า */}
-                <div className="sm:col-span-2">
-                  <label className="text-[11px] font-bold text-slate-600 mb-1 block">ที่อยู่จัดส่ง / ที่อยู่ลูกค้า <span className="text-red-500">*</span></label>
-                  <textarea 
-                    placeholder="บ้านเลขที่, ซอย, ถนน, ตำบล, อำเภอ, จังหวัด, รหัสไปรษณีย์..." 
-                    value={shippingAddress} 
-                    onChange={e => setShippingAddress(e.target.value)} 
-                    rows={3} 
-                    className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-slate-400 focus:bg-white transition-colors resize-none" 
-                  />
-                </div>
               </div>
 
-              {/* 6. ส่วนข้อมูลใบกำกับภาษี */}
-              <div className="pt-4 border-t border-slate-100 space-y-3">
-                <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                  <FileText className="w-4 h-4 text-slate-500"/> ข้อมูลสำหรับออกใบกำกับภาษี (ถ้ามี)
-                </h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                  <div>
-                    <label className="text-[10px] font-bold text-slate-500 mb-1 block">ชื่อบริษัท (ภาษาไทย) <span className="text-xs font-normal text-slate-400">(ไม่บังคับ)</span></label>
-                    <input type="text" placeholder="ระบุชื่อบริษัทภาษาไทย..." value={companyNameTh} onChange={e => setCompanyNameTh(e.target.value)} className="w-full text-xs p-2.5 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-slate-400 focus:bg-white transition-colors" />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-slate-500 mb-1 block">ชื่อบริษัท (ภาษาอังกฤษ) <span className="text-xs font-normal text-slate-400">(ไม่บังคับ)</span></label>
-                    <input type="text" placeholder="ระบุชื่อบริษัทภาษาอังกฤษ..." value={companyNameEn} onChange={e => setCompanyNameEn(e.target.value)} className="w-full text-xs p-2.5 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-slate-400 focus:bg-white transition-colors" />
-                  </div>
-                  {(companyNameTh.trim() !== '' || companyNameEn.trim() !== '') && (
-                    <>
-                      <div className="sm:col-span-2">
-                        <label className="text-[10px] font-bold text-slate-500 mb-1 block">ที่อยู่บริษัท <span className="text-red-500">*</span></label>
-                        <textarea placeholder="ระบุที่อยู่บริษัทสำหรับออกใบกำกับภาษี..." value={companyAddress} onChange={e => setCompanyAddress(e.target.value)} rows={2} className="w-full text-xs p-2.5 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-slate-400 focus:bg-white transition-colors resize-none" />
+              {customerType === 'CORPORATE' ? (
+                /* ================= ข้อมูลนิติบุคคล (บริษัท / หจก.) ================= */
+                <div className="rounded-2xl border border-blue-200 bg-blue-50/40 p-4 space-y-4">
+                  <div className="flex items-center justify-between pb-2 border-b border-blue-200/60">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 bg-blue-600 text-white rounded-lg">
+                        <Building2 className="w-4 h-4" />
                       </div>
-                      <div className="sm:col-span-2">
-                        <div className="flex justify-between items-end mb-1">
-                          <label className="text-[10px] font-bold text-slate-500 block">เลขประจำตัวผู้เสียภาษี (13 หลัก) <span className="text-xs font-normal text-slate-400">(ไม่บังคับ)</span></label>
-                          <span className={`text-[9px] font-bold ${taxId.length === 13 ? 'text-emerald-600' : 'text-slate-400'}`}>{taxId.length}/13</span>
+                      <div>
+                        <h4 className="text-xs font-bold text-slate-900">ข้อมูลนิติบุคคล (ออกใบเสนอราคา / ใบกำกับภาษี)</h4>
+                        <p className="text-[10px] text-slate-500">ข้อมูลจะถูกนำไปพิมพ์ลงในเอกสารอย่างเป็นทางการ</p>
+                      </div>
+                    </div>
+                    <span className="text-[9.5px] font-bold bg-blue-100 text-blue-800 px-2 py-0.5 rounded-md border border-blue-200">
+                      นิติบุคคล
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    {/* ชื่อนิติบุคคล (ไทย) */}
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-800 mb-1 block">
+                        ชื่อนิติบุคคล / บริษัท (ภาษาไทย) <span className="text-red-500">*</span>
+                      </label>
+                      <input 
+                        type="text" 
+                        placeholder="เช่น บริษัท เอบีซี ดีไซน์ จำกัด" 
+                        value={companyNameTh} 
+                        onChange={e => setCompanyNameTh(e.target.value)} 
+                        className="w-full text-xs p-2.5 bg-white rounded-xl border border-slate-200 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-100 font-semibold text-slate-900" 
+                      />
+                    </div>
+
+                    {/* ชื่อนิติบุคคล (อังกฤษ) */}
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-700 mb-1 block">
+                        ชื่อนิติบุคคล / บริษัท (ภาษาอังกฤษ) <span className="text-[10px] font-normal text-slate-400">(ไม่บังคับ)</span>
+                      </label>
+                      <input 
+                        type="text" 
+                        placeholder="เช่น ABC DESIGN CO., LTD." 
+                        value={companyNameEn} 
+                        onChange={e => setCompanyNameEn(e.target.value)} 
+                        className="w-full text-xs p-2.5 bg-white rounded-xl border border-slate-200 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-100" 
+                      />
+                    </div>
+
+                    {/* เลขประจำตัวผู้เสียภาษี 13 หลัก */}
+                    <div>
+                      <div className="flex justify-between items-end mb-1">
+                        <label className="text-[11px] font-bold text-slate-800 block">
+                          เลขประจำตัวผู้เสียภาษี (Tax ID 13 หลัก)
+                        </label>
+                        <span className={`text-[10px] font-bold font-mono ${taxId.length === 13 ? 'text-emerald-600' : 'text-slate-400'}`}>
+                          {taxId.length}/13
+                        </span>
+                      </div>
+                      <input 
+                        type="text" 
+                        placeholder="เลข 13 หลัก..." 
+                        value={taxId} 
+                        onChange={e => setTaxId(e.target.value.replace(/\D/g, ''))} 
+                        maxLength={13} 
+                        className="w-full text-xs p-2.5 bg-white rounded-xl border border-slate-200 font-mono tracking-wider font-bold outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-100" 
+                      />
+                    </div>
+
+                    {/* สำนักงานใหญ่ / สาขา */}
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-800 mb-1 block">
+                        สำนักงานใหญ่ / สาขา
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <div className="flex bg-white p-0.5 rounded-xl border border-slate-200 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => setBranchType('HEAD_OFFICE')}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                              branchType === 'HEAD_OFFICE'
+                                ? 'bg-[#1E293B] text-white shadow-2xs'
+                                : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                          >
+                            สำนักงานใหญ่
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setBranchType('BRANCH')}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                              branchType === 'BRANCH'
+                                ? 'bg-[#1E293B] text-white shadow-2xs'
+                                : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                          >
+                            สาขา
+                          </button>
                         </div>
-                        <input type="text" placeholder="ระบุเลขประจำตัวผู้เสียภาษี..." value={taxId} onChange={e => setTaxId(e.target.value.replace(/\D/g, ''))} maxLength={13} className="w-full text-xs p-2.5 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-slate-400 focus:bg-white transition-colors" />
+                        {branchType === 'BRANCH' && (
+                          <input
+                            type="text"
+                            placeholder="รหัสสาขา 5 หลัก (00001)..."
+                            value={branchCode}
+                            onChange={e => setBranchCode(e.target.value.replace(/\D/g, ''))}
+                            maxLength={5}
+                            className="w-full text-xs p-2 bg-white rounded-xl border border-slate-200 font-mono outline-none focus:border-blue-500"
+                          />
+                        )}
                       </div>
-                    </>
-                  )}
+                    </div>
+
+                    {/* ที่อยู่บริษัทตาม ภ.พ.20 */}
+                    <div className="sm:col-span-2">
+                      <label className="text-[11px] font-bold text-slate-800 mb-1 block">
+                        ที่อยู่บริษัท (ตาม ภ.พ.20 สำหรับออกใบกำกับภาษี) <span className="text-red-500">*</span>
+                      </label>
+                      <textarea 
+                        placeholder="ระบุที่อยู่บริษัท เลขที่ตั้ง ซอย ถนน ตำบล อำเภอ จังหวัด รหัสไปรษณีย์..." 
+                        value={companyAddress} 
+                        onChange={e => {
+                          setCompanyAddress(e.target.value)
+                          if (sameAsCompanyAddress) {
+                            setShippingAddress(e.target.value)
+                          }
+                        }} 
+                        rows={2} 
+                        className="w-full text-xs p-2.5 bg-white rounded-xl border border-slate-200 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-100 resize-none font-medium text-slate-800" 
+                      />
+                    </div>
+
+                    {/* ชื่อผู้ติดต่อ / ฝ่ายจัดซื้อ */}
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-800 mb-1 block">
+                        ชื่อผู้ติดต่อ / ฝ่ายจัดซื้อ (Contact Person)
+                      </label>
+                      <input 
+                        type="text" 
+                        placeholder="เช่น คุณสมชาย (ฝ่ายจัดซื้อ)..." 
+                        value={shippingName} 
+                        onChange={e => setShippingName(e.target.value)} 
+                        className="w-full text-xs p-2.5 bg-white rounded-xl border border-slate-200 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-100" 
+                      />
+                    </div>
+
+                    {/* เบอร์โทรติดต่อ */}
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-800 mb-1 block">
+                        เบอร์โทรศัพท์ติดต่อ <span className="text-red-500">*</span>
+                      </label>
+                      <input 
+                        type="text" 
+                        placeholder="เบอร์โทรผู้ติดต่อหรือเบอร์บริษัท..." 
+                        value={shippingPhone} 
+                        onChange={e => setShippingPhone(e.target.value)} 
+                        className="w-full text-xs p-2.5 bg-white rounded-xl border border-slate-200 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-100" 
+                      />
+                    </div>
+
+                    {/* สถานที่จัดส่งสินค้า */}
+                    <div className="sm:col-span-2 pt-2 border-t border-blue-200/60">
+                      <label className="flex items-center gap-2 cursor-pointer mb-2 select-none">
+                        <input 
+                          type="checkbox"
+                          checked={sameAsCompanyAddress}
+                          onChange={e => {
+                            setSameAsCompanyAddress(e.target.checked)
+                            if (e.target.checked) {
+                              setShippingAddress(companyAddress)
+                            }
+                          }}
+                          className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 cursor-pointer"
+                        />
+                        <span className="text-xs font-bold text-slate-800">
+                          สถานที่จัดส่งคือที่อยู่เดียวกับที่อยู่บริษัท
+                        </span>
+                      </label>
+                      
+                      {!sameAsCompanyAddress && (
+                        <div>
+                          <label className="text-[11px] font-bold text-slate-700 mb-1 block">
+                            ที่อยู่สำหรับจัดส่งหน้างาน / ไซต์งาน / โครงการ <span className="text-red-500">*</span>
+                          </label>
+                          <textarea 
+                            placeholder="ระบุสถานที่จัดส่งปลายทาง หรือไซต์งาน..." 
+                            value={shippingAddress} 
+                            onChange={e => setShippingAddress(e.target.value)} 
+                            rows={2} 
+                            className="w-full text-xs p-2.5 bg-white rounded-xl border border-slate-200 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-100 resize-none text-slate-800" 
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                /* ================= ข้อมูลบุคคลธรรมดา ================= */
+                <div className="space-y-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShippingPhone('-')
+                      setShippingAddress('-')
+                      if (!shippingName.trim()) {
+                        setShippingName('ลูกค้าทั่วไป')
+                      }
+                    }}
+                    className="w-full text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 py-2.5 px-4 rounded-xl font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <User className="w-3.5 h-3.5 text-slate-500" />
+                    <span>ลูกค้าทั่วไป ไม่ระบุเบอร์โทร/ที่อยู่ (ใส่ &quot;-&quot;)</span>
+                  </button>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* ชื่อลูกค้า/ผู้รับ */}
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-700 mb-1 block">
+                        ชื่อลูกค้า/ผู้รับ <span className="text-red-500">*</span>
+                      </label>
+                      <input 
+                        type="text" 
+                        placeholder="ระบุชื่อลูกค้า..." 
+                        value={shippingName} 
+                        onChange={e => setShippingName(e.target.value)} 
+                        className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-slate-400 focus:bg-white transition-colors" 
+                      />
+                    </div>
+
+                    {/* เบอร์โทรศัพท์ติดต่อ */}
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-700 mb-1 block">
+                        เบอร์โทรศัพท์ติดต่อ <span className="text-red-500">*</span>
+                      </label>
+                      <input 
+                        type="text" 
+                        placeholder="ระบุเบอร์โทร..." 
+                        value={shippingPhone} 
+                        onChange={e => setShippingPhone(e.target.value)} 
+                        className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-slate-400 focus:bg-white transition-colors" 
+                      />
+                    </div>
+
+                    {/* ที่อยู่จัดส่ง/ที่อยู่ลูกค้า */}
+                    <div className="sm:col-span-2">
+                      <label className="text-[11px] font-bold text-slate-700 mb-1 block">
+                        ที่อยู่จัดส่ง / ที่อยู่ลูกค้า <span className="text-red-500">*</span>
+                      </label>
+                      <textarea 
+                        placeholder="บ้านเลขที่, ซอย, ถนน, ตำบล, อำเภอ, จังหวัด, รหัสไปรษณีย์..." 
+                        value={shippingAddress} 
+                        onChange={e => setShippingAddress(e.target.value)} 
+                        rows={3} 
+                        className="w-full text-xs p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-slate-400 focus:bg-white transition-colors resize-none" 
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
               
               {/* 7. ส่วนปักหมุดแผนที่ (เฉพาะจัดส่ง) */}
               {saleMode === 'DELIVERY' && (
@@ -3593,10 +3902,10 @@ export default function ManagerPOSPage() {
                   )}
                 </>
               )}
-              {woodPermitFee > 0 && (
+              {hasSlabInCart && (
                 <div className="flex justify-between text-slate-800 font-bold bg-slate-100 p-2 rounded-lg border border-slate-200">
                   <span className="flex items-center gap-1.5"><FileCheck className="w-3.5 h-3.5 text-slate-500" /> ค่าใบกำกับไม้ (Slab Permit Fee):</span>
-                  <span>+{woodPermitFee.toLocaleString()} ฿</span>
+                  <span>{includeWoodPermitFee ? '+5,000 ฿' : 'ไม่รวม (0 ฿)'}</span>
                 </div>
               )}
               <div className="flex justify-between text-slate-900 font-black text-sm pt-2 border-t border-slate-200">

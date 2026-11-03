@@ -645,7 +645,7 @@ export default function SaleDispatchMonitorPage() {
                                 <div className="w-full py-3 bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-lg text-sm font-bold flex items-center justify-center gap-2 shadow-sm cursor-not-allowed">
                                   <CheckCircle className="w-4 h-4" /> บิลนี้ปิดงาน/ส่งมอบสำเร็จแล้ว
                                 </div>
-                                <PaymentSlipViewer orderId={order.id} orderCode={order.order_code} />
+                                <PaymentSlipUploader orderId={order.id} orderCode={order.order_code} />
                               </div>
                             ) : (
                                 <>

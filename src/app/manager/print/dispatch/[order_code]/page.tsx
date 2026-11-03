@@ -55,10 +55,9 @@ export default function PrintQuotationPage() {
           }
           body * { visibility: hidden; }
           #print-section, #print-section * { visibility: visible; }
-          #print-section { 
-            position: absolute; 
-            left: 0; 
-            top: 0; 
+          #print-section {
+            display: block !important;
+            position: static !important; 
             width: 100% !important; 
             max-width: 100% !important;
             min-height: 0 !important;
@@ -66,8 +65,7 @@ export default function PrintQuotationPage() {
             padding: 6mm 10mm !important; 
             box-shadow: none !important;
             margin: 0 !important;
-            page-break-after: avoid !important;
-            break-after: avoid !important;
+            
           }
           @page { 
             size: A4 portrait; 
@@ -77,7 +75,10 @@ export default function PrintQuotationPage() {
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
-          tr { page-break-inside: avoid; }
+          table { border-collapse: separate !important; border-spacing: 0 !important; width: 100% !important; }
+          tbody { display: table-row-group !important; }
+          thead { display: table-header-group !important; }
+          tr, td, th { page-break-inside: avoid !important; break-inside: avoid !important; -webkit-column-break-inside: avoid !important; }
         }
       `}} />
 

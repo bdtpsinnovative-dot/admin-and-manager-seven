@@ -278,3 +278,38 @@ export async function restoreHiddenOrder(orderId: number) {
   revalidatePath('/sale/dashboard')
   return { success: true }
 }
+
+
+export async function updateOrderDate(orderId: number, newDateIso: string) {
+  const cookieStore = await cookies()
+  const supabase = createServerClient(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!, {
+    cookies: { getAll() { return cookieStore.getAll() } }
+  })
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { success: false, error: 'Unauthorized' }
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('user_id', user.id)
+    .single()
+
+  if (!profile || (profile.role !== 'admin' && profile.role !== 'manager')) {
+    return { success: false, error: 'คุณไม่มีสิทธิ์แก้ไขวันที่เปิดบิล (ต้องเป็น Admin หรือ Manager เท่านั้น)' }
+  }
+
+  const { error } = await supabase
+    .from('orders')
+    .update({ created_at: newDateIso })
+    .eq('id', orderId)
+
+  if (error) return { success: false, error: error.message }
+
+  revalidatePath('/sales-history')
+  revalidatePath('/sale/sales-history')
+  revalidatePath('/dashboard')
+  revalidatePath('/manager/dashboard')
+  revalidatePath('/sale/dashboard')
+  return { success: true }
+}

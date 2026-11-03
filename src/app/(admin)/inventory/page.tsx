@@ -69,6 +69,7 @@ export default async function InventoryPage({ searchParams }: Props) {
   const activeTab = requestedTab
   const activeType = (resolvedSearchParams.type as string) || ''
   const activeStatus = (resolvedSearchParams.status as string) || ''
+  const activeLocation = (resolvedSearchParams.location as string) || ''
   const searchQuery = (resolvedSearchParams.search as string) || '' // 💡 รับคำค้นหาจาก URL
   const viewMode = (resolvedSearchParams.view as string) || 'products' // 💡 รับโหมดการดู
 
@@ -134,6 +135,7 @@ export default async function InventoryPage({ searchParams }: Props) {
               {minL !== undefined && <input type="hidden" name="min_l" value={minL} />}
               {maxL !== undefined && <input type="hidden" name="max_l" value={maxL} />}
               {activeStatus && <input type="hidden" name="status" value={activeStatus} />}
+              {activeLocation && <input type="hidden" name="location" value={activeLocation} />}
               <div className="relative">
                 <input
                   type="text"
@@ -149,6 +151,7 @@ export default async function InventoryPage({ searchParams }: Props) {
                       tab: activeTab,
                       ...(activeType ? { type: activeType } : {}),
                       ...(activeStatus ? { status: activeStatus } : {}),
+                      ...(activeLocation ? { location: activeLocation } : {}),
                       ...(viewMode && viewMode !== 'products' ? { view: viewMode } : {}),
                       ...(activeMaterial ? { material: activeMaterial } : {}),
                       ...(activeGrade ? { grade: activeGrade } : {}),
@@ -237,13 +240,13 @@ export default async function InventoryPage({ searchParams }: Props) {
         {(activeTab === 'FURNITURE' || activeTab === 'PROP') && (
           <div className="flex gap-2 mt-4 mb-2 bg-white p-1 rounded-lg border border-slate-200 w-fit shadow-sm">
             <Link
-              href={`/inventory?tab=${activeTab}&view=products${activeType ? `&type=${activeType}` : ''}${activeStatus ? `&status=${activeStatus}` : ''}${searchQuery ? `&search=${encodeURIComponent(searchQuery)}` : ''}`}
+              href={`/inventory?tab=${activeTab}&view=products${activeType ? `&type=${activeType}` : ''}${activeStatus ? `&status=${activeStatus}` : ''}${activeLocation ? `&location=${activeLocation}` : ''}${searchQuery ? `&search=${encodeURIComponent(searchQuery)}` : ''}`}
               className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${viewMode === 'products' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
             >
               แสดงเป็นชิ้น (Products)
             </Link>
             <Link
-              href={`/inventory?tab=${activeTab}&view=groups${activeType ? `&type=${activeType}` : ''}${activeStatus ? `&status=${activeStatus}` : ''}${searchQuery ? `&search=${encodeURIComponent(searchQuery)}` : ''}`}
+              href={`/inventory?tab=${activeTab}&view=groups${activeType ? `&type=${activeType}` : ''}${activeStatus ? `&status=${activeStatus}` : ''}${activeLocation ? `&location=${activeLocation}` : ''}${searchQuery ? `&search=${encodeURIComponent(searchQuery)}` : ''}`}
               className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${viewMode === 'groups' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
             >
               แสดงตามกลุ่ม (Groups)
@@ -256,6 +259,7 @@ export default async function InventoryPage({ searchParams }: Props) {
           <CategoryFilterBar
             activeTab={activeTab}
             activeStatus={activeStatus}
+            activeLocation={activeLocation}
             activeType={activeType}
             activeMaterial={activeMaterial}
             activeGrade={activeGrade}
@@ -277,7 +281,7 @@ export default async function InventoryPage({ searchParams }: Props) {
 
         {/* Content */}
         <Suspense 
-          key={`${activeTab}-${activeType}-${searchQuery}-${activeStatus}-${viewMode}-${activeMaterial}-${activeGrade}-${activeCraft}-${activeColor}-${activeBrand}-${activeSize}-${minW}-${maxW}-${minH}-${maxH}-${minL}-${maxL}`} 
+          key={`${activeTab}-${activeType}-${searchQuery}-${activeStatus}-${activeLocation}-${viewMode}-${activeMaterial}-${activeGrade}-${activeCraft}-${activeColor}-${activeBrand}-${activeSize}-${minW}-${maxW}-${minH}-${maxH}-${minL}-${maxL}`} 
           fallback={
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 min-h-[400px] flex flex-col items-center justify-center text-slate-400 gap-3">
                <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
@@ -289,7 +293,8 @@ export default async function InventoryPage({ searchParams }: Props) {
             activeTab={activeTab} 
             activeType={activeType} 
             searchQuery={searchQuery} 
-            activeStatus={activeStatus} 
+            activeStatus={activeStatus}
+            activeLocation={activeLocation} 
             viewMode={viewMode}
             categoryTotalCount={categoryTotalCount}
             canViewCosts={canViewCosts}
@@ -300,6 +305,7 @@ export default async function InventoryPage({ searchParams }: Props) {
               color: activeColor,
               brand: activeBrand,
               size: activeSize,
+              location: activeLocation,
               minW,
               maxW,
               minH,
@@ -320,6 +326,7 @@ async function InventoryData({
   activeType, 
   searchQuery, 
   activeStatus, 
+  activeLocation = '',
   viewMode,
   categoryTotalCount,
   extraFilters,
@@ -328,7 +335,8 @@ async function InventoryData({
   activeTab: string, 
   activeType: string, 
   searchQuery: string, 
-  activeStatus: string, 
+  activeStatus: string,
+  activeLocation?: string, 
   viewMode: string,
   categoryTotalCount: number,
   extraFilters?: ProductExtraFilters,
@@ -391,6 +399,7 @@ async function InventoryData({
       activeType={activeType}
       searchQuery={searchQuery}
       activeStatus={activeStatus}
+      activeLocation={activeLocation}
       extraFilters={extraFilters}
       canViewCosts={canViewCosts}
     />

@@ -118,7 +118,8 @@ export default function PrintDispatchModal({ orderCode, onClose, autoPrint = fal
             background: white !important;
             box-shadow: none !important;
           }
-          #print-section { 
+          #print-section {
+            display: block !important;
             position: static !important;
             width: 100% !important; 
             max-width: 100% !important;
@@ -127,8 +128,7 @@ export default function PrintDispatchModal({ orderCode, onClose, autoPrint = fal
             padding: 8mm 10mm !important; 
             box-shadow: none !important;
             margin: 0 auto !important;
-            page-break-after: avoid !important;
-            break-after: avoid !important;
+            
           }
           .break-inside-avoid {
             break-inside: avoid !important;
@@ -142,7 +142,10 @@ export default function PrintDispatchModal({ orderCode, onClose, autoPrint = fal
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
-          tr { page-break-inside: avoid; }
+          table { border-collapse: separate !important; border-spacing: 0 !important; width: 100% !important; }
+          tbody { display: table-row-group !important; }
+          thead { display: table-header-group !important; }
+          tr, td, th { page-break-inside: avoid !important; break-inside: avoid !important; -webkit-column-break-inside: avoid !important; }
         }
       `}} />
 

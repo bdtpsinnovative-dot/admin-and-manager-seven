@@ -97,12 +97,13 @@ export async function POST(
   if (!orderId) return NextResponse.json({ error: 'เลขออเดอร์ไม่ถูกต้อง' }, { status: 400 })
 
   const { profile, order, canAccess } = await getOrderAccess(supabase, user.id, orderId)
-  if (profile?.role !== 'sale' || !canAccess) {
-    return NextResponse.json({ error: 'เฉพาะพนักงานขายเท่านั้นที่แนบสลิปได้' }, { status: 403 })
+  const isAllowedRole = ['admin', 'manager', 'sale'].includes(profile?.role || '')
+  if (!isAllowedRole || !canAccess) {
+    return NextResponse.json({ error: 'ไม่มีสิทธิ์แนบสลิปสำหรับออเดอร์นี้' }, { status: 403 })
   }
   if (!order) return NextResponse.json({ error: 'ไม่พบออเดอร์นี้' }, { status: 404 })
-  if (!['PENDING', 'PROCESSING'].includes(order.status)) {
-    return NextResponse.json({ error: 'แนบหรือเปลี่ยนสลิปได้เฉพาะบิลที่รอชำระเงินหรือรอแพ็คจัดส่ง' }, { status: 409 })
+  if (!['PENDING', 'PROCESSING', 'COMPLETED'].includes(order.status)) {
+    return NextResponse.json({ error: 'ไม่สามารถแนบสลิปในบิลที่ยกเลิกแล้วได้' }, { status: 409 })
   }
 
   const formData = await request.formData()
@@ -166,12 +167,13 @@ export async function DELETE(
   if (!orderId) return NextResponse.json({ error: 'เลขออเดอร์ไม่ถูกต้อง' }, { status: 400 })
 
   const { profile, order, canAccess } = await getOrderAccess(supabase, user.id, orderId)
-  if (profile?.role !== 'sale' || !canAccess) {
-    return NextResponse.json({ error: 'เฉพาะพนักงานขายเท่านั้นที่ลบสลิปได้' }, { status: 403 })
+  const isAllowedRole = ['admin', 'manager', 'sale'].includes(profile?.role || '')
+  if (!isAllowedRole || !canAccess) {
+    return NextResponse.json({ error: 'ไม่มีสิทธิ์ลบสลิปสำหรับออเดอร์นี้' }, { status: 403 })
   }
   if (!order) return NextResponse.json({ error: 'ไม่พบออเดอร์นี้' }, { status: 404 })
-  if (!['PENDING', 'PROCESSING'].includes(order.status)) {
-    return NextResponse.json({ error: 'ลบสลิปได้เฉพาะบิลที่รอชำระเงินหรือรอแพ็คจัดส่ง' }, { status: 409 })
+  if (!['PENDING', 'PROCESSING', 'COMPLETED'].includes(order.status)) {
+    return NextResponse.json({ error: 'ไม่สามารถลบสลิปในบิลที่ยกเลิกแล้วได้' }, { status: 409 })
   }
 
   try {

@@ -2,7 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation"
 import { useState, useRef, useEffect } from "react"
-import { ChevronDown, Check, X, Filter, RotateCcw, Search, ArrowUpDown, ArrowLeftRight, Box as BoxIcon, Ruler, FolderOpen, Sparkles } from "lucide-react"
+import { ChevronDown, Check, X, Filter, RotateCcw, Search, ArrowUpDown, ArrowLeftRight, Box as BoxIcon, Ruler, FolderOpen, Sparkles, MapPin } from "lucide-react"
 import { PRODUCT_FILTER_ITEMS, CATEGORY_MAP } from "@/lib/propFilterModel"
 
 const STATUS_TYPES = [
@@ -843,9 +843,222 @@ function DimensionFilterDropdown({
   )
 }
 
+interface LocationFilterDropdownProps {
+  activeValue: string
+  branches?: { id: number; name: string; type: string }[]
+  onChange: (key: string, value: string) => void
+}
+
+function LocationFilterDropdown({
+  activeValue,
+  branches = [],
+  onChange
+}: LocationFilterDropdownProps) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", handler)
+    return () => document.removeEventListener("mousedown", handler)
+  }, [])
+
+  const showrooms = branches.filter(b => b.type === "SHOWROOM")
+  const warehouses = branches.filter(b => b.type === "FACTORY")
+
+  let displayLabel = "ทั้งหมด"
+  if (activeValue === "showroom") displayLabel = "โชว์รูม (Showroom)"
+  else if (activeValue === "warehouse") displayLabel = "โกดัง (Warehouse)"
+  else if (activeValue === "both") displayLabel = "โกดัง + โชว์รูม"
+  else if (activeValue === "in_stock") displayLabel = "มีสต็อกพร้อมขาย"
+  else if (activeValue === "out_of_stock") displayLabel = "สินค้าหมด"
+  else if (activeValue.startsWith("branch_")) {
+    const bId = parseInt(activeValue.replace("branch_", ""), 10)
+    const match = branches.find(b => b.id === bId)
+    if (match) displayLabel = match.name
+  }
+
+  const handleSelect = (val: string) => {
+    onChange("location", val)
+    setOpen(false)
+  }
+
+  const handleClear = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    onChange("location", "")
+    setOpen(false)
+  }
+
+  return (
+    <div ref={ref} className="relative inline-block">
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all shadow-xs cursor-pointer ${
+          activeValue
+            ? "border-purple-500 bg-purple-50 text-purple-700 ring-2 ring-purple-100 font-bold"
+            : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50"
+        }`}
+      >
+        <MapPin className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+        <span className="text-slate-400 font-normal">ที่ตั้งสต็อก:</span>
+        <span className={activeValue ? "text-purple-700 font-bold" : "text-slate-700"}>
+          {displayLabel}
+        </span>
+
+        {activeValue ? (
+          <span
+            role="button"
+            onClick={handleClear}
+            className="p-0.5 -mr-1 rounded-full hover:bg-purple-200 text-purple-700 transition"
+            title="ล้างตัวกรองที่ตั้งสต็อก"
+          >
+            <X className="w-3 h-3" />
+          </span>
+        ) : (
+          <ChevronDown
+            className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${
+              open ? "rotate-180" : ""
+            }`}
+          />
+        )}
+      </button>
+
+      {open && (
+        <div className="absolute left-0 top-full mt-1.5 z-50 bg-white border border-slate-200 rounded-xl shadow-xl w-72 overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+          <div className="p-2 border-b border-slate-100 bg-slate-50 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+            เลือกสถานที่จัดเก็บ / สต็อกสินค้า
+          </div>
+
+          <div className="max-h-80 overflow-y-auto p-1.5 space-y-0.5">
+            <button
+              type="button"
+              onClick={() => handleSelect("")}
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs transition cursor-pointer ${
+                !activeValue ? "text-blue-600 font-bold bg-blue-50" : "text-slate-700 hover:bg-slate-50"
+              }`}
+            >
+              <span>ทั้งหมด (ทุกที่ตั้ง)</span>
+              {!activeValue && <Check className="w-3.5 h-3.5 text-blue-600" />}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleSelect("showroom")}
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs transition cursor-pointer ${
+                activeValue === "showroom" ? "text-purple-700 font-bold bg-purple-50" : "text-slate-700 hover:bg-purple-50/50"
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-purple-500 animate-pulse" />
+                <span className="font-semibold text-purple-900">โชว์รูม (Showroom)</span>
+              </div>
+              {activeValue === "showroom" && <Check className="w-3.5 h-3.5 text-purple-700" />}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleSelect("warehouse")}
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs transition cursor-pointer ${
+                activeValue === "warehouse" ? "text-blue-700 font-bold bg-blue-50" : "text-slate-700 hover:bg-blue-50/50"
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-blue-500" />
+                <span className="font-semibold text-blue-900">โกดัง (Warehouse)</span>
+              </div>
+              {activeValue === "warehouse" && <Check className="w-3.5 h-3.5 text-blue-700" />}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleSelect("both")}
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs transition cursor-pointer ${
+                activeValue === "both" ? "text-indigo-700 font-bold bg-indigo-50" : "text-slate-700 hover:bg-slate-50"
+              }`}
+            >
+              <span className="text-slate-700">มีทั้งโกดังและโชว์รูม</span>
+              {activeValue === "both" && <Check className="w-3.5 h-3.5 text-indigo-700" />}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleSelect("in_stock")}
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs transition cursor-pointer ${
+                activeValue === "in_stock" ? "text-emerald-700 font-bold bg-emerald-50" : "text-slate-700 hover:bg-slate-50"
+              }`}
+            >
+              <span className="text-slate-700">มีสต็อกพร้อมขาย (In Stock)</span>
+              {activeValue === "in_stock" && <Check className="w-3.5 h-3.5 text-emerald-700" />}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleSelect("out_of_stock")}
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs transition cursor-pointer ${
+                activeValue === "out_of_stock" ? "text-rose-700 font-bold bg-rose-50" : "text-slate-700 hover:bg-slate-50"
+              }`}
+            >
+              <span className="text-slate-700">สินค้าหมด (Out of Stock)</span>
+              {activeValue === "out_of_stock" && <Check className="w-3.5 h-3.5 text-rose-700" />}
+            </button>
+
+            {showrooms.length > 0 && (
+              <>
+                <div className="pt-2 pb-1 px-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-t border-slate-100 mt-1">
+                  สาขาโชว์รูม (Showrooms)
+                </div>
+                {showrooms.map(b => (
+                  <button
+                    key={b.id}
+                    type="button"
+                    onClick={() => handleSelect(`branch_${b.id}`)}
+                    className={`w-full flex items-center justify-between px-3 py-1.5 rounded-md text-xs transition cursor-pointer ${
+                      activeValue === `branch_${b.id}` ? "text-purple-700 font-bold bg-purple-50" : "text-slate-600 hover:bg-slate-50"
+                    }`}
+                  >
+                    <span className="truncate pr-2">{b.name}</span>
+                    {activeValue === `branch_${b.id}` && <Check className="w-3 h-3 text-purple-700 shrink-0" />}
+                  </button>
+                ))}
+              </>
+            )}
+
+            {warehouses.length > 0 && (
+              <>
+                <div className="pt-2 pb-1 px-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-t border-slate-100 mt-1">
+                  สาขาโกดัง (Warehouses)
+                </div>
+                {warehouses.map(b => (
+                  <button
+                    key={b.id}
+                    type="button"
+                    onClick={() => handleSelect(`branch_${b.id}`)}
+                    className={`w-full flex items-center justify-between px-3 py-1.5 rounded-md text-xs transition cursor-pointer ${
+                      activeValue === `branch_${b.id}` ? "text-blue-700 font-bold bg-blue-50" : "text-slate-600 hover:bg-slate-50"
+                    }`}
+                  >
+                    <span className="truncate pr-2">{b.name}</span>
+                    {activeValue === `branch_${b.id}` && <Check className="w-3 h-3 text-blue-700 shrink-0" />}
+                  </button>
+                ))}
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 interface CategoryFilterBarProps {
   activeTab: string
   activeStatus: string
+  activeLocation?: string
   activeType: string
   activeMaterial: string
   activeGrade: string
@@ -867,12 +1080,14 @@ interface CategoryFilterBarProps {
     colors: string[]
     brands: string[]
     sizes: string[]
+    branches?: { id: number; name: string; type: string }[]
   }
 }
 
 export default function CategoryFilterBar({
   activeTab,
   activeStatus,
+  activeLocation = "",
   activeType,
   activeMaterial,
   activeGrade,
@@ -949,6 +1164,7 @@ export default function CategoryFilterBar({
   // นับจำนวนฟิลเตอร์ที่กำลังใช้งานอยู่ (รวมคำค้นหาด้วยถ้ามี)
   const activeFiltersCount = [
     activeStatus,
+    activeLocation,
     activeType,
     activeMaterial,
     activeGrade,
@@ -1153,6 +1369,13 @@ export default function CategoryFilterBar({
             )}
           </>
         )}
+
+        {/* 📍 ฟิลเตอร์ที่ตั้งสต็อก (โกดัง / โชว์รูม / สาขา) */}
+        <LocationFilterDropdown
+          activeValue={activeLocation}
+          branches={options.branches}
+          onChange={handleFilterChange}
+        />
 
         {/* 🔒 ฟิลเตอร์สถานะ (มีทุกหมวดหมู่) */}
         <div className="relative inline-block">

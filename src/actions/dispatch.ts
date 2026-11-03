@@ -325,11 +325,31 @@ export async function approveAndCutStock(
     const outOfStockSnapshot = (order?.discount_snapshot?.out_of_stock_products || []).map(String)
     const isPreOrderBill = Boolean(order?.discount_snapshot?.is_preorder)
 
+    // ดึงรายการสินค้าทั้งหมดของบิลนี้จากฐานข้อมูล เพื่อให้ตัดสต็อกครบทุกสาขา (กรณีเป็นบิลขายข้ามสาขา)
+    const { data: dbOrderItems } = await supabase
+      .from('order_items')
+      .select(`
+        id,
+        product_id,
+        qty,
+        fulfill_branch_id,
+        products:products!order_items_product_fk (
+          id,
+          name,
+          sku,
+          category_id,
+          specs
+        )
+      `)
+      .eq('order_id', orderId)
+
+    const itemsToProcess = (dbOrderItems && dbOrderItems.length > 0) ? dbOrderItems : items;
+
     // 🔍 1. ตรวจสอบสต็อกสดของทุกรายการก่อนทำการตัด เพื่อป้องกันการขายตัดหน้า และบล็อกไม้แผ่น
     const frontRunItems: Array<{ id: string; name: string; sku: string; requestedQty: number; currentStock: number }> = []
     const blockedWoodSlabs: Array<{ name: string; sku: string }> = []
 
-    for (const item of items) {
+    for (const item of itemsToProcess) {
       const productId = item.products?.id || item.product_id;
       const branchId = item.fulfill_branch_id;
       const qty = item.qty;
@@ -419,8 +439,8 @@ export async function approveAndCutStock(
       await supabase.from('orders').update({ discount_snapshot: updatedSnap }).eq('id', orderId)
     }
 
-    for (const item of items) {
-      const productId = item.products?.id;
+    for (const item of itemsToProcess) {
+      const productId = item.products?.id || item.product_id;
       const branchId = item.fulfill_branch_id;
       const qty = item.qty;
 

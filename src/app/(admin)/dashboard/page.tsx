@@ -17,9 +17,16 @@ import {
   XCircle,
   Trash2,
 } from "lucide-react"
-import { getDashboardData, type DashboardBranchSummary } from "../../../actions/dashboard"
+import {
+  getDashboardData,
+  type DashboardBranchSummary,
+  type DashboardSalesTrend,
+  type DashboardTrendPoint,
+} from "../../../actions/dashboard"
 import DashboardBranchFilter from "../../../components/DashboardBranchFilter"
 import DashboardMonthFilter from "../../../components/DashboardMonthFilter"
+import DashboardPeriodFilter from "../../../components/DashboardPeriodFilter"
+import { parseDashboardPeriod } from "../../../lib/dashboardPeriod"
 import DashboardVatCard from "../../../components/DashboardVatCard"
 import DashboardTopBranches from "../../../components/DashboardTopBranches"
 import DashboardCategoryTable from "../../../components/DashboardCategoryTable"
@@ -104,37 +111,48 @@ function BranchRow({ branch }: { branch: DashboardBranchSummary }) {
   )
 }
 
+
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ branch?: string | string[]; month?: string | string[]; catType?: string | string[]; cat?: string | string[] }>
+  searchParams?: Promise<{
+    branch?: string | string[];
+    month?: string | string[];
+    catType?: string | string[];
+    cat?: string | string[];
+    period?: string | string[];
+    date?: string | string[];
+    startDate?: string | string[];
+    endDate?: string | string[];
+    year?: string | string[];
+    preset?: string | string[];
+  }>
 }) {
   const params = await searchParams
   const selectedBranch = typeof params?.branch === "string" && params.branch.length > 0 ? params.branch : "ALL"
 
-  // ตรวจสอบ month param: ค่าเริ่มต้นคือ "ALL" (ทุกช่วงเวลา) หรือตามที่เลือก
-  const monthParam = typeof params?.month === "string" ? params.month : undefined
-  const selectedMonth = monthParam && /^\d{4}-\d{2}$/.test(monthParam) ? monthParam : "ALL"
+  // วิเคราะห์ตัวกรองช่วงเวลา 3 ระดับ (รายวัน, รายเดือน, รายปี, กำหนดเอง, ทุกช่วงเวลา)
+  const periodData = parseDashboardPeriod(params)
+  const { filterState, dateFrom, dateTo, displayLabel, shortLabel } = periodData
 
   // หมวดหมู่ที่เลือก (ชื่อหมวดหมู่จริงๆ เช่น VASE & VESSELS, FIGURE หรือ ALL)
   const selectedCategoryKey = typeof params?.cat === "string" && params.cat.length > 0 ? params.cat : "ALL"
 
-  let dateFrom: string | undefined = undefined
-  let dateTo: string | undefined = undefined
-  let mYear = 0
-  let mMonth = 0
-
-  if (selectedMonth !== "ALL") {
-    const parts = selectedMonth.split("-").map(Number)
-    mYear = parts[0]
-    mMonth = parts[1]
-    dateFrom = `${selectedMonth}-01T00:00:00+07:00`
-    const lastDay = new Date(mYear, mMonth, 0).getDate()
-    dateTo = `${selectedMonth}-${String(lastDay).padStart(2, "0")}T23:59:59+07:00`
+  const data = await getDashboardData(selectedBranch, dateFrom, dateTo, selectedCategoryKey, filterState.type)
+  const trendData: DashboardSalesTrend = data.salesTrend || {
+    title: "แนวโน้มยอดขายรายเดือน",
+    subtitle: "ยอดสุทธิจากใบขายย้อนหลัง 12 เดือน",
+    mode: "monthly",
+    points: (data.monthlySales || []).map((m) => ({
+      label: m.label,
+      fullLabel: m.label,
+      amount: m.amount,
+      key: m.monthKey || m.label,
+    })),
+    totalAmount: (data.monthlySales || []).reduce((acc, m) => acc + m.amount, 0),
   }
-
-  const data = await getDashboardData(selectedBranch, dateFrom, dateTo, selectedCategoryKey)
-  const maxMonthlySales = Math.max(...data.monthlySales.map((month) => month.amount), 1)
+  const trendPoints: DashboardTrendPoint[] = trendData.points
+  const maxTrendSales = Math.max(...trendPoints.map((p) => p.amount), 1)
 
   const selectedCategoryObj = data.categories.find(
     (c) =>
@@ -145,9 +163,24 @@ export default async function DashboardPage({
     ? selectedCategoryObj.name
     : selectedCategoryKey
 
+  // จัดการ query params สำหรับปุ่มล้างหมวดหมู่ โดยคงตัวกรองช่วงเวลาไว้
   const clearCatParams = new URLSearchParams()
   if (selectedBranch !== "ALL") clearCatParams.set("branch", selectedBranch)
-  if (selectedMonth !== "ALL") clearCatParams.set("month", selectedMonth)
+  if (filterState.type === "daily" && filterState.date) {
+    clearCatParams.set("period", "daily")
+    clearCatParams.set("date", filterState.date)
+  } else if (filterState.type === "custom" && filterState.startDate && filterState.endDate) {
+    clearCatParams.set("period", "custom")
+    clearCatParams.set("startDate", filterState.startDate)
+    clearCatParams.set("endDate", filterState.endDate)
+  } else if (filterState.type === "monthly" && filterState.month) {
+    clearCatParams.set("period", "monthly")
+    clearCatParams.set("month", filterState.month)
+  } else if (filterState.type === "yearly" && filterState.year) {
+    clearCatParams.set("period", "yearly")
+    clearCatParams.set("year", filterState.year)
+  }
+  if (filterState.preset) clearCatParams.set("preset", filterState.preset)
   const clearCatUrl = clearCatParams.toString() ? `/dashboard?${clearCatParams.toString()}` : "/dashboard"
 
   return (
@@ -158,8 +191,8 @@ export default async function DashboardPage({
             <h1 className="text-2xl font-black text-slate-800">Dashboard</h1>
             <p className="mt-1 text-sm text-slate-500">
               {selectedBranch === "ALL"
-                ? `ภาพรวมใบขายและยอดสุทธิแยกตามทุกสาขา ${selectedMonth === "ALL" ? "(ทุกช่วงเวลา)" : ""}`
-                : `ข้อมูลของ ${data.branches[0]?.name || "สาขาที่เลือก"}`}
+                ? `ภาพรวมใบขายและยอดสุทธิแยกตามทุกสาขา (${displayLabel})`
+                : `ข้อมูลของ ${data.branches[0]?.name || "สาขาที่เลือก"} (${displayLabel})`}
               {selectedCategoryKey !== "ALL" && (
                 <span className="ml-2 font-bold text-blue-600">
                   · กรองทั้งหน้าตามหมวด: {selectedCategoryLabel}
@@ -168,7 +201,10 @@ export default async function DashboardPage({
             </p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <DashboardMonthFilter selectedMonth={selectedMonth} />
+            {/* แถบปุ่มลัดและปฏิทินฟิลเตอร์มาตรฐาน 3 ระดับ (รายวัน, รายเดือน, รายปี, ทุกช่วงเวลา) */}
+            <DashboardPeriodFilter currentPeriod={filterState} />
+
+            {/* ฟิลเตอร์หมวดหมู่ */}
             <DashboardCategoryFilter
               selectedCatKey={selectedCategoryKey}
               categories={data.categories.map((c) => ({ key: c.key, name: c.name, groupType: c.groupType }))}
@@ -182,14 +218,6 @@ export default async function DashboardPage({
                 <span>✕ ล้างหมวดหมู่</span>
               </Link>
             )}
-            <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-600 shadow-sm">
-              <Calendar className="h-4 w-4 text-blue-600" />
-              <span>{
-                selectedMonth === "ALL"
-                  ? "ทุกช่วงเวลา"
-                  : new Date(mYear, mMonth - 1, 1).toLocaleDateString("th-TH", { month: "long", year: "numeric" })
-              }</span>
-            </div>
           </div>
         </div>
 
@@ -351,34 +379,68 @@ export default async function DashboardPage({
         </div>
 
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+          {/* 📊 กราฟแนวโน้มยอดขาย: ปรับอัตโนมัติตามช่วงเวลาที่เลือก (รายวัน=รายชั่วโมง, รายเดือน=รายวัน, รายปี=12เดือน) */}
           <div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm xl:col-span-2">
-            <div className="mb-6 flex items-center justify-between">
+            <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h2 className="text-lg font-black text-slate-800">แนวโน้มยอดขายรายเดือน</h2>
+                <h2 className="text-lg font-black text-slate-800">{trendData.title}</h2>
                 <p className="mt-1 text-xs text-slate-400">
                   {selectedCategoryKey !== "ALL"
-                    ? `ยอดสุทธิหมวดหมู่ ${selectedCategoryLabel} ย้อนหลัง 12 เดือน`
-                    : "ยอดสุทธิจากใบขายย้อนหลัง 12 เดือน"}
+                    ? `${trendData.subtitle} (เฉพาะหมวด ${selectedCategoryLabel})`
+                    : trendData.subtitle}
                 </p>
               </div>
-              <MoreHorizontal className="h-5 w-5 text-slate-300" />
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center rounded-xl bg-blue-50 border border-blue-100 px-3 py-1.5 text-xs font-bold text-blue-700">
+                  ยอดรวมช่วงนี้: ฿{money(trendData.totalAmount)}
+                </span>
+              </div>
             </div>
-            <div className="flex h-64 items-end gap-2 sm:gap-3">
-              {data.monthlySales.map((month) => (
-                <div key={month.label} className="group flex h-full flex-1 flex-col items-center justify-end gap-2">
-                  <div className="relative flex h-full w-full items-end">
-                    <div
-                      className="w-full rounded-t-lg bg-blue-100 transition-colors group-hover:bg-blue-500"
-                      style={{ height: `${Math.max((month.amount / maxMonthlySales) * 100, month.amount ? 4 : 1)}%` }}
-                    >
-                      <span className="absolute -top-8 left-1/2 hidden -translate-x-1/2 whitespace-nowrap rounded bg-slate-800 px-2 py-1 text-[10px] font-bold text-white group-hover:block">
-                        ฿{money(month.amount)}
-                      </span>
+
+            <div className="flex h-64 items-end gap-1 sm:gap-2">
+              {trendPoints.map((point, index) => {
+                const heightPercent = maxTrendSales > 0 ? (point.amount / maxTrendSales) * 100 : 0
+                return (
+                  <div
+                    key={point.key || `${point.label}-${index}`}
+                    className="group relative flex h-full flex-1 flex-col items-center justify-end gap-1.5 min-w-0"
+                  >
+                    <div className="relative flex h-full w-full items-end justify-center">
+                      <div
+                        className={`w-full max-w-[28px] rounded-t-md transition-all ${
+                          point.amount > 0
+                            ? "bg-blue-500 hover:bg-blue-600 group-hover:bg-blue-600 shadow-xs"
+                            : "bg-slate-100"
+                        }`}
+                        style={{
+                          height: point.amount > 0
+                            ? `${Math.max(heightPercent, 4)}%`
+                            : "3px",
+                        }}
+                      >
+                        {/* Tooltip on hover */}
+                        <div className="absolute -top-12 left-1/2 hidden -translate-x-1/2 whitespace-nowrap rounded-xl bg-slate-900 px-3 py-1.5 text-center shadow-xl group-hover:block z-30 pointer-events-none">
+                          <p className="text-[10px] text-slate-300 font-medium">
+                            {point.fullLabel || point.label}
+                          </p>
+                          <p className="text-xs font-black text-white">
+                            ฿{money(point.amount)}
+                            {point.billCount !== undefined && point.billCount > 0 && (
+                              <span className="text-[10px] font-normal text-slate-300 ml-1">
+                                ({point.billCount} บิล)
+                              </span>
+                            )}
+                          </p>
+                        </div>
+                      </div>
                     </div>
+                    {/* Label ใต้แท่ง */}
+                    <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 truncate w-full text-center">
+                      {point.label}
+                    </span>
                   </div>
-                  <span className="text-[10px] font-bold text-slate-400">{month.label}</span>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
 

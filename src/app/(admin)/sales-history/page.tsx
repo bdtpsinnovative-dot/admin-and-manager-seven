@@ -1,10 +1,10 @@
 "use client"
 
 import React, { useState, useEffect, useMemo } from 'react'
-import { getSalesHistory, getAllBranches, hideCancelledOrder, restoreHiddenOrder } from '@/actions/sales-check'
+import { getSalesHistory, getAllBranches, hideCancelledOrder, restoreHiddenOrder, updateOrderDate } from '@/actions/sales-check'
 import {
   History, DollarSign, Truck, User, Check, Clock, ChevronDown, ChevronUp,
-  Printer, XCircle, EyeOff, Eye, Loader2, ArrowLeft, Building2, Search, Tag, Package
+  Printer, XCircle, EyeOff, Eye, Loader2, ArrowLeft, Building2, Search, Tag, Package, Calendar
 } from 'lucide-react'
 import { toast } from 'sonner'
 import PrintDispatchModal from '@/components/PrintDispatchModal'
@@ -91,6 +91,51 @@ export default function AdminSalesHistoryPage() {
   const [showHidden, setShowHidden] = useState(false)
   const [hiddenCount, setHiddenCount] = useState(0)
   const [updatingOrderId, setUpdatingOrderId] = useState<number | null>(null)
+  const [dateEditTarget, setDateEditTarget] = useState<SaleOrder | null>(null)
+  const [editDateTime, setEditDateTime] = useState<string>('')
+  const [savingDate, setSavingDate] = useState(false)
+
+  // ฟังก์ชันเปิด Modal แก้ไขวันที่เปิดบิล
+  const openEditDateModal = (order: SaleOrder) => {
+    setDateEditTarget(order)
+    const d = new Date(order.createdAt)
+    const localIso = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
+    setEditDateTime(localIso)
+  }
+
+  const setQuickYesterday = () => {
+    if (!editDateTime) return
+    const current = new Date(editDateTime)
+    current.setDate(current.getDate() - 1)
+    const localIso = new Date(current.getTime() - current.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
+    setEditDateTime(localIso)
+  }
+
+  const setQuickNow = () => {
+    const now = new Date()
+    const localIso = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
+    setEditDateTime(localIso)
+  }
+
+  const handleSaveDate = async () => {
+    if (!dateEditTarget || !editDateTime) return
+    setSavingDate(true)
+    try {
+      const selectedDate = new Date(editDateTime)
+      const res = await updateOrderDate(dateEditTarget.id, selectedDate.toISOString())
+      if (res.success) {
+        toast.success(`อัปเดตวันที่เปิดบิล ${dateEditTarget.orderCode} เรียบร้อยแล้ว`)
+        setSales(prev => prev.map(s => s.id === dateEditTarget.id ? { ...s, createdAt: selectedDate.toISOString() } : s))
+        setDateEditTarget(null)
+      } else {
+        toast.error("บันทึกไม่สำเร็จ: " + res.error)
+      }
+    } catch (e: any) {
+      toast.error("เกิดข้อผิดพลาด: " + (e.message || e))
+    } finally {
+      setSavingDate(false)
+    }
+  }
 
   // โหลดรายชื่อสาขาทั้งหมดครั้งแรก
   useEffect(() => {
@@ -750,11 +795,23 @@ export default function AdminSalesHistoryPage() {
 
                           {/* วันที่เปิดบิล */}
                           <td className="p-4 text-slate-500 whitespace-nowrap">
-                            <div className="font-semibold text-slate-600">
-                              {new Date(order.createdAt).toLocaleDateString('th-TH', {
-                                year: 'numeric', month: 'short', day: 'numeric',
-                                hour: '2-digit', minute: '2-digit'
-                              })} น.
+                            <div className="flex items-center gap-1.5">
+                              <div className="font-semibold text-slate-600">
+                                {new Date(order.createdAt).toLocaleDateString('th-TH', {
+                                  year: 'numeric', month: 'short', day: 'numeric',
+                                  hour: '2-digit', minute: '2-digit'
+                                })} น.
+                              </div>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  openEditDateModal(order)
+                                }}
+                                title="แก้ไขวันที่เปิดบิล"
+                                className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
+                              >
+                                <Calendar className="w-3.5 h-3.5" />
+                              </button>
                             </div>
                           </td>
 
@@ -1012,6 +1069,89 @@ export default function AdminSalesHistoryPage() {
 
       {/* โมดอลพิมพ์ใบเสนอราคา / ใบเสร็จ */}
       <PrintDispatchModal orderCode={printOrderCode} onClose={() => setPrintOrderCode(null)} />
+
+      {/* โมดอลแก้ไขวันที่เปิดบิล */}
+      {dateEditTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 border border-slate-100">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-blue-600" />
+                แก้ไขวันที่เปิดบิล
+              </h3>
+              <button
+                type="button"
+                onClick={() => setDateEditTarget(null)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+              >
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="mt-4">
+              <div className="text-xs text-slate-500 mb-3 bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+                เลขที่ใบงาน: <span className="font-bold text-slate-800">{dateEditTarget.orderCode}</span>
+                <span className="mx-2">•</span>
+                สาขา: <span className="font-medium text-slate-700">{dateEditTarget.branchName || 'ไม่ระบุ'}</span>
+              </div>
+
+              {/* Quick Preset Buttons */}
+              <div className="flex gap-2 mb-3">
+                <button
+                  type="button"
+                  onClick={setQuickYesterday}
+                  className="text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold px-2.5 py-1.5 rounded-lg border border-blue-200 transition-colors"
+                >
+                  ย้อนไป 1 วัน (เมื่อวาน)
+                </button>
+                <button
+                  type="button"
+                  onClick={setQuickNow}
+                  className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold px-2.5 py-1.5 rounded-lg border border-slate-200 transition-colors"
+                >
+                  ตั้งเป็นเวลาปัจจุบัน
+                </button>
+              </div>
+
+              <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                เลือกวันและเวลาใหม่:
+              </label>
+              <input
+                type="datetime-local"
+                value={editDateTime}
+                onChange={(e) => setEditDateTime(e.target.value)}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 mt-6 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setDateEditTarget(null)}
+                className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg font-medium transition-colors"
+                disabled={savingDate}
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveDate}
+                className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium shadow-sm flex items-center gap-1.5 transition-colors"
+                disabled={savingDate}
+              >
+                {savingDate ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    กำลังบันทึก...
+                  </>
+                ) : (
+                  'บันทึกวันที่ใหม่'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

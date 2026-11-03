@@ -29,6 +29,8 @@ import { toast } from 'sonner'
 import PrintDispatchModal from '@/components/PrintDispatchModal'
 import EditCustomerInfoModal from '@/components/EditCustomerInfoModal'
 import { downloadQuoteExcel } from '@/utils/exportQuote'
+import PaymentSlipUploader from '@/components/PaymentSlipUploader'
+import PaymentSlipViewer from '@/components/PaymentSlipViewer'
 
 export default function DispatchMonitorPage() {
   const [activeTab, setActiveTab] = useState<'overview' | 'my_tasks' | 'follow_ups' | 'completed' | 'cancelled'>('overview')
@@ -615,11 +617,17 @@ export default function DispatchMonitorPage() {
                                 <XCircle className="w-4 h-4" /> บิลนี้ถูกยกเลิกแล้ว
                               </div>
                             ) : activeTab === 'completed' || order.status === 'COMPLETED' ? (
-                              <div className="w-full py-3 bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-lg text-sm font-bold flex items-center justify-center gap-2 shadow-sm cursor-not-allowed">
-                                <CheckCircle className="w-4 h-4" /> บิลนี้ปิดงาน/ส่งมอบสำเร็จแล้ว
+                              <div className="space-y-2.5">
+                                <div className="w-full py-3 bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-lg text-sm font-bold flex items-center justify-center gap-2 shadow-sm cursor-not-allowed">
+                                  <CheckCircle className="w-4 h-4" /> บิลนี้ปิดงาน/ส่งมอบสำเร็จแล้ว
+                                </div>
+                                <PaymentSlipUploader orderId={order.id} orderCode={order.order_code} />
                               </div>
                             ) : (
                                 <>
+                                  {(order.status === 'PENDING' || order.status === 'PROCESSING') && (
+                                    <PaymentSlipUploader orderId={order.id} orderCode={order.order_code} />
+                                  )}
                                   {isMyTask && (
                                     order.status === 'PENDING' ? (
                                       <button

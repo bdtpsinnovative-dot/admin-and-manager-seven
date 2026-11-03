@@ -1277,7 +1277,10 @@ export interface CheckoutPayload {
   companyNameTh?: string | null;     // ✨ ชื่อบริษัท (ไทย)
   companyNameEn?: string | null;     // ✨ ชื่อบริษัท (อังกฤษ)
   companyAddress?: string | null;  // ✨ เพิ่มข้อมูลบริษัท
-  taxId?: string | null;           // ✨ เพิ่มข้อมูลบริษัท
+  taxId?: string | null;
+  customerType?: 'INDIVIDUAL' | 'CORPORATE';
+  branchType?: 'HEAD_OFFICE' | 'BRANCH';
+  branchCode?: string;           // ✨ เพิ่มข้อมูลบริษัท
   specialDiscountPercent?: number;  // ✨ ส่วนลดพิเศษ %
   specialDiscountBaht?: number;     // ✨ ส่วนลดพิเศษ บาท
   couponId?: number | null;         // 🎟️ ID คูปอง (terra_collection_promotions)
@@ -1403,6 +1406,9 @@ export async function processCheckout(payload: CheckoutPayload): Promise<Checkou
 
     const discountSnapshot: any = {
       item_discounts: usedDiscounts,
+      customer_type: payload.customerType || ((payload.companyNameTh || payload.companyNameEn || payload.taxId) ? 'CORPORATE' : 'INDIVIDUAL'),
+      branch_type: payload.branchType || 'HEAD_OFFICE',
+      branch_code: payload.branchCode || null,
       special_discount: {
         percent: payload.specialDiscountPercent || 0,
         baht: payload.specialDiscountBaht || 0
@@ -1410,11 +1416,11 @@ export async function processCheckout(payload: CheckoutPayload): Promise<Checkou
     }
     if (isSlabOrder) {
       const reqPercent = Number(payload.depositPercent)
-      const safePercent = !isNaN(reqPercent) && reqPercent >= 50 && reqPercent <= 100
+      const safePercent = !isNaN(reqPercent) && reqPercent > 0 && reqPercent <= 100
         ? Math.round(reqPercent * 100) / 100
         : 50
       discountSnapshot.is_slab_order = true
-      discountSnapshot.wood_permit_fee = 5000
+      discountSnapshot.wood_permit_fee = payload.woodPermitFee !== undefined ? Number(payload.woodPermitFee) : 5000
       discountSnapshot.deposit_percent = safePercent
     }
     if (payload.couponCode) {
@@ -1488,13 +1494,13 @@ export async function processCheckout(payload: CheckoutPayload): Promise<Checkou
       const reqAmount = Number(payload.depositAmount)
       const safePercent = Number(discountSnapshot.deposit_percent || 50)
       const calculatedByPercent = Math.round(finalTotalAmount * (safePercent / 100) * 100) / 100
-      const effectiveDeposit = !isNaN(reqAmount) && reqAmount >= minDeposit && reqAmount <= finalTotalAmount
+      const effectiveDeposit = !isNaN(reqAmount) && reqAmount > 0 && reqAmount <= finalTotalAmount
         ? Math.round(reqAmount * 100) / 100
         : calculatedByPercent
 
       discountSnapshot.deposit_amount = effectiveDeposit
       discountSnapshot.remaining_balance = Math.max(0, Math.round((finalTotalAmount - effectiveDeposit) * 100) / 100)
-      if (finalTotalAmount > 0 && !isNaN(reqAmount) && reqAmount >= minDeposit) {
+      if (finalTotalAmount > 0 && !isNaN(reqAmount) && reqAmount > 0) {
         discountSnapshot.deposit_percent = Math.round((effectiveDeposit / finalTotalAmount) * 10000) / 100
       }
     }

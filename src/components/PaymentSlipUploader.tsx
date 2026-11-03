@@ -266,7 +266,6 @@ export default function PaymentSlipUploader({ orderId, orderCode }: { orderId: n
             ref={fileInputRef}
             type="file"
             accept="image/jpeg,image/png,image/webp"
-            capture="environment"
             className="hidden"
             onChange={event => handleFile(event.target.files?.[0])}
           />

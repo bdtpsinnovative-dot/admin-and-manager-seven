@@ -16,6 +16,7 @@ interface InventoryTableProps {
   activeType?: string
   searchQuery?: string
   activeStatus?: string
+  activeLocation?: string
   extraFilters?: ProductExtraFilters
   costFilter?: string
   canViewCosts?: boolean
@@ -29,6 +30,7 @@ export default function InventoryTable({
   activeType,
   searchQuery,
   activeStatus,
+  activeLocation,
   extraFilters,
   costFilter,
   canViewCosts = true
@@ -86,7 +88,10 @@ export default function InventoryTable({
         specType: activeType,
         searchQuery,
         statusFilter: activeStatus,
-        extraFilters,
+        extraFilters: {
+          ...extraFilters,
+          location: activeLocation
+        },
         costFilter,
         offset,
         limit: 250
@@ -209,8 +214,8 @@ export default function InventoryTable({
   const isFurniture = activeTab === 'FURNITURE'
 
   const columnCount = useMemo(() => {
-    let base = 6 // 3 start (check, img, name) + 3 end (price, status, action)
-    if (isSlab) base += 2
+    let base = 7 // 3 start (check, img, name) + 4 end (price, location, status, action)
+    if (isSlab) base += 4
     else if (isRough) base += 4
     else if (isProp || isFurniture) base += 5
     else base += 1
@@ -316,6 +321,7 @@ export default function InventoryTable({
                   )
                 )}
                 <th className="p-4 text-right min-w-[120px]">ราคาขาย (บาท)</th>
+                <th className="p-4 text-center min-w-[140px]">ที่ตั้งสต็อก</th>
                 <th className="p-4 text-center w-[90px]">สถานะ</th>
                 <th className="p-4 text-right w-[90px]">จัดการ</th>
               </tr>
@@ -546,6 +552,68 @@ export default function InventoryTable({
                           </div>
                         ) : null;
                       })()}
+                    </td>
+
+                    {/* 📍 ที่ตั้งสต็อก (โกดัง / โชว์รูม) */}
+                    <td className="p-4 align-top text-center">
+                      <div className="flex flex-col items-center gap-1.5 justify-center">
+                        {/* Showroom badge */}
+                        {(item.showroom_qty ?? 0) > 0 && (
+                          <div
+                            className="group/loc relative inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-purple-50 text-purple-700 border border-purple-200 shadow-2xs hover:bg-purple-100 transition cursor-default"
+                          >
+                            <span className="w-1.5 h-1.5 rounded-full bg-purple-500 animate-pulse" />
+                            <span>โชว์รูม: {item.showroom_qty}</span>
+
+                            {/* Hover Tooltip Breakdown */}
+                            {item.showroom_locations && item.showroom_locations.length > 0 && (
+                              <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-1.5 hidden group-hover/loc:flex flex-col bg-slate-900 text-white text-[11px] font-normal py-1.5 px-2.5 rounded-lg shadow-xl whitespace-nowrap z-30 pointer-events-none min-w-[140px]">
+                                <div className="text-[10px] text-purple-300 font-bold border-b border-slate-700 pb-1 mb-1">
+                                  โชว์รูมที่มีสินค้า:
+                                </div>
+                                {item.showroom_locations.map((loc: any) => (
+                                  <div key={loc.branch_id} className="flex justify-between gap-3 py-0.5">
+                                    <span className="text-slate-300">{loc.branch_name}</span>
+                                    <span className="font-bold text-amber-300">{loc.qty} ชิ้น</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Warehouse badge */}
+                        {(item.warehouse_qty ?? 0) > 0 && (
+                          <div
+                            className="group/loc relative inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200 shadow-2xs hover:bg-blue-100 transition cursor-default"
+                          >
+                            <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                            <span>โกดัง: {item.warehouse_qty}</span>
+
+                            {/* Hover Tooltip Breakdown */}
+                            {item.warehouse_locations && item.warehouse_locations.length > 0 && (
+                              <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-1.5 hidden group-hover/loc:flex flex-col bg-slate-900 text-white text-[11px] font-normal py-1.5 px-2.5 rounded-lg shadow-xl whitespace-nowrap z-30 pointer-events-none min-w-[140px]">
+                                <div className="text-[10px] text-blue-300 font-bold border-b border-slate-700 pb-1 mb-1">
+                                  โกดังที่มีสินค้า:
+                                </div>
+                                {item.warehouse_locations.map((loc: any) => (
+                                  <div key={loc.branch_id} className="flex justify-between gap-3 py-0.5">
+                                    <span className="text-slate-300">{loc.branch_name}</span>
+                                    <span className="font-bold text-blue-300">{loc.qty} ชิ้น</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Fallback if no stock anywhere */}
+                        {(item.showroom_qty ?? 0) === 0 && (item.warehouse_qty ?? 0) === 0 && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium text-slate-400 bg-slate-50 border border-slate-200">
+                            หมด / ไม่มีสต็อก
+                          </span>
+                        )}
+                      </div>
                     </td>
 
                     {/* สถานะ */}

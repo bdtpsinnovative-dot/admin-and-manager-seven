@@ -183,6 +183,22 @@ export interface DashboardMonthBreakdown {
   days: DashboardDaySale[]
 }
 
+export interface DashboardTrendPoint {
+  label: string
+  fullLabel?: string
+  amount: number
+  billCount?: number
+  key?: string
+}
+
+export interface DashboardSalesTrend {
+  title: string
+  subtitle: string
+  mode: "hourly" | "daily" | "monthly"
+  points: DashboardTrendPoint[]
+  totalAmount: number
+}
+
 export interface DashboardData {
   summary: {
     grossSales: number
@@ -205,6 +221,7 @@ export interface DashboardData {
   monthlySales: { label: string; amount: number; monthKey?: string }[]
   monthlyBreakdowns: DashboardMonthBreakdown[]
   recentOrders: DashboardOrder[]
+  salesTrend?: DashboardSalesTrend
   error: string | null
 }
 
@@ -237,6 +254,13 @@ const emptyDashboard = (error: string | null = null): DashboardData => ({
   monthlySales: [],
   monthlyBreakdowns: [],
   recentOrders: [],
+  salesTrend: {
+    title: "แนวโน้มยอดขาย",
+    subtitle: "ไม่พบข้อมูล",
+    mode: "monthly",
+    points: [],
+    totalAmount: 0,
+  },
   error,
 })
 
@@ -263,7 +287,8 @@ export async function getDashboardData(
   requestedBranchId = "ALL",
   dateFrom?: string,
   dateTo?: string,
-  selectedCategoryKey = "ALL"
+  selectedCategoryKey = "ALL",
+  periodType?: "daily" | "monthly" | "yearly" | "custom" | "all"
 ): Promise<DashboardData> {
   const supabase = await createClient()
 
@@ -452,6 +477,14 @@ export async function getDashboardData(
     }
     const categoryMap = new Map<string, CategoryMapEntry>()
     const recentOrders: DashboardOrder[] = []
+    const validOrdersForTrend: {
+      bkkYear: number
+      bkkMonth: number
+      bkkDay: number
+      bkkHour: number
+      dateStr: string
+      amount: number
+    }[] = []
 
     const now = new Date()
     const monthKeyMap = new Map<string, DashboardMonthBreakdown>()
@@ -821,6 +854,23 @@ export async function getDashboardData(
               })
             }
           }
+
+          // บันทึกข้อมูลเพื่อใช้คำนวณกราฟแนวโน้มยอดขายตามช่วงเวลา (Sales Trend)
+          const bkk = new Date(new Date(order.created_at).getTime() + 7 * 3600 * 1000)
+          const bkkYear = bkk.getUTCFullYear()
+          const bkkMonth = bkk.getUTCMonth() + 1
+          const bkkDay = bkk.getUTCDate()
+          const bkkHour = bkk.getUTCHours()
+          const bkkDateStr = `${bkkYear}-${String(bkkMonth).padStart(2, "0")}-${String(bkkDay).padStart(2, "0")}`
+
+          validOrdersForTrend.push({
+            bkkYear,
+            bkkMonth,
+            bkkDay,
+            bkkHour,
+            dateStr: bkkDateStr,
+            amount: effNet,
+          })
         }
 
         const discountSnapshot = (order as any).discount_snapshot
@@ -879,6 +929,226 @@ export async function getDashboardData(
         monthKey: key,
       }
     })
+
+    // -------------------------------------------------------------------------
+    // 📈 คำนวณแนวโน้มยอดขาย (Sales Trend) แบบ Dynamic ตามช่วงเวลาที่ผู้ใช้เลือก:
+    // - รายวัน (Daily): แสดงกราฟรายชั่วโมง 00:00 - 23:00 น. ของวันนั้น
+    // - รายเดือน (Monthly): แสดงกราฟรายวัน วันที่ 1 - 31 ของเดือนนั้น
+    // - รายปี (Yearly): แสดงกราฟ 12 เดือน ม.ค. - ธ.ค. ของปี พ.ศ. นั้น
+    // - กำหนดช่วงวัน (Custom): แสดงกราฟรายวันตลอดช่วงที่เลือก
+    // - ทุกช่วงเวลา (All): แสดงกราฟย้อนหลัง 12 เดือน
+    // -------------------------------------------------------------------------
+    let detectedPeriodType = periodType
+    if (!detectedPeriodType) {
+      if (!dateFrom || dateFrom === "ALL") {
+        detectedPeriodType = "all"
+      } else if (dateFrom.slice(0, 10) === dateTo?.slice(0, 10)) {
+        detectedPeriodType = "daily"
+      } else if (
+        dateFrom.slice(0, 7) === dateTo?.slice(0, 7) &&
+        dateFrom.slice(8, 10) === "01"
+      ) {
+        detectedPeriodType = "monthly"
+      } else if (
+        dateFrom.slice(0, 4) === dateTo?.slice(0, 4) &&
+        dateFrom.slice(5, 10) === "01-01" &&
+        dateTo?.slice(5, 10) === "12-31"
+      ) {
+        detectedPeriodType = "yearly"
+      } else {
+        detectedPeriodType = "custom"
+      }
+    }
+
+    let salesTrend: DashboardSalesTrend
+
+    const thaiMonthFullNames = [
+      "มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
+      "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"
+    ]
+    const thaiMonthShortNames = [
+      "ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.",
+      "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."
+    ]
+
+    const toBkkDateStr = (d: Date) => {
+      const y = d.getFullYear()
+      const m = String(d.getMonth() + 1).padStart(2, "0")
+      const day = String(d.getDate()).padStart(2, "0")
+      return `${y}-${m}-${day}`
+    }
+
+    if (detectedPeriodType === "daily") {
+      const targetDate = dateFrom ? dateFrom.slice(0, 10) : toBkkDateStr(now)
+      const [ty, tm, td] = targetDate.split("-").map(Number)
+      const dt = new Date(ty, tm - 1, td)
+      const formattedDate = dt.toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" })
+
+      // 24 ชั่วโมง (00:00 - 23:00 น.)
+      const hourlyPoints: DashboardTrendPoint[] = Array.from({ length: 24 }, (_, h) => {
+        const hStr = `${String(h).padStart(2, "0")}:00`
+        const nextHStr = `${String((h + 1) % 24).padStart(2, "0")}:00`
+        return {
+          label: h % 2 === 0 ? hStr : "",
+          fullLabel: `เวลา ${hStr} – ${nextHStr} น.`,
+          amount: 0,
+          billCount: 0,
+          key: String(h),
+        }
+      })
+
+      validOrdersForTrend.forEach((o) => {
+        if (o.dateStr === targetDate && o.bkkHour >= 0 && o.bkkHour < 24) {
+          hourlyPoints[o.bkkHour].amount += o.amount
+          hourlyPoints[o.bkkHour].billCount = (hourlyPoints[o.bkkHour].billCount || 0) + 1
+        }
+      })
+
+      const totalAmount = hourlyPoints.reduce((acc, p) => acc + p.amount, 0)
+      salesTrend = {
+        title: `แนวโน้มยอดขายรายชั่วโมง`,
+        subtitle: `ยอดขายแยกตามช่วงเวลารายชั่วโมง (วันที่ ${formattedDate})`,
+        mode: "hourly",
+        points: hourlyPoints,
+        totalAmount: Math.round(totalAmount * 100) / 100,
+      }
+    } else if (detectedPeriodType === "monthly") {
+      const targetMonth = dateFrom ? dateFrom.slice(0, 7) : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
+      const [my, mm] = targetMonth.split("-").map(Number)
+      const daysInMonth = new Date(my, mm, 0).getDate()
+      const mName = thaiMonthFullNames[mm - 1] || ""
+      const mShort = thaiMonthShortNames[mm - 1] || ""
+      const thYear = my + 543
+
+      const dailyPoints: DashboardTrendPoint[] = Array.from({ length: daysInMonth }, (_, i) => {
+        const day = i + 1
+        const dObj = new Date(my, mm - 1, day)
+        const dayOfWeek = thaiDayNames[dObj.getDay()]
+        const dStr = `${my}-${String(mm).padStart(2, "0")}-${String(day).padStart(2, "0")}`
+        return {
+          label: String(day),
+          fullLabel: `วัน${dayOfWeek}ที่ ${day} ${mName} ${thYear}`,
+          amount: 0,
+          billCount: 0,
+          key: dStr,
+        }
+      })
+
+      validOrdersForTrend.forEach((o) => {
+        if (o.bkkYear === my && o.bkkMonth === mm && o.bkkDay >= 1 && o.bkkDay <= daysInMonth) {
+          dailyPoints[o.bkkDay - 1].amount += o.amount
+          dailyPoints[o.bkkDay - 1].billCount = (dailyPoints[o.bkkDay - 1].billCount || 0) + 1
+        }
+      })
+
+      const totalAmount = dailyPoints.reduce((acc, p) => acc + p.amount, 0)
+      salesTrend = {
+        title: `แนวโน้มยอดขายรายวัน (เดือน${mName} ${thYear})`,
+        subtitle: `ยอดขายแยกตามแต่ละวันตลอดทั้งเดือน (1 – ${daysInMonth} ${mShort})`,
+        mode: "daily",
+        points: dailyPoints,
+        totalAmount: Math.round(totalAmount * 100) / 100,
+      }
+    } else if (detectedPeriodType === "yearly") {
+      const targetYear = dateFrom ? Number(dateFrom.slice(0, 4)) : now.getFullYear()
+      const thYear = targetYear + 543
+
+      const yearPoints: DashboardTrendPoint[] = Array.from({ length: 12 }, (_, i) => {
+        const m = i + 1
+        const mKey = `${targetYear}-${String(m).padStart(2, "0")}`
+        return {
+          label: thaiMonthShortNames[i],
+          fullLabel: `เดือน${thaiMonthFullNames[i]} พ.ศ. ${thYear}`,
+          amount: 0,
+          billCount: 0,
+          key: mKey,
+        }
+      })
+
+      validOrdersForTrend.forEach((o) => {
+        if (o.bkkYear === targetYear && o.bkkMonth >= 1 && o.bkkMonth <= 12) {
+          yearPoints[o.bkkMonth - 1].amount += o.amount
+          yearPoints[o.bkkMonth - 1].billCount = (yearPoints[o.bkkMonth - 1].billCount || 0) + 1
+        }
+      })
+
+      const totalAmount = yearPoints.reduce((acc, p) => acc + p.amount, 0)
+      salesTrend = {
+        title: `แนวโน้มยอดขายรายเดือน (ปี พ.ศ. ${thYear})`,
+        subtitle: `ยอดขายแยกตาม 12 เดือนของปี พ.ศ. ${thYear}`,
+        mode: "monthly",
+        points: yearPoints,
+        totalAmount: Math.round(totalAmount * 100) / 100,
+      }
+    } else if (detectedPeriodType === "custom") {
+      const sDateStr = dateFrom ? dateFrom.slice(0, 10) : toBkkDateStr(now)
+      const eDateStr = dateTo ? dateTo.slice(0, 10) : toBkkDateStr(now)
+      const [sy, sm, sd] = sDateStr.split("-").map(Number)
+      const [ey, em, ed] = eDateStr.split("-").map(Number)
+      const sDate = new Date(sy, sm - 1, sd)
+      const eDate = new Date(ey, em - 1, ed)
+      const diffDays = Math.max(1, Math.round((eDate.getTime() - sDate.getTime()) / (1000 * 3600 * 24)) + 1)
+
+      const sFormatted = sDate.toLocaleDateString("th-TH", { day: "numeric", month: "short" })
+      const eFormatted = eDate.toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" })
+
+      if (diffDays <= 31) {
+        const customPoints: DashboardTrendPoint[] = []
+        const dateMap = new Map<string, DashboardTrendPoint>()
+
+        for (let i = 0; i < diffDays; i++) {
+          const cur = new Date(sy, sm - 1, sd + i)
+          const cy = cur.getFullYear()
+          const cm = cur.getMonth() + 1
+          const cd = cur.getDate()
+          const dStr = `${cy}-${String(cm).padStart(2, "0")}-${String(cd).padStart(2, "0")}`
+          const point: DashboardTrendPoint = {
+            label: cur.toLocaleDateString("th-TH", { day: "numeric", month: "short" }),
+            fullLabel: cur.toLocaleDateString("th-TH", { day: "numeric", month: "long", year: "numeric" }),
+            amount: 0,
+            billCount: 0,
+            key: dStr,
+          }
+          customPoints.push(point)
+          dateMap.set(dStr, point)
+        }
+
+        validOrdersForTrend.forEach((o) => {
+          const p = dateMap.get(o.dateStr)
+          if (p) {
+            p.amount += o.amount
+            p.billCount = (p.billCount || 0) + 1
+          }
+        })
+
+        const totalAmount = customPoints.reduce((acc, p) => acc + p.amount, 0)
+        salesTrend = {
+          title: `แนวโน้มยอดขายรายวัน (${sFormatted} – ${eFormatted})`,
+          subtitle: `ยอดขายแยกตามวันในช่วงที่เลือก (${diffDays} วัน)`,
+          mode: "daily",
+          points: customPoints,
+          totalAmount: Math.round(totalAmount * 100) / 100,
+        }
+      } else {
+        const totalAmount = monthlySales.reduce((acc, p) => acc + p.amount, 0)
+        salesTrend = {
+          title: `แนวโน้มยอดขาย (${sFormatted} – ${eFormatted})`,
+          subtitle: `ยอดขายแยกตามช่วงเวลาที่เลือก`,
+          mode: "monthly",
+          points: monthlySales,
+          totalAmount: Math.round(totalAmount * 100) / 100,
+        }
+      }
+    } else {
+      const totalAmount = monthlySales.reduce((acc, p) => acc + p.amount, 0)
+      salesTrend = {
+        title: "แนวโน้มยอดขาย 12 เดือนล่าสุด",
+        subtitle: "ยอดสุทธิจากใบขายย้อนหลัง 12 เดือน",
+        mode: "monthly",
+        points: monthlySales,
+        totalAmount: Math.round(totalAmount * 100) / 100,
+      }
+    }
 
     const netSalesBeforeVat = Math.max(0, netSales - totalVat)
 
@@ -1044,6 +1314,7 @@ export async function getDashboardData(
       monthlySales,
       monthlyBreakdowns,
       recentOrders,
+      salesTrend,
       error: null,
     }
   } catch (error: unknown) {

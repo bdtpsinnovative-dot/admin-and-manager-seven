@@ -113,7 +113,11 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
   }));
 
   const woodPermitFee = isSlabDoc
-    ? Number(data?.wood_permit_fee ?? data?.discount_snapshot?.wood_permit_fee ?? 5000)
+    ? (data?.discount_snapshot?.wood_permit_fee !== undefined
+        ? Number(data.discount_snapshot.wood_permit_fee)
+        : (data?.wood_permit_fee !== undefined && data?.wood_permit_fee !== null
+            ? Number(data.wood_permit_fee)
+            : 5000))
     : 0;
 
   const depositPercent = isSlabDoc
@@ -146,8 +150,47 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
   return (
     <div 
       id="print-section" 
-      className={`bg-white text-neutral-900 flex flex-col ${className}`}
+      className={`bg-white text-neutral-900 flex flex-col print:block ${className}`}
     >
+      {/* 🛑 CSS ดักการตัดหน้าสำหรับใบเสนอราคา/ใบเสร็จ A4 (WebKit / iOS Safari / iPad / Chrome) */}
+      <style dangerouslySetInnerHTML={{__html: `
+        @media print {
+          #print-section {
+            display: block !important;
+            position: static !important;
+            width: 100% !important;
+            height: auto !important;
+            min-height: 0 !important;
+            overflow: visible !important;
+          }
+          #print-section table {
+            border-collapse: separate !important;
+            border-spacing: 0 !important;
+            width: 100% !important;
+          }
+          #print-section thead {
+            display: table-header-group !important;
+          }
+          #print-section tbody {
+            display: table-row-group !important;
+          }
+          #print-section tr {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+            -webkit-column-break-inside: avoid !important;
+          }
+          #print-section td, #print-section th {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+            -webkit-column-break-inside: avoid !important;
+          }
+          #print-section .break-inside-avoid {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+            -webkit-column-break-inside: avoid !important;
+          }
+        }
+      `}} />
       {/* ================= HEADER SECTION ================= */}
       <div className="flex justify-between items-start pb-3 border-b border-neutral-200">
         <div>
@@ -178,7 +221,11 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
         
         <div className="text-right flex flex-col items-end">
           <h2 className="text-3xl font-light tracking-[0.2em] uppercase text-neutral-200">
-            {data.status === 'PENDING' ? 'Quote' : 'Receipt'}
+            {data.status === 'PENDING'
+              ? 'Quote'
+              : ((data.tax_id || data.company_name_th || data.discount_snapshot?.customer_type === 'CORPORATE')
+                  ? 'Tax Invoice / Receipt'
+                  : 'Receipt')}
           </h2>
           
           <p className={`mt-1 text-[8.5px] font-bold uppercase tracking-widest
@@ -199,9 +246,13 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
       <div className="py-3 flex justify-between items-end">
         <div className="w-1/2">
           <h3 className="text-[8px] font-bold uppercase tracking-[0.15em] text-neutral-400 mb-1">Prepared For</h3>
-          {data.tax_id ? (
+          {(data.tax_id || data.company_name_th || data.company_name_en || data.discount_snapshot?.customer_type === 'CORPORATE') ? (
             <>
-              <p className="text-sm font-semibold text-neutral-900 mb-0.5">{data.company_name_th || data.company_name_en}</p>
+              <p className="text-sm font-semibold text-neutral-900 mb-0.5">
+                {data.company_name_th || data.company_name_en || data.shipping_name}
+                {data.discount_snapshot?.branch_type === 'HEAD_OFFICE' ? ' (สำนักงานใหญ่)' : 
+                 data.discount_snapshot?.branch_type === 'BRANCH' ? ` (สาขา: ${data.discount_snapshot?.branch_code || '-'})` : ''}
+              </p>
               {data.company_name_th && data.company_name_en && (
                 <p className="text-[9px] text-neutral-500 leading-tight mb-0.5">{data.company_name_en}</p>
               )}
@@ -260,19 +311,19 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
 
       {/* ================= ITEMS TABLE ================= */}
       <div className="mb-2 flex-grow">
-        <table className="w-full text-left">
+        <table className="w-full text-left" style={{ borderCollapse: 'separate', borderSpacing: 0 }}>
           <thead>
             <tr className="border-b border-neutral-200 text-[8px] uppercase tracking-[0.1em] text-neutral-400">
-              <th className="pb-2 font-semibold w-8 text-center">#</th>
-              <th className="pb-2 font-semibold w-20 text-center">Image</th>
-              <th className="pb-2 font-semibold">Description</th>
-              <th className="pb-2 font-semibold text-center w-10">Qty</th>
-              <th className="pb-2 font-semibold text-right w-16">Price</th>
-              <th className="pb-2 font-semibold text-right w-16">VAT (7%)</th>
-              <th className="pb-2 font-semibold text-right w-20">Amount</th>
+              <th className="pb-2 font-semibold w-8 text-center border-b border-neutral-200">#</th>
+              <th className="pb-2 font-semibold w-20 text-center border-b border-neutral-200">Image</th>
+              <th className="pb-2 font-semibold border-b border-neutral-200">Description</th>
+              <th className="pb-2 font-semibold text-center w-10 border-b border-neutral-200">Qty</th>
+              <th className="pb-2 font-semibold text-right w-16 border-b border-neutral-200">Price</th>
+              <th className="pb-2 font-semibold text-right w-16 border-b border-neutral-200">VAT (7%)</th>
+              <th className="pb-2 font-semibold text-right w-20 border-b border-neutral-200">Amount</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-neutral-100">
+          <tbody>
             {(() => {
               const outOfStockSnapshot = (data?.discount_snapshot?.out_of_stock_products || []).map(String);
               const isWholeOrderPreOrder = Boolean(data?.discount_snapshot?.is_preorder);
@@ -309,9 +360,13 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
               const sizeStr = (w || d || h) ? `W${w || '-'} x D${d || '-'} x H${h || '-'} cm` : null;
 
               return (
-                <tr key={item.id} className="group">
-                  <td className="py-1.5 text-center text-neutral-300 text-[9px] align-middle">{index + 1}</td>
-                  <td className="py-1.5 text-center align-middle w-20">
+                <tr 
+                  key={item.id} 
+                  className="group break-inside-avoid print:break-inside-avoid"
+                  style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}
+                >
+                  <td className="py-1.5 border-b border-neutral-100 text-center text-neutral-300 text-[9px] align-middle">{index + 1}</td>
+                  <td className="py-1.5 border-b border-neutral-100 text-center align-middle w-20">
                     <div className="w-13 h-13 bg-[#F8F8F8] border border-neutral-200 rounded-lg overflow-hidden mx-auto relative flex items-center justify-center p-0.5">
                       <img 
                         src={imageUrl} 
@@ -320,53 +375,55 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
                       />
                     </div>
                   </td>
-                  <td className="py-1.5 px-2 align-middle">
-                    <p className="text-[11.5px] font-semibold leading-tight text-neutral-900">
-                      {p.name || item.name}
-                    </p>
-                    <div className="text-[8px] text-neutral-500 mt-0.5 leading-normal font-normal">
-                      <p>
-                        <span className="text-neutral-400">SKU:</span> {p.sku || item.sku || '-'}
-                        {productSup && productSup !== '-' && (
-                          <>
-                            <span className="text-neutral-300 mx-1.5">•</span>
-                            <span className="text-neutral-400">ชนิด:</span> {productSup}
-                          </>
-                        )}
-                        {sizeStr && (
-                          <>
-                            <span className="text-neutral-300 mx-1.5">•</span>
-                            <span className="text-neutral-400">ขนาด:</span> {sizeStr}
-                          </>
-                        )}
-                        {material && (
-                          <>
-                            <span className="text-neutral-300 mx-1.5">•</span>
-                            <span className="text-neutral-400">วัสดุ:</span> {material}
-                          </>
-                        )}
+                  <td className="py-1.5 border-b border-neutral-100 px-2 align-middle">
+                    <div className="break-inside-avoid" style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}>
+                      <p className="text-[11.5px] font-semibold leading-tight text-neutral-900">
+                        {p.name || item.name}
                       </p>
-                      {isPreOrder ? (
-                        <p className="text-[7.5px] font-medium text-amber-700 mt-0.5">
-                          พรีออเดอร์ (Pre-order){item.branches?.branch_name ? ` • คลัง: ${item.branches.branch_name}` : ''}
+                      <div className="text-[8px] text-neutral-500 mt-0.5 leading-normal font-normal">
+                        <p>
+                          <span className="text-neutral-400">SKU:</span> {p.sku || item.sku || '-'}
+                          {productSup && productSup !== '-' && (
+                            <>
+                              <span className="text-neutral-300 mx-1.5">•</span>
+                              <span className="text-neutral-400">ชนิด:</span> {productSup}
+                            </>
+                          )}
+                          {sizeStr && (
+                            <>
+                              <span className="text-neutral-300 mx-1.5">•</span>
+                              <span className="text-neutral-400">ขนาด:</span> {sizeStr}
+                            </>
+                          )}
+                          {material && (
+                            <>
+                              <span className="text-neutral-300 mx-1.5">•</span>
+                              <span className="text-neutral-400">วัสดุ:</span> {material}
+                            </>
+                          )}
                         </p>
-                      ) : item.branches?.branch_name ? (
-                        <p className="text-[7.5px] text-neutral-400 mt-0.5">
-                          Fulfill by: {item.branches.branch_name}
-                        </p>
-                      ) : null}
+                        {isPreOrder ? (
+                          <p className="text-[7.5px] font-medium text-amber-700 mt-0.5">
+                            พรีออเดอร์ (Pre-order){item.branches?.branch_name ? ` • คลัง: ${item.branches.branch_name}` : ''}
+                          </p>
+                        ) : item.branches?.branch_name ? (
+                          <p className="text-[7.5px] text-neutral-400 mt-0.5">
+                            Fulfill by: {item.branches.branch_name}
+                          </p>
+                        ) : null}
+                      </div>
                     </div>
                   </td>
-                  <td className="py-1.5 text-center align-middle text-[10px] text-neutral-600">
+                  <td className="py-1.5 border-b border-neutral-100 text-center align-middle text-[10px] text-neutral-600">
                     {item.qty}
                   </td>
-                  <td className="py-1.5 text-right align-middle text-[10px] text-neutral-600">
+                  <td className="py-1.5 border-b border-neutral-100 text-right align-middle text-[10px] text-neutral-600">
                     {(price / 1.07).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </td>
-                  <td className="py-1.5 text-right align-middle text-[10px] text-neutral-600">
+                  <td className="py-1.5 border-b border-neutral-100 text-right align-middle text-[10px] text-neutral-600">
                     {rowVat.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </td>
-                  <td className="py-2 text-right align-middle text-[11px] font-semibold text-neutral-800">
+                  <td className="py-2 border-b border-neutral-100 text-right align-middle text-[11px] font-semibold text-neutral-800">
                     {totalWithVat.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </td>
                 </tr>
@@ -378,7 +435,10 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
       </div>
 
       {/* ================= FOOTER SECTION ================= */}
-      <div className="mt-8 break-inside-avoid print:break-inside-avoid">
+      <div 
+        className="mt-8 break-inside-avoid print:break-inside-avoid"
+        style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}
+      >
         {isSlabDoc ? (
           <div>
             <div className="flex justify-between items-start gap-6 pt-3 border-t border-neutral-200">
@@ -492,7 +552,7 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
                     <tr className="border-b border-neutral-300">
                       <td className="py-1 px-2.5 font-medium text-neutral-700">ค่าใบกำกับไม้</td>
                       <td className="py-1 px-2.5 text-right font-mono font-semibold text-neutral-900">
-                        {woodPermitFee.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        {woodPermitFee > 0 ? woodPermitFee.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-'}
                       </td>
                     </tr>
                     <tr className="bg-[#FDE047] border-y-2 border-neutral-900 font-bold">
