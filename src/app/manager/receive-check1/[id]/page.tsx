@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { getTransferItems, getTransferById, receiveStockAction, cancelTransferAction } from '@/actions/receive-stock'
+import { getTransferItems, getTransferById, receiveStockAction, cancelTransferAction, rollbackCompletedTransferAction } from '@/actions/receive-stock'
+import RollbackTransferModal from '@/components/RollbackTransferModal'
 
 export default function TransferDetailPage() {
   const params = useParams()
@@ -63,6 +64,25 @@ export default function TransferDetailPage() {
       setSubmitting(false)
     } else {
       alert('ยกเลิกการโอนสินค้าเรียบร้อยแล้ว!')
+      router.push('/manager/receive-check1')
+    }
+  }
+
+
+  const [isRollbackModalOpen, setIsRollbackModalOpen] = useState(false)
+
+  const handleRollbackTransfer = () => {
+    setIsRollbackModalOpen(true)
+  }
+
+  const handleConfirmRollback = async () => {
+    setSubmitting(true)
+    const result = await rollbackCompletedTransferAction(transferId)
+    if (result.error) {
+      alert(result.error)
+      setSubmitting(false)
+    } else {
+      setIsRollbackModalOpen(false)
       router.push('/manager/receive-check1')
     }
   }
@@ -275,6 +295,38 @@ export default function TransferDetailPage() {
               )}
             </div>
           )}
+
+          {header.status === 'COMPLETED' && (
+            <div className="mt-8 flex flex-col sm:flex-row items-center justify-between border-t-2 border-slate-100 pt-6 gap-4">
+              <div className="flex items-center gap-2 text-sm text-emerald-700 font-semibold bg-emerald-50 px-4 py-2.5 rounded-xl border border-emerald-200">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5 text-emerald-600 shrink-0">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm3.857-9.809a.75.75 0 0 0-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 1 0-1.06 1.061l2.5 2.5a.75.75 0 0 0 1.137-.089l4-5.5Z" clipRule="evenodd" />
+                </svg>
+                <span>ใบโอนนี้ได้รับสินค้าเข้าคลังเรียบร้อยแล้ว</span>
+              </div>
+              <button
+                onClick={handleRollbackTransfer}
+                disabled={submitting}
+                className="px-6 py-3.5 bg-rose-600 text-white rounded-xl font-bold text-sm hover:bg-rose-700 active:scale-[0.98] transition-all disabled:opacity-50 shadow-lg shadow-rose-600/25 flex items-center gap-2 cursor-pointer"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 15 3 9m0 0 6-6M3 9h12a6 6 0 0 1 0 12h-3" />
+                </svg>
+                {submitting ? 'กำลังดึงยอดกลับ...' : 'ยกเลิกใบโอนและดึงยอดสต็อกกลับ (Rollback)'}
+              </button>
+            </div>
+          )}
+
+          {header.status === 'CANCELLED' && (
+            <div className="mt-8 flex items-center justify-between border-t-2 border-slate-100 pt-6">
+              <div className="flex items-center gap-2 text-sm text-rose-700 font-semibold bg-rose-50 px-4 py-2.5 rounded-xl border border-rose-200 w-full">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5 text-rose-600 shrink-0">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16ZM8.28 7.22a.75.75 0 0 0-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 1 0 1.06 1.06L10 11.06l1.72 1.72a.75.75 0 1 0 1.06-1.06L11.06 10l1.72-1.72a.75.75 0 0 0-1.06-1.06L10 8.94 8.28 7.22Z" clipRule="evenodd" />
+                </svg>
+                <span>ใบโอนสินค้านี้ถูกยกเลิกแล้ว (ดึงยอดสต็อกกลับเรียบร้อยแล้ว)</span>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -398,7 +450,16 @@ export default function TransferDetailPage() {
           )
         })}
       </div>
-
+      {/* โมดอลยืนยันการยกเลิกและดึงยอดสต็อกกลับแบบ Modern กลางจอ */}
+      <RollbackTransferModal
+        isOpen={isRollbackModalOpen}
+        onClose={() => setIsRollbackModalOpen(false)}
+        onConfirm={handleConfirmRollback}
+        transferCode={header?.transfer_code || ''}
+        fromBranchName={header?.from_branch?.branch_name}
+        toBranchName={header?.to_branch?.branch_name}
+        loading={submitting}
+      />
     </>
   )
 }

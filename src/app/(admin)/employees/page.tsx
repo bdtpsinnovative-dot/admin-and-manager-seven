@@ -62,7 +62,7 @@ export default async function EmployeesPage() {
   // ✅ กรองเฉพาะพนักงานจริงในระบบ (ไม่แสดงลูกค้าหน้าเว็บที่ไม่มี Role หรือมี Role เป็น customer)
   const NON_STAFF_ROLES = ['customer', 'unassigned', ''];
 
-  const allEmployees = authUsers
+  const allMappedUsers = authUsers
     ?.map((user) => {
       const profile = profiles?.find((p) => p.user_id === user.id) as any;
       
@@ -94,31 +94,40 @@ export default async function EmployeesPage() {
         canViewCosts = ['admin', 'manager', 'data_analyst'].includes(userRole);
       }
 
+      const metaName = user.user_metadata?.full_name || user.user_metadata?.name || null;
+      const provider = (user.app_metadata?.provider || user.app_metadata?.providers?.[0] || 'email') as string;
+
       return {
         user_id: user.id,
         email: user.email || "",
-        full_name: profile?.full_name || null,
+        full_name: profile?.full_name || metaName || null,
         role: userRole || "unassigned",
-        phone: profile?.phone || null,
+        phone: profile?.phone || user.phone || null,
         citizen_id: profile?.citizen_id || null,
         birth_date: profile?.birth_date || null,
-        avatar_url: profile?.avatar_url || null, 
+        avatar_url: profile?.avatar_url || user.user_metadata?.avatar_url || null, 
         branch_id: profile?.branch_id || null,
         allowed_inventory_tabs: allowedCategories,
         allowed_pages: allowedPages,
         can_view_costs: canViewCosts,
-        // ✅ ส่งเป็น Object อันเดียว (หรือ null) ตามที่ TypeScript ต้องการ
-        branches: branchInfo 
+        branches: branchInfo,
+        created_at: user.created_at,
+        last_sign_in_at: user.last_sign_in_at || null,
+        provider: provider,
+        has_profile: Boolean(profile)
       };
-    })
-    .filter((emp) => emp.role && !NON_STAFF_ROLES.includes(emp.role)) || [];
+    }) || [];
+
+  const staffEmployees = allMappedUsers.filter((emp) => emp.role && !NON_STAFF_ROLES.includes(emp.role));
+  const otherAccounts = allMappedUsers.filter((emp) => !emp.role || NON_STAFF_ROLES.includes(emp.role));
 
   const storageBaseUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public`;
 
   return (
     <EmployeeClient 
       // ✅ Cast เป็น any หรือ Type ที่ถูกต้องเพื่อความชัวร์ในการ Build
-      initialData={allEmployees as any} 
+      initialData={staffEmployees as any} 
+      otherAccounts={otherAccounts as any}
       branches={branches || []}
       storageBaseUrl={storageBaseUrl} 
     />

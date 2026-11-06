@@ -10,7 +10,7 @@ import {
   PackagePlus, Frame, Activity, Images, Tag, Scale,
   AlertTriangle, ShieldCheck, SlidersHorizontal, Settings,
   Layers, Hammer, Armchair, Package, Monitor, DollarSign,
-  Lock, Store, BarChart3, FileText, Check
+  Lock, Store, BarChart3, FileText, Check, Copy, UserCheck, Sparkles, ExternalLink, Globe
 } from "lucide-react"
 
 // --- Interface ---
@@ -21,6 +21,7 @@ interface Profile {
   email: string;
   role: string;
   phone: string | null;
+  citizen_id?: string | null;
   birth_date: string | null;
   avatar_url: string | null;
   branch_id: number | null;
@@ -28,6 +29,10 @@ interface Profile {
   allowed_pages?: string[];
   branches: Branch | null;
   can_view_costs?: boolean;
+  created_at?: string;
+  last_sign_in_at?: string | null;
+  provider?: string;
+  has_profile?: boolean;
 }
 
 // --- Role config ---
@@ -90,7 +95,22 @@ function getDefaultPagesByRole(role: string): string[] {
 }
 
 // --- Component หลัก ---
-export default function EmployeeClient({ initialData, branches, storageBaseUrl }: { initialData: Profile[], branches: Branch[], storageBaseUrl: string }) {
+export default function EmployeeClient({
+  initialData,
+  otherAccounts = [],
+  branches,
+  storageBaseUrl
+}: {
+  initialData: Profile[];
+  otherAccounts?: Profile[];
+  branches: Branch[];
+  storageBaseUrl: string;
+}) {
+  const [activeTab, setActiveTab] = useState<'staff' | 'others'>('staff')
+  const [otherSearchTerm, setOtherSearchTerm] = useState('')
+  const [otherFilterRole, setOtherFilterRole] = useState<'all' | 'customer' | 'unassigned'>('all')
+  const [copiedId, setCopiedId] = useState<string | null>(null)
+
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [isMatrixModalOpen, setIsMatrixModalOpen] = useState(false)
@@ -148,6 +168,30 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
     }
   };
 
+  const copyToClipboard = (text: string, id: string) => {
+    try {
+      navigator.clipboard.writeText(text);
+      setCopiedId(id);
+      setTimeout(() => setCopiedId(null), 2000);
+    } catch {}
+  };
+
+  const formatDate = (dateStr?: string | null) => {
+    if (!dateStr) return '-';
+    try {
+      const d = new Date(dateStr);
+      return d.toLocaleDateString('th-TH', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch {
+      return dateStr;
+    }
+  };
+
   // --- Stats ---
   const stats = useMemo(() => {
     const roleCounts: Record<string, number> = {}
@@ -159,7 +203,18 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
     return { total: initialData.length, roleCounts, branchCount: uniqueBranches.size }
   }, [initialData])
 
-  // --- Filtered Data ---
+  // --- Other Accounts Stats ---
+  const otherStats = useMemo(() => {
+    const customerCount = otherAccounts.filter(a => a.role === 'customer').length;
+    const webUserCount = otherAccounts.length - customerCount;
+    return {
+      total: otherAccounts.length,
+      customerCount,
+      webUserCount
+    };
+  }, [otherAccounts]);
+
+  // --- Filtered Data (Staff) ---
   const filteredData = useMemo(() => {
     return initialData.filter(emp => {
       const matchSearch =
@@ -172,6 +227,27 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
     })
   }, [initialData, searchTerm, filterRole, filterBranch])
 
+  // --- Filtered Data (Other Accounts) ---
+  const filteredOtherAccounts = useMemo(() => {
+    return otherAccounts.filter(acc => {
+      const q = otherSearchTerm.toLowerCase().trim();
+      const matchSearch = !q ||
+        (acc.email?.toLowerCase() || '').includes(q) ||
+        (acc.full_name?.toLowerCase() || '').includes(q) ||
+        (acc.phone || '').includes(q) ||
+        acc.user_id.toLowerCase().includes(q);
+
+      const matchRole =
+        otherFilterRole === 'all'
+          ? true
+          : otherFilterRole === 'customer'
+          ? acc.role === 'customer'
+          : acc.role !== 'customer';
+
+      return matchSearch && matchRole;
+    });
+  }, [otherAccounts, otherSearchTerm, otherFilterRole]);
+
   // --- Handlers ---
   const handleUpdate = async (formData: FormData) => {
     if (!editingEmp) return
@@ -183,7 +259,10 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
       handleServerError(res.error)
     } else {
       closeModal()
-      setAlertState({ isOpen: true, type: 'success', title: 'สำเร็จ!', message: 'บันทึกข้อมูลพนักงานเรียบร้อยแล้ว' });
+      setAlertState({ isOpen: true, type: 'success', title: 'สำเร็จ!', message: 'บันทึกข้อมูลเรียบร้อยแล้ว' });
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
     }
   }
 
@@ -196,6 +275,9 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
     } else {
       setIsCreateModalOpen(false)
       setAlertState({ isOpen: true, type: 'success', title: 'สร้างบัญชีสำเร็จ!', message: 'พนักงานใหม่ถูกเพิ่มเข้าสู่ระบบแล้ว' });
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
     }
   }
 
@@ -217,7 +299,7 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
 
   const openEditModal = (emp: Profile) => {
     setEditingEmp(emp)
-    const r = emp.role || 'data_entry'
+    const r = emp.role && emp.role !== 'customer' && emp.role !== 'unassigned' ? emp.role : 'sale'
     setEditRole(r)
     const cats = (emp.allowed_inventory_tabs && emp.allowed_inventory_tabs.length > 0)
       ? emp.allowed_inventory_tabs
@@ -264,7 +346,7 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
     <div className="p-4 md:p-8 min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50/30 font-sans pb-20">
 
       {/* ====== Page Header ====== */}
-      <div className="mb-8">
+      <div className="mb-6">
         <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
           <div>
             <div className="flex items-center gap-3 mb-2">
@@ -273,35 +355,82 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
               </div>
               <div>
                 <h1 className="text-2xl md:text-3xl font-extrabold text-slate-800 tracking-tight">
-                  จัดการพนักงาน
+                  จัดการพนักงาน &amp; บัญชีผู้ใช้
                 </h1>
-                <p className="text-slate-500 text-sm mt-0.5">บริหารจัดการข้อมูลและกำหนดสิทธิ์หมวดหมู่สินค้าในคลัง</p>
+                <p className="text-slate-500 text-sm mt-0.5">บริหารจัดการข้อมูลพนักงาน กำหนดสิทธิ์ และค้นหาอีเมล/บัญชีผู้ใช้ในระบบ</p>
               </div>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              onClick={() => setIsMatrixModalOpen(true)}
-              className="bg-white border border-slate-200 hover:bg-slate-50 hover:border-indigo-300 text-slate-700 px-5 py-3 rounded-2xl shadow-sm transition-all flex items-center gap-2.5 font-bold active:scale-[0.97] text-sm group"
-            >
-              <Shield className="w-4 h-4 text-indigo-600 group-hover:scale-110 transition-transform" />
-              ผังสิทธิ์การกรอง (Permission Matrix)
-            </button>
-            <button
-              onClick={openCreateModal}
-              className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-6 py-3 rounded-2xl shadow-lg shadow-blue-300/40 transition-all flex items-center gap-2.5 font-bold active:scale-[0.97] text-sm group"
-            >
-              <div className="w-7 h-7 rounded-lg bg-white/20 flex items-center justify-center group-hover:bg-white/30 transition">
-                <UserPlus className="w-4 h-4" />
-              </div>
-              เพิ่มพนักงานใหม่
-            </button>
-          </div>
+          {activeTab === 'staff' && (
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setIsMatrixModalOpen(true)}
+                className="bg-white border border-slate-200 hover:bg-slate-50 hover:border-indigo-300 text-slate-700 px-5 py-3 rounded-2xl shadow-sm transition-all flex items-center gap-2.5 font-bold active:scale-[0.97] text-sm group cursor-pointer"
+              >
+                <Shield className="w-4 h-4 text-indigo-600 group-hover:scale-110 transition-transform" />
+                ผังสิทธิ์การกรอง (Permission Matrix)
+              </button>
+              <button
+                type="button"
+                onClick={openCreateModal}
+                className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-6 py-3 rounded-2xl shadow-lg shadow-blue-300/40 transition-all flex items-center gap-2.5 font-bold active:scale-[0.97] text-sm group cursor-pointer"
+              >
+                <div className="w-7 h-7 rounded-lg bg-white/20 flex items-center justify-center group-hover:bg-white/30 transition">
+                  <UserPlus className="w-4 h-4" />
+                </div>
+                เพิ่มพนักงานใหม่
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* ====== Stats Cards ====== */}
+      {/* ====== Navigation Tabs ====== */}
+      <div className="flex items-center gap-2.5 mb-8 p-1.5 bg-slate-100/80 rounded-2xl w-fit border border-slate-200/80">
+        <button
+          type="button"
+          onClick={() => setActiveTab('staff')}
+          className={`flex items-center gap-2.5 px-5 py-2.5 rounded-xl text-sm font-bold transition-all cursor-pointer ${
+            activeTab === 'staff'
+              ? 'bg-white text-blue-700 shadow-sm shadow-slate-200'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+          }`}
+        >
+          <Users className="w-4 h-4" />
+          <span>ทีมงาน / พนักงาน</span>
+          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+            activeTab === 'staff' ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-600'
+          }`}>
+            {initialData.length}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('others')}
+          className={`flex items-center gap-2.5 px-5 py-2.5 rounded-xl text-sm font-bold transition-all cursor-pointer ${
+            activeTab === 'others'
+              ? 'bg-white text-indigo-700 shadow-sm shadow-slate-200'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+          }`}
+        >
+          <Mail className="w-4 h-4" />
+          <span>บัญชีอื่น / ลูกค้าหน้าเว็บ (อีเมลทั้งหมด)</span>
+          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+            activeTab === 'others' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-200 text-slate-600'
+          }`}>
+            {otherAccounts.length}
+          </span>
+        </button>
+      </div>
+
+      {/* =================================================================================== */}
+      {/* 🧑‍💼 TAB 1: STAFF & EMPLOYEES */}
+      {/* =================================================================================== */}
+      {activeTab === 'staff' && (
+        <>
+          {/* ====== Stats Cards ====== */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 mb-8">
         {/* Total */}
         <div className="col-span-2 bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-5 text-white shadow-xl shadow-slate-300/30 relative overflow-hidden">
@@ -639,6 +768,261 @@ export default function EmployeeClient({ initialData, branches, storageBaseUrl }
           </div>
         )}
       </div>
+    </>
+  )}
+
+  {/* =================================================================================== */}
+  {/* 📧 TAB 2: OTHER ACCOUNTS / ALL REGISTERED EMAILS */}
+  {/* =================================================================================== */}
+  {activeTab === 'others' && (
+    <>
+      {/* ====== Stats Cards (Others) ====== */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+        <div className="bg-gradient-to-br from-indigo-900 to-slate-900 rounded-2xl p-5 text-white shadow-xl shadow-indigo-900/20 relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/2" />
+          <div className="relative">
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-indigo-300 text-xs font-semibold uppercase tracking-wider">บัญชีอื่น ๆ ทั้งหมด</p>
+              <Mail className="w-4 h-4 text-indigo-400" />
+            </div>
+            <p className="text-3xl font-black">{otherStats.total}</p>
+            <p className="text-xs text-indigo-300/80 mt-1">อีเมลผู้ใช้ที่ลงทะเบียนในระบบ (นอกเหนือจากพนักงาน)</p>
+          </div>
+        </div>
+
+        <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-2xl p-5 relative overflow-hidden hover:shadow-md transition-all">
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-emerald-800 text-xs font-bold uppercase tracking-wider">ลูกค้าหน้าเว็บ (Customer)</p>
+            <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center">
+              <User className="w-4 h-4" />
+            </div>
+          </div>
+          <p className="text-3xl font-black text-emerald-800">{otherStats.customerCount}</p>
+          <p className="text-xs text-emerald-600 mt-1">บัญชีที่มี Role เป็น customer</p>
+        </div>
+
+        <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-5 relative overflow-hidden hover:shadow-md transition-all">
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-slate-700 text-xs font-bold uppercase tracking-wider">ผู้ใช้ทั่วไป / ยังไม่กำหนด Role</p>
+            <div className="w-8 h-8 rounded-lg bg-slate-200 text-slate-700 flex items-center justify-center">
+              <Globe className="w-4 h-4" />
+            </div>
+          </div>
+          <p className="text-3xl font-black text-slate-800">{otherStats.webUserCount}</p>
+          <p className="text-xs text-slate-500 mt-1">บัญชีสมัครผ่านเว็บ หรือยังไม่ได้ตั้งค่าโปรไฟล์</p>
+        </div>
+      </div>
+
+      {/* ====== Search & Filters (Others) ====== */}
+      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-4 mb-6">
+        <div className="flex flex-col md:flex-row gap-3">
+          {/* Search */}
+          <div className="relative flex-1">
+            <Search className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              placeholder="ค้นหาอีเมล, ชื่อ, เบอร์โทร หรือ User ID..."
+              className="w-full pl-11 pr-4 py-3 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-400 transition bg-slate-50/50 placeholder:text-slate-400 font-medium"
+              value={otherSearchTerm}
+              onChange={(e) => setOtherSearchTerm(e.target.value)}
+            />
+          </div>
+
+          {/* Role Filter */}
+          <div className="relative min-w-[210px]">
+            <Filter className="w-3.5 h-3.5 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <select
+              value={otherFilterRole}
+              onChange={(e) => setOtherFilterRole(e.target.value as any)}
+              className="w-full pl-9 pr-8 py-3 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-400 transition bg-slate-50/50 appearance-none cursor-pointer font-medium"
+            >
+              <option value="all">ทุกสถานะ ({otherAccounts.length})</option>
+              <option value="customer">ลูกค้า (Customer) ({otherStats.customerCount})</option>
+              <option value="unassigned">ผู้ใช้ทั่วไป / ไม่มี Role ({otherStats.webUserCount})</option>
+            </select>
+            <ChevronDown className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          </div>
+        </div>
+
+        {/* Active filters count */}
+        {(otherFilterRole !== "all" || otherSearchTerm) && (
+          <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-100">
+            <span className="text-xs text-slate-500">
+              แสดง <span className="font-bold text-slate-800">{filteredOtherAccounts.length}</span> จาก {otherAccounts.length} รายการ
+            </span>
+            <button
+              type="button"
+              onClick={() => { setOtherSearchTerm(""); setOtherFilterRole("all"); }}
+              className="text-xs text-indigo-600 hover:text-indigo-800 font-medium ml-auto flex items-center gap-1 hover:underline cursor-pointer"
+            >
+              <X className="w-3 h-3" /> ล้างตัวกรอง
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* ====== Table (Others) ====== */}
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-gradient-to-r from-slate-50 to-slate-100/50 border-b border-slate-200">
+                <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">อีเมล &amp; User ID</th>
+                <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">ชื่อ-นามสกุล</th>
+                <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">สถานะ / บทบาท</th>
+                <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">เบอร์โทร</th>
+                <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">ลงทะเบียนเมื่อ</th>
+                <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">เข้าสู่ระบบล่าสุด</th>
+                <th className="px-6 py-4 text-right text-[10px] font-bold text-slate-500 uppercase tracking-widest">จัดการ</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100/80">
+              {filteredOtherAccounts.map((acc, idx) => {
+                const isCustomer = acc.role === 'customer';
+
+                return (
+                  <tr
+                    key={acc.user_id}
+                    className="hover:bg-indigo-50/30 transition-all duration-200 group"
+                    style={{ animationDelay: `${idx * 20}ms` }}
+                  >
+                    {/* Email + UID */}
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-50 to-blue-50 text-indigo-600 flex items-center justify-center font-bold text-xs border border-indigo-100 shrink-0">
+                          <Mail className="w-4 h-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-slate-800 text-sm font-mono truncate max-w-[260px]">
+                              {acc.email}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => copyToClipboard(acc.email, `email-${acc.user_id}`)}
+                              className="text-slate-400 hover:text-indigo-600 transition-colors p-0.5 rounded cursor-pointer"
+                              title="คัดลอกอีเมล"
+                            >
+                              {copiedId === `email-${acc.user_id}` ? (
+                                <Check className="w-3.5 h-3.5 text-emerald-600" />
+                              ) : (
+                                <Copy className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+                            {acc.provider && acc.provider !== 'email' && (
+                              <span className="px-1.5 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded text-[10px] font-bold uppercase">
+                                {acc.provider}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-slate-400 font-mono">
+                            <span className="truncate max-w-[160px]">{acc.user_id}</span>
+                            <button
+                              type="button"
+                              onClick={() => copyToClipboard(acc.user_id, `uid-${acc.user_id}`)}
+                              className="hover:text-slate-600 transition cursor-pointer"
+                              title="คัดลอก User ID"
+                            >
+                              {copiedId === `uid-${acc.user_id}` ? (
+                                <span className="text-emerald-600 font-sans text-[10px]">คัดลอกแล้ว</span>
+                              ) : (
+                                <Copy className="w-3 h-3" />
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+
+                    {/* Name */}
+                    <td className="px-6 py-4">
+                      <div className={`text-sm ${acc.full_name ? 'font-medium text-slate-800' : 'text-slate-400 italic'}`}>
+                        {acc.full_name || '(ยังไม่ระบุชื่อ)'}
+                      </div>
+                    </td>
+
+                    {/* Role Badge */}
+                    <td className="px-6 py-4">
+                      {isCustomer ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                          ลูกค้า (Customer)
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200">
+                          <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                          ผู้ใช้ทั่วไป (Web User)
+                        </span>
+                      )}
+                    </td>
+
+                    {/* Phone */}
+                    <td className="px-6 py-4">
+                      {acc.phone ? (
+                        <span className="text-xs font-mono text-slate-700 font-medium">{acc.phone}</span>
+                      ) : (
+                        <span className="text-slate-300 text-sm">-</span>
+                      )}
+                    </td>
+
+                    {/* Registered Date */}
+                    <td className="px-6 py-4 text-xs text-slate-500 font-mono">
+                      {formatDate(acc.created_at)}
+                    </td>
+
+                    {/* Last Sign In */}
+                    <td className="px-6 py-4 text-xs text-slate-500 font-mono">
+                      {acc.last_sign_in_at ? formatDate(acc.last_sign_in_at) : (
+                        <span className="text-slate-300 italic">ยังไม่เคยเข้าสู่ระบบ</span>
+                      )}
+                    </td>
+
+                    {/* Action: Promote to Staff */}
+                    <td className="px-6 py-4 text-right">
+                      <button
+                        type="button"
+                        onClick={() => openEditModal(acc)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-indigo-50 text-indigo-700 hover:text-indigo-800 border border-indigo-200 hover:border-indigo-300 rounded-xl text-xs font-bold transition shadow-xs cursor-pointer active:scale-95"
+                        title="ตั้งเป็นพนักงาน หรือกำหนดสิทธิ์เข้าใช้งาน"
+                      >
+                        <UserCheck className="w-3.5 h-3.5 text-indigo-600" />
+                        <span>ตั้งเป็นพนักงาน</span>
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+
+              {filteredOtherAccounts.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="text-center py-16">
+                    <div className="flex flex-col items-center gap-3">
+                      <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center">
+                        <Mail className="w-8 h-8 text-slate-300" />
+                      </div>
+                      <div>
+                        <p className="text-slate-500 font-semibold">ไม่พบอีเมลหรือบัญชีที่ค้นหา</p>
+                        <p className="text-slate-400 text-xs mt-1">ลองค้นหาด้วยคำอื่น หรือตรวจสอบตัวสะกด</p>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Table Footer */}
+        {filteredOtherAccounts.length > 0 && (
+          <div className="px-6 py-3 bg-slate-50/50 border-t border-slate-100 flex items-center justify-between">
+            <span className="text-xs text-slate-400">
+              แสดง {filteredOtherAccounts.length} จาก {otherAccounts.length} รายการ
+            </span>
+          </div>
+        )}
+      </div>
+    </>
+  )}
 
       {/* =================================================================================== */}
       {/* 🔔 CUSTOM ALERT MODAL */}

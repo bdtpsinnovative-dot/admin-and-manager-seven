@@ -4,11 +4,12 @@ import React, { useState, useEffect, useMemo } from 'react'
 import { getSalesHistory, getAllBranches, hideCancelledOrder, restoreHiddenOrder, updateOrderDate } from '@/actions/sales-check'
 import {
   History, DollarSign, Truck, User, Check, Clock, ChevronDown, ChevronUp,
-  Printer, XCircle, EyeOff, Eye, Loader2, ArrowLeft, Building2, Search, Tag, Package, Calendar
+  Printer, XCircle, EyeOff, Eye, Loader2, ArrowLeft, Building2, Search, Tag, Package, Calendar, Edit3
 } from 'lucide-react'
 import { toast } from 'sonner'
 import PrintDispatchModal from '@/components/PrintDispatchModal'
 import PaymentSlipViewer from '@/components/PaymentSlipViewer'
+import EditQuotationModal, { EditQuotationTarget } from '@/components/EditQuotationModal'
 import DraggableTableWrapper from '@/components/DraggableTableWrapper'
 import {
   SalesFilters,
@@ -43,6 +44,12 @@ interface SaleOrder {
   totalAmount: number;
   status: string;
   shippingName: string | null;
+  shippingPhone?: string | null;
+  shippingAddress?: string | null;
+  companyNameTh?: string | null;
+  companyNameEn?: string | null;
+  companyAddress?: string | null;
+  taxId?: string | null;
   myBranchRevenue: number;
   otherBranchRevenue: number;
   remoteDetails: RemoteDetail[];
@@ -94,6 +101,7 @@ export default function AdminSalesHistoryPage() {
   const [dateEditTarget, setDateEditTarget] = useState<SaleOrder | null>(null)
   const [editDateTime, setEditDateTime] = useState<string>('')
   const [savingDate, setSavingDate] = useState(false)
+  const [quotationEditTarget, setQuotationEditTarget] = useState<EditQuotationTarget | null>(null)
 
   // ฟังก์ชันเปิด Modal แก้ไขวันที่เปิดบิล
   const openEditDateModal = (order: SaleOrder) => {
@@ -761,17 +769,30 @@ export default function AdminSalesHistoryPage() {
                                 )}
                                 <span className="text-sm font-black block truncate">{order.orderCode}</span>
                               </div>
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  setPrintOrderCode(order.orderCode)
-                                }}
-                                className="text-[10px] text-slate-500 hover:text-blue-600 font-bold flex items-center gap-1 transition-colors px-2 py-0.5 rounded border border-slate-200 bg-white shadow-3xs cursor-pointer shrink-0"
-                                title="พิมพ์ใบเสนอราคา/ใบเสร็จ"
-                              >
-                                <Printer className="w-3.5 h-3.5" /> พิมพ์
-                              </button>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    setQuotationEditTarget(order)
+                                  }}
+                                  className="text-[10px] text-amber-700 hover:text-amber-800 font-bold flex items-center gap-1 transition-colors px-2 py-0.5 rounded border border-amber-200 bg-amber-50 hover:bg-amber-100 shadow-3xs cursor-pointer"
+                                  title="แก้ไขใบเสนอราคา/ข้อมูลเอกสาร"
+                                >
+                                  <Edit3 className="w-3.5 h-3.5" /> แก้ไขเอกสาร
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    setPrintOrderCode(order.orderCode)
+                                  }}
+                                  className="text-[10px] text-slate-500 hover:text-blue-600 font-bold flex items-center gap-1 transition-colors px-2 py-0.5 rounded border border-slate-200 bg-white shadow-3xs cursor-pointer"
+                                  title="พิมพ์ใบเสนอราคา/ใบเสร็จ"
+                                >
+                                  <Printer className="w-3.5 h-3.5" /> พิมพ์
+                                </button>
+                              </div>
                             </div>
 
                             {/* ป้ายชื่อสาขาที่ออกบิล */}
@@ -1151,6 +1172,30 @@ export default function AdminSalesHistoryPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal แก้ไขใบเสนอราคา/ข้อมูลเอกสาร (ล็อคจำนวนสินค้า) */}
+      {quotationEditTarget && (
+        <EditQuotationModal
+          order={quotationEditTarget}
+          onClose={() => setQuotationEditTarget(null)}
+          onSuccess={(updated) => {
+            setSales(prev => prev.map(s => s.id === updated.id ? {
+              ...s,
+              orderCode: updated.orderCode || s.orderCode,
+              createdAt: updated.createdAt,
+              shippingName: updated.shippingName,
+              shippingPhone: updated.shippingPhone,
+              shippingAddress: updated.shippingAddress,
+              companyNameTh: updated.companyNameTh,
+              companyNameEn: updated.companyNameEn,
+              companyAddress: updated.companyAddress,
+              taxId: updated.taxId,
+              discountSnapshot: updated.discountSnapshot
+            } : s))
+            setQuotationEditTarget(null)
+          }}
+        />
       )}
     </div>
   )

@@ -55,16 +55,17 @@ export default function PrintQuotationPage() {
           body * { visibility: hidden; }
           #print-section, #print-section * { visibility: visible; }
           #print-section {
-            display: block !important;
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: space-between !important;
             position: static !important; 
             width: 100% !important; 
-            max-width: 100% !important;
-            min-height: 0 !important;
-            height: auto !important;
+            max-width: 210mm !important;
+            box-sizing: border-box !important;
+            min-height: 297mm !important;
             padding: 6mm 10mm !important; 
             box-shadow: none !important;
-            margin: 0 !important;
-            
+            margin: 0 auto !important;
           }
           @page { 
             size: A4 portrait; 
@@ -99,7 +100,7 @@ export default function PrintQuotationPage() {
       {/* 📄 พื้นที่กระดาษ A4 (เรียกใช้ Component ร่วม) */}
       <PrintDispatchDocument 
         data={data} 
-        className="max-w-[850px] mx-auto px-8 py-6 shadow-[0_0_40px_rgba(0,0,0,0.05)] min-h-[1122px] print:min-h-0 print:h-auto"
+        className="max-w-[850px] mx-auto px-8 py-6 shadow-[0_0_40px_rgba(0,0,0,0.05)] min-h-[1122px] print:min-h-[297mm]"
       />
     </div>
   )

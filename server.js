@@ -81,7 +81,8 @@ function matchRepoConfig(rawRepoName) {
 let activePort = 8010;
 let activeWorker = null;
 let isReloading = false;
-const activeDeployments = new Set();
+const activeDeployments = new Map();
+const deployHistory = [];
 
 function restartServiceOnPort(port, projectDir) {
   return new Promise((resolve) => {
@@ -116,7 +117,14 @@ async function triggerAutoDeploy(rawRepoName) {
     writeLog(`[Auto-Deploy] Deploy for ${target.name} (${repoKey}) is already in progress, skipping duplicate.`);
     return;
   }
-  activeDeployments.add(repoKey);
+
+  const deployStartTime = Date.now();
+  activeDeployments.set(repoKey, {
+    startTime: deployStartTime,
+    repoName: target.name,
+    port: target.port,
+    stage: 'Building'
+  });
   writeLog(`[Auto-Deploy] Starting background git pull & build for ${target.name}...`);
 
   try {
@@ -130,26 +138,70 @@ async function triggerAutoDeploy(rawRepoName) {
       });
     });
 
-    // 2. Build
+    // 2. Build with live streaming output to log
     writeLog(`[Auto-Deploy] Running '${target.buildCmd}' in ${target.workDir}...`);
     await new Promise((resolve, reject) => {
-      exec(`cmd.exe /c "cd /d ""${target.workDir}"" && ${target.buildCmd}"`, { timeout: 360000, maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
-        if (err) reject(new Error(stderr || stdout || err.message));
-        else resolve(stdout);
+      const child = exec(`cmd.exe /c "cd /d ""${target.workDir}"" && ${target.buildCmd}"`, { timeout: 360000, maxBuffer: 15 * 1024 * 1024 });
+
+      child.stdout.on('data', (chunk) => {
+        const lines = chunk.toString().split(/\r?\n/);
+        for (const line of lines) {
+          if (line.trim()) writeLog(`[Build] ${line.trim()}`);
+        }
       });
+
+      child.stderr.on('data', (chunk) => {
+        const lines = chunk.toString().split(/\r?\n/);
+        for (const line of lines) {
+          if (line.trim()) writeLog(`[Build Info] ${line.trim()}`);
+        }
+      });
+
+      child.on('close', (code) => {
+        if (code === 0) resolve();
+        else reject(new Error(`Build exited with code ${code}`));
+      });
+
+      child.on('error', (err) => reject(err));
     });
 
     // 3. Reload / Swap
-    writeLog(`[Auto-Deploy] Build successful for ${target.name}! Reloading service...`);
+    const buildDurationSec = Math.round((Date.now() - deployStartTime) / 1000);
+    const formattedDuration = buildDurationSec >= 60
+      ? `${Math.floor(buildDurationSec / 60)}m ${buildDurationSec % 60}s`
+      : `${buildDurationSec}s`;
+
+    writeLog(`[Auto-Deploy] Build successful for ${target.name} in ${formattedDuration}! Reloading service...`);
     if (target.deployType === 'hot-swap') {
       await performHotReload();
-      writeLog(`[Auto-Deploy] ${target.name} swapped to new version with 0.00ms downtime!`);
+      writeLog(`[Auto-Deploy] ${target.name} swapped to new version with 0.00ms downtime! (Total: ${formattedDuration})`);
     } else {
       await restartServiceOnPort(target.port, target.workDir);
-      writeLog(`[Auto-Deploy] ${target.name} restarted successfully on port ${target.port}!`);
+      writeLog(`[Auto-Deploy] ${target.name} restarted successfully on port ${target.port}! (Total: ${formattedDuration})`);
     }
+
+    deployHistory.push({
+      repoKey,
+      repoName: target.name,
+      port: target.port,
+      durationSec: buildDurationSec,
+      formattedDuration,
+      timestamp: Date.now(),
+      success: true
+    });
   } catch (err) {
-    writeLog(`[Auto-Deploy Error] Deploy failed for ${target.name}: ${err.message}. Current active version continues running safely.`);
+    const failSec = Math.round((Date.now() - deployStartTime) / 1000);
+    writeLog(`[Auto-Deploy Error] Deploy failed for ${target.name} after ${failSec}s: ${err.message}. Current active version continues running safely.`);
+    deployHistory.push({
+      repoKey,
+      repoName: target.name,
+      port: target.port,
+      durationSec: failSec,
+      formattedDuration: `${failSec}s`,
+      timestamp: Date.now(),
+      success: false,
+      error: err.message
+    });
   } finally {
     activeDeployments.delete(repoKey);
   }
@@ -189,6 +241,20 @@ function spawnWorker(port) {
       clearTimeout(timer);
       if (!ready) {
         reject(new Error(`Worker on port ${port} exited with code ${code} before ready`));
+      } else {
+        writeLog(`[Worker ${port}] Worker exited with code ${code}. Auto-respawning worker...`);
+        if (activeWorker === worker) {
+          activeWorker = null;
+          setTimeout(() => {
+            spawnWorker(port).then((w) => {
+              activeWorker = w;
+              activePort = port;
+              writeLog(`[Worker ${port}] Auto-recovered successfully!`);
+            }).catch((e) => {
+              writeLog(`[Worker ${port}] Auto-recovery failed: ${e.message}`);
+            });
+          }, 1000);
+        }
       }
     });
   });
@@ -237,6 +303,13 @@ async function performHotReload() {
 
 // Gateway Server
 const server = http.createServer((req, res) => {
+  const host = (req.headers.host || '').toLowerCase();
+  if (host.includes('www.inventory.terrahome-studio.com')) {
+    res.writeHead(301, {
+      Location: `https://inventory.terrahome-studio.com${req.url}`
+    });
+    return res.end();
+  }
   // GitHub Webhook Endpoint
   if (req.url === '/api/webhook/github' && req.method === 'POST') {
     let body = '';
@@ -292,7 +365,17 @@ const server = http.createServer((req, res) => {
       activePort,
       isReloading,
       isDeploying: activeDeployments.size > 0,
-      activeDeployments: Array.from(activeDeployments),
+      activeDeployments: Array.from(activeDeployments.entries()).map(([key, info]) => {
+        const elapsed = Math.round((Date.now() - info.startTime) / 1000);
+        const elapsedFormatted = elapsed >= 60 ? `${Math.floor(elapsed / 60)}m ${elapsed % 60}s` : `${elapsed}s`;
+        return {
+          key,
+          ...info,
+          elapsedSec: elapsed,
+          elapsedFormatted
+        };
+      }),
+      deployHistory: deployHistory.slice(-20),
       gatewayPort: GATEWAY_PORT,
       autoSyncWatcher: {
         active: true,

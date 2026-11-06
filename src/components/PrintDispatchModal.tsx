@@ -119,16 +119,17 @@ export default function PrintDispatchModal({ orderCode, onClose, autoPrint = fal
             box-shadow: none !important;
           }
           #print-section {
-            display: block !important;
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: space-between !important;
             position: static !important;
             width: 100% !important; 
-            max-width: 100% !important;
-            min-height: 0 !important;
-            height: auto !important;
+            max-width: 210mm !important;
+            box-sizing: border-box !important;
+            min-height: 297mm !important;
             padding: 8mm 10mm !important; 
             box-shadow: none !important;
             margin: 0 auto !important;
-            
           }
           .break-inside-avoid {
             break-inside: avoid !important;
@@ -181,7 +182,7 @@ export default function PrintDispatchModal({ orderCode, onClose, autoPrint = fal
         {/* 📄 พื้นที่กระดาษ A4 (เรียกใช้ Component ร่วม) */}
         <PrintDispatchDocument 
           data={data} 
-          className="w-full px-8 py-8 shadow-[0_0_40px_rgba(0,0,0,0.08)] min-h-[1050px] print:min-h-0 print:h-auto print:p-0 print:shadow-none rounded-2xl print:rounded-none"
+          className="w-full px-8 py-8 shadow-[0_0_40px_rgba(0,0,0,0.08)] min-h-[1050px] print:min-h-[297mm] print:p-0 print:shadow-none rounded-2xl print:rounded-none"
         />
       </div>
     </div>,

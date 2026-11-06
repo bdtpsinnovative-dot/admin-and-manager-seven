@@ -44,6 +44,26 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
   // 🎟️ แยกประเภทส่วนลดจาก discount_snapshot และฐานข้อมูล
   const snapshot = data?.discount_snapshot;
 
+  // ข้อมูลพนักงานขาย / เซลล์ (Salesperson)
+  // ✨ ดึงจาก Profile ของบัญชีที่ "ออกบิล" (orders.user_id -> profiles) เป็นหลัก
+  // ลำดับความสำคัญ:
+  // 1. ตรวจสอบชื่อเฉพาะที่ระบุแก้ไขในเอกสาร (snapshot.salesperson_name) ที่ไม่ใช่ชื่อจากโค้ดส่วนลด
+  // 2. ดึงจาก Profile ของบัญชีคนที่ออกบิล (data?.profiles?.full_name และ data?.profiles?.phone)
+  // 3. ไม่ดึงชื่อจากโค้ดส่วนลด (coupon.lead_sales) มาแสดงเป็นผู้ลงนาม/คนขายเด็ดขาด
+  const issuerProfileName = data?.profiles?.full_name?.trim() || null;
+  const issuerProfilePhone = data?.profiles?.phone?.trim() || null;
+
+  const rawSnapshotName = snapshot?.salesperson_name?.trim() || null;
+  const isCouponLead = Boolean(
+    rawSnapshotName &&
+    snapshot?.coupon?.lead_sales &&
+    rawSnapshotName.toLowerCase() === snapshot.coupon.lead_sales.trim().toLowerCase()
+  );
+  const customSalesName = isCouponLead ? null : rawSnapshotName;
+
+  const salespersonName = customSalesName || issuerProfileName || null;
+  const salespersonPhone = snapshot?.salesperson_phone?.trim() || issuerProfilePhone || null;
+
   // 1. ส่วนลดคูปอง (Coupon Discount)
   const couponObj = snapshot?.coupon;
   const couponCode = couponObj?.code || null;
@@ -150,18 +170,24 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
   return (
     <div 
       id="print-section" 
-      className={`bg-white text-neutral-900 flex flex-col print:block ${className}`}
+      className={`bg-white text-neutral-900 flex flex-col justify-between ${className}`}
     >
       {/* 🛑 CSS ดักการตัดหน้าสำหรับใบเสนอราคา/ใบเสร็จ A4 (WebKit / iOS Safari / iPad / Chrome) */}
       <style dangerouslySetInnerHTML={{__html: `
         @media print {
           #print-section {
-            display: block !important;
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: space-between !important;
             position: static !important;
+            box-sizing: border-box !important;
             width: 100% !important;
-            height: auto !important;
-            min-height: 0 !important;
+            max-width: 210mm !important;
+            min-height: 297mm !important;
+            padding: 8mm 10mm !important;
+            margin: 0 auto !important;
             overflow: visible !important;
+            background: white !important;
           }
           #print-section table {
             border-collapse: separate !important;
@@ -283,9 +309,18 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
                 <td className="font-semibold text-neutral-900 pb-1">{new Date(data.created_at).toLocaleDateString('en-GB')}</td>
               </tr>
               <tr>
-                <td className="pr-3 text-right font-medium text-neutral-400">Valid Until</td>
-                <td className="font-semibold text-neutral-900">30 Days</td>
+                <td className="pr-3 pb-1 text-right font-medium text-neutral-400">Valid Until</td>
+                <td className="font-semibold text-neutral-900 pb-1">30 Days</td>
               </tr>
+              {salespersonName && (
+                <tr>
+                  <td className="pr-3 text-right font-medium text-neutral-400">Salesperson</td>
+                  <td className="font-semibold text-neutral-900">
+                    {salespersonName}
+                    {salespersonPhone && <span className="font-normal text-neutral-500 ml-1">({salespersonPhone})</span>}
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -310,7 +345,7 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
       )}
 
       {/* ================= ITEMS TABLE ================= */}
-      <div className="mb-2 flex-grow">
+      <div className="mb-2 flex-1 flex flex-col">
         <table className="w-full text-left" style={{ borderCollapse: 'separate', borderSpacing: 0 }}>
           <thead>
             <tr className="border-b border-neutral-200 text-[8px] uppercase tracking-[0.1em] text-neutral-400">
@@ -436,7 +471,7 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
 
       {/* ================= FOOTER SECTION ================= */}
       <div 
-        className="mt-8 break-inside-avoid print:break-inside-avoid"
+        className="mt-auto pt-6 break-inside-avoid print:break-inside-avoid"
         style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}
       >
         {isSlabDoc ? (
@@ -456,12 +491,18 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
                   <div>
                     <div className="h-6 border-b border-neutral-300 w-full mb-1"></div>
                     <p className="font-medium text-neutral-900 text-[8px] uppercase tracking-wider">Authorized Signature</p>
-                    <p className="text-neutral-400 text-[7px] mt-0.5">ทีพีเอส การ์เด้น เฟอร์นิเจอร์ จำกัด</p>
+                    <p className="text-neutral-700 font-bold text-[7.5px] mt-0.5">
+                      {salespersonName || 'ผู้มีอำนาจลงนาม / พนักงานขาย'}
+                    </p>
+                    {salespersonPhone && (
+                      <p className="text-neutral-500 text-[7px]">โทร: {salespersonPhone}</p>
+                    )}
+                    <p className="text-neutral-400 text-[6.5px]">ทีพีเอส การ์เด้น เฟอร์นิเจอร์ จำกัด</p>
                   </div>
                   <div>
                     <div className="h-6 border-b border-neutral-300 w-full mb-1"></div>
                     <p className="font-medium text-neutral-900 text-[8px] uppercase tracking-wider">Accepted By (ลูกค้า)</p>
-                    <p className="text-neutral-600 font-bold text-[7px] mt-0.5">{data?.profiles?.full_name || data?.shipping_name || 'Customer / Client'}</p>
+                    <p className="text-neutral-700 font-bold text-[7.5px] mt-0.5">{data?.company_name_th || data?.shipping_name || 'Customer / Client'}</p>
                   </div>
                 </div>
               </div>
@@ -690,12 +731,18 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
               <div>
                 <div className="h-5 border-b border-neutral-300 w-full mb-1"></div>
                 <p className="font-medium text-neutral-900 text-[8px] uppercase tracking-wider">Authorized Signature</p>
-                <p className="text-neutral-400 text-[7px] mt-0.5">Terra Home Studio</p>
+                <p className="text-neutral-700 font-bold text-[7.5px] mt-0.5">
+                  {salespersonName || 'Terra Home Studio'}
+                </p>
+                {salespersonPhone && (
+                  <p className="text-neutral-500 text-[7px]">โทร: {salespersonPhone}</p>
+                )}
+                <p className="text-neutral-400 text-[6.5px]">Terra Home Studio</p>
               </div>
               <div>
                 <div className="h-5 border-b border-neutral-300 w-full mb-1"></div>
                 <p className="font-medium text-neutral-900 text-[8px] uppercase tracking-wider">Accepted By</p>
-                <p className="text-neutral-600 font-bold text-[7px] mt-0.5">{data?.profiles?.full_name || 'Customer / Client'}</p>
+                <p className="text-neutral-700 font-bold text-[7.5px] mt-0.5">{data?.company_name_th || data?.shipping_name || 'Customer / Client'}</p>
               </div>
             </div>
           </div>

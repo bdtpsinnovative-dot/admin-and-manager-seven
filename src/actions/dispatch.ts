@@ -266,7 +266,7 @@ export async function getPrintDispatchData(orderCode: string) {
       total_amount,
       discount_snapshot,
       branches!orders_branch_fk ( branch_name ),
-      profiles ( full_name ),
+      profiles ( full_name, phone ),
       order_items (
         id, 
         product_id,

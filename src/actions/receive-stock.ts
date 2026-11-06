@@ -246,3 +246,29 @@ export async function cancelTransferAction(transferId: number) {
     return { error: error.message || 'เกิดข้อผิดพลาดในการยกเลิกใบโอน' }
   } 
 }
+
+// 6. ฟังก์ชันยกเลิกและคืนยอดสต็อกสำหรับใบโอนที่สำเร็จแล้ว (Rollback Completed Transfer)
+export async function rollbackCompletedTransferAction(transferId: number) {
+  const supabase = await createClient()
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Unauthorized')
+
+    // เรียกใช้ Database RPC Function (Atomic Transaction, Security Definer, Row-Level Locking)
+    const { data, error } = await supabaseAdmin.rpc('rpc_rollback_completed_transfer', {
+      p_transfer_id: transferId,
+      p_user_id: user.id,
+      p_reason: 'โอนผิดสาขา'
+    })
+
+    if (error) {
+      throw new Error(error.message || 'เกิดข้อผิดพลาดในการคืนยอดสต็อก')
+    }
+
+    revalidatePath('/manager/receive-check1')
+    revalidatePath('/manager/receive-check1/' + transferId)
+    return { success: true, data }
+  } catch (error: any) {
+    return { error: error.message || 'เกิดข้อผิดพลาดในการยกเลิกและคืนยอดสต็อก' }
+  }
+}

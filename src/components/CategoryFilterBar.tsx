@@ -900,13 +900,13 @@ function LocationFilterDropdown({
         onClick={() => setOpen(v => !v)}
         className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all shadow-xs cursor-pointer ${
           activeValue
-            ? "border-purple-500 bg-purple-50 text-purple-700 ring-2 ring-purple-100 font-bold"
+            ? "border-blue-500 bg-blue-50 text-blue-700 ring-2 ring-blue-100 font-bold"
             : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50"
         }`}
       >
-        <MapPin className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+        <MapPin className={`w-3.5 h-3.5 shrink-0 ${activeValue ? "text-blue-600" : "text-slate-400"}`} />
         <span className="text-slate-400 font-normal">ที่ตั้งสต็อก:</span>
-        <span className={activeValue ? "text-purple-700 font-bold" : "text-slate-700"}>
+        <span className={activeValue ? "text-blue-700 font-bold" : "text-slate-700"}>
           {displayLabel}
         </span>
 
@@ -914,7 +914,7 @@ function LocationFilterDropdown({
           <span
             role="button"
             onClick={handleClear}
-            className="p-0.5 -mr-1 rounded-full hover:bg-purple-200 text-purple-700 transition"
+            className="p-0.5 -mr-1 rounded-full hover:bg-blue-200/80 text-blue-600 transition"
             title="ล้างตัวกรองที่ตั้งสต็อก"
           >
             <X className="w-3 h-3" />
@@ -939,7 +939,7 @@ function LocationFilterDropdown({
               type="button"
               onClick={() => handleSelect("")}
               className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs transition cursor-pointer ${
-                !activeValue ? "text-blue-600 font-bold bg-blue-50" : "text-slate-700 hover:bg-slate-50"
+                !activeValue ? "text-blue-600 font-bold bg-blue-50/60" : "text-slate-700 hover:bg-slate-50"
               }`}
             >
               <span>ทั้งหมด (ทุกที่ตั้ง)</span>
@@ -950,61 +950,55 @@ function LocationFilterDropdown({
               type="button"
               onClick={() => handleSelect("showroom")}
               className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs transition cursor-pointer ${
-                activeValue === "showroom" ? "text-purple-700 font-bold bg-purple-50" : "text-slate-700 hover:bg-purple-50/50"
+                activeValue === "showroom" ? "text-blue-600 font-bold bg-blue-50/60" : "text-slate-700 hover:bg-slate-50"
               }`}
             >
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-purple-500 animate-pulse" />
-                <span className="font-semibold text-purple-900">โชว์รูม (Showroom)</span>
-              </div>
-              {activeValue === "showroom" && <Check className="w-3.5 h-3.5 text-purple-700" />}
+              <span>โชว์รูม (Showroom)</span>
+              {activeValue === "showroom" && <Check className="w-3.5 h-3.5 text-blue-600" />}
             </button>
 
             <button
               type="button"
               onClick={() => handleSelect("warehouse")}
               className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs transition cursor-pointer ${
-                activeValue === "warehouse" ? "text-blue-700 font-bold bg-blue-50" : "text-slate-700 hover:bg-blue-50/50"
+                activeValue === "warehouse" ? "text-blue-600 font-bold bg-blue-50/60" : "text-slate-700 hover:bg-slate-50"
               }`}
             >
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-blue-500" />
-                <span className="font-semibold text-blue-900">โกดัง (Warehouse)</span>
-              </div>
-              {activeValue === "warehouse" && <Check className="w-3.5 h-3.5 text-blue-700" />}
+              <span>โกดัง (Warehouse)</span>
+              {activeValue === "warehouse" && <Check className="w-3.5 h-3.5 text-blue-600" />}
             </button>
 
             <button
               type="button"
               onClick={() => handleSelect("both")}
               className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs transition cursor-pointer ${
-                activeValue === "both" ? "text-indigo-700 font-bold bg-indigo-50" : "text-slate-700 hover:bg-slate-50"
+                activeValue === "both" ? "text-blue-600 font-bold bg-blue-50/60" : "text-slate-700 hover:bg-slate-50"
               }`}
             >
-              <span className="text-slate-700">มีทั้งโกดังและโชว์รูม</span>
-              {activeValue === "both" && <Check className="w-3.5 h-3.5 text-indigo-700" />}
+              <span>มีทั้งโกดังและโชว์รูม</span>
+              {activeValue === "both" && <Check className="w-3.5 h-3.5 text-blue-600" />}
             </button>
 
             <button
               type="button"
               onClick={() => handleSelect("in_stock")}
               className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs transition cursor-pointer ${
-                activeValue === "in_stock" ? "text-emerald-700 font-bold bg-emerald-50" : "text-slate-700 hover:bg-slate-50"
+                activeValue === "in_stock" ? "text-blue-600 font-bold bg-blue-50/60" : "text-slate-700 hover:bg-slate-50"
               }`}
             >
-              <span className="text-slate-700">มีสต็อกพร้อมขาย (In Stock)</span>
-              {activeValue === "in_stock" && <Check className="w-3.5 h-3.5 text-emerald-700" />}
+              <span>มีสต็อกพร้อมขาย (In Stock)</span>
+              {activeValue === "in_stock" && <Check className="w-3.5 h-3.5 text-blue-600" />}
             </button>
 
             <button
               type="button"
               onClick={() => handleSelect("out_of_stock")}
               className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs transition cursor-pointer ${
-                activeValue === "out_of_stock" ? "text-rose-700 font-bold bg-rose-50" : "text-slate-700 hover:bg-slate-50"
+                activeValue === "out_of_stock" ? "text-blue-600 font-bold bg-blue-50/60" : "text-slate-700 hover:bg-slate-50"
               }`}
             >
-              <span className="text-slate-700">สินค้าหมด (Out of Stock)</span>
-              {activeValue === "out_of_stock" && <Check className="w-3.5 h-3.5 text-rose-700" />}
+              <span>สินค้าหมด (Out of Stock)</span>
+              {activeValue === "out_of_stock" && <Check className="w-3.5 h-3.5 text-blue-600" />}
             </button>
 
             {showrooms.length > 0 && (
@@ -1018,11 +1012,11 @@ function LocationFilterDropdown({
                     type="button"
                     onClick={() => handleSelect(`branch_${b.id}`)}
                     className={`w-full flex items-center justify-between px-3 py-1.5 rounded-md text-xs transition cursor-pointer ${
-                      activeValue === `branch_${b.id}` ? "text-purple-700 font-bold bg-purple-50" : "text-slate-600 hover:bg-slate-50"
+                      activeValue === `branch_${b.id}` ? "text-blue-600 font-bold bg-blue-50/60" : "text-slate-700 hover:bg-slate-50"
                     }`}
                   >
                     <span className="truncate pr-2">{b.name}</span>
-                    {activeValue === `branch_${b.id}` && <Check className="w-3 h-3 text-purple-700 shrink-0" />}
+                    {activeValue === `branch_${b.id}` && <Check className="w-3.5 h-3.5 text-blue-600 shrink-0" />}
                   </button>
                 ))}
               </>
@@ -1039,11 +1033,11 @@ function LocationFilterDropdown({
                     type="button"
                     onClick={() => handleSelect(`branch_${b.id}`)}
                     className={`w-full flex items-center justify-between px-3 py-1.5 rounded-md text-xs transition cursor-pointer ${
-                      activeValue === `branch_${b.id}` ? "text-blue-700 font-bold bg-blue-50" : "text-slate-600 hover:bg-slate-50"
+                      activeValue === `branch_${b.id}` ? "text-blue-600 font-bold bg-blue-50/60" : "text-slate-700 hover:bg-slate-50"
                     }`}
                   >
                     <span className="truncate pr-2">{b.name}</span>
-                    {activeValue === `branch_${b.id}` && <Check className="w-3 h-3 text-blue-700 shrink-0" />}
+                    {activeValue === `branch_${b.id}` && <Check className="w-3.5 h-3.5 text-blue-600 shrink-0" />}
                   </button>
                 ))}
               </>

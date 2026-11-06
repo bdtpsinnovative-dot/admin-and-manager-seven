@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { getTransfersList } from '@/actions/receive-stock'
+import { getTransfersList, rollbackCompletedTransferAction } from '@/actions/receive-stock'
+import RollbackTransferModal from '@/components/RollbackTransferModal'
 
 export default function ReceiveCheckPage() {
   const router = useRouter()
@@ -14,6 +15,56 @@ export default function ReceiveCheckPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [showSearch, setShowSearch] = useState(false)
   const [statusFilter, setStatusFilter] = useState('ALL')
+  const [processingId, setProcessingId] = useState<number | null>(null)
+  const [modalState, setModalState] = useState<{
+    isOpen: boolean;
+    transferId: number | null;
+    transferCode: string;
+    fromBranchName: string;
+    toBranchName: string;
+  }>({
+    isOpen: false,
+    transferId: null,
+    transferCode: '',
+    fromBranchName: '',
+    toBranchName: '',
+  })
+
+  const openRollbackModal = (t: any) => {
+    setModalState({
+      isOpen: true,
+      transferId: t.id,
+      transferCode: t.transfer_code,
+      fromBranchName: t.from_branch?.branch_name || 'สาขาต้นทาง',
+      toBranchName: t.to_branch?.branch_name || 'สาขาปลายทาง',
+    })
+  }
+
+  const handleConfirmRollback = async () => {
+    if (!modalState.transferId) return
+    setProcessingId(modalState.transferId)
+    try {
+      const res = await rollbackCompletedTransferAction(modalState.transferId)
+      if (res.error) {
+        alert(res.error)
+      } else {
+        setModalState(prev => ({ ...prev, isOpen: false }))
+        // รีเฟรชรายการ
+        const fresh = await getTransfersList()
+        const inboundWithFlag = fresh.inbound.map((item: any) => ({ ...item, transfer_type: 'inbound' }))
+        const outboundWithFlag = fresh.outbound.map((item: any) => ({ ...item, transfer_type: 'outbound' }))
+        const combined = [...inboundWithFlag, ...outboundWithFlag].sort(
+          (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        )
+        setAllTransfers(combined)
+      }
+    } catch (err: any) {
+      alert(err.message || 'เกิดข้อผิดพลาดในการยกเลิกใบโอน')
+    } finally {
+      setProcessingId(null)
+    }
+  }
+
 
   useEffect(() => {
     getTransfersList()
@@ -293,17 +344,40 @@ export default function ReceiveCheckPage() {
 
                         {/* 7. ปุ่ม Action รายละเอียดเพิ่มเติมด้านขวาสุด */}
                         <td className="py-3.5 px-4 text-center">
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              router.push(`/manager/receive-check1/${t.id}?type=${t.transfer_type}`);
-                            }}
-                            className="p-1.5 text-slate-400 hover:text-blue-600 rounded-lg border border-slate-200/50 hover:bg-blue-50/50 transition-all shadow-sm"
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 12a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0ZM12.75 12a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0ZM18.75 12a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Z" />
-                            </svg>
-                          </button>
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                router.push(`/manager/receive-check1/${t.id}?type=${t.transfer_type}`);
+                              }}
+                              title="ดูรายละเอียดใบโอน"
+                              className="p-1.5 text-slate-500 hover:text-blue-600 rounded-lg border border-slate-200 hover:bg-blue-50 transition-all shadow-sm cursor-pointer"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                              </svg>
+                            </button>
+                            {t.status === 'COMPLETED' && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openRollbackModal(t);
+                                }}
+                                disabled={processingId === t.id}
+                                title="ยกเลิกใบโอนและดึงยอดสต็อกกลับ (Rollback)"
+                                className="p-1.5 text-rose-600 hover:text-white hover:bg-rose-600 rounded-lg border border-rose-300 hover:border-rose-600 bg-rose-50/50 transition-all shadow-sm cursor-pointer disabled:opacity-50"
+                              >
+                                {processingId === t.id ? (
+                                  <div className="w-4 h-4 border-2 border-rose-600 border-t-transparent rounded-full animate-spin"></div>
+                                ) : (
+                                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 15 3 9m0 0 6-6M3 9h12a6 6 0 0 1 0 12h-3" />
+                                  </svg>
+                                )}
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     )
@@ -316,6 +390,16 @@ export default function ReceiveCheckPage() {
         </div>
 
       </div>
+      {/* โมดอลยืนยันการยกเลิกและดึงยอดสต็อกกลับแบบ Modern กลางจอ */}
+      <RollbackTransferModal
+        isOpen={modalState.isOpen}
+        onClose={() => setModalState(prev => ({ ...prev, isOpen: false }))}
+        onConfirm={handleConfirmRollback}
+        transferCode={modalState.transferCode}
+        fromBranchName={modalState.fromBranchName}
+        toBranchName={modalState.toBranchName}
+        loading={processingId !== null}
+      />
     </div>
   )
 }

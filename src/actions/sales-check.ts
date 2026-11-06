@@ -24,9 +24,15 @@ interface SalesOrderRow {
   total_amount: number
   status: string
   shipping_name: string | null
+  shipping_phone?: string | null
+  shipping_address?: string | null
+  company_name_th?: string | null
+  company_name_en?: string | null
+  company_address?: string | null
+  tax_id?: string | null
   branch_id?: number
   branches: { id: number; branch_name: string } | null
-  profiles: { full_name: string | null } | null
+  profiles: { full_name: string | null; phone?: string | null } | null
   discount_snapshot?: any
   order_items: SalesOrderItemRow[] | null
 }
@@ -77,9 +83,15 @@ export async function getSalesHistory(showHidden = false, targetBranchId?: numbe
       discount_snapshot,
       status,
       shipping_name,
+      shipping_phone,
+      shipping_address,
+      company_name_th,
+      company_name_en,
+      company_address,
+      tax_id,
       branch_id,
       branches:branch_id ( id, branch_name ),
-      profiles:user_id ( full_name ),
+      profiles:user_id ( full_name, phone ),
       order_items (
         id,
         qty,
@@ -189,6 +201,7 @@ export async function getSalesHistory(showHidden = false, targetBranchId?: numbe
       completedAt,
       effectiveDate,
       saleName: order.profiles?.full_name || 'ไม่ระบุชื่อ',
+      salePhone: order.profiles?.phone || null,
       branchId: order.branch_id,
       branchName,
       subtotal,
@@ -200,6 +213,12 @@ export async function getSalesHistory(showHidden = false, targetBranchId?: numbe
       status: order.status,
       discountSnapshot: order.discount_snapshot,
       shippingName: order.shipping_name,
+      shippingPhone: order.shipping_phone || null,
+      shippingAddress: order.shipping_address || null,
+      companyNameTh: order.company_name_th || null,
+      companyNameEn: order.company_name_en || null,
+      companyAddress: order.company_address || null,
+      taxId: order.tax_id || null,
       myBranchRevenue,      
       otherBranchRevenue,   
       remoteDetails,
@@ -311,5 +330,149 @@ export async function updateOrderDate(orderId: number, newDateIso: string) {
   revalidatePath('/dashboard')
   revalidatePath('/manager/dashboard')
   revalidatePath('/sale/dashboard')
+  return { success: true }
+}
+
+export interface UpdateOrderQuotationPayload {
+  orderCode?: string | null
+  createdAt?: string
+  shippingName?: string | null
+  shippingPhone?: string | null
+  shippingAddress?: string | null
+  companyNameTh?: string | null
+  companyNameEn?: string | null
+  companyAddress?: string | null
+  taxId?: string | null
+  branchType?: 'HEAD_OFFICE' | 'BRANCH' | null
+  branchCode?: string | null
+  customerType?: 'INDIVIDUAL' | 'CORPORATE' | null
+  quotationNote?: string | null
+  salespersonName?: string | null
+  salespersonPhone?: string | null
+}
+
+export async function updateOrderQuotation(orderId: number, payload: UpdateOrderQuotationPayload) {
+  const cookieStore = await cookies()
+  const supabase = createServerClient(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!, {
+    cookies: { getAll() { return cookieStore.getAll() } }
+  })
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { success: false, error: 'Unauthorized' }
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('user_id', user.id)
+    .single()
+
+  if (!profile || (profile.role !== 'admin' && profile.role !== 'manager')) {
+    return { success: false, error: 'คุณไม่มีสิทธิ์แก้ไขเอกสาร (ต้องเป็น Admin หรือ Manager เท่านั้น)' }
+  }
+
+  // ดึง discount_snapshot เดิมมาเพื่อคงค่าอื่นๆ ไว้ (เช่น completed_at, payment_method ฯลฯ)
+  const { data: currentOrder, error: fetchErr } = await supabase
+    .from('orders')
+    .select('id, discount_snapshot')
+    .eq('id', orderId)
+    .single()
+
+  if (fetchErr || !currentOrder) {
+    return { success: false, error: 'ไม่พบออเดอร์ที่ต้องการแก้ไข' }
+  }
+
+  let snapshot: Record<string, any> = {}
+  if (typeof currentOrder.discount_snapshot === 'object' && currentOrder.discount_snapshot !== null) {
+    snapshot = { ...currentOrder.discount_snapshot }
+  } else if (typeof currentOrder.discount_snapshot === 'string') {
+    try {
+      snapshot = JSON.parse(currentOrder.discount_snapshot)
+    } catch {
+      snapshot = {}
+    }
+  }
+
+  // อัปเดตฟิลด์ใน discount_snapshot
+  if (payload.branchType !== undefined) {
+    snapshot.branch_type = payload.branchType
+  }
+  if (payload.branchCode !== undefined) {
+    snapshot.branch_code = payload.branchCode
+  }
+  if (payload.customerType !== undefined) {
+    snapshot.customer_type = payload.customerType
+  }
+  if (payload.quotationNote !== undefined) {
+    snapshot.quotation_note = payload.quotationNote
+  }
+  if (payload.salespersonName !== undefined) {
+    snapshot.salesperson_name = payload.salespersonName
+  }
+  if (payload.salespersonPhone !== undefined) {
+    snapshot.salesperson_phone = payload.salespersonPhone
+  }
+
+  const updateFields: Record<string, any> = {
+    discount_snapshot: snapshot,
+    user_id: user.id
+  }
+
+  if (payload.createdAt) {
+    updateFields.created_at = payload.createdAt
+  }
+  if (payload.orderCode !== undefined && payload.orderCode?.trim()) {
+    const cleanCode = payload.orderCode.trim()
+    const { data: existing } = await supabase
+      .from('orders')
+      .select('id')
+      .eq('order_code', cleanCode)
+      .neq('id', orderId)
+      .maybeSingle()
+
+    if (existing) {
+      return { success: false, error: `เลขที่บิล "${cleanCode}" มีอยู่ในระบบแล้ว กรุณาใช้เลขอื่นที่ไม่ซ้ำ` }
+    }
+    updateFields.order_code = cleanCode
+  }
+  if (payload.shippingName !== undefined) {
+    updateFields.shipping_name = payload.shippingName || null
+  }
+  if (payload.shippingPhone !== undefined) {
+    updateFields.shipping_phone = payload.shippingPhone || null
+  }
+  if (payload.shippingAddress !== undefined) {
+    updateFields.shipping_address = payload.shippingAddress || null
+  }
+  if (payload.companyNameTh !== undefined) {
+    updateFields.company_name_th = payload.companyNameTh || null
+  }
+  if (payload.companyNameEn !== undefined) {
+    updateFields.company_name_en = payload.companyNameEn || null
+  }
+  if (payload.companyAddress !== undefined) {
+    updateFields.company_address = payload.companyAddress || null
+  }
+  if (payload.taxId !== undefined) {
+    updateFields.tax_id = payload.taxId || null
+  }
+
+  // บันทึกลง orders โดยไม่แตะต้อง order_items หรือจำนวนสินค้าเด็ดขาด
+  const { error: updateErr } = await supabase
+    .from('orders')
+    .update(updateFields)
+    .eq('id', orderId)
+
+  if (updateErr) {
+    return { success: false, error: updateErr.message }
+  }
+
+  revalidatePath('/sales-history')
+  revalidatePath('/sale/sales-history')
+  revalidatePath('/sale/vanguard-dispatch')
+  revalidatePath('/manager/vanguard-dispatch')
+  revalidatePath('/dashboard')
+  revalidatePath('/manager/dashboard')
+  revalidatePath('/sale/dashboard')
+
   return { success: true }
 }
