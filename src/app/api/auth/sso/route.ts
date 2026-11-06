@@ -5,18 +5,28 @@ import { cookies } from 'next/headers'
 
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 400
 
+function getBaseUrl(request: NextRequest) {
+  const host = request.headers.get('x-forwarded-host') || request.headers.get('host') || 'inventory.terrahome-studio.com';
+  if (host.includes('localhost') || host.includes('127.0.0.1')) {
+    return 'https://inventory.terrahome-studio.com';
+  }
+  const proto = request.headers.get('x-forwarded-proto') || 'https';
+  return `${proto}://${host}`;
+}
+
 export async function GET(request: NextRequest) {
+  const baseUrl = getBaseUrl(request);
   try {
     const token = request.nextUrl.searchParams.get('token')
     const refreshToken = request.nextUrl.searchParams.get('refresh_token') || ''
     const redirectTo = request.nextUrl.searchParams.get('redirect_to') || '/'
 
     if (!token) {
-      return NextResponse.redirect(new URL('/login', request.url))
+      return NextResponse.redirect(new URL('/login', baseUrl))
     }
 
     const cookieStore = await cookies()
-    const targetUrl = new URL(redirectTo, request.url)
+    const targetUrl = new URL(redirectTo, baseUrl)
     const response = NextResponse.redirect(targetUrl)
 
     const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -30,7 +40,7 @@ export async function GET(request: NextRequest) {
 
     if (authUserErr || !authUserData?.user) {
       console.error('SSO Invalid Token:', authUserErr?.message)
-      return NextResponse.redirect(new URL('/login?error=invalid_sso_token', request.url))
+      return NextResponse.redirect(new URL('/login?error=invalid_sso_token', baseUrl))
     }
 
     const verifiedEmail = authUserData.user.email
@@ -110,6 +120,6 @@ export async function GET(request: NextRequest) {
     return response
   } catch (err: any) {
     console.error('SSO error:', err)
-    return NextResponse.redirect(new URL('/login?error=sso_server_error', request.url))
+    return NextResponse.redirect(new URL('/login?error=sso_server_error', baseUrl))
   }
 }
