@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation"
 import Link from "next/link"
 import {
   AlertTriangle,
@@ -23,9 +24,11 @@ import {
   type DashboardSalesTrend,
   type DashboardTrendPoint,
 } from "../../../actions/dashboard"
+import { getBrandInfo, type DashboardBrandKey } from "../../../lib/dashboardBrand"
 import DashboardBranchFilter from "../../../components/DashboardBranchFilter"
 import DashboardMonthFilter from "../../../components/DashboardMonthFilter"
 import DashboardPeriodFilter from "../../../components/DashboardPeriodFilter"
+import DashboardBrandFilter from "../../../components/DashboardBrandFilter"
 import { parseDashboardPeriod } from "../../../lib/dashboardPeriod"
 import DashboardVatCard from "../../../components/DashboardVatCard"
 import DashboardTopBranches from "../../../components/DashboardTopBranches"
@@ -117,6 +120,7 @@ export default async function DashboardPage({
 }: {
   searchParams?: Promise<{
     branch?: string | string[];
+    brand?: string | string[];
     month?: string | string[];
     catType?: string | string[];
     cat?: string | string[];
@@ -129,7 +133,26 @@ export default async function DashboardPage({
   }>
 }) {
   const params = await searchParams
+
+  // 🌟 ถ้าเปิดเข้ามาครั้งแรกโดยยังไม่ได้ระบุ brand ใน URL ให้เริ่มที่แบรนด์ TERRA (เทอร์รา) ทันที
+  if (params?.brand === undefined) {
+    const nextParams = new URLSearchParams()
+    if (params) {
+      Object.entries(params).forEach(([k, v]) => {
+        if (typeof v === "string" && v) nextParams.set(k, v)
+        else if (Array.isArray(v) && v[0]) nextParams.set(k, v[0])
+      })
+    }
+    nextParams.set("brand", "TERRA")
+    redirect(`/dashboard?${nextParams.toString()}`)
+  }
+
   const selectedBranch = typeof params?.branch === "string" && params.branch.length > 0 ? params.branch : "ALL"
+
+  // วิเคราะห์ตัวกรองแบรนด์ (ZENSLAB, TERRA, EMBER_ASH หรือ ALL) โดยค่าเริ่มต้นคือ TERRA
+  const rawBrand = typeof params?.brand === "string" && params.brand.length > 0 ? params.brand.toUpperCase() : "TERRA"
+  const selectedBrand: DashboardBrandKey = (["ZENSLAB", "TERRA", "EMBER_ASH", "ALL"].includes(rawBrand) ? rawBrand : "TERRA") as DashboardBrandKey
+  const brandInfo = getBrandInfo(selectedBrand)
 
   // วิเคราะห์ตัวกรองช่วงเวลา 3 ระดับ (รายวัน, รายเดือน, รายปี, กำหนดเอง, ทุกช่วงเวลา)
   const periodData = parseDashboardPeriod(params)
@@ -138,7 +161,7 @@ export default async function DashboardPage({
   // หมวดหมู่ที่เลือก (ชื่อหมวดหมู่จริงๆ เช่น VASE & VESSELS, FIGURE หรือ ALL)
   const selectedCategoryKey = typeof params?.cat === "string" && params.cat.length > 0 ? params.cat : "ALL"
 
-  const data = await getDashboardData(selectedBranch, dateFrom, dateTo, selectedCategoryKey, filterState.type)
+  const data = await getDashboardData(selectedBranch, dateFrom, dateTo, selectedCategoryKey, filterState.type, selectedBrand)
   const trendData: DashboardSalesTrend = data.salesTrend || {
     title: "แนวโน้มยอดขายรายเดือน",
     subtitle: "ยอดสุทธิจากใบขายย้อนหลัง 12 เดือน",
@@ -163,9 +186,16 @@ export default async function DashboardPage({
     ? selectedCategoryObj.name
     : selectedCategoryKey
 
-  // จัดการ query params สำหรับปุ่มล้างหมวดหมู่ โดยคงตัวกรองช่วงเวลาไว้
+  const scopeLabel = selectedCategoryKey !== "ALL"
+    ? `หมวด ${selectedCategoryLabel}`
+    : selectedBrand !== "ALL"
+    ? `แบรนด์ ${brandInfo.name}`
+    : null
+
+  // จัดการ query params สำหรับปุ่มล้างหมวดหมู่ โดยคงตัวกรองช่วงเวลาและแบรนด์ไว้
   const clearCatParams = new URLSearchParams()
   if (selectedBranch !== "ALL") clearCatParams.set("branch", selectedBranch)
+  if (selectedBrand !== "ALL") clearCatParams.set("brand", selectedBrand)
   if (filterState.type === "daily" && filterState.date) {
     clearCatParams.set("period", "daily")
     clearCatParams.set("date", filterState.date)
@@ -183,6 +213,27 @@ export default async function DashboardPage({
   if (filterState.preset) clearCatParams.set("preset", filterState.preset)
   const clearCatUrl = clearCatParams.toString() ? `/dashboard?${clearCatParams.toString()}` : "/dashboard"
 
+  // จัดการ query params สำหรับปุ่มล้างแบรนด์ โดยคงตัวกรองช่วงเวลาและสาขาไว้
+  const clearBrandParams = new URLSearchParams()
+  if (selectedBranch !== "ALL") clearBrandParams.set("branch", selectedBranch)
+  if (filterState.type === "daily" && filterState.date) {
+    clearBrandParams.set("period", "daily")
+    clearBrandParams.set("date", filterState.date)
+  } else if (filterState.type === "custom" && filterState.startDate && filterState.endDate) {
+    clearBrandParams.set("period", "custom")
+    clearBrandParams.set("startDate", filterState.startDate)
+    clearBrandParams.set("endDate", filterState.endDate)
+  } else if (filterState.type === "monthly" && filterState.month) {
+    clearBrandParams.set("period", "monthly")
+    clearBrandParams.set("month", filterState.month)
+  } else if (filterState.type === "yearly" && filterState.year) {
+    clearBrandParams.set("period", "yearly")
+    clearBrandParams.set("year", filterState.year)
+  }
+  if (filterState.preset) clearBrandParams.set("preset", filterState.preset)
+  clearBrandParams.set("brand", "ALL")
+  const clearBrandUrl = `/dashboard?${clearBrandParams.toString()}`
+
   return (
     <div className="min-h-screen bg-[#F4F7F9] p-4 font-sans md:px-6 md:py-6">
       <div className="w-full space-y-6">
@@ -193,9 +244,14 @@ export default async function DashboardPage({
               {selectedBranch === "ALL"
                 ? `ภาพรวมใบขายและยอดสุทธิแยกตามทุกสาขา (${displayLabel})`
                 : `ข้อมูลของ ${data.branches[0]?.name || "สาขาที่เลือก"} (${displayLabel})`}
+              {selectedBrand !== "ALL" && (
+                <span className="ml-2 font-bold text-purple-700">
+                  · แบรนด์: {brandInfo.emoji} {brandInfo.name} ({brandInfo.thaiName})
+                </span>
+              )}
               {selectedCategoryKey !== "ALL" && (
                 <span className="ml-2 font-bold text-blue-600">
-                  · กรองทั้งหน้าตามหมวด: {selectedCategoryLabel}
+                  · หมวด: {selectedCategoryLabel}
                 </span>
               )}
             </p>
@@ -204,11 +260,25 @@ export default async function DashboardPage({
             {/* แถบปุ่มลัดและปฏิทินฟิลเตอร์มาตรฐาน 3 ระดับ (รายวัน, รายเดือน, รายปี, ทุกช่วงเวลา) */}
             <DashboardPeriodFilter currentPeriod={filterState} />
 
+            {/* ฟิลเตอร์แบรนด์สินค้า */}
+            <DashboardBrandFilter selectedBrand={selectedBrand} />
+
             {/* ฟิลเตอร์หมวดหมู่ */}
             <DashboardCategoryFilter
               selectedCatKey={selectedCategoryKey}
               categories={data.categories.map((c) => ({ key: c.key, name: c.name, groupType: c.groupType }))}
             />
+
+            {selectedBrand !== "ALL" && (
+              <Link
+                href={clearBrandUrl}
+                className="inline-flex items-center gap-1 rounded-xl border border-purple-200 bg-purple-50 hover:bg-rose-50 hover:border-rose-200 hover:text-rose-700 px-3 py-2 text-xs font-bold text-purple-700 transition-colors shadow-sm"
+                title="คลิกเพื่อล้างตัวกรองแบรนด์ และดูทุกแบรนด์"
+              >
+                <span>✕ ล้างแบรนด์ ({brandInfo.name})</span>
+              </Link>
+            )}
+
             {selectedCategoryKey !== "ALL" && (
               <Link
                 href={clearCatUrl}
@@ -229,6 +299,8 @@ export default async function DashboardPage({
           <DashboardBranchFilter branches={data.availableBranches} selectedBranch={selectedBranch} />
         </div>
 
+        {/* ซ่อนการ์ด 3 แบรนด์ตามที่แจ้งไว้ก่อน */}
+
         {data.error && (
           <div className="flex items-center gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">
             <AlertTriangle className="h-5 w-5 shrink-0" />
@@ -245,7 +317,7 @@ export default async function DashboardPage({
               <div>
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                    {selectedCategoryKey !== "ALL" ? `ยอดรับชำระ (${selectedCategoryLabel})` : "ยอดรับชำระจากลูกค้าทั้งหมด"}
+                    {scopeLabel ? `ยอดรับชำระ (${scopeLabel})` : "ยอดรับชำระจากลูกค้าทั้งหมด"}
                   </span>
                   <div className="p-2.5 rounded-xl bg-blue-50 text-blue-600">
                     <CreditCard className="w-5 h-5" />
@@ -255,8 +327,8 @@ export default async function DashboardPage({
                   ฿{money(data.summary.netSales)}
                 </div>
                 <p className="mt-1 text-xs text-slate-400">
-                  {selectedCategoryKey !== "ALL"
-                    ? `ยอดรวมรับจริงจากสินค้าหมวดหมู่ ${selectedCategoryLabel}`
+                  {scopeLabel
+                    ? `ยอดรวมรับจริงจากสินค้า${scopeLabel}`
                     : "ยอดรวมเงินสดและเงินโอนที่รับจริงจากลูกค้า"}
                 </p>
               </div>
@@ -277,7 +349,7 @@ export default async function DashboardPage({
               <div>
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-xs font-bold uppercase tracking-wider text-emerald-800">
-                    {selectedCategoryKey !== "ALL" ? `เงินเข้าร้าน (${selectedCategoryLabel})` : "เงินแท้จริงเข้าร้าน (หัก VAT แล้ว)"}
+                    {scopeLabel ? `เงินเข้าร้าน (${scopeLabel})` : "เงินแท้จริงเข้าร้าน (หัก VAT แล้ว)"}
                   </span>
                   <div className="p-2.5 rounded-xl bg-emerald-100 text-emerald-600">
                     <CheckCircle2 className="w-5 h-5" />
@@ -287,8 +359,8 @@ export default async function DashboardPage({
                   ฿{money(data.summary.netSalesBeforeVat)}
                 </div>
                 <p className="mt-1 text-xs text-emerald-600/90">
-                  {selectedCategoryKey !== "ALL"
-                    ? `รายรับสุทธิของหมวดหมู่ ${selectedCategoryLabel} หลังหักภาษี`
+                  {scopeLabel
+                    ? `รายรับสุทธิของ${scopeLabel} หลังหักภาษี`
                     : "รายรับสุทธิที่ร้านค้าได้รับจริงเป็นต้นทุนและกำไร"}
                 </p>
               </div>
@@ -385,8 +457,8 @@ export default async function DashboardPage({
               <div>
                 <h2 className="text-lg font-black text-slate-800">{trendData.title}</h2>
                 <p className="mt-1 text-xs text-slate-400">
-                  {selectedCategoryKey !== "ALL"
-                    ? `${trendData.subtitle} (เฉพาะหมวด ${selectedCategoryLabel})`
+                  {scopeLabel
+                    ? `${trendData.subtitle} (เฉพาะ${scopeLabel})`
                     : trendData.subtitle}
                 </p>
               </div>
@@ -456,19 +528,19 @@ export default async function DashboardPage({
         {/* --- สรุปยอดรายสินค้า (เรียงลำดับได้ ลำดับอยู่หน้ารูปภาพ ยอดก่อน VAT ชัดเจน) --- */}
         <DashboardProductTable
           products={data.products}
-          title={selectedCategoryKey !== "ALL" ? `สรุปยอดรายสินค้า (${selectedCategoryLabel})` : "สรุปยอดรายสินค้า"}
-          subtitle={selectedCategoryKey !== "ALL" ? `รายการสินค้าหมวดหมู่ ${selectedCategoryLabel} ที่ขายได้` : "จำนวนที่ขายและยอดเงินของสินค้าแต่ละรายการ"}
+          title={scopeLabel ? `สรุปยอดรายสินค้า (${scopeLabel})` : "สรุปยอดรายสินค้า"}
+          subtitle={scopeLabel ? `รายการสินค้า${scopeLabel} ที่ขายได้` : "จำนวนที่ขายและยอดเงินของสินค้าแต่ละรายการ"}
         />
 
         <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
           <div className="flex flex-col justify-between gap-2 border-b border-slate-100 p-6 md:flex-row md:items-center">
             <div>
               <h2 className="text-lg font-black text-slate-800">
-                {selectedCategoryKey !== "ALL" ? `ยอดขายหมวดหมู่ ${selectedCategoryLabel} แยกตามสาขา` : "ยอดขายแยกตามสาขา"}
+                {scopeLabel ? `ยอดขาย${scopeLabel} แยกตามสาขา` : "ยอดขายแยกตามสาขา"}
               </h2>
               <p className="mt-1 text-xs text-slate-400">
-                {selectedCategoryKey !== "ALL"
-                  ? `ยอดขายสินค้าหมวดหมู่ ${selectedCategoryLabel} รวมใบขายของทุกสาขาในระบบเดียวกัน`
+                {scopeLabel
+                  ? `ยอดขายสินค้า${scopeLabel} รวมใบขายของทุกสาขาในระบบเดียวกัน`
                   : "รวมใบขายของทุกสาขาในระบบเดียวกัน (สูตรคำนวณ: [ยอดรับเงินลูกค้า] - [VAT 7%] = [เงินแท้จริงเข้าร้าน (ก่อน VAT)])"}
               </p>
             </div>
@@ -515,11 +587,11 @@ export default async function DashboardPage({
         <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
           <div className="border-b border-slate-100 p-6">
             <h2 className="text-lg font-black text-slate-800">
-              {selectedCategoryKey !== "ALL" ? `ใบขายล่าสุดที่มีสินค้าหมวดหมู่ ${selectedCategoryLabel}` : "ใบขายล่าสุดจากทุกสาขา"}
+              {scopeLabel ? `ใบขายล่าสุดที่มีสินค้า${scopeLabel}` : "ใบขายล่าสุดจากทุกสาขา"}
             </h2>
             <p className="mt-1 text-xs text-slate-400">
-              {selectedCategoryKey !== "ALL"
-                ? `แสดงเฉพาะใบขายที่มีสินค้าหมวด ${selectedCategoryLabel} (คิดเฉพาะยอดสินค้าในหมวดนี้)`
+              {scopeLabel
+                ? `แสดงเฉพาะใบขายที่มีสินค้า${scopeLabel} (คิดเฉพาะยอดสินค้าในขอบเขตนี้)`
                 : "ใช้ตรวจสอบรายการล่าสุดได้อย่างรวดเร็ว เรียงตามวันที่ขายล่าสุด"}
             </p>
           </div>

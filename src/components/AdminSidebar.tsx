@@ -13,7 +13,7 @@ import {
 
 // 1. เมนูที่ใช้บ่อย (งานประจำวัน)
 const primaryItems = [
-  { name: "Dashboard",       href: "/dashboard",    icon: LayoutDashboard },
+  { name: "Dashboard",       href: "/dashboard?brand=TERRA",    icon: LayoutDashboard },
   { name: "ประวัติการขายหน้าร้าน", href: "/sales-history", icon: History },
   // { name: "สต็อกทุกสาขา",   href: "/stock-all",    icon: Package },
   // { name: "ประวัติสต็อก",    href: "/stockmovement",icon: History },
@@ -94,7 +94,8 @@ export default function AdminSidebar({ user }: { user?: UserData }) {
 
   const renderItems = (items: typeof primaryItems) => (
     items.map((item) => {
-      const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+      const itemBase = item.href.split("?")[0];
+      const isActive = pathname === itemBase || (itemBase !== "/" && pathname.startsWith(`${itemBase}/`));
       return (
         <Link 
           key={item.href} 

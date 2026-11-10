@@ -126,8 +126,8 @@ export default function PrintDispatchModal({ orderCode, onClose, autoPrint = fal
             width: 100% !important; 
             max-width: 210mm !important;
             box-sizing: border-box !important;
-            min-height: 297mm !important;
-            padding: 8mm 10mm !important; 
+            min-height: 255mm !important;
+            padding: 4mm 6mm !important;
             box-shadow: none !important;
             margin: 0 auto !important;
           }
@@ -137,7 +137,7 @@ export default function PrintDispatchModal({ orderCode, onClose, autoPrint = fal
           }
           @page { 
             size: A4 portrait; 
-            margin: 0; 
+            margin: 5mm 6mm !important;
           }
           * {
             -webkit-print-color-adjust: exact !important;
@@ -182,7 +182,7 @@ export default function PrintDispatchModal({ orderCode, onClose, autoPrint = fal
         {/* 📄 พื้นที่กระดาษ A4 (เรียกใช้ Component ร่วม) */}
         <PrintDispatchDocument 
           data={data} 
-          className="w-full px-8 py-8 shadow-[0_0_40px_rgba(0,0,0,0.08)] min-h-[1050px] print:min-h-[297mm] print:p-0 print:shadow-none rounded-2xl print:rounded-none"
+          className="w-full px-8 py-8 shadow-[0_0_40px_rgba(0,0,0,0.08)] min-h-[1050px] print:min-h-[255mm] print:p-0 print:shadow-none rounded-2xl print:rounded-none"
         />
       </div>
     </div>,

@@ -649,11 +649,7 @@ export default function WoodSlabForm({
             </p>
           </div>
           <div className="flex gap-2">
-            {isEditMode && (
-              <button type="button" onClick={handleDelete} className="px-4 py-2 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm font-medium hover:bg-red-100 flex items-center gap-2 cursor-pointer">
-                <Trash2 className="w-4 h-4" /> ลบสินค้า
-              </button>
-            )}
+
             {!isEditMode && (
               <button type="button" onClick={() => window.location.reload()} className="px-4 py-2 bg-white border border-slate-300 rounded-lg text-slate-600 text-sm font-medium hover:bg-slate-50 flex items-center gap-2 cursor-pointer">
                 <RotateCcw className="w-4 h-4" /> รีเซ็ต

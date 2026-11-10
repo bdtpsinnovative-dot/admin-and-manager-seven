@@ -1,7 +1,6 @@
 "use client"
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
-import { useTransition } from "react"
 
 interface BranchOption {
   id: number
@@ -18,9 +17,9 @@ export default function DashboardBranchFilter({
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
-  const [isPending, startTransition] = useTransition()
 
   const handleChange = (value: string) => {
+    if (value === selectedBranch) return
     const params = new URLSearchParams(searchParams.toString())
     if (value === "ALL") {
       params.delete("branch")
@@ -28,16 +27,15 @@ export default function DashboardBranchFilter({
       params.set("branch", value)
     }
     const qs = params.toString()
-    startTransition(() => router.push(qs ? `${pathname}?${qs}` : pathname))
+    router.push(qs ? `${pathname}?${qs}` : pathname)
   }
 
   return (
     <select
       value={selectedBranch}
-      disabled={isPending}
       onChange={(event) => handleChange(event.target.value)}
       aria-label="เลือกสาขา"
-      className="min-w-56 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-bold text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:cursor-wait disabled:opacity-60"
+      className="min-w-56 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-bold text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 cursor-pointer transition-colors hover:border-slate-300 shadow-sm"
     >
       <option value="ALL">ทุกสาขา</option>
       {branches.map((branch) => (

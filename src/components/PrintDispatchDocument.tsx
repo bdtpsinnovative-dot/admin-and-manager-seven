@@ -175,6 +175,15 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
       {/* 🛑 CSS ดักการตัดหน้าสำหรับใบเสนอราคา/ใบเสร็จ A4 (WebKit / iOS Safari / iPad / Chrome) */}
       <style dangerouslySetInnerHTML={{__html: `
         @media print {
+          @page {
+            size: A4 portrait;
+            margin: 5mm 6mm !important;
+          }
+          html, body {
+            height: auto !important;
+            margin: 0 !important;
+            padding: 0 !important;
+          }
           #print-section {
             display: flex !important;
             flex-direction: column !important;
@@ -183,8 +192,8 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
             box-sizing: border-box !important;
             width: 100% !important;
             max-width: 210mm !important;
-            min-height: 297mm !important;
-            padding: 8mm 10mm !important;
+            min-height: 255mm !important;
+            padding: 4mm 6mm !important;
             margin: 0 auto !important;
             overflow: visible !important;
             background: white !important;
@@ -471,7 +480,7 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
 
       {/* ================= FOOTER SECTION ================= */}
       <div 
-        className="mt-auto pt-6 break-inside-avoid print:break-inside-avoid"
+        className="mt-auto pt-4 print:pt-2 break-inside-avoid print:break-inside-avoid"
         style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}
       >
         {isSlabDoc ? (

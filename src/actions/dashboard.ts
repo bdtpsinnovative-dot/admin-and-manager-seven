@@ -2,6 +2,9 @@
 
 import { createClient } from "../lib/supabase/server"
 import { resolveCategoryInfo } from "../lib/propFilterModel"
+import { type DashboardBrandKey, isMatchingBrand } from "../lib/dashboardBrand"
+
+export type { DashboardBrandKey } from "../lib/dashboardBrand"
 
 export interface DashboardCategorySubItem {
   key: string
@@ -15,6 +18,21 @@ export interface DashboardCategorySubItem {
   sales: number
   billCount: number
   shareOfParent: number
+}
+
+export interface DashboardBrandSummary {
+  key: 'ZENSLAB' | 'TERRA' | 'EMBER_ASH'
+  name: string
+  thaiName: string
+  groupType: 'wood' | 'prop' | 'furniture'
+  grossSales: number
+  totalDiscount: number
+  netBeforeVat: number
+  totalVat: number
+  netSales: number
+  billCount: number
+  quantity: number
+  shareOfTotal: number
 }
 
 export interface DashboardCategorySummary {
@@ -77,6 +95,7 @@ export interface DashboardProductSummary {
   name: string
   sku: string | null
   imageUrl: string | null
+  groupType?: 'prop' | 'furniture' | 'wood' | 'other'
   categoryKey?: string | null
   categoryName?: string | null
   categoryThaiName?: string | null
@@ -211,6 +230,7 @@ export interface DashboardData {
     cancelledSales: number
     branchCount: number
   }
+  brandSummaries: DashboardBrandSummary[]
   vatBreakdown: DashboardVatBreakdown
   damageSummary: DashboardDamageSummary
   shippingSummary: DashboardShippingSummary
@@ -227,6 +247,7 @@ export interface DashboardData {
 
 const emptyDashboard = (error: string | null = null): DashboardData => ({
   summary: { grossSales: 0, netSales: 0, totalDiscount: 0, totalVat: 0, netSalesBeforeVat: 0, billCount: 0, cancelledCount: 0, cancelledSales: 0, branchCount: 0 },
+  brandSummaries: [],
   vatBreakdown: {
     totalVat: 0,
     totalSales: 0,
@@ -288,7 +309,8 @@ export async function getDashboardData(
   dateFrom?: string,
   dateTo?: string,
   selectedCategoryKey = "ALL",
-  periodType?: "daily" | "monthly" | "yearly" | "custom" | "all"
+  periodType?: "daily" | "monthly" | "yearly" | "custom" | "all",
+  selectedBrand = "ALL"
 ): Promise<DashboardData> {
   const supabase = await createClient()
 
@@ -476,6 +498,47 @@ export async function getDashboardData(
       }>
     }
     const categoryMap = new Map<string, CategoryMapEntry>()
+    const brandTracker = {
+      ZENSLAB: {
+        key: 'ZENSLAB' as const,
+        name: 'ZenSlab',
+        thaiName: 'สแลป & ไม้ดิบ',
+        groupType: 'wood' as const,
+        grossSales: 0,
+        discountAmount: 0,
+        netBeforeVat: 0,
+        vatAmount: 0,
+        sales: 0,
+        billOrderIds: new Set<number>(),
+        quantity: 0,
+      },
+      TERRA: {
+        key: 'TERRA' as const,
+        name: 'Terra',
+        thaiName: 'พร็อพของแต่งบ้าน',
+        groupType: 'prop' as const,
+        grossSales: 0,
+        discountAmount: 0,
+        netBeforeVat: 0,
+        vatAmount: 0,
+        sales: 0,
+        billOrderIds: new Set<number>(),
+        quantity: 0,
+      },
+      EMBER_ASH: {
+        key: 'EMBER_ASH' as const,
+        name: 'Ember & Ash',
+        thaiName: 'เฟอร์นิเจอร์',
+        groupType: 'furniture' as const,
+        grossSales: 0,
+        discountAmount: 0,
+        netBeforeVat: 0,
+        vatAmount: 0,
+        sales: 0,
+        billOrderIds: new Set<number>(),
+        quantity: 0,
+      },
+    }
     const recentOrders: DashboardOrder[] = []
     const validOrdersForTrend: {
       bkkYear: number
@@ -635,8 +698,9 @@ export async function getDashboardData(
 
         const catInfo = resolveCategoryInfo(product)
         const itemMatchesCategory = isMatchingCategoryKey(catInfo, selectedCategoryKey)
+        const itemMatchesBrand = isMatchingBrand(catInfo.groupType, selectedBrand)
 
-        if (itemMatchesCategory) {
+        if (itemMatchesCategory && itemMatchesBrand) {
           hasMatchingItemInOrder = true
           orderCatGross += itemGross
           orderCatDiscount += itemDiscount
@@ -646,6 +710,7 @@ export async function getDashboardData(
         }
 
         if (!isCancelled) {
+          current.groupType = catInfo.groupType
           current.quantity += itemQty
           current.grossSales += itemGross
           current.discountAmount += itemDiscount
@@ -655,6 +720,33 @@ export async function getDashboardData(
           current.billCount += 1
           if (!current.lastSaleAt || new Date(order.created_at) > new Date(current.lastSaleAt)) {
             current.lastSaleAt = order.created_at
+          }
+
+          // 🏢 บันทึกสถิติแยกตามแบรนด์
+          if (catInfo.groupType === 'wood') {
+            brandTracker.ZENSLAB.quantity += itemQty
+            brandTracker.ZENSLAB.grossSales += itemGross
+            brandTracker.ZENSLAB.discountAmount += itemDiscount
+            brandTracker.ZENSLAB.netBeforeVat += itemNetBeforeVat
+            brandTracker.ZENSLAB.vatAmount += itemVat
+            brandTracker.ZENSLAB.sales += itemNet
+            brandTracker.ZENSLAB.billOrderIds.add(order.id)
+          } else if (catInfo.groupType === 'prop') {
+            brandTracker.TERRA.quantity += itemQty
+            brandTracker.TERRA.grossSales += itemGross
+            brandTracker.TERRA.discountAmount += itemDiscount
+            brandTracker.TERRA.netBeforeVat += itemNetBeforeVat
+            brandTracker.TERRA.vatAmount += itemVat
+            brandTracker.TERRA.sales += itemNet
+            brandTracker.TERRA.billOrderIds.add(order.id)
+          } else if (catInfo.groupType === 'furniture') {
+            brandTracker.EMBER_ASH.quantity += itemQty
+            brandTracker.EMBER_ASH.grossSales += itemGross
+            brandTracker.EMBER_ASH.discountAmount += itemDiscount
+            brandTracker.EMBER_ASH.netBeforeVat += itemNetBeforeVat
+            brandTracker.EMBER_ASH.vatAmount += itemVat
+            brandTracker.EMBER_ASH.sales += itemNet
+            brandTracker.EMBER_ASH.billOrderIds.add(order.id)
           }
 
           // 🏷️ จัดกลุ่มหมวดหมู่ขายดี (Best-Selling Categories)
@@ -726,7 +818,9 @@ export async function getDashboardData(
       let effNetBeforeVat = Math.max(0, amount - orderVat)
       let shouldIncludeOrder = true
 
-      if (!isAllCategory) {
+      const isFiltered = !isAllCategory || (selectedBrand && selectedBrand !== "ALL")
+
+      if (isFiltered) {
         if (!hasMatchingItemInOrder) {
           shouldIncludeOrder = false
         } else {
@@ -1182,6 +1276,9 @@ export async function getDashboardData(
       if (!isAllCategory && !isMatchingCategoryKey(catInfo, selectedCategoryKey)) {
         continue
       }
+      if (selectedBrand && selectedBrand !== "ALL" && !isMatchingBrand(catInfo.groupType, selectedBrand)) {
+        continue
+      }
 
       const q = Number(item.qty || 0)
       damageTotalQty += q
@@ -1221,9 +1318,69 @@ export async function getDashboardData(
       items: damageItems,
     }
 
-    const totalCatSales = Array.from(categoryMap.values()).reduce((sum, c) => sum + c.netBeforeVat, 0)
+    const totalBrandNetBeforeVat =
+      brandTracker.ZENSLAB.netBeforeVat +
+      brandTracker.TERRA.netBeforeVat +
+      brandTracker.EMBER_ASH.netBeforeVat
 
-    const categories: DashboardCategorySummary[] = Array.from(categoryMap.values()).map((c) => {
+    const brandSummaries: DashboardBrandSummary[] = [
+      {
+        key: 'ZENSLAB',
+        name: 'ZenSlab',
+        thaiName: 'สแลป & ไม้ดิบ',
+        groupType: 'wood',
+        grossSales: Math.round(brandTracker.ZENSLAB.grossSales * 100) / 100,
+        totalDiscount: Math.round(brandTracker.ZENSLAB.discountAmount * 100) / 100,
+        netBeforeVat: Math.round(brandTracker.ZENSLAB.netBeforeVat * 100) / 100,
+        totalVat: Math.round(brandTracker.ZENSLAB.vatAmount * 100) / 100,
+        netSales: Math.round(brandTracker.ZENSLAB.sales * 100) / 100,
+        billCount: brandTracker.ZENSLAB.billOrderIds.size,
+        quantity: brandTracker.ZENSLAB.quantity,
+        shareOfTotal: totalBrandNetBeforeVat > 0
+          ? Math.round((brandTracker.ZENSLAB.netBeforeVat / totalBrandNetBeforeVat) * 1000) / 10
+          : 0,
+      },
+      {
+        key: 'TERRA',
+        name: 'Terra',
+        thaiName: 'พร็อพของแต่งบ้าน',
+        groupType: 'prop',
+        grossSales: Math.round(brandTracker.TERRA.grossSales * 100) / 100,
+        totalDiscount: Math.round(brandTracker.TERRA.discountAmount * 100) / 100,
+        netBeforeVat: Math.round(brandTracker.TERRA.netBeforeVat * 100) / 100,
+        totalVat: Math.round(brandTracker.TERRA.vatAmount * 100) / 100,
+        netSales: Math.round(brandTracker.TERRA.sales * 100) / 100,
+        billCount: brandTracker.TERRA.billOrderIds.size,
+        quantity: brandTracker.TERRA.quantity,
+        shareOfTotal: totalBrandNetBeforeVat > 0
+          ? Math.round((brandTracker.TERRA.netBeforeVat / totalBrandNetBeforeVat) * 1000) / 10
+          : 0,
+      },
+      {
+        key: 'EMBER_ASH',
+        name: 'Ember & Ash',
+        thaiName: 'เฟอร์นิเจอร์',
+        groupType: 'furniture',
+        grossSales: Math.round(brandTracker.EMBER_ASH.grossSales * 100) / 100,
+        totalDiscount: Math.round(brandTracker.EMBER_ASH.discountAmount * 100) / 100,
+        netBeforeVat: Math.round(brandTracker.EMBER_ASH.netBeforeVat * 100) / 100,
+        totalVat: Math.round(brandTracker.EMBER_ASH.vatAmount * 100) / 100,
+        netSales: Math.round(brandTracker.EMBER_ASH.sales * 100) / 100,
+        billCount: brandTracker.EMBER_ASH.billOrderIds.size,
+        quantity: brandTracker.EMBER_ASH.quantity,
+        shareOfTotal: totalBrandNetBeforeVat > 0
+          ? Math.round((brandTracker.EMBER_ASH.netBeforeVat / totalBrandNetBeforeVat) * 1000) / 10
+          : 0,
+      },
+    ]
+
+    let rawCategories = Array.from(categoryMap.values())
+    if (selectedBrand && selectedBrand !== "ALL") {
+      rawCategories = rawCategories.filter((c) => isMatchingBrand(c.groupType, selectedBrand))
+    }
+    const totalCatSales = rawCategories.reduce((sum, c) => sum + c.netBeforeVat, 0)
+
+    const categories: DashboardCategorySummary[] = rawCategories.map((c) => {
       const parentNet = c.netBeforeVat
       const subcategories: DashboardCategorySubItem[] = Array.from(c.subcategories.values()).map((s) => ({
         key: s.key,
@@ -1257,16 +1414,20 @@ export async function getDashboardData(
       }
     }).sort((a, b) => b.netBeforeVat - a.netBeforeVat)
 
-    const filteredProducts = isAllCategory
-      ? Array.from(productMap.values())
-      : Array.from(productMap.values()).filter((p) => {
-          const lower = normalizeCategoryString(selectedCategoryKey)
-          return (
-            (p.categoryKey && normalizeCategoryString(p.categoryKey) === lower) ||
-            (p.categoryName && normalizeCategoryString(p.categoryName) === lower) ||
-            (p.categoryThaiName && normalizeCategoryString(p.categoryThaiName) === lower)
-          )
-        })
+    let filteredProducts = Array.from(productMap.values())
+    if (!isAllCategory) {
+      const lower = normalizeCategoryString(selectedCategoryKey)
+      filteredProducts = filteredProducts.filter((p) => {
+        return (
+          (p.categoryKey && normalizeCategoryString(p.categoryKey) === lower) ||
+          (p.categoryName && normalizeCategoryString(p.categoryName) === lower) ||
+          (p.categoryThaiName && normalizeCategoryString(p.categoryThaiName) === lower)
+        )
+      })
+    }
+    if (selectedBrand && selectedBrand !== "ALL") {
+      filteredProducts = filteredProducts.filter((p) => isMatchingBrand(p.groupType, selectedBrand))
+    }
 
     const products = filteredProducts.map((p) => ({
       ...p,
@@ -1288,10 +1449,11 @@ export async function getDashboardData(
         billCount,
         cancelledCount,
         cancelledSales,
-        branchCount: isAllCategory
+        branchCount: isAllCategory && (!selectedBrand || selectedBrand === "ALL")
           ? branchMap.size
           : Array.from(branchMap.values()).filter((b) => b.billCount > 0).length,
       },
+      brandSummaries,
       vatBreakdown,
       damageSummary,
       shippingSummary: {

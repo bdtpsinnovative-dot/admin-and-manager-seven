@@ -145,17 +145,6 @@ export default function DashboardCategoryTable({
       <div className="px-6 py-2.5 border-b border-slate-100 bg-slate-50/50 flex items-center gap-1.5 overflow-x-auto">
         <button
           type="button"
-          onClick={() => setActiveTab("PROP")}
-          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer outline-none focus:outline-none ${
-            activeTab === "PROP"
-              ? "bg-slate-800 text-white shadow-xs"
-              : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/60"
-          }`}
-        >
-          หมวดหมู่พร็อพ (PROP) ({categories.filter((c) => c.groupType === "prop").length})
-        </button>
-        <button
-          type="button"
           onClick={() => setActiveTab("ALL")}
           className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer outline-none focus:outline-none ${
             activeTab === "ALL"
@@ -163,29 +152,40 @@ export default function DashboardCategoryTable({
               : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/60"
           }`}
         >
-          ทั้งหมด (ALL) ({categories.length})
+          🏢 ทุกแบรนด์ (ALL) ({categories.length})
         </button>
         <button
           type="button"
-          onClick={() => setActiveTab("FURNITURE")}
+          onClick={() => setActiveTab("PROP")}
           className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer outline-none focus:outline-none ${
-            activeTab === "FURNITURE"
-              ? "bg-slate-800 text-white shadow-xs"
-              : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/60"
+            activeTab === "PROP"
+              ? "bg-amber-750 bg-amber-800 text-white shadow-xs"
+              : "text-amber-900 hover:bg-amber-100/60"
           }`}
         >
-          เฟอร์นิเจอร์ (FURNITURE) ({categories.filter((c) => c.groupType === "furniture").length})
+          🏺 Terra (พร็อพ) ({categories.filter((c) => c.groupType === "prop").length})
         </button>
         <button
           type="button"
           onClick={() => setActiveTab("WOOD")}
           className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer outline-none focus:outline-none ${
             activeTab === "WOOD"
-              ? "bg-slate-800 text-white shadow-xs"
-              : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/60"
+              ? "bg-emerald-800 text-white shadow-xs"
+              : "text-emerald-900 hover:bg-emerald-100/60"
           }`}
         >
-          แผ่นไม้ & ไม้ดิบ (WOOD) ({categories.filter((c) => c.groupType === "wood").length})
+          🌲 ZenSlab (สแลป & ไม้ดิบ) ({categories.filter((c) => c.groupType === "wood").length})
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("FURNITURE")}
+          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer outline-none focus:outline-none ${
+            activeTab === "FURNITURE"
+              ? "bg-indigo-800 text-white shadow-xs"
+              : "text-indigo-900 hover:bg-indigo-100/60"
+          }`}
+        >
+          🛋️ Ember & Ash (เฟอร์นิเจอร์) ({categories.filter((c) => c.groupType === "furniture").length})
         </button>
       </div>
 

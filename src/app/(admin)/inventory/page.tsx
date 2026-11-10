@@ -4,7 +4,7 @@ import InventoryActions from "../../../components/InventoryActions"
 import InventoryTable from "../../../components/InventoryTable"
 import CategoryFilterBar from "../../../components/CategoryFilterBar"
 import InventoryLoadingOverlay from "../../../components/InventoryLoadingOverlay"
-import { Package, Layers, Hammer, FileUp, Box, Search, Loader2, Armchair, X } from "lucide-react"
+import { Package, Layers, Hammer, FileUp, Box, Search, Loader2, Armchair, X, Tag } from "lucide-react"
 import { Suspense } from "react"
 import CollectionGroupTable from "../../../components/CollectionGroupTable"
 import { createClient } from "../../../lib/supabase/server"
@@ -175,6 +175,14 @@ export default async function InventoryPage({ searchParams }: Props) {
               </div>
             </form>
 
+            <Link
+              href={`/inventory/update-sku${activeTab ? `?tab=${activeTab}` : ''}`}
+              className="w-full sm:w-auto px-4 py-2 bg-indigo-50 border border-indigo-200 rounded-lg text-indigo-700 text-sm font-bold hover:bg-indigo-100 hover:border-indigo-400 flex items-center justify-center gap-2 transition-all shadow-sm active:scale-95"
+              title="อัปเดต / แก้ไขรหัส SKU โดยตรง ไม่ลบสินค้า ไม่กระทบสต็อกและออเดอร์"
+            >
+              <Tag className="w-4 h-4 text-indigo-600" />
+              อัปเดต SKU
+            </Link>
             <Link
               href="/inventory/import"
               className="w-full sm:w-auto px-4 py-2 bg-white border border-slate-300 rounded-lg text-slate-700 text-sm font-bold hover:bg-slate-50 hover:border-blue-400 hover:text-blue-600 flex items-center justify-center gap-2 transition-all shadow-sm active:scale-95"

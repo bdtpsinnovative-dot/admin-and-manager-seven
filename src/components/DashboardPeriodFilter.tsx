@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useRef, useTransition } from "react"
+import React, { useState, useEffect, useRef } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { Calendar as CalendarIcon, ChevronDown } from "lucide-react"
 import { type PeriodFilterState } from "../lib/dashboardPeriod"
@@ -38,7 +38,6 @@ export default function DashboardPeriodFilter({ currentPeriod }: DashboardPeriod
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
-  const [isPending, startTransition] = useTransition()
 
   const [isOpen, setIsOpen] = useState(false)
   const popoverRef = useRef<HTMLDivElement>(null)
@@ -144,10 +143,8 @@ export default function DashboardPeriodFilter({ currentPeriod }: DashboardPeriod
     })
 
     const qs = params.toString()
-    startTransition(() => {
-      router.push(qs ? `${pathname}?${qs}` : pathname)
-      setIsOpen(false)
-    })
+    router.push(qs ? `${pathname}?${qs}` : pathname)
+    setIsOpen(false)
   }
 
   // นำตัวกรองไปใช้ (Apply)
@@ -181,7 +178,7 @@ export default function DashboardPeriodFilter({ currentPeriod }: DashboardPeriod
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        disabled={isPending}
+        
         className="flex items-center gap-2 min-w-44 h-[42px] rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 outline-none hover:bg-slate-50 hover:border-slate-300 shadow-sm transition-colors disabled:cursor-wait disabled:opacity-60"
       >
         <CalendarIcon className="w-4 h-4 text-slate-500 shrink-0" />
@@ -378,10 +375,10 @@ export default function DashboardPeriodFilter({ currentPeriod }: DashboardPeriod
               <button
                 type="button"
                 onClick={handleApply}
-                disabled={isPending}
+                
                 className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition-colors disabled:opacity-50"
               >
-                {isPending ? "กำลังกรอง..." : "ตกลง"}
+                ตกลง
               </button>
             </div>
           </div>

@@ -2,9 +2,10 @@
 
 import { useState, useEffect, useMemo } from "react"
 import Link from "next/link"
-import { Edit, Package, AlertCircle, Hammer, Layers, Box, Trash2, Plus, Loader2 } from "lucide-react"
+import { Edit, Package, AlertCircle, Hammer, Layers, Box, Trash2, Plus, Loader2, Tag, Check } from "lucide-react"
 import RoughWoodForm from "./RoughWoodForm"
-import { deleteProductsBulk, loadMoreProducts, type ProductExtraFilters } from "../actions/woodslab"
+import { loadMoreProducts, type ProductExtraFilters, deleteProductsBulk } from "../actions/woodslab"
+import { updateProductSku } from "@/actions/sku"
 import FeedbackModal, { type FeedbackModalType } from "./ui/FeedbackModal"
 // 💡 ถอด CategoryBadge ออก แล้วใช้แบบ Inline ด้านล่างแทนเพื่อความแม่นยำครับ
 
@@ -45,6 +46,12 @@ export default function InventoryTable({
   const [isRoughModalOpen, setIsRoughModalOpen] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [isDeleting, setIsDeleting] = useState(false)
+
+  // 🏷️ State สำหรับ Quick SKU Edit Modal
+  const [quickSkuModalItem, setQuickSkuModalItem] = useState<any | null>(null)
+  const [newSkuInput, setNewSkuInput] = useState('')
+  const [skuSaving, setSkuSaving] = useState(false)
+  const [skuError, setSkuError] = useState('')
 
   // 🌟 State สำหรับ FeedbackModal สวยๆ กลางจอ
   const [feedbackModal, setFeedbackModal] = useState<{
@@ -241,18 +248,25 @@ export default function InventoryTable({
   return (
     <>
       {selectedIds.size > 0 && (
-        <div className="mb-4 bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 flex justify-between items-center transition-all duration-200 shadow-sm">
-          <span className="text-sm text-blue-700 font-medium">
+        <div className="mb-4 bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-3 flex justify-between items-center transition-all duration-200 shadow-sm">
+          <span className="text-sm text-indigo-800 font-medium">
             เลือกไว้แล้ว <strong>{selectedIds.size}</strong> รายการ
           </span>
-          <button
-            onClick={handleBulkDelete}
-            disabled={isDeleting}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition shadow-sm disabled:opacity-50 cursor-pointer active:scale-95"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-            {isDeleting ? "กำลังลบ..." : "ลบรายการที่เลือก"}
-          </button>
+          <div className="flex items-center gap-2">
+            <Link
+              href={`/inventory/update-sku${activeTab ? `?tab=${activeTab}` : ''}`}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition shadow-sm cursor-pointer active:scale-95"
+            >
+              <Tag className="w-3.5 h-3.5" />
+              อัปเดต SKU
+            </Link>
+            <button
+              onClick={() => setSelectedIds(new Set())}
+              className="px-3 py-1.5 bg-white border border-slate-300 text-slate-600 hover:bg-slate-50 rounded-lg text-xs font-bold transition shadow-sm cursor-pointer"
+            >
+              ยกเลิกการเลือก
+            </button>
+          </div>
         </div>
       )}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden min-h-[400px]">
@@ -371,8 +385,20 @@ export default function InventoryTable({
                     </td>
                     <td className="p-4 align-top">
                       <div className="font-bold text-slate-800 text-sm mb-1">{item.name}</div>
-                      <div className="flex items-center">
-                        <span className="text-xs text-slate-500 font-mono bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">{item.sku}</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs text-slate-600 font-mono bg-slate-100 px-2 py-0.5 rounded border border-slate-200 font-semibold">{item.sku || '-'}</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setQuickSkuModalItem(item);
+                            setNewSkuInput(item.sku || '');
+                            setSkuError('');
+                          }}
+                          className="text-slate-400 hover:text-indigo-600 p-1 rounded hover:bg-indigo-50 transition cursor-pointer"
+                          title="แก้ไข SKU โดยตรง (ไม่ลบสินค้า ไม่กระทบสต็อกและการขาย)"
+                        >
+                          <Edit className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     </td>
 
@@ -690,6 +716,160 @@ export default function InventoryTable({
         initialData={editingProduct}
         onSuccess={() => window.location.reload()}
       />
+
+
+      {/* 🏷️ QUICK SKU EDIT MODAL */}
+      {quickSkuModalItem && (
+        <div
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-fadeIn"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !skuSaving) setQuickSkuModalItem(null);
+          }}
+        >
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-scaleUp">
+            <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
+                  <Tag className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-800">แก้ไขรหัส SKU สินค้า</h3>
+                  <p className="text-[11px] text-slate-500">อัปเดต SKU ในฐานข้อมูลโดยตรง ปลอดภัย 100%</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setQuickSkuModalItem(null)}
+                disabled={skuSaving}
+                className="w-7 h-7 rounded-lg hover:bg-slate-200 text-slate-400 hover:text-slate-600 flex items-center justify-center cursor-pointer transition"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                const trimmed = newSkuInput.trim();
+                if (!trimmed) {
+                  setSkuError('กรุณาระบุ SKU ใหม่');
+                  return;
+                }
+                setSkuSaving(true);
+                setSkuError('');
+                try {
+                  const res = await updateProductSku(quickSkuModalItem.id, trimmed);
+                  if (res.error) {
+                    setSkuError(res.error);
+                  } else {
+                    setItems((prev) =>
+                      prev.map((p) => (p.id === quickSkuModalItem.id ? { ...p, sku: trimmed } : p))
+                    );
+                    const updatedName = quickSkuModalItem.name;
+                    setQuickSkuModalItem(null);
+                    setFeedbackModal({
+                      isOpen: true,
+                      type: 'success',
+                      title: 'อัปเดต SKU สำเร็จเรียบร้อย!',
+                      subtitle: `สินค้า: ${updatedName}`,
+                      message: `เปลี่ยน SKU เป็น "${trimmed}" สำเร็จ โดยไม่ลบสินค้าและไม่กระทบประวัติการเชื่อมโยง`,
+                      confirmText: 'ตกลง',
+                      confirmVariant: 'success',
+                    });
+                  }
+                } catch (err: any) {
+                  setSkuError(err.message || 'เกิดข้อผิดพลาดในการบันทึก');
+                } finally {
+                  setSkuSaving(false);
+                }
+              }}
+              className="p-6 space-y-4"
+            >
+              {skuError && (
+                <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-600 text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{skuError}</span>
+                </div>
+              )}
+
+              <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <div className="w-12 h-12 rounded-lg bg-white border border-slate-200 overflow-hidden shrink-0 flex items-center justify-center">
+                  {quickSkuModalItem.image_url ? (
+                    <img src={quickSkuModalItem.image_url} alt={quickSkuModalItem.name} className="w-full h-full object-cover" />
+                  ) : (
+                    <Package className="w-5 h-5 text-slate-300" />
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs font-bold text-slate-800 truncate">{quickSkuModalItem.name}</div>
+                  <div className="text-[11px] text-slate-400 mt-0.5">
+                    ID: {quickSkuModalItem.id} • หมวด: {quickSkuModalItem.category_id || '-'}
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1">SKU ปัจจุบัน</label>
+                <div className="px-3.5 py-2 bg-slate-100 border border-slate-200 rounded-xl text-xs font-mono text-slate-600 select-all font-semibold">
+                  {quickSkuModalItem.sku || '(ยังไม่มี SKU)'}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-800 mb-1">
+                  SKU ใหม่ <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={newSkuInput}
+                  onChange={(e) => setNewSkuInput(e.target.value)}
+                  placeholder="ระบุรหัส SKU ใหม่..."
+                  autoFocus
+                  required
+                  className="w-full px-3.5 py-2.5 bg-white border border-slate-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 rounded-xl text-sm font-mono text-slate-800 focus:outline-none transition font-semibold"
+                />
+              </div>
+
+              <div className="p-3 bg-indigo-50/60 border border-indigo-100 rounded-xl text-[11px] text-indigo-700 space-y-1">
+                <div className="font-bold flex items-center gap-1">
+                  <span>🛡️ ปลอดภัย 100%:</span>
+                </div>
+                <div>
+                  ระบบจะแก้ไขค่า SKU ของสินค้านี้โดยตรง โดยไม่ลบและสร้างใหม่ จึงไม่ทำให้ประวัติสต็อก ออเดอร์ขาย หรือการเชื่อมโยงอื่นๆ สูญหายครับ
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setQuickSkuModalItem(null)}
+                  disabled={skuSaving}
+                  className="flex-1 py-2.5 rounded-xl border border-slate-300 text-slate-700 text-xs font-bold hover:bg-slate-50 transition cursor-pointer"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  type="submit"
+                  disabled={skuSaving || !newSkuInput.trim() || newSkuInput.trim() === quickSkuModalItem.sku}
+                  className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-bold shadow-md shadow-indigo-100 transition cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  {skuSaving ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>กำลังบันทึก...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-3.5 h-3.5" />
+                      <span>บันทึก SKU</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* 🌟 ป๊อปอัปแจ้งเตือนและยืนยันการกระทำกลางจอ (FeedbackModal) */}
       <FeedbackModal

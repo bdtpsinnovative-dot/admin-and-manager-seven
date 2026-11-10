@@ -63,14 +63,14 @@ export default function PrintQuotationPage() {
             width: 100% !important; 
             max-width: 210mm !important;
             box-sizing: border-box !important;
-            min-height: 297mm !important;
-            padding: 6mm 10mm !important; 
+            min-height: 255mm !important;
+            padding: 4mm 6mm !important;
             box-shadow: none !important;
             margin: 0 auto !important;
           }
           @page { 
             size: A4 portrait; 
-            margin: 0; 
+            margin: 5mm 6mm !important;
           }
           * {
             -webkit-print-color-adjust: exact !important;
@@ -101,7 +101,7 @@ export default function PrintQuotationPage() {
       {/* 📄 พื้นที่กระดาษ A4 (เรียกใช้ Component ร่วม) */}
       <PrintDispatchDocument 
         data={data} 
-        className="max-w-[850px] mx-auto px-8 py-6 shadow-[0_0_40px_rgba(0,0,0,0.05)] min-h-[1122px] print:min-h-[297mm]"
+        className="max-w-[850px] mx-auto px-8 py-6 shadow-[0_0_40px_rgba(0,0,0,0.05)] min-h-[1122px] print:min-h-[255mm]"
       />
     </div>
   )
