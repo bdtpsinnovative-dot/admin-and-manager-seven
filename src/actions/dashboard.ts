@@ -3,6 +3,7 @@
 import { createClient } from "../lib/supabase/server"
 import { resolveCategoryInfo } from "../lib/propFilterModel"
 import { type DashboardBrandKey, isMatchingBrand } from "../lib/dashboardBrand"
+import { parseDashboardBranchIds } from "../lib/dashboardBranch"
 
 export type { DashboardBrandKey } from "../lib/dashboardBrand"
 
@@ -325,10 +326,8 @@ export async function getDashboardData(
       .single()
 
     const isAdmin = profile?.role === "admin"
-    const parsedBranchId = Number(requestedBranchId)
-    const selectedBranchId = isAdmin && requestedBranchId !== "ALL" && Number.isInteger(parsedBranchId)
-      ? parsedBranchId
-      : null
+    const selectedBranchIds = isAdmin ? parseDashboardBranchIds(requestedBranchId) : []
+    const selectedBranchSet = new Set(selectedBranchIds)
 
     let branchesQuery = supabase
       .from("branches")
@@ -417,9 +416,12 @@ export async function getDashboardData(
         .lte("created_at", dateTo)
     }
 
-    if (selectedBranchId !== null) {
-      ordersQuery = ordersQuery.eq("branch_id", selectedBranchId)
-      damageQuery = damageQuery.eq("branch_id", selectedBranchId)
+    if (selectedBranchIds.length === 1) {
+      ordersQuery = ordersQuery.eq("branch_id", selectedBranchIds[0])
+      damageQuery = damageQuery.eq("branch_id", selectedBranchIds[0])
+    } else if (selectedBranchIds.length > 1) {
+      ordersQuery = ordersQuery.in("branch_id", selectedBranchIds)
+      damageQuery = damageQuery.in("branch_id", selectedBranchIds)
     }
 
     const [
@@ -439,9 +441,9 @@ export async function getDashboardData(
       id: branch.id,
       name: branch.branch_name || `สาขา ${branch.id}`,
     }))
-    const branchesForSummary = selectedBranchId === null
+    const branchesForSummary = selectedBranchIds.length === 0
       ? branches || []
-      : (branches || []).filter((branch: { id: number }) => branch.id === selectedBranchId)
+      : (branches || []).filter((branch: { id: number }) => selectedBranchSet.has(branch.id))
     const branchMap = new Map<number, DashboardBranchSummary>()
     ;(branchesForSummary || []).forEach((branch: { id: number; branch_name: string | null }) => {
       branchMap.set(branch.id, {

@@ -71,8 +71,10 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         path.startsWith(`${allowed}/`) ||
         (allowed === '/gallery' && path.startsWith('/manager/gallery')) ||
         (allowed === '/manager/gallery' && path.startsWith('/gallery')) ||
-        (allowed === '/propsfina' && (path === '/props2' || path.startsWith('/props2/'))) ||
-        (allowed === '/props2' && (path === '/propsfina' || path.startsWith('/propsfina/')))
+        (allowed === '/propsfina' && (path === '/props2' || path.startsWith('/props2/') || path === '/propsfinatest' || path.startsWith('/propsfinatest/') || path === '/propsfinatest2' || path.startsWith('/propsfinatest2/'))) ||
+        (allowed === '/propsfinatest' && (path === '/propsfina' || path.startsWith('/propsfina/') || path === '/props2' || path.startsWith('/props2/') || path === '/propsfinatest2' || path.startsWith('/propsfinatest2/'))) ||
+        (allowed === '/propsfinatest2' && (path === '/propsfina' || path.startsWith('/propsfina/') || path === '/props2' || path.startsWith('/props2/') || path === '/propsfinatest' || path.startsWith('/propsfinatest/'))) ||
+        (allowed === '/props2' && (path === '/propsfina' || path.startsWith('/propsfina/') || path === '/propsfinatest' || path.startsWith('/propsfinatest/') || path === '/propsfinatest2' || path.startsWith('/propsfinatest2/')))
       );
     };
 
@@ -82,7 +84,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       redirect(targetPage);
     }
   } else if (userRole === 'data_entry' || userRole === 'warehouse') {
-    const defaultAllowed = ['/inventory', '/propsfina', '/props2', '/stock-in', '/gallery', '/manager/gallery'];
+    const defaultAllowed = ['/inventory', '/propsfina', '/propsfinatest', '/propsfinatest2', '/props2', '/stock-in', '/gallery', '/manager/gallery'];
     const isAllowed = (path: string) => {
       if (!path || path === '/') return true;
       return defaultAllowed.some(p => path === p || path.startsWith(`${p}/`));

@@ -1125,6 +1125,14 @@ export default function PropsClient({ products, initialActiveDiscounts = [] }: P
             <p className="text-slate-500 text-xs mt-0.5">จัดการรายการสินค้าประกอบฉากทั้งหมด {products.length} รายการ</p>
           </div>
           <div className="flex items-center gap-2">
+            <Link href="/propsfinatest" className="px-3 py-2 bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 rounded font-semibold text-xs transition flex items-center gap-1.5">
+              <span>🏷️</span>
+              <span>ป้าย 8×2.2 ซม.</span>
+            </Link>
+            <Link href="/propsfinatest2" className="px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded font-semibold text-xs transition flex items-center gap-1.5">
+              <span>🏷️</span>
+              <span>ป้ายรูป 21.5 มม.</span>
+            </Link>
             <Link href="/props2" className="px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded font-semibold text-xs transition">
               🧪 ไปหน้าที่ 2 (ทดลอง)
             </Link>

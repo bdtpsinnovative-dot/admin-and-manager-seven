@@ -25,6 +25,7 @@ import {
   type DashboardTrendPoint,
 } from "../../../actions/dashboard"
 import { getBrandInfo, type DashboardBrandKey } from "../../../lib/dashboardBrand"
+import { formatDashboardBranchParam, parseDashboardBranchIds } from "../../../lib/dashboardBranch"
 import DashboardBranchFilter from "../../../components/DashboardBranchFilter"
 import DashboardMonthFilter from "../../../components/DashboardMonthFilter"
 import DashboardPeriodFilter from "../../../components/DashboardPeriodFilter"
@@ -139,15 +140,22 @@ export default async function DashboardPage({
     const nextParams = new URLSearchParams()
     if (params) {
       Object.entries(params).forEach(([k, v]) => {
-        if (typeof v === "string" && v) nextParams.set(k, v)
-        else if (Array.isArray(v) && v[0]) nextParams.set(k, v[0])
+        if (k === "branch") {
+          const branchParam = formatDashboardBranchParam(parseDashboardBranchIds(v))
+          if (branchParam !== "ALL") nextParams.set("branch", branchParam)
+        } else if (typeof v === "string" && v) {
+          nextParams.set(k, v)
+        } else if (Array.isArray(v) && v[0]) {
+          nextParams.set(k, v[0])
+        }
       })
     }
     nextParams.set("brand", "TERRA")
     redirect(`/dashboard?${nextParams.toString()}`)
   }
 
-  const selectedBranch = typeof params?.branch === "string" && params.branch.length > 0 ? params.branch : "ALL"
+  const rawSelectedBranchIds = parseDashboardBranchIds(params?.branch)
+  const selectedBranchParam = formatDashboardBranchParam(rawSelectedBranchIds)
 
   // วิเคราะห์ตัวกรองแบรนด์ (ZENSLAB, TERRA, EMBER_ASH หรือ ALL) โดยค่าเริ่มต้นคือ TERRA
   const rawBrand = typeof params?.brand === "string" && params.brand.length > 0 ? params.brand.toUpperCase() : "TERRA"
@@ -161,7 +169,7 @@ export default async function DashboardPage({
   // หมวดหมู่ที่เลือก (ชื่อหมวดหมู่จริงๆ เช่น VASE & VESSELS, FIGURE หรือ ALL)
   const selectedCategoryKey = typeof params?.cat === "string" && params.cat.length > 0 ? params.cat : "ALL"
 
-  const data = await getDashboardData(selectedBranch, dateFrom, dateTo, selectedCategoryKey, filterState.type, selectedBrand)
+  const data = await getDashboardData(selectedBranchParam, dateFrom, dateTo, selectedCategoryKey, filterState.type, selectedBrand)
   const trendData: DashboardSalesTrend = data.salesTrend || {
     title: "แนวโน้มยอดขายรายเดือน",
     subtitle: "ยอดสุทธิจากใบขายย้อนหลัง 12 เดือน",
@@ -192,47 +200,61 @@ export default async function DashboardPage({
     ? `แบรนด์ ${brandInfo.name}`
     : null
 
-  // จัดการ query params สำหรับปุ่มล้างหมวดหมู่ โดยคงตัวกรองช่วงเวลาและแบรนด์ไว้
-  const clearCatParams = new URLSearchParams()
-  if (selectedBranch !== "ALL") clearCatParams.set("branch", selectedBranch)
-  if (selectedBrand !== "ALL") clearCatParams.set("brand", selectedBrand)
-  if (filterState.type === "daily" && filterState.date) {
-    clearCatParams.set("period", "daily")
-    clearCatParams.set("date", filterState.date)
-  } else if (filterState.type === "custom" && filterState.startDate && filterState.endDate) {
-    clearCatParams.set("period", "custom")
-    clearCatParams.set("startDate", filterState.startDate)
-    clearCatParams.set("endDate", filterState.endDate)
-  } else if (filterState.type === "monthly" && filterState.month) {
-    clearCatParams.set("period", "monthly")
-    clearCatParams.set("month", filterState.month)
-  } else if (filterState.type === "yearly" && filterState.year) {
-    clearCatParams.set("period", "yearly")
-    clearCatParams.set("year", filterState.year)
-  }
-  if (filterState.preset) clearCatParams.set("preset", filterState.preset)
-  const clearCatUrl = clearCatParams.toString() ? `/dashboard?${clearCatParams.toString()}` : "/dashboard"
+  const rawBranchSet = new Set(rawSelectedBranchIds)
+  const selectedBranches = data.availableBranches.filter((b) => rawBranchSet.has(b.id))
+  const effectiveBranchIds = selectedBranches.map((b) => b.id)
+  const isAllAvailableSelected = data.availableBranches.length > 0 && selectedBranches.length >= data.availableBranches.length
+  const hasBranchFilter = rawSelectedBranchIds.length > 0 && !isAllAvailableSelected
 
-  // จัดการ query params สำหรับปุ่มล้างแบรนด์ โดยคงตัวกรองช่วงเวลาและสาขาไว้
-  const clearBrandParams = new URLSearchParams()
-  if (selectedBranch !== "ALL") clearBrandParams.set("branch", selectedBranch)
-  if (filterState.type === "daily" && filterState.date) {
-    clearBrandParams.set("period", "daily")
-    clearBrandParams.set("date", filterState.date)
-  } else if (filterState.type === "custom" && filterState.startDate && filterState.endDate) {
-    clearBrandParams.set("period", "custom")
-    clearBrandParams.set("startDate", filterState.startDate)
-    clearBrandParams.set("endDate", filterState.endDate)
-  } else if (filterState.type === "monthly" && filterState.month) {
-    clearBrandParams.set("period", "monthly")
-    clearBrandParams.set("month", filterState.month)
-  } else if (filterState.type === "yearly" && filterState.year) {
-    clearBrandParams.set("period", "yearly")
-    clearBrandParams.set("year", filterState.year)
+  const branchSummaryText = !hasBranchFilter
+    ? `ภาพรวมใบขายและยอดสุทธิแยกตามทุกสาขา (${displayLabel})`
+    : selectedBranches.length === 1
+    ? `ข้อมูลของ ${selectedBranches[0].name} (${displayLabel})`
+    : selectedBranches.length > 1
+    ? selectedBranches.length <= 3
+      ? `ข้อมูลรวม ${selectedBranches.length} สาขา (${selectedBranches.map((b) => b.name).join(", ")}) (${displayLabel})`
+      : `ข้อมูลรวม ${selectedBranches.length} สาขา (${selectedBranches.slice(0, 2).map((b) => b.name).join(", ")} และอีก ${selectedBranches.length - 2} สาขา) (${displayLabel})`
+    : `ข้อมูลตามสาขาที่เลือก (${displayLabel})`
+
+  const buildDashboardUrl = (overrides: {
+    branchIds?: number[]
+    brand?: DashboardBrandKey
+    cat?: string
+  }) => {
+    const nextParams = new URLSearchParams()
+    const nextBranchParam = formatDashboardBranchParam(
+      overrides.branchIds !== undefined ? overrides.branchIds : rawSelectedBranchIds
+    )
+    const nextBrand = overrides.brand !== undefined ? overrides.brand : selectedBrand
+    const nextCat = overrides.cat !== undefined ? overrides.cat : selectedCategoryKey
+
+    if (nextBranchParam !== "ALL") nextParams.set("branch", nextBranchParam)
+    // คง brand=ALL ไว้เสมอเมื่อไม่ได้เลือกแบรนด์ เพื่อไม่ให้ถูก redirect กลับไปเป็นค่าเริ่มต้น TERRA
+    nextParams.set("brand", nextBrand)
+    if (nextCat !== "ALL") nextParams.set("cat", nextCat)
+
+    if (filterState.type === "daily" && filterState.date) {
+      nextParams.set("period", "daily")
+      nextParams.set("date", filterState.date)
+    } else if (filterState.type === "custom" && filterState.startDate && filterState.endDate) {
+      nextParams.set("period", "custom")
+      nextParams.set("startDate", filterState.startDate)
+      nextParams.set("endDate", filterState.endDate)
+    } else if (filterState.type === "monthly" && filterState.month) {
+      nextParams.set("period", "monthly")
+      nextParams.set("month", filterState.month)
+    } else if (filterState.type === "yearly" && filterState.year) {
+      nextParams.set("period", "yearly")
+      nextParams.set("year", filterState.year)
+    }
+    if (filterState.preset) nextParams.set("preset", filterState.preset)
+
+    const qs = nextParams.toString()
+    return qs ? `/dashboard?${qs}` : "/dashboard"
   }
-  if (filterState.preset) clearBrandParams.set("preset", filterState.preset)
-  clearBrandParams.set("brand", "ALL")
-  const clearBrandUrl = `/dashboard?${clearBrandParams.toString()}`
+
+  const clearCatUrl = buildDashboardUrl({ cat: "ALL" })
+  const clearBrandUrl = buildDashboardUrl({ brand: "ALL" })
 
   return (
     <div className="min-h-screen bg-[#F4F7F9] p-4 font-sans md:px-6 md:py-6">
@@ -241,9 +263,7 @@ export default async function DashboardPage({
           <div>
             <h1 className="text-2xl font-black text-slate-800">Dashboard</h1>
             <p className="mt-1 text-sm text-slate-500">
-              {selectedBranch === "ALL"
-                ? `ภาพรวมใบขายและยอดสุทธิแยกตามทุกสาขา (${displayLabel})`
-                : `ข้อมูลของ ${data.branches[0]?.name || "สาขาที่เลือก"} (${displayLabel})`}
+              {branchSummaryText}
               {selectedBrand !== "ALL" && (
                 <span className="ml-2 font-bold text-purple-700">
                   · แบรนด์: {brandInfo.emoji} {brandInfo.name} ({brandInfo.thaiName})
@@ -291,12 +311,44 @@ export default async function DashboardPage({
           </div>
         </div>
 
-        <div className="flex flex-col gap-3 rounded-2xl border border-slate-100 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-sm font-black text-slate-800">ดูข้อมูลตามสาขา</p>
-            <p className="mt-1 text-xs text-slate-400">เลือกสาขาเพื่อกรองยอดขาย รายสินค้า และใบขายล่าสุด ระบบจะโหลดให้อัตโนมัติ</p>
+        <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm space-y-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-black text-slate-800">ดูข้อมูลตามสาขา</p>
+              <p className="mt-1 text-xs text-slate-400">เลือกดูได้ 1 สาขา หรือติ๊กเลือกหลายสาขาพร้อมกัน เพื่อกรองยอดขาย รายสินค้า และใบขายล่าสุด</p>
+            </div>
+            <DashboardBranchFilter
+              branches={data.availableBranches}
+              selectedBranchIds={rawSelectedBranchIds}
+            />
           </div>
-          <DashboardBranchFilter branches={data.availableBranches} selectedBranch={selectedBranch} />
+
+          {hasBranchFilter && selectedBranches.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
+              <span className="text-xs font-bold text-slate-500">
+                กำลังดู {selectedBranches.length} สาขา:
+              </span>
+              {selectedBranches.map((branch) => (
+                <Link
+                  key={branch.id}
+                  href={buildDashboardUrl({
+                    branchIds: effectiveBranchIds.filter((id) => id !== branch.id),
+                  })}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700 transition-colors hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700"
+                  title={`เอา ${branch.name} ออก`}
+                >
+                  <span>{branch.name}</span>
+                  <span aria-hidden="true">✕</span>
+                </Link>
+              ))}
+              <Link
+                href={buildDashboardUrl({ branchIds: [] })}
+                className="ml-auto text-xs font-bold text-slate-400 hover:text-rose-600 transition-colors"
+              >
+                ดูทุกสาขา
+              </Link>
+            </div>
+          )}
         </div>
 
         {/* ซ่อนการ์ด 3 แบรนด์ตามที่แจ้งไว้ก่อน */}
@@ -441,7 +493,9 @@ export default async function DashboardPage({
                   <span className="text-sm font-bold text-slate-400">สาขา</span>
                 </p>
               </div>
-              <p className="mt-2 text-xs text-slate-400">ทุกสาขาที่เปิดให้บริการ</p>
+              <p className="mt-2 text-xs text-slate-400">
+                {hasBranchFilter ? "จำนวนสาขาที่เลือกกรองอยู่" : "ทุกสาขาที่เปิดให้บริการ"}
+              </p>
             </div>
 
             {/* 6. สินค้าชำรุด/เสียหาย */}
@@ -587,7 +641,11 @@ export default async function DashboardPage({
         <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
           <div className="border-b border-slate-100 p-6">
             <h2 className="text-lg font-black text-slate-800">
-              {scopeLabel ? `ใบขายล่าสุดที่มีสินค้า${scopeLabel}` : "ใบขายล่าสุดจากทุกสาขา"}
+              {scopeLabel
+                ? `ใบขายล่าสุดที่มีสินค้า${scopeLabel}`
+                : hasBranchFilter
+                ? "ใบขายล่าสุดจากสาขาที่เลือก"
+                : "ใบขายล่าสุดจากทุกสาขา"}
             </h2>
             <p className="mt-1 text-xs text-slate-400">
               {scopeLabel

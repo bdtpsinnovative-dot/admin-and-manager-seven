@@ -62,6 +62,8 @@ const PAGE_ITEMS = [
   { href: '/stock-in',               label: 'รับสินค้าเข้า (Stock In)',   group: 'primary',   Icon: PackagePlus },
   { href: '/lots',                   label: 'จัดการลอต',                 group: 'primary',   Icon: Package },
   { href: '/propsfina',              label: 'Props / Decor',             group: 'primary',   Icon: Frame },
+  { href: '/propsfinatest',          label: 'Props (ป้าย 8×2.2)',        group: 'primary',   Icon: Tag },
+  { href: '/propsfinatest2',         label: 'Props ป้าย (Test 2)',       group: 'primary',   Icon: Tag },
   { href: '/algorithm',              label: 'Algorithm',                 group: 'primary',   Icon: Activity },
   // 2. เมนูการจัดการและรายงาน (Management)
   { href: '/web-gallery',            label: 'จัดการ แกลเลอลี่หน้าเว็ป',    group: 'secondary', Icon: Images },

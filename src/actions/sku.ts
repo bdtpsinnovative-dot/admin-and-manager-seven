@@ -96,6 +96,8 @@ export async function updateProductSku(
     revalidatePath("/inventory/update-sku");
     revalidatePath("/props");
     revalidatePath("/propsfina");
+    revalidatePath("/propsfinatest");
+    revalidatePath("/propsfinatest2");
 
     return {
       success: true,

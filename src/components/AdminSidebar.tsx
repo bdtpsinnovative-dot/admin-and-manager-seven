@@ -24,6 +24,8 @@ const primaryItems = [
   // { name: "Props / Decor",   href: "/props",        icon: Frame },
   // { name: "Props / Decor (ใหม่)", href: "/props-new",   icon: Frame },
   { name: "Props / Decor",   href: "/propsfina",    icon: Frame },
+  { name: "Props ป้าย 8×2.2", href: "/propsfinatest", icon: Tag },
+  { name: "Props ป้าย 4.3×2 (Test 2)", href: "/propsfinatest2", icon: Tag },
   { name: "พิมพ์ป้ายราคา (หน้าที่ 2)", href: "/props2", icon: Tag },
   { name: "Algorithm",      href: "/algorithm",    icon: Activity },
   { name: "จัดการลอต",       href: "/lots",         icon: Package },
@@ -71,6 +73,8 @@ export default function AdminSidebar({ user }: { user?: UserData }) {
     if (href === '/gallery' && safeUser.allowedPages.includes('/manager/gallery')) return true;
     if (href === '/manager/gallery' && safeUser.allowedPages.includes('/gallery')) return true;
     if (href === '/props2' && (safeUser.allowedPages.includes('/propsfina') || safeUser.allowedPages.includes('/props'))) return true;
+    if (href === '/propsfinatest' && (safeUser.allowedPages.includes('/propsfina') || safeUser.allowedPages.includes('/props') || safeUser.allowedPages.includes('/propsfinatest'))) return true;
+    if (href === '/propsfinatest2' && (safeUser.allowedPages.includes('/propsfina') || safeUser.allowedPages.includes('/props') || safeUser.allowedPages.includes('/propsfinatest') || safeUser.allowedPages.includes('/propsfinatest2'))) return true;
     return false;
   };
 
@@ -85,7 +89,7 @@ export default function AdminSidebar({ user }: { user?: UserData }) {
     visiblePrimary = primaryItems.filter(item => isPageAllowed(item.href));
     visibleSecondary = secondaryItems.filter(item => isPageAllowed(item.href));
   } else if (safeUser.role === 'data_entry' || safeUser.role === 'warehouse') {
-    visiblePrimary = primaryItems.filter(item => ['/inventory', '/propsfina', '/props2', '/stock-in'].includes(item.href));
+    visiblePrimary = primaryItems.filter(item => ['/inventory', '/propsfina', '/propsfinatest', '/propsfinatest2', '/props2', '/stock-in'].includes(item.href));
     visibleSecondary = [];
   } else if (safeUser.role === 'data_analyst') {
     visiblePrimary = primaryItems.filter(item => ['/dashboard', '/sales-history', '/inventory', '/algorithm', '/stock-in'].includes(item.href));
