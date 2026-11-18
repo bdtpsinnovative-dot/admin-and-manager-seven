@@ -21,10 +21,13 @@ export type RevalidateZenslabResult = {
 export async function revalidateZenslabCache(
   options: RevalidateZenslabOptions = {}
 ): Promise<RevalidateZenslabResult> {
+  // Call Zen-Slab's Vercel production alias directly by default so server-to-server
+  // requests from Vercel don't get blocked (HTTP 403) by Cloudflare Bot Fight Mode.
+  // The endpoint still clears Vercel Data Cache + purges Cloudflare Zone Cache for www.zen-slab.com.
   const baseUrl = (
+    process.env.ZENSLAB_REVALIDATE_URL ||
     process.env.ZENSLAB_WEB_URL ||
-    process.env.NEXT_PUBLIC_ZENSLAB_WEB_URL ||
-    'https://www.zen-slab.com'
+    'https://zenslab-nu.vercel.app'
   )
     .trim()
     .replace(/\/+$/, '')
