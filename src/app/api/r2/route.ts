@@ -1,5 +1,7 @@
 import { S3Client, ListObjectsV2Command, PutObjectCommand, DeleteObjectsCommand, CopyObjectCommand, _Object } from "@aws-sdk/client-s3";
 import { NextResponse } from "next/server";
+import { unstable_cache } from "next/cache";
+import { ADMIN_CACHE_TAGS, ADMIN_CACHE_TTL, invalidateAdminTags, r2FolderTag } from "@/lib/admin-cache";
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -23,6 +25,50 @@ const BUCKET_NAME = process.env.R2_WALLCRAFT_BUCKET_NAME || 'wallcraft';
 const PUBLIC_URL = process.env.R2_PUBLIC_URL || process.env.NEXT_PUBLIC_R2_PUBLIC_URL || 'https://pub-258bd10e7e8c4a7690a74c54cfbdef93.r2.dev';
 const MASTER_PIN = process.env.R2_MASTER_PIN || 'oom1234';
 
+async function getCachedR2FolderImages(folder: string) {
+  const run = unstable_cache(
+    async () => {
+      let allFiles: _Object[] = [];
+      let isTruncated = true;
+      let continuationToken: string | undefined = undefined;
+
+      while (isTruncated) {
+        const command: ListObjectsV2Command = new ListObjectsV2Command({
+          Bucket: BUCKET_NAME,
+          Prefix: `${folder}/`,
+          ContinuationToken: continuationToken,
+        });
+
+        const response = await s3Client.send(command);
+
+        if (response.Contents) {
+          allFiles.push(...response.Contents);
+        }
+
+        isTruncated = response.IsTruncated ?? false;
+        continuationToken = response.NextContinuationToken;
+      }
+
+      const files = allFiles
+        .filter((file) => file.Key !== `${folder}/` && !file.Key?.endsWith('/.keep'))
+        .sort((a, b) => (b.LastModified?.getTime() || 0) - (a.LastModified?.getTime() || 0));
+
+      return files.map((file) => ({
+        name: file.Key?.replace(`${folder}/`, '') || '',
+        url: `${PUBLIC_URL}/${file.Key}`,
+        updatedAt: file.LastModified?.getTime() || Date.now(),
+        size: file.Size ?? 0,
+      }));
+    },
+    ['admin:r2-folder-list:v1', folder],
+    {
+      revalidate: ADMIN_CACHE_TTL.GALLERY_SECONDS,
+      tags: [ADMIN_CACHE_TAGS.R2_GALLERY, r2FolderTag(folder)],
+    }
+  );
+  return run();
+}
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -31,7 +77,7 @@ export async function GET(request: Request) {
     const folder = searchParams.get('folder') || 'original'; 
     const over1MB = searchParams.get('over1MB') === 'true';
 
-    // ตรวจสอบรหัสผ่านเฉพาะโฟลเดอร์หลัก original
+    // ตรวจสอบรหัสผ่านเฉพาะโฟลเดอร์หลัก original (ตรวจสดก่อนเสมอ)
     if (folder === 'original') {
       const clientPin = request.headers.get('x-folder-pin');
       if (clientPin !== MASTER_PIN) {
@@ -42,50 +88,13 @@ export async function GET(request: Request) {
       }
     }
 
-    let allFiles: _Object[] = []; 
-    let isTruncated: boolean = true;
-    let continuationToken: string | undefined = undefined;
+    let files = await getCachedR2FolderImages(folder);
 
-    while (isTruncated) {
-      const command: ListObjectsV2Command = new ListObjectsV2Command({ 
-        Bucket: BUCKET_NAME,
-        Prefix: `${folder}/`,
-        ContinuationToken: continuationToken
-      });
-      
-      const response = await s3Client.send(command);
-      
-      if (response.Contents) {
-        allFiles.push(...response.Contents);
-      }
-      
-      isTruncated = response.IsTruncated ?? false;
-      continuationToken = response.NextContinuationToken;
-    }
-
-    // กรองโฟลเดอร์ตัวเองและไฟล์ placeholder .keep ออก
-    let files = allFiles.filter(file => 
-      file.Key !== `${folder}/` && 
-      !file.Key?.endsWith('/.keep')
-    );
-    
     if (over1MB) {
-      files = files.filter(file => (file.Size ?? 0) > 1024 * 1024);
+      files = files.filter((file) => file.size > 1024 * 1024);
     }
 
-    files.sort((a, b) => (b.LastModified?.getTime() || 0) - (a.LastModified?.getTime() || 0));
-
-    const paginatedFiles = files.slice(offset, offset + limit);
-
-    const images = paginatedFiles.map(file => {
-      const cleanName = file.Key?.replace(`${folder}/`, '') || '';
-      return {
-        name: cleanName,
-        url: `${PUBLIC_URL}/${file.Key}`,
-        updatedAt: file.LastModified?.getTime() || Date.now(),
-        size: file.Size ?? 0
-      };
-    });
+    const images = files.slice(offset, offset + limit);
 
     return NextResponse.json({ images, totalCount: files.length });
   } catch (error: any) {
@@ -117,6 +126,7 @@ export async function POST(request: Request) {
       ContentType: file.type,
     });
     await s3Client.send(command);
+    invalidateAdminTags(ADMIN_CACHE_TAGS.R2_GALLERY, r2FolderTag(folder));
     return NextResponse.json({ success: true, url: `${PUBLIC_URL}/${folder}/${fileName}` });
   } catch (error: any) {
     console.error("R2 POST Error:", error);
@@ -141,6 +151,7 @@ export async function DELETE(request: Request) {
       Delete: { Objects: fileNames.map(name => ({ Key: `${folder}/${name}` })) }
     });
     await s3Client.send(command);
+    invalidateAdminTags(ADMIN_CACHE_TAGS.R2_GALLERY, r2FolderTag(folder));
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error("R2 DELETE Error:", error);
@@ -182,6 +193,7 @@ export async function PATCH(request: Request) {
       Delete: { Objects: [{ Key: `${folder}/${oldName}` }] },
     });
     await s3Client.send(deleteCommand);
+    invalidateAdminTags(ADMIN_CACHE_TAGS.R2_GALLERY, r2FolderTag(folder));
 
     return NextResponse.json({ 
       success: true, 

@@ -5,6 +5,7 @@ export const runtime = 'nodejs';
 import { NextResponse } from "next/server";
 import { S3Client, ListObjectsV2Command, GetObjectCommand, PutObjectCommand, _Object } from "@aws-sdk/client-s3";
 import sharp from "sharp";
+import { ADMIN_CACHE_TAGS, invalidateAdminTags, r2FolderTag } from "@/lib/admin-cache";
 
 const accountId = process.env.R2_ACCOUNT_ID || 'b2d8a39465363e6ce28ce8a0d9da0288';
 const endpoint = process.env.R2_ENDPOINT || `https://${accountId}.r2.cloudflarestorage.com`;
@@ -104,6 +105,10 @@ export async function POST(request: Request) {
         oldSize,
         newSize: compressedBuffer.length,
       });
+    }
+
+    if (results.length > 0) {
+      invalidateAdminTags(ADMIN_CACHE_TAGS.R2_GALLERY, r2FolderTag(TARGET_FOLDER));
     }
 
     return NextResponse.json({

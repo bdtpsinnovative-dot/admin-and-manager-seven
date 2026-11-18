@@ -2,7 +2,8 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, unstable_cache } from "next/cache";
+import { ADMIN_CACHE_TAGS, ADMIN_CACHE_TTL, invalidateAdminTags } from "@/lib/admin-cache";
 
 /* =============================================================================
    TYPES
@@ -490,6 +491,7 @@ export async function createTerraPromotion(data: {
     }
 
     revalidatePath("/discounts");
+    invalidateAdminTags(ADMIN_CACHE_TAGS.PROMOTIONS);
     return { success: true, promotion: inserted };
   } catch (err: any) {
     return { success: false, error: err.message || "ไม่สามารถสร้างโปรโมชันได้" };
@@ -718,6 +720,7 @@ export async function createBatchPartnerCoupons(params: BatchPartnerCouponParams
     } catch {}
 
     revalidatePath("/discounts");
+    invalidateAdminTags(ADMIN_CACHE_TAGS.PROMOTIONS);
     return {
       success: true,
       batchId,
@@ -885,6 +888,7 @@ export async function updatePartnerCoupon(params: UpdatePartnerCouponParams) {
     }
 
     revalidatePath("/discounts");
+    invalidateAdminTags(ADMIN_CACHE_TAGS.PROMOTIONS);
     return { success: true };
   } catch (err: any) {
     console.error("[updatePartnerCoupon] error:", err.message);
@@ -959,6 +963,7 @@ export async function updateTerraPromotion(
     }
 
     revalidatePath("/discounts");
+    invalidateAdminTags(ADMIN_CACHE_TAGS.PROMOTIONS);
     return { success: true };
   } catch (err: any) {
     return { success: false, error: err.message || "ไม่สามารถแก้ไขโปรโมชันได้" };
@@ -977,6 +982,7 @@ export async function toggleTerraPromotion(id: string, currentStatus: boolean) {
 
     if (error) throw error;
     revalidatePath("/discounts");
+    invalidateAdminTags(ADMIN_CACHE_TAGS.PROMOTIONS);
     return { success: true, nextStatus: !currentStatus };
   } catch (err: any) {
     return { success: false, error: err.message };
@@ -1016,6 +1022,7 @@ export async function toggleBatchTerraPromotion(batchId: string, currentStatus: 
     } catch {}
 
     revalidatePath("/discounts");
+    invalidateAdminTags(ADMIN_CACHE_TAGS.PROMOTIONS);
     return { success: true, nextStatus };
   } catch (err: any) {
     console.error("[toggleBatchTerraPromotion] error:", err.message);
@@ -1049,6 +1056,7 @@ export async function deleteBatchTerraPromotions(batchId: string) {
     } catch {}
 
     revalidatePath("/discounts");
+    invalidateAdminTags(ADMIN_CACHE_TAGS.PROMOTIONS);
     return { success: true };
   } catch (err: any) {
     console.error("[deleteBatchTerraPromotions] error:", err.message);
@@ -1065,24 +1073,36 @@ export async function deleteTerraPromotion(id: string) {
 
     if (error) throw error;
     revalidatePath("/discounts");
+    invalidateAdminTags(ADMIN_CACHE_TAGS.PROMOTIONS);
     return { success: true };
   } catch (err: any) {
     return { success: false, error: err.message };
   }
 }
 
-/**
- * 7. ดึงรายการโปรโมชันที่ Active ทั้งหมด
- */
-export async function getActiveTerraPromotions(): Promise<TerraPromotion[]> {
-  try {
-    const now = new Date().toISOString();
+const getCachedActiveTerraPromotionsRaw = unstable_cache(
+  async (): Promise<TerraPromotion[]> => {
     const { data: promotions, error } = await supabaseAdmin
       .from("terra_collection_promotions")
       .select("*")
       .eq("is_active", true);
-
     if (error || !promotions) return [];
+    return promotions as TerraPromotion[];
+  },
+  ["admin:terra-promotions-active:v1"],
+  {
+    revalidate: ADMIN_CACHE_TTL.MASTER_SECONDS,
+    tags: [ADMIN_CACHE_TAGS.PROMOTIONS],
+  }
+);
+
+/**
+ * 7. ดึงรายการโปรโมชันที่ Active ทั้งหมด (Master Cache 1 ปี + กรองวันหมดอายุสดทุกครั้ง)
+ */
+export async function getActiveTerraPromotions(): Promise<TerraPromotion[]> {
+  try {
+    const now = new Date().toISOString();
+    const promotions = await getCachedActiveTerraPromotionsRaw();
 
     return promotions.filter((p) => {
       if (p.start_date && new Date(p.start_date).toISOString() > now) return false;

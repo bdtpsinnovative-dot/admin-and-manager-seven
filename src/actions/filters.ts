@@ -1,7 +1,8 @@
 "use server";
 
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, unstable_cache } from "next/cache";
+import { ADMIN_CACHE_TAGS, ADMIN_CACHE_TTL, invalidateAdminTags } from "@/lib/admin-cache";
 
 export type StorefrontSubcategory = {
   key: string;
@@ -270,7 +271,7 @@ const STOREFRONT_DEFS = [
   },
 ];
 
-export async function getFiltersDashboardData(): Promise<FiltersDashboardData> {
+async function computeFiltersDashboardData(): Promise<FiltersDashboardData> {
   // 1. Fetch all collection_groups
   let allGroups: any[] = [];
   let page = 0;
@@ -583,6 +584,19 @@ export async function getFiltersDashboardData(): Promise<FiltersDashboardData> {
   };
 }
 
+const getCachedFiltersDashboardData = unstable_cache(
+  computeFiltersDashboardData,
+  ["admin:filters-dashboard:v1"],
+  {
+    revalidate: ADMIN_CACHE_TTL.MASTER_SECONDS,
+    tags: [ADMIN_CACHE_TAGS.FILTERS],
+  }
+);
+
+export async function getFiltersDashboardData(): Promise<FiltersDashboardData> {
+  return getCachedFiltersDashboardData();
+}
+
 export async function getCollectionGroupsBySup(supName: string | null) {
   let query = supabaseAdmin
     .from("collection_groups")
@@ -642,6 +656,7 @@ export async function updateSingleGroupSup(groupId: string, newProductSup: strin
   }
 
   revalidatePath("/filters");
+  invalidateAdminTags(ADMIN_CACHE_TAGS.FILTERS, ADMIN_CACHE_TAGS.INVENTORY_META);
   return { success: true };
 }
 
@@ -678,6 +693,7 @@ export async function batchUpdateGroupSup(
   }
 
   revalidatePath("/filters");
+  invalidateAdminTags(ADMIN_CACHE_TAGS.FILTERS, ADMIN_CACHE_TAGS.INVENTORY_META);
   return { success: true, updatedCount: data?.length || 0 };
 }
 

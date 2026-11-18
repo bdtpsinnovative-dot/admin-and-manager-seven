@@ -1,7 +1,9 @@
 "use server"
 
+import { unstable_cache } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { supabaseAdmin } from "@/lib/supabase/admin"
+import { ADMIN_CACHE_TAGS, ADMIN_CACHE_TTL } from "@/lib/admin-cache"
 import { isMainAnalyticsEvent, normalizeLocation, sanitizeCategoryName } from "@/lib/algorithm-normalization"
 import { resolveDateWindow, getThaiMonthLabel } from "@/lib/algorithm-date-window"
 
@@ -554,7 +556,7 @@ function mergedActiveSeconds(activities: RawActivity[]) {
 const audienceCache = new Map<string, { data: AudienceAnalytics; expiresAt: number }>()
 const AUDIENCE_CACHE_TTL_MS = 3 * 60 * 1000 // 3 minutes
 
-export async function getAudienceAnalytics(
+async function computeAudienceAnalytics(
   rangeValue: number = 30,
   offset: number = 0,
   month?: string,
@@ -576,7 +578,6 @@ export async function getAudienceAnalytics(
   const cutoff = window.startTime
 
   try {
-    await requireAdmin()
     const [eventRows, activityRows, linkRows] = await Promise.all([
       fetchPagedAlgorithmEvents(cutoff, endTime),
       fetchPagedActivities(cutoff, endTime),
@@ -902,4 +903,31 @@ export async function getAudienceAnalytics(
       error: error instanceof Error ? error.message : "ไม่สามารถอ่าน Audience Analytics ได้",
     }
   }
+}
+
+export async function getAudienceAnalytics(
+  rangeValue: number = 30,
+  offset: number = 0,
+  month?: string,
+  fromDate?: string,
+  toDate?: string
+): Promise<AudienceAnalytics> {
+  // ตรวจสิทธิ์สดทุกครั้งก่อนเข้าถึง Vercel Data Cache (30 นาที)
+  await requireAdmin()
+  const run = unstable_cache(
+    () => computeAudienceAnalytics(rangeValue, offset, month, fromDate, toDate),
+    [
+      "admin:algo-audience:v1",
+      String(rangeValue),
+      String(offset),
+      month || "",
+      fromDate || "",
+      toDate || "",
+    ],
+    {
+      revalidate: ADMIN_CACHE_TTL.ALGORITHM_SECONDS,
+      tags: [ADMIN_CACHE_TAGS.ALGORITHM],
+    }
+  )
+  return run()
 }

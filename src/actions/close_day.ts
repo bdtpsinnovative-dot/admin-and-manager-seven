@@ -2,6 +2,7 @@
 
 import { createClient } from "../lib/supabase/server"
 import { revalidatePath } from "next/cache"
+import { ADMIN_CACHE_TAGS, invalidateAdminTags } from "../lib/admin-cache"
 
 // --- Helper Functions (ย้ายมา Server) ---
 const bangkokDayKeyFromSoldAt = (iso: string) => {
@@ -164,6 +165,7 @@ export async function closeDayAction(branchId: number, dayKey: string) {
     if (dbErr) throw new Error("Save Error: " + dbErr.message)
 
     revalidatePath('/close_day') // Refresh หน้า
+    invalidateAdminTags(ADMIN_CACHE_TAGS.SALES_REPORT)
     return { success: true, total: grandTotal, error: null }
 
   } catch (err: any) {

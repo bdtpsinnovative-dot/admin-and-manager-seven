@@ -1,8 +1,10 @@
 "use server"
 
 import { redirect } from "next/navigation"
+import { unstable_cache } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { supabaseAdmin } from "@/lib/supabase/admin"
+import { ADMIN_CACHE_TAGS, ADMIN_CACHE_TTL, invalidateAdminTags } from "@/lib/admin-cache"
 import { countryLabel, normalizeCountryCode, normalizeLocation, sanitizeCategoryName } from "@/lib/algorithm-normalization"
 import { resolveDateWindow, getThaiMonthLabel } from "@/lib/algorithm-date-window"
 
@@ -834,14 +836,13 @@ async function fetchOverviewFromDailyMetrics(
   }
 }
 
-export async function getAlgorithmOverview(
+async function computeAlgorithmOverview(
   rangeValue: number = 30,
   offset: number = 0,
   month?: string,
   fromDate?: string,
   toDate?: string
 ): Promise<AlgorithmOverview> {
-  await requireAdmin()
   const window = resolveDateWindow({ range: rangeValue, offset, month, from: fromDate, to: toDate })
   const cacheKey = `${window.type}:${window.monthKey || ""}:${window.fromDate || ""}:${window.toDate || ""}:${window.rangeDays}:${window.offset}`
   const cached = overviewCache.get(cacheKey)
@@ -1058,6 +1059,33 @@ export async function getAlgorithmOverview(
   }
 }
 
+export async function getAlgorithmOverview(
+  rangeValue: number = 30,
+  offset: number = 0,
+  month?: string,
+  fromDate?: string,
+  toDate?: string
+): Promise<AlgorithmOverview> {
+  // ตรวจสิทธิ์สดทุกครั้งก่อนเข้าถึง Vercel Data Cache (30 นาที)
+  await requireAdmin()
+  const run = unstable_cache(
+    () => computeAlgorithmOverview(rangeValue, offset, month, fromDate, toDate),
+    [
+      "admin:algo-overview:v1",
+      String(rangeValue),
+      String(offset),
+      month || "",
+      fromDate || "",
+      toDate || "",
+    ],
+    {
+      revalidate: ADMIN_CACHE_TTL.ALGORITHM_SECONDS,
+      tags: [ADMIN_CACHE_TAGS.ALGORITHM],
+    }
+  )
+  return run()
+}
+
 function emptyProductsPage(rangeDays: AlgorithmRange, page: number, error: string | null): AlgorithmProductsPage {
   return {
     rangeDays,
@@ -1069,14 +1097,13 @@ function emptyProductsPage(rangeDays: AlgorithmRange, page: number, error: strin
   }
 }
 
-export async function getAlgorithmProducts(
+async function computeAlgorithmProducts(
   rangeValue: number = 30,
   pageValue: number = 1,
   month?: string,
   fromDate?: string,
   toDate?: string
 ): Promise<AlgorithmProductsPage> {
-  await requireAdmin()
   const window = resolveDateWindow({ range: rangeValue, offset: 0, month, from: fromDate, to: toDate })
   const page = Number.isSafeInteger(pageValue) && pageValue > 0 ? pageValue : 1
   const pageSize = 50
@@ -1169,6 +1196,32 @@ export async function getAlgorithmProducts(
     console.error("[algorithm-admin] product list query failed", error)
     return emptyProductsPage(window.daysCount, page, error instanceof Error ? error.message : "ไม่สามารถอ่านรายการสินค้าได้")
   }
+}
+
+export async function getAlgorithmProducts(
+  rangeValue: number = 30,
+  pageValue: number = 1,
+  month?: string,
+  fromDate?: string,
+  toDate?: string
+): Promise<AlgorithmProductsPage> {
+  await requireAdmin()
+  const run = unstable_cache(
+    () => computeAlgorithmProducts(rangeValue, pageValue, month, fromDate, toDate),
+    [
+      "admin:algo-products:v1",
+      String(rangeValue),
+      String(pageValue),
+      month || "",
+      fromDate || "",
+      toDate || "",
+    ],
+    {
+      revalidate: ADMIN_CACHE_TTL.ALGORITHM_SECONDS,
+      tags: [ADMIN_CACHE_TAGS.ALGORITHM],
+    }
+  )
+  return run()
 }
 
 function normalizeEventFilters(input: Partial<AlgorithmEventFilters>): AlgorithmEventFilters {
@@ -1350,7 +1403,11 @@ export async function getAlgorithmHealthAction() {
 }
 
 export async function triggerMaintenanceAction() {
+  await requireAdmin()
   const { executeMaintenanceWorkflow } = await import("@/lib/algorithm-maintenance")
-  return await executeMaintenanceWorkflow("manual")
+  const result = await executeMaintenanceWorkflow("manual")
+  overviewCache.clear()
+  invalidateAdminTags(ADMIN_CACHE_TAGS.ALGORITHM)
+  return result
 }
 

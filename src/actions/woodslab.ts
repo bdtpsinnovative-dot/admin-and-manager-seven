@@ -4,10 +4,11 @@
 
 import { createClient } from "../lib/supabase/server"
 import { supabaseAdmin } from "../lib/supabase/admin"
-import { revalidatePath } from "next/cache"
+import { revalidatePath, unstable_cache } from "next/cache"
 import { CATEGORY_MAP } from "@/lib/propFilterModel"
 import { requestR2Object } from "../lib/r2"
 import { revalidateZenslabCache } from "../lib/revalidateZenslab"
+import { ADMIN_CACHE_TAGS, ADMIN_CACHE_TTL, invalidateAdminTags } from "../lib/admin-cache"
 
 const TABLE_NAME = "products"
 const STORAGE_BUCKET = "product-images"
@@ -56,18 +57,23 @@ export async function checkCanViewCosts(): Promise<boolean> {
   }
 }
 
-// ⚡ Cache ข้อมูลกลุ่มหมวดหมู่ (collection_groups) เพื่อความเร็วและประหยัด Database
-let colGroupsCache: { data: Array<{ id: string; product_sup: string | null; tag: string | null }>; timestamp: number } | null = null
-const COL_CACHE_TTL = 5 * 60 * 1000
-
-async function getCachedCollectionGroups(supabase: any) {
-  if (colGroupsCache && Date.now() - colGroupsCache.timestamp < COL_CACHE_TTL) {
-    return colGroupsCache.data
+// ⚡ Persistent Vercel Data Cache สำหรับกลุ่มหมวดหมู่ (collection_groups) — ล้างอัตโนมัติเมื่อแก้สินค้า/ฟิลเตอร์
+const getCachedCollectionGroupsPersistent = unstable_cache(
+  async () => {
+    const { data } = await supabaseAdmin.from('collection_groups').select('id, product_sup, tag')
+    return (data || []) as Array<{ id: string; product_sup: string | null; tag: string | null }>
+  },
+  ['admin:collection-groups:v1'],
+  {
+    revalidate: ADMIN_CACHE_TTL.MASTER_SECONDS,
+    tags: [ADMIN_CACHE_TAGS.INVENTORY_META, ADMIN_CACHE_TAGS.FILTERS],
   }
-  const { data } = await supabase.from('collection_groups').select('id, product_sup, tag')
-  const list = (data || []) as Array<{ id: string; product_sup: string | null; tag: string | null }>
-  colGroupsCache = { data: list, timestamp: Date.now() }
-  return list
+)
+
+let colGroupsCache: { data: Array<{ id: string; product_sup: string | null; tag: string | null }>; timestamp: number } | null = null
+
+async function getCachedCollectionGroups(_supabase?: any) {
+  return getCachedCollectionGroupsPersistent()
 }
 
 // --- Helper เช็คสิทธิ์ (ถ้าไม่ล็อกอิน จะ Error) ---
@@ -541,27 +547,36 @@ export async function loadMoreProducts(params: {
   )
 }
 
+async function getCachedCategoryCountsRaw(category: string) {
+  const run = unstable_cache(
+    async () => {
+      const [{ count: totalCount }, { count: withCostCount }] = await Promise.all([
+        supabaseAdmin.from(TABLE_NAME).select('*', { count: 'exact', head: true }).eq('category_id', category),
+        supabaseAdmin.from(TABLE_NAME).select('*', { count: 'exact', head: true }).eq('category_id', category).gt('cost', 0),
+      ])
+      const total = totalCount ?? 0
+      const withCost = withCostCount ?? 0
+      const noCost = Math.max(0, total - withCost)
+      return { total, withCost, noCost }
+    },
+    ['admin:category-counts:v1', category],
+    {
+      revalidate: ADMIN_CACHE_TTL.MASTER_SECONDS,
+      tags: [ADMIN_CACHE_TAGS.INVENTORY_META],
+    }
+  )
+  return run()
+}
+
 export async function getCategoryCounts(category: string) {
   try {
+    // ตรวจสิทธิ์ดูต้นทุนสดทุกครั้งก่อนคืนค่า (พนักงานที่ไม่มีสิทธิ์จะไม่เห็น withCost/noCost)
     const canViewCosts = await checkCanViewCosts()
-    const supabase = await createClient()
-
+    const counts = await getCachedCategoryCountsRaw(category)
     if (!canViewCosts) {
-      const { count: totalCount } = await supabase.from(TABLE_NAME).select('*', { count: 'exact', head: true }).eq('category_id', category)
-      return { total: totalCount ?? 0, withCost: 0, noCost: 0 }
+      return { total: counts.total, withCost: 0, noCost: 0 }
     }
-
-    const [
-      { count: totalCount },
-      { count: withCostCount }
-    ] = await Promise.all([
-      supabase.from(TABLE_NAME).select('*', { count: 'exact', head: true }).eq('category_id', category),
-      supabase.from(TABLE_NAME).select('*', { count: 'exact', head: true }).eq('category_id', category).gt('cost', 0)
-    ])
-    const total = totalCount ?? 0
-    const withCost = withCostCount ?? 0
-    const noCost = Math.max(0, total - withCost)
-    return { total, withCost, noCost }
+    return counts
   } catch (err) {
     console.error("Error fetching category counts:", err)
     return { total: 0, withCost: 0, noCost: 0 }
@@ -570,135 +585,124 @@ export async function getCategoryCounts(category: string) {
 
 export async function getCategoryTotalCount(category: string) {
   try {
-    const supabase = await createClient()
-    const { count, error } = await supabase
-      .from(TABLE_NAME)
-      .select('id', { count: 'exact', head: true })
-      .eq('category_id', category)
-    if (error) throw error
-    return count ?? 0
+    const counts = await getCachedCategoryCountsRaw(category)
+    return counts.total
   } catch (err) {
     console.error("Error fetching category total count:", err)
     return 0
   }
 }
 
-// ⚡ Cache สำหรับตัวเลือกฟิลเตอร์ในแต่ละหมวดหมู่ (5 นาที) เพื่อความรวดเร็วและครอบคลุมทุกรายการ
+// ⚡ Persistent Vercel Data Cache สำหรับตัวเลือกฟิลเตอร์ในแต่ละหมวดหมู่ (ล้างอัตโนมัติเมื่อแก้สินค้า/สาขา)
 const filterOptionsCache: Record<string, { data: any; timestamp: number }> = {}
-const FILTER_CACHE_TTL_MS = 5 * 60 * 1000
 
 export async function getCategoryFilterOptions(category: string) {
-  if (
-    filterOptionsCache[category] && 
-    (Date.now() - filterOptionsCache[category].timestamp < FILTER_CACHE_TTL_MS)
-  ) {
-    return filterOptionsCache[category].data
-  }
+  const run = unstable_cache(
+    async () => {
+      const types = new Set<string>()
+      const materials = new Set<string>()
+      const grades = new Set<string>()
+      const crafts = new Set<string>()
+      const colors = new Set<string>()
+      const brands = new Set<string>()
+      const sizes = new Set<string>()
 
-  const supabase = await createClient()
+      let from = 0
+      const step = 1000
 
-  const types = new Set<string>()
-  const materials = new Set<string>()
-  const grades = new Set<string>()
-  const crafts = new Set<string>()
-  const colors = new Set<string>()
-  const brands = new Set<string>()
-  const sizes = new Set<string>()
+      while (true) {
+        const { data, error } = await supabaseAdmin
+          .from(TABLE_NAME)
+          .select('color, specs')
+          .eq('category_id', category)
+          .range(from, from + step - 1)
 
-  let from = 0
-  const step = 1000
+        if (error || !data || data.length === 0) break
 
-  while (true) {
-    const { data, error } = await supabase
-      .from(TABLE_NAME)
-      .select('color, specs')
-      .eq('category_id', category)
-      .range(from, from + step - 1)
+        for (const item of data) {
+          const specs = item.specs || {}
+          const t = specs.type || specs.spec_type
+          if (t && typeof t === 'string' && t.trim() !== '' && t.trim() !== '-') types.add(t.trim())
 
-    if (error || !data || data.length === 0) break
+          const m = specs.material
+          if (m && typeof m === 'string' && m.trim() !== '' && m.trim() !== '-') materials.add(m.trim())
 
-    for (const item of data) {
-      const specs = item.specs || {}
-      const t = specs.type || specs.spec_type
-      if (t && typeof t === 'string' && t.trim() !== '' && t.trim() !== '-') types.add(t.trim())
+          const g = specs.grade
+          if (g && typeof g === 'string' && g.trim() !== '' && g.trim() !== '-') grades.add(g.trim())
 
-      const m = specs.material
-      if (m && typeof m === 'string' && m.trim() !== '' && m.trim() !== '-') materials.add(m.trim())
+          const c = specs.panel_craft
+          if (c && typeof c === 'string' && c.trim() !== '' && c.trim() !== '-') crafts.add(c.trim())
 
-      const g = specs.grade
-      if (g && typeof g === 'string' && g.trim() !== '' && g.trim() !== '-') grades.add(g.trim())
+          if (item.color && typeof item.color === 'string' && item.color.trim() !== '' && item.color.trim() !== '-') {
+            colors.add(item.color.trim())
+          }
 
-      const c = specs.panel_craft
-      if (c && typeof c === 'string' && c.trim() !== '' && c.trim() !== '-') crafts.add(c.trim())
+          const b = specs.brand
+          if (b && typeof b === 'string' && b.trim() !== '' && b.trim() !== '-') brands.add(b.trim())
 
-      if (item.color && typeof item.color === 'string' && item.color.trim() !== '' && item.color.trim() !== '-') {
-        colors.add(item.color.trim())
+          const s = specs.group_size || specs.size
+          if (s && typeof s === 'string' && s.trim() !== '' && s.trim() !== '-') sizes.add(s.trim())
+        }
+
+        if (data.length < step) break
+        from += step
       }
 
-      const b = specs.brand
-      if (b && typeof b === 'string' && b.trim() !== '' && b.trim() !== '-') brands.add(b.trim())
+      // เติมหมวดหมู่สินค้าสำหรับ Props และ Furniture จากกลุ่มสินค้า (collection_groups)
+      if (category === 'prop') {
+        const colGroups = await getCachedCollectionGroupsPersistent()
+        colGroups.forEach(c => {
+          if (c.product_sup && (c.tag?.toLowerCase().includes('prop') || !c.tag)) {
+            types.add(c.product_sup.trim())
+          }
+        })
+      } else if (category === 'furniture') {
+        const colGroups = await getCachedCollectionGroupsPersistent()
+        colGroups.forEach(c => {
+          if (c.product_sup && (c.tag?.toLowerCase().includes('furn') || !c.tag?.toLowerCase().includes('prop'))) {
+            types.add(c.product_sup.trim())
+          }
+        })
+      }
 
-      const s = specs.group_size || specs.size
-      if (s && typeof s === 'string' && s.trim() !== '' && s.trim() !== '-') sizes.add(s.trim())
+      // จัดเรียงไซส์มาตรฐาน S, M, L, XL, XXL ให้อยู่บนสุดเสมอ
+      const sizePriority: Record<string, number> = { 'S': 1, 'M': 2, 'L': 3, 'XL': 4, 'XXL': 5 }
+      const sortedSizes = Array.from(sizes).sort((a, b) => {
+        const prioA = sizePriority[a.toUpperCase()] ?? 99
+        const prioB = sizePriority[b.toUpperCase()] ?? 99
+        if (prioA !== prioB) return prioA - prioB
+        return a.localeCompare(b)
+      })
+
+      // Fetch branches for stock location filter
+      const { data: branchData } = await supabaseAdmin
+        .from('branches')
+        .select('id, branch_name, branch_type')
+        .order('id', { ascending: true })
+
+      return {
+        types: Array.from(types).sort(),
+        materials: Array.from(materials).sort(),
+        grades: Array.from(grades).sort(),
+        crafts: Array.from(crafts).sort(),
+        colors: Array.from(colors).sort(),
+        brands: Array.from(brands).sort(),
+        sizes: sortedSizes,
+        branches: (branchData || []).map((b: any) => ({
+          id: b.id,
+          name: b.branch_name,
+          type: b.branch_type
+        }))
+      }
+    },
+    ['admin:category-filter-options:v1', category],
+    {
+      revalidate: ADMIN_CACHE_TTL.MASTER_SECONDS,
+      tags: [ADMIN_CACHE_TAGS.INVENTORY_META, ADMIN_CACHE_TAGS.FILTERS, ADMIN_CACHE_TAGS.BRANCHES],
     }
+  )
 
-    if (data.length < step) break
-    from += step
-  }
-
-  // เติมหมวดหมู่สินค้าสำหรับ Props และ Furniture จากกลุ่มสินค้า (collection_groups)
-  if (category === 'prop') {
-    const colGroups = await getCachedCollectionGroups(supabase)
-    colGroups.forEach(c => {
-      if (c.product_sup && (c.tag?.toLowerCase().includes('prop') || !c.tag)) {
-        types.add(c.product_sup.trim())
-      }
-    })
-  } else if (category === 'furniture') {
-    const colGroups = await getCachedCollectionGroups(supabase)
-    colGroups.forEach(c => {
-      if (c.product_sup && (c.tag?.toLowerCase().includes('furn') || !c.tag?.toLowerCase().includes('prop'))) {
-        types.add(c.product_sup.trim())
-      }
-    })
-  }
-
-  // จัดเรียงไซส์มาตรฐาน S, M, L, XL, XXL ให้อยู่บนสุดเสมอ
-  const sizePriority: Record<string, number> = { 'S': 1, 'M': 2, 'L': 3, 'XL': 4, 'XXL': 5 }
-  const sortedSizes = Array.from(sizes).sort((a, b) => {
-    const prioA = sizePriority[a.toUpperCase()] ?? 99
-    const prioB = sizePriority[b.toUpperCase()] ?? 99
-    if (prioA !== prioB) return prioA - prioB
-    return a.localeCompare(b)
-  })
-
-  // Fetch branches for stock location filter
-  const { data: branchData } = await supabase
-    .from('branches')
-    .select('id, branch_name, branch_type')
-    .order('id', { ascending: true })
-
-  const result = {
-    types: Array.from(types).sort(),
-    materials: Array.from(materials).sort(),
-    grades: Array.from(grades).sort(),
-    crafts: Array.from(crafts).sort(),
-    colors: Array.from(colors).sort(),
-    brands: Array.from(brands).sort(),
-    sizes: sortedSizes,
-    branches: (branchData || []).map((b: any) => ({
-      id: b.id,
-      name: b.branch_name,
-      type: b.branch_type
-    }))
-  }
-
-  filterOptionsCache[category] = {
-    data: result,
-    timestamp: Date.now()
-  }
-
-  return result
+  return run()
 }
 
 export async function getAllProductsForExport() {
@@ -881,6 +885,7 @@ export async function createInitialProduct(productData: any) {
   if (error) return { error: error.message }
   
   revalidatePath('/inventory')
+  invalidateAdminTags(ADMIN_CACHE_TAGS.INVENTORY_META, ADMIN_CACHE_TAGS.FILTERS)
   if (isZenslabCategory(cleanProductData.category_id)) {
     await revalidateZenslabCache({ scope: 'products', productIds: [data.id] })
   }
@@ -928,6 +933,7 @@ export async function updateProduct(id: string | number, updateData: any) {
   }
 
   revalidatePath('/inventory')
+  invalidateAdminTags(ADMIN_CACHE_TAGS.INVENTORY_META, ADMIN_CACHE_TAGS.FILTERS)
   revalidatePath(`/inventory/${id}`)
   if (isZenslabCategory(cleanUpdateData.category_id)) {
     await revalidateZenslabCache({ scope: 'products', productIds: [id] })
@@ -1048,6 +1054,7 @@ export async function bulkCreateProducts(productsArray: any[]) {
   }
 
   revalidatePath('/inventory')
+  invalidateAdminTags(ADMIN_CACHE_TAGS.INVENTORY_META, ADMIN_CACHE_TAGS.FILTERS)
   const hasZenslabItems = cleanProductsArray.some((p: any) => isZenslabCategory(p?.category_id))
   if (hasZenslabItems && totalSaved > 0) {
     await revalidateZenslabCache({ scope: 'products' })
@@ -1308,6 +1315,7 @@ export async function deleteProductsBulk(ids: (string | number)[]) {
   }
 
   revalidatePath('/inventory')
+  invalidateAdminTags(ADMIN_CACHE_TAGS.INVENTORY_META, ADMIN_CACHE_TAGS.FILTERS)
   await revalidateZenslabCache({ scope: 'products', productIds: numericIds })
   return { success: true }
 }
@@ -1375,5 +1383,6 @@ export async function deleteCollectionGroup(groupId: string) {
   }
 
   revalidatePath('/inventory')
+  invalidateAdminTags(ADMIN_CACHE_TAGS.INVENTORY_META, ADMIN_CACHE_TAGS.FILTERS)
   return { success: true }
 }

@@ -2,7 +2,8 @@
 
 import { createClient } from "@/lib/supabase/server"
 import { supabaseAdmin } from "@/lib/supabase/admin"
-import { revalidatePath } from "next/cache"
+import { revalidatePath, unstable_cache } from "next/cache"
+import { ADMIN_CACHE_TAGS, ADMIN_CACHE_TTL, invalidateAdminTags } from "@/lib/admin-cache"
 
 export interface JournalCategory {
   id: string
@@ -39,9 +40,8 @@ export interface JournalImageItem {
   } | null
 }
 
-// 1. ดึงหมวดหมู่ทั้งหมด พร้อมนับจำนวนรูปภาพ
-export async function getJournalCategories(): Promise<{ data: JournalCategory[]; error: string | null }> {
-  try {
+const getCachedJournalCategories = unstable_cache(
+  async (): Promise<JournalCategory[]> => {
     const { data: categories, error } = await supabaseAdmin
       .from("journal_categories")
       .select(`
@@ -52,7 +52,7 @@ export async function getJournalCategories(): Promise<{ data: JournalCategory[];
 
     if (error) throw error
 
-    const mapped: JournalCategory[] = (categories || []).map((cat: any) => {
+    return (categories || []).map((cat: any) => {
       const imgs = cat.images || []
       imgs.sort((a: any, b: any) => (a.sort_order || 0) - (b.sort_order || 0))
       return {
@@ -72,7 +72,18 @@ export async function getJournalCategories(): Promise<{ data: JournalCategory[];
         preview_images: imgs.slice(0, 4).map((i: any) => i.image_url),
       }
     })
+  },
+  ["admin:web-gallery-categories:v1"],
+  {
+    revalidate: ADMIN_CACHE_TTL.MASTER_SECONDS,
+    tags: [ADMIN_CACHE_TAGS.WEB_GALLERY],
+  }
+)
 
+// 1. ดึงหมวดหมู่ทั้งหมด พร้อมนับจำนวนรูปภาพ (แคช 1 ปี ล้างอัตโนมัติเมื่อแก้ไข)
+export async function getJournalCategories(): Promise<{ data: JournalCategory[]; error: string | null }> {
+  try {
+    const mapped = await getCachedJournalCategories()
     return { data: mapped, error: null }
   } catch (err: any) {
     console.error("getJournalCategories error:", err)
@@ -80,38 +91,49 @@ export async function getJournalCategories(): Promise<{ data: JournalCategory[];
   }
 }
 
-// 2. ดึงหมวดหมู่เฉพาะ 1 หมวด พร้อมรูปภาพทั้งหมดในหมวดนั้น
+// 2. ดึงหมวดหมู่เฉพาะ 1 หมวด พร้อมรูปภาพทั้งหมดในหมวดนั้น (แคช 1 ปี ล้างอัตโนมัติเมื่อแก้ไข)
 export async function getJournalCategoryWithImages(categoryId: string): Promise<{
   category: JournalCategory | null
   images: JournalImageItem[]
   error: string | null
 }> {
   try {
-    const { data: category, error: catError } = await supabaseAdmin
-      .from("journal_categories")
-      .select("*")
-      .eq("id", categoryId)
-      .single()
+    const run = unstable_cache(
+      async () => {
+        const { data: category, error: catError } = await supabaseAdmin
+          .from("journal_categories")
+          .select("*")
+          .eq("id", categoryId)
+          .single()
 
-    if (catError || !category) throw new Error("ไม่พบหมวดหมู่นี้")
+        if (catError || !category) throw new Error("ไม่พบหมวดหมู่นี้")
 
-    const { data: images, error: imgError } = await supabaseAdmin
-      .from("journal_images")
-      .select(`
-        *,
-        products ( id, name, sku, price )
-      `)
-      .eq("category_id", categoryId)
-      .order("sort_order", { ascending: true })
-      .order("id", { ascending: true })
+        const { data: images, error: imgError } = await supabaseAdmin
+          .from("journal_images")
+          .select(`
+            *,
+            products ( id, name, sku, price )
+          `)
+          .eq("category_id", categoryId)
+          .order("sort_order", { ascending: true })
+          .order("id", { ascending: true })
 
-    if (imgError) throw imgError
+        if (imgError) throw imgError
 
-    return {
-      category,
-      images: (images as JournalImageItem[]) || [],
-      error: null,
-    }
+        return {
+          category: category as JournalCategory,
+          images: (images as JournalImageItem[]) || [],
+        }
+      },
+      ["admin:web-gallery-category:v1", categoryId],
+      {
+        revalidate: ADMIN_CACHE_TTL.MASTER_SECONDS,
+        tags: [ADMIN_CACHE_TAGS.WEB_GALLERY],
+      }
+    )
+
+    const result = await run()
+    return { ...result, error: null }
   } catch (err: any) {
     console.error("getJournalCategoryWithImages error:", err)
     return { category: null, images: [], error: err.message }
@@ -165,6 +187,7 @@ export async function saveJournalCategory(categoryData: {
     }
 
     revalidatePath("/web-gallery")
+    invalidateAdminTags(ADMIN_CACHE_TAGS.WEB_GALLERY)
     return { success: true }
   } catch (err: any) {
     return { error: err.message || "Failed to save category" }
@@ -186,6 +209,7 @@ export async function deleteJournalCategory(categoryId: string) {
     if (error) throw error
 
     revalidatePath("/web-gallery")
+    invalidateAdminTags(ADMIN_CACHE_TAGS.WEB_GALLERY)
     return { success: true }
   } catch (err: any) {
     return { error: err.message || "Failed to delete category" }
@@ -233,6 +257,7 @@ export async function addJournalImages(
         .eq("id", categoryId)
 
       revalidatePath("/web-gallery")
+    invalidateAdminTags(ADMIN_CACHE_TAGS.WEB_GALLERY)
       return { success: true, count: insertItems.length }
     } else {
       const newCount = validUrls.length
@@ -257,6 +282,7 @@ export async function addJournalImages(
       if (error) throw error
 
       revalidatePath("/web-gallery")
+    invalidateAdminTags(ADMIN_CACHE_TAGS.WEB_GALLERY)
       return { success: true, count: insertItems.length }
     }
   } catch (err: any) {
@@ -288,6 +314,7 @@ export async function updateJournalImage(
     if (error) throw error
 
     revalidatePath("/web-gallery")
+    invalidateAdminTags(ADMIN_CACHE_TAGS.WEB_GALLERY)
     return { success: true }
   } catch (err: any) {
     return { error: err.message || "Failed to update image" }
@@ -309,6 +336,7 @@ export async function deleteJournalImages(imageIds: number[]) {
     if (error) throw error
 
     revalidatePath("/web-gallery")
+    invalidateAdminTags(ADMIN_CACHE_TAGS.WEB_GALLERY)
     return { success: true }
   } catch (err: any) {
     return { error: err.message || "Failed to delete images" }
@@ -332,6 +360,7 @@ export async function reorderJournalImages(
     }
 
     revalidatePath("/web-gallery")
+    invalidateAdminTags(ADMIN_CACHE_TAGS.WEB_GALLERY)
     return { success: true }
   } catch (err: any) {
     return { error: err.message || "Failed to reorder images" }
@@ -374,6 +403,7 @@ export async function moveJournalImages(
     }
 
     revalidatePath("/web-gallery")
+    invalidateAdminTags(ADMIN_CACHE_TAGS.WEB_GALLERY)
     return { success: true, count: imageIds.length }
   } catch (err: any) {
     return { error: err.message || "Failed to move images" }

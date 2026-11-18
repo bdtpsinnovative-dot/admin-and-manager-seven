@@ -1,7 +1,9 @@
 "use server"
 
+import { unstable_cache } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { supabaseAdmin } from "@/lib/supabase/admin"
+import { ADMIN_CACHE_TAGS, ADMIN_CACHE_TTL } from "@/lib/admin-cache"
 import { normalizeLocation, sanitizeCategoryName } from "@/lib/algorithm-normalization"
 import type { AlgorithmRange } from "./algorithm"
 import type { AudienceBreakdownItem } from "./audience-analytics"
@@ -314,14 +316,13 @@ async function fetchDailyTrafficFromMetrics(
   }
 }
 
-export async function getDailyTrafficAnalytics(
+async function computeDailyTrafficAnalytics(
   rangeValue: number = 30,
   offset: number = 0,
   month?: string,
   fromDate?: string,
   toDate?: string
 ): Promise<DailyTrafficAnalytics> {
-  await requireAdmin()
   const window = resolveDateWindow({ range: rangeValue, offset, month, from: fromDate, to: toDate })
   const cacheKey = `${window.type}:${window.monthKey || ""}:${window.fromDate || ""}:${window.toDate || ""}:${window.rangeDays}:${window.offset}`
   const cached = cache.get(cacheKey)
@@ -569,4 +570,31 @@ export async function getDailyTrafficAnalytics(
       error: error instanceof Error ? error.message : "ไม่สามารถโหลดข้อมูลสถิติรายวันได้",
     }
   }
+}
+
+export async function getDailyTrafficAnalytics(
+  rangeValue: number = 30,
+  offset: number = 0,
+  month?: string,
+  fromDate?: string,
+  toDate?: string
+): Promise<DailyTrafficAnalytics> {
+  // ตรวจสิทธิ์สดทุกครั้งก่อนเข้าถึง Vercel Data Cache (30 นาที)
+  await requireAdmin()
+  const run = unstable_cache(
+    () => computeDailyTrafficAnalytics(rangeValue, offset, month, fromDate, toDate),
+    [
+      "admin:algo-daily-traffic:v1",
+      String(rangeValue),
+      String(offset),
+      month || "",
+      fromDate || "",
+      toDate || "",
+    ],
+    {
+      revalidate: ADMIN_CACHE_TTL.ALGORITHM_SECONDS,
+      tags: [ADMIN_CACHE_TAGS.ALGORITHM],
+    }
+  )
+  return run()
 }

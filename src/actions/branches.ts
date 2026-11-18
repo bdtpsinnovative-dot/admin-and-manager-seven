@@ -3,6 +3,7 @@
 // ใช้ Relative Path ตามที่คุณต้องการ
 import { createClient } from "../lib/supabase/server"
 import { revalidatePath } from "next/cache"
+import { ADMIN_CACHE_TAGS, invalidateAdminTags } from "../lib/admin-cache"
 
 const TABLE = 'branches'
 
@@ -42,6 +43,7 @@ export async function createBranch(formData: FormData) {
   if (error) return { error: error.message }
 
   revalidatePath('/branches')
+  invalidateAdminTags(ADMIN_CACHE_TAGS.BRANCHES, ADMIN_CACHE_TAGS.INVENTORY_META)
   return { success: true, message: `เพิ่มสาขา ${branch_code} เรียบร้อย` }
 }
 
@@ -62,6 +64,7 @@ export async function updateBranchType(id: number, newType: 'SHOWROOM' | 'FACTOR
   }
 
   revalidatePath('/branches')
+  invalidateAdminTags(ADMIN_CACHE_TAGS.BRANCHES, ADMIN_CACHE_TAGS.INVENTORY_META)
   return { success: true }
 }
 
@@ -82,6 +85,7 @@ export async function deleteBranch(id: number) {
   }
 
   revalidatePath('/branches')
+  invalidateAdminTags(ADMIN_CACHE_TAGS.BRANCHES, ADMIN_CACHE_TAGS.INVENTORY_META)
   return { success: true }
 }
 
@@ -102,5 +106,6 @@ export async function updateBranchLocation(id: number, latitude: number, longitu
   }
 
   revalidatePath('/branches')
+  invalidateAdminTags(ADMIN_CACHE_TAGS.BRANCHES, ADMIN_CACHE_TAGS.INVENTORY_META)
   return { success: true }
 }
