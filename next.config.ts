@@ -35,8 +35,9 @@ const nextConfig: NextConfig = {
   /* ✅ อนุญาตให้ Dev Server รับการเชื่อมต่อและส่ง static chunks ข้ามเครื่องผ่าน IP (Next.js 15/16) */
   allowedDevOrigins: localIps,
 
-  /* การตั้งค่ารูปภาพเดิมของนาย */
+  /* การตั้งค่ารูปภาพเดิมของนาย (ปิด Vercel Image Optimization เพื่อประหยัดโควต้า) */
   images: {
+    unoptimized: true,
     remotePatterns: [
       {
         protocol: 'https',
