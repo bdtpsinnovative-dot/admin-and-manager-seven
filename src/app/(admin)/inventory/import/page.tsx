@@ -1,6 +1,7 @@
 //src/app/(admin)/inventory/import/page.tsx
 
 import BulkUploadProducts from "@/components/BulkUploadProducts"
+import RevalidateZenslabButton from "@/components/RevalidateZenslabButton"
 import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
@@ -48,12 +49,17 @@ export default async function ImportPage() {
   return (
     <div className="min-h-screen bg-slate-50 p-6">
       <div className="max-w-7xl mx-auto">
-        <Link 
-          href="/inventory" 
-          className="inline-flex items-center text-sm text-slate-500 hover:text-blue-600 transition mb-4 font-semibold"
-        >
-          <ArrowLeft className="w-4 h-4 mr-1" /> กลับไปหน้าคลังสินค้า
-        </Link>
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <Link 
+            href="/inventory" 
+            className="inline-flex items-center text-sm text-slate-500 hover:text-blue-600 transition font-semibold"
+          >
+            <ArrowLeft className="w-4 h-4 mr-1" /> กลับไปหน้าคลังสินค้า
+          </Link>
+          {(allowedTabs.includes('SLABS') || allowedTabs.includes('ROUGH')) && (
+            <RevalidateZenslabButton />
+          )}
+        </div>
         
         {/* เรียกใช้ Component พร้อมส่งสิทธิ์หมวดหมู่และสิทธิ์ดูต้นทุน */}
         <BulkUploadProducts allowedTabs={allowedTabs} canViewCosts={canViewCosts} />

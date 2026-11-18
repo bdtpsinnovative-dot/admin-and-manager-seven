@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
+import { revalidateZenslabCache } from "@/lib/revalidateZenslab";
 
 async function checkAuth() {
   const supabase = await createClient();
@@ -28,7 +29,8 @@ export interface UpdateSkuResult {
  */
 export async function updateProductSku(
   productId: number | string,
-  newSku: string
+  newSku: string,
+  options?: { skipZenslabRevalidate?: boolean }
 ): Promise<UpdateSkuResult> {
   try {
     await checkAuth();
@@ -99,6 +101,15 @@ export async function updateProductSku(
     revalidatePath("/propsfinatest");
     revalidatePath("/propsfinatest2");
 
+    if (
+      !options?.skipZenslabRevalidate &&
+      (!currentProduct.category_id ||
+        currentProduct.category_id === "SLABS" ||
+        currentProduct.category_id === "rough_wood")
+    ) {
+      await revalidateZenslabCache({ scope: "products", productIds: [numId] });
+    }
+
     return {
       success: true,
       oldSku: currentProduct.sku,
@@ -156,7 +167,7 @@ export async function bulkUpdateProductSkus(
         continue;
       }
 
-      const res = await updateProductSku(targetId, cleanNewSku);
+      const res = await updateProductSku(targetId, cleanNewSku, { skipZenslabRevalidate: true });
       if (res.error) {
         errors.push(res.error);
         skippedCount++;
@@ -167,6 +178,9 @@ export async function bulkUpdateProductSkus(
 
     revalidatePath("/inventory");
     revalidatePath("/inventory/update-sku");
+    if (updatedCount > 0) {
+      await revalidateZenslabCache({ scope: "products" });
+    }
     return { success: updatedCount > 0, updatedCount, skippedCount, errors };
   } catch (err: any) {
     return { success: false, updatedCount: 0, skippedCount: 0, errors: [err.message || "เกิดข้อผิดพลาด"] };

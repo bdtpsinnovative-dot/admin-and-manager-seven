@@ -7,9 +7,15 @@ import { supabaseAdmin } from "../lib/supabase/admin"
 import { revalidatePath } from "next/cache"
 import { CATEGORY_MAP } from "@/lib/propFilterModel"
 import { requestR2Object } from "../lib/r2"
+import { revalidateZenslabCache } from "../lib/revalidateZenslab"
 
 const TABLE_NAME = "products"
 const STORAGE_BUCKET = "product-images"
+
+function isZenslabCategory(categoryId?: string | null): boolean {
+  if (!categoryId) return true
+  return categoryId === 'SLABS' || categoryId === 'rough_wood'
+}
 
 // --- Helper เช็คสิทธิ์การดูต้นทุน (Cost Visibility) ---
 export async function checkCanViewCosts(): Promise<boolean> {
@@ -875,6 +881,9 @@ export async function createInitialProduct(productData: any) {
   if (error) return { error: error.message }
   
   revalidatePath('/inventory')
+  if (isZenslabCategory(cleanProductData.category_id)) {
+    await revalidateZenslabCache({ scope: 'products', productIds: [data.id] })
+  }
   return { id: data.id }
 }
 
@@ -920,6 +929,9 @@ export async function updateProduct(id: string | number, updateData: any) {
 
   revalidatePath('/inventory')
   revalidatePath(`/inventory/${id}`)
+  if (isZenslabCategory(cleanUpdateData.category_id)) {
+    await revalidateZenslabCache({ scope: 'products', productIds: [id] })
+  }
   return { success: true }
 }
 
@@ -1036,6 +1048,10 @@ export async function bulkCreateProducts(productsArray: any[]) {
   }
 
   revalidatePath('/inventory')
+  const hasZenslabItems = cleanProductsArray.some((p: any) => isZenslabCategory(p?.category_id))
+  if (hasZenslabItems && totalSaved > 0) {
+    await revalidateZenslabCache({ scope: 'products' })
+  }
   return { success: true, count: totalSaved }
 }
 
@@ -1292,6 +1308,7 @@ export async function deleteProductsBulk(ids: (string | number)[]) {
   }
 
   revalidatePath('/inventory')
+  await revalidateZenslabCache({ scope: 'products', productIds: numericIds })
   return { success: true }
 }
 

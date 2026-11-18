@@ -1,5 +1,6 @@
 "use server"
 import { supabase } from '../lib/supabase';
+import { revalidateZenslabCache } from '../lib/revalidateZenslab';
 
 // ดึงข้อมูลสินค้าเพื่อแสดงในตารางหลังบ้าน
 export async function getAdminInventory() {
@@ -19,5 +20,6 @@ export async function addInventoryItem(formData: any) {
     .insert([formData]);
 
   if (error) return { success: false, error: error.message };
+  await revalidateZenslabCache({ scope: 'products' });
   return { success: true };
 }

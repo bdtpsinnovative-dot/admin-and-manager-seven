@@ -1,6 +1,7 @@
 import Link from "next/link"
 import { getProducts, getCategoryFilterOptions, getCategoryTotalCount, type ProductExtraFilters } from "../../../actions/woodslab"
 import InventoryActions from "../../../components/InventoryActions"
+import RevalidateZenslabButton from "../../../components/RevalidateZenslabButton"
 import InventoryTable from "../../../components/InventoryTable"
 import CategoryFilterBar from "../../../components/CategoryFilterBar"
 import InventoryLoadingOverlay from "../../../components/InventoryLoadingOverlay"
@@ -190,6 +191,9 @@ export default async function InventoryPage({ searchParams }: Props) {
               <FileUp className="w-4 h-4" />
               นำเข้า Excel
             </Link>
+            {(allowedTabs.includes('SLABS') || allowedTabs.includes('ROUGH')) && (
+              <RevalidateZenslabButton />
+            )}
             <InventoryActions allowedTabs={allowedTabs} activeTab={activeTab} />
           </div>
         </div>
