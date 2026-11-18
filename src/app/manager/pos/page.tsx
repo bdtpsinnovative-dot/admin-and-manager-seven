@@ -8,7 +8,13 @@ import { toast } from 'sonner'
 import StorefrontFilterDrawer from '@/components/pos/StorefrontFilterDrawer'
 import StorefrontFilterBar from '@/components/pos/StorefrontFilterBar'
 import ExternalProductModal from '@/components/pos/ExternalProductModal'
-import { getMaxSpecialDiscountPercent, getMaxSpecialDiscountBaht, getNextSpecialDiscountTier, QUICK_PERCENT_OPTIONS } from '@/lib/specialDiscountTiers'
+import {
+  ENABLE_SPECIAL_DISCOUNT_TIER_LOCK,
+  getMaxSpecialDiscountPercent,
+  getMaxSpecialDiscountBaht,
+  getNextSpecialDiscountTier,
+  QUICK_PERCENT_OPTIONS,
+} from '@/lib/specialDiscountTiers'
 import {
   matchesStorefrontCategory,
   productColorValues,
@@ -1612,7 +1618,11 @@ export default function ManagerPOSPage() {
     const num = Number(val)
     if (isNaN(num) || num < 0) return
     if (num > maxAllowedSpecialPercent) {
-      toast.warning(`ยอดซื้อ ฿${priceAfterPromos.toLocaleString()} ได้รับสิทธิ์ลดพิเศษสูงสุด ${maxAllowedSpecialPercent}% ครับ`)
+      toast.warning(
+        ENABLE_SPECIAL_DISCOUNT_TIER_LOCK
+          ? `ยอดซื้อ ฿${priceAfterPromos.toLocaleString()} ได้รับสิทธิ์ลดพิเศษสูงสุด ${maxAllowedSpecialPercent}% ครับ`
+          : `ส่วนลดเปอร์เซ็นต์ต้องไม่เกิน ${maxAllowedSpecialPercent}% ครับ`
+      )
       setSpecialDiscountPercent(maxAllowedSpecialPercent.toString())
     } else {
       const cleanVal = val.length > 1 && val.startsWith('0') && !val.includes('.') ? val.replace(/^0+/, '') : val
@@ -1628,7 +1638,11 @@ export default function ManagerPOSPage() {
     const num = Number(val)
     if (isNaN(num) || num < 0) return
     if (num > maxAllowedSpecialBaht) {
-      toast.warning(`ยอดซื้อ ฿${priceAfterPromos.toLocaleString()} ลดพิเศษได้สูงสุด ฿${maxAllowedSpecialBaht.toLocaleString()} (${maxAllowedSpecialPercent}%) ครับ`)
+      toast.warning(
+        ENABLE_SPECIAL_DISCOUNT_TIER_LOCK
+          ? `ยอดซื้อ ฿${priceAfterPromos.toLocaleString()} ลดพิเศษได้สูงสุด ฿${maxAllowedSpecialBaht.toLocaleString()} (${maxAllowedSpecialPercent}%) ครับ`
+          : `ส่วนลดต้องไม่เกินยอดซื้อ ฿${maxAllowedSpecialBaht.toLocaleString()} ครับ`
+      )
       setSpecialDiscountBaht(maxAllowedSpecialBaht.toString())
     } else {
       const cleanVal = val.length > 1 && val.startsWith('0') && !val.includes('.') ? val.replace(/^0+/, '') : val
@@ -4207,8 +4221,8 @@ export default function ManagerPOSPage() {
                   )}
                 </div>
 
-                {/* กล่องแสดงสิทธิ์ขั้นบันไดส่วนลดพิเศษ (Tier Banner) */}
-                {cart.length > 0 && (
+                {/* กล่องแสดงสิทธิ์ขั้นบันไดส่วนลดพิเศษ (แสดงเมื่อเปิด ENABLE_SPECIAL_DISCOUNT_TIER_LOCK เท่านั้น) */}
+                {ENABLE_SPECIAL_DISCOUNT_TIER_LOCK && cart.length > 0 && (
                   <div className="p-3 bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-300/70 rounded-xl space-y-1.5">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1.5">
@@ -4383,9 +4397,11 @@ export default function ManagerPOSPage() {
                         )}
                       </div>
                     </div>
-                    <p className="text-[10px] text-slate-400 leading-snug">
-                      * คำนวณเพดานเงินสูงสุดตามสิทธิ์ {maxAllowedSpecialPercent}% ของยอดซื้อปัจจุบัน (฿{priceAfterPromos.toLocaleString()})
-                    </p>
+                    {ENABLE_SPECIAL_DISCOUNT_TIER_LOCK && (
+                      <p className="text-[10px] text-slate-400 leading-snug">
+                        * คำนวณเพดานเงินสูงสุดตามสิทธิ์ {maxAllowedSpecialPercent}% ของยอดซื้อปัจจุบัน (฿{priceAfterPromos.toLocaleString()})
+                      </p>
+                    )}
                   </div>
                 )}
               </div>

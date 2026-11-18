@@ -18,7 +18,11 @@ import {
   getPosBrandOptions,
   ProductBrandOption
 } from '@/lib/propFilterModel'
-import { getMaxSpecialDiscountPercent, getMaxSpecialDiscountBaht } from '@/lib/specialDiscountTiers'
+import {
+  ENABLE_SPECIAL_DISCOUNT_TIER_LOCK,
+  getMaxSpecialDiscountPercent,
+  getMaxSpecialDiscountBaht,
+} from '@/lib/specialDiscountTiers'
 
 export interface PosSetBundle {
   id: number;
@@ -1378,7 +1382,7 @@ export async function processCheckout(payload: CheckoutPayload): Promise<Checkou
       (typeof (i as any).sku === 'string' && ((i as any).sku.startsWith('ZLB-') || (i as any).sku.startsWith('LEG-') || (i as any).sku.startsWith('WOOD-')))
     )
 
-    // 🛡️ ตรวจสอบเพดานส่วนลดพิเศษท้ายบิลตามขั้นบันไดยอดซื้อ (Server-side validation)
+    // 🛡️ ตรวจสอบเพดานส่วนลดพิเศษท้ายบิล (ควบคุมเปิด-ปิดขั้นบันไดที่ ENABLE_SPECIAL_DISCOUNT_TIER_LOCK)
     const itemPromoDiscountTotal = payload.items.reduce((acc: number, item: any) => acc + (((item.originalPrice || item.priceAtSale) - item.priceAtSale) * item.qty), 0)
     const spendBase = Math.max(0, Number(payload.subtotal || 0) - itemPromoDiscountTotal - (payload.setDiscountAmount || 0) - (payload.couponDiscountAmount || 0))
     const maxAllowedPercent = getMaxSpecialDiscountPercent(spendBase)
@@ -1390,13 +1394,17 @@ export async function processCheckout(payload: CheckoutPayload): Promise<Checkou
     if (reqPercent > maxAllowedPercent) {
       return {
         success: false,
-        error: `ส่วนลดพิเศษ (${reqPercent}%) เกินสิทธิ์ขั้นบันไดสูงสุดที่กำหนดสำหรับยอดซื้อ ฿${spendBase.toLocaleString()} (สูงสุด ${maxAllowedPercent}%)`
+        error: ENABLE_SPECIAL_DISCOUNT_TIER_LOCK
+          ? `ส่วนลดพิเศษ (${reqPercent}%) เกินสิทธิ์ขั้นบันไดสูงสุดที่กำหนดสำหรับยอดซื้อ ฿${spendBase.toLocaleString()} (สูงสุด ${maxAllowedPercent}%)`
+          : `ส่วนลดพิเศษ (${reqPercent}%) ต้องไม่เกิน ${maxAllowedPercent}%`
       }
     }
     if (reqBaht > maxAllowedBaht && maxAllowedBaht > 0) {
       return {
         success: false,
-        error: `ส่วนลดพิเศษ (฿${reqBaht.toLocaleString()}) เกินสิทธิ์ขั้นบันไดสูงสุดที่กำหนดสำหรับยอดซื้อ ฿${spendBase.toLocaleString()} (สูงสุด ฿${(maxAllowedBaht - 2).toLocaleString()})`
+        error: ENABLE_SPECIAL_DISCOUNT_TIER_LOCK
+          ? `ส่วนลดพิเศษ (฿${reqBaht.toLocaleString()}) เกินสิทธิ์ขั้นบันไดสูงสุดที่กำหนดสำหรับยอดซื้อ ฿${spendBase.toLocaleString()} (สูงสุด ฿${(maxAllowedBaht - 2).toLocaleString()})`
+          : `ส่วนลดพิเศษ (฿${reqBaht.toLocaleString()}) ต้องไม่เกินยอดซื้อ ฿${(maxAllowedBaht - 2).toLocaleString()}`
       }
     }
 

@@ -1,5 +1,17 @@
 /**
+ * 🔓 สวิตช์เปิด-ปิดการล็อกขั้นบันไดส่วนลดพิเศษท้ายบิล (POS)
+ * - false = ปลดล็อก (กรอกส่วนลดได้อิสระ 0–100% หรือไม่เกินยอดซื้อสุทธิ)
+ * - true  = เปิดล็อกตามขั้นบันได SPECIAL_DISCOUNT_TIERS ด้านล่าง
+ *
+ * 📌 วิธีเปิดล็อกกลับมาใช้อีกครั้ง:
+ * เปลี่ยนค่า ENABLE_SPECIAL_DISCOUNT_TIER_LOCK เป็น true แค่จุดเดียว
+ * จะมีผลทันทีทั้งหน้า POS (client, ปุ่มลัด, ป้ายแจ้งสิทธิ์, ผู้ช่วยปัดเศษ) และฝั่ง Server (src/actions/pos.ts)
+ */
+export const ENABLE_SPECIAL_DISCOUNT_TIER_LOCK = false
+
+/**
  * กฎเกณฑ์และขั้นบันไดส่วนลดพิเศษท้ายบิล (Special Discount Tiers)
+ * (ทำงานเมื่อ ENABLE_SPECIAL_DISCOUNT_TIER_LOCK = true)
  * - ซื้อไม่เกิน 25,000 ฿ -> สูงสุด 5%
  * - ซื้อ 25,000 ฿ ขึ้นไป -> สูงสุด 10%
  * - ซื้อ 50,000 ฿ ขึ้นไป -> สูงสุด 15%
@@ -26,6 +38,9 @@ export const SPECIAL_DISCOUNT_TIERS: SpecialDiscountTier[] = [
 export const QUICK_PERCENT_OPTIONS = [5, 10, 15, 20, 25, 30]
 
 export function getMaxSpecialDiscountPercent(spendAmount: number): number {
+  if (!ENABLE_SPECIAL_DISCOUNT_TIER_LOCK) {
+    return 100
+  }
   const safeSpend = Math.max(0, Number(spendAmount) || 0)
   for (const tier of SPECIAL_DISCOUNT_TIERS) {
     if (safeSpend >= tier.minSpend) {
@@ -37,6 +52,9 @@ export function getMaxSpecialDiscountPercent(spendAmount: number): number {
 
 export function getMaxSpecialDiscountBaht(spendAmount: number): number {
   const safeSpend = Math.max(0, Number(spendAmount) || 0)
+  if (!ENABLE_SPECIAL_DISCOUNT_TIER_LOCK) {
+    return Math.floor(safeSpend)
+  }
   const maxPercent = getMaxSpecialDiscountPercent(safeSpend)
   return Math.floor(safeSpend * (maxPercent / 100))
 }
@@ -46,6 +64,9 @@ export function getNextSpecialDiscountTier(spendAmount: number): {
   nextMaxPercent: number
   diff: number
 } | null {
+  if (!ENABLE_SPECIAL_DISCOUNT_TIER_LOCK) {
+    return null
+  }
   const safeSpend = Math.max(0, Number(spendAmount) || 0)
   // เรียงลำดับจากน้อยไปมาก
   const ascending = [...SPECIAL_DISCOUNT_TIERS].sort((a, b) => a.minSpend - b.minSpend)
