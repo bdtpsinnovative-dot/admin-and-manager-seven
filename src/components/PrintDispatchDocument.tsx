@@ -72,26 +72,40 @@ export default function PrintDispatchDocument({ data, className = "" }: PrintDis
   // 2. ส่วนลดเซ็ตโปรโมชั่น (Set Promotion Discount)
   const setDiscountAmount = Number(snapshot?.set_discount_amount || 0);
 
-  // 3. ส่วนลดพิเศษท้ายบิล (Special Discount / Rounding Adjustment)
+  // 3. ส่วนลดสินค้า / รายการสินค้า (Item Discounts) จาก order_items
+  const itemDiscountsFromItems = data?.order_items?.reduce((sum: number, item: any) => {
+    return sum + (Number(item.discount_amount_per_piece || 0) * Number(item.qty || 1));
+  }, 0) || 0;
+
+  // 4. ส่วนลดพิเศษท้ายบิล (Special Discount / Rounding Adjustment)
   const specialPercent = Number(data?.special_discount_percent ?? snapshot?.special_discount?.percent ?? 0);
   const specialBaht = Number(data?.special_discount_baht ?? snapshot?.special_discount?.baht ?? 0);
+
+  // คำนวณฐานราคาก่อนคิด % ส่วนลดพิเศษ: หักเฉพาะส่วนลดคูปอง, ส่วนลดเซ็ต, และส่วนลดรายชิ้น (ไม่หัก special discount ออกจากตัวเอง)
+  const nonSpecialDiscounts = couponDiscountAmount + setDiscountAmount + itemDiscountsFromItems;
+  const baseBeforeSpecial = Math.max(0, subtotal - nonSpecialDiscounts);
+  const baseAfterBaht = Math.max(0, baseBeforeSpecial - specialBaht);
 
   let specialDiscountAmount = 0;
   if (specialPercent > 0 || specialBaht !== 0) {
     if (specialPercent > 0) {
-      const baseBeforeSpecial = Math.max(0, subtotal - (totalSpecialDiscount - specialBaht));
-      const afterBaht = Math.max(0, baseBeforeSpecial - specialBaht);
-      specialDiscountAmount = specialBaht + (afterBaht * (specialPercent / 100));
+      specialDiscountAmount = specialBaht + (baseAfterBaht * (specialPercent / 100));
     } else {
       specialDiscountAmount = specialBaht;
     }
   }
 
-  // 4. ส่วนลดสินค้า / โปรโมชั่นระดับสินค้า (Item / Promotion Discount)
+  // 5. ส่วนลดสินค้า / โปรโมชั่นระดับสินค้า (Item / Promotion Discount)
   let itemPromotionDiscount = Math.max(
     0,
     Math.round((totalSpecialDiscount - couponDiscountAmount - setDiscountAmount - specialDiscountAmount) * 100) / 100
   );
+
+  // กรณีที่ไม่มีส่วนลดระดับสินค้าจริง แต่มีส่วนลดพิเศษท้ายบิล ให้รวบยอดส่วนลดทั้งหมดเข้า Special Discount (ป้องกันเศษปัดทศนิยมแตกแถว)
+  if (itemDiscountsFromItems === 0 && itemPromotionDiscount > 0 && (specialPercent > 0 || specialBaht > 0)) {
+    specialDiscountAmount = Math.max(0, totalSpecialDiscount - couponDiscountAmount - setDiscountAmount);
+    itemPromotionDiscount = 0;
+  }
 
   // Fallback สำหรับบิลเก่าที่ไม่มี snapshot แยกประเภท
   if (
