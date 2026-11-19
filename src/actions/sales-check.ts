@@ -3,6 +3,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { revalidatePath } from 'next/cache'
+import { getCachedProductsMapByIds } from '@/lib/cached-product-lookup'
 
 interface SalesOrderItemRow {
   id: number
@@ -94,11 +95,11 @@ export async function getSalesHistory(showHidden = false, targetBranchId?: numbe
       profiles:user_id ( full_name, phone ),
       order_items (
         id,
+        product_id,
         qty,
         price_at_sale,
         total_item_amount,
         fulfill_branch_id,
-        products:products!order_items_product_fk ( name, sku, image_url ),
         branches:fulfill_branch_id ( branch_name )
       )
     `)
@@ -115,6 +116,12 @@ export async function getSalesHistory(showHidden = false, targetBranchId?: numbe
 
   const { data: orders, error } = await query
   if (error) return { success: false, error: error.message }
+
+  // ⚡ ดึงข้อมูลสินค้าเฉพาะ product_id ในออเดอร์เหล่านี้จาก Cache (ไม่ต้อง Join SQL ให้ช้า)
+  const allProductIds = (orders || []).flatMap((o: any) =>
+    (o.order_items || []).map((i: any) => i.product_id)
+  )
+  const productMap = await getCachedProductsMapByIds(allProductIds)
 
   // 3. ปรับตัวแปรตอนวนลูป map ส่งค่าออกไปหน้าบ้าน
   const orderRows = (orders || []) as unknown as SalesOrderRow[]
@@ -162,16 +169,19 @@ export async function getSalesHistory(showHidden = false, targetBranchId?: numbe
       }
     })
 
-    const items = order.order_items?.map(item => ({
-      id: item.id,
-      qty: item.qty,
-      priceAtSale: item.price_at_sale,
-      totalItemAmount: item.total_item_amount,
-      productName: item.products?.name || 'ไม่พบสินค้า',
-      productSku: item.products?.sku || '',
-      imageUrl: item.products?.image_url || null,
-      fulfillBranchName: item.branches?.branch_name || 'สาขาหลัก'
-    })) || []
+    const items = order.order_items?.map((item: any) => {
+      const prod = productMap.get(item.product_id)
+      return {
+        id: item.id,
+        qty: item.qty,
+        priceAtSale: item.price_at_sale,
+        totalItemAmount: item.total_item_amount,
+        productName: prod?.name || (item as any).products?.name || 'ไม่พบสินค้า',
+        productSku: prod?.sku || (item as any).products?.sku || '',
+        imageUrl: prod?.image_url || (item as any).products?.image_url || null,
+        fulfillBranchName: item.branches?.branch_name || 'สาขาหลัก'
+      }
+    }) || []
 
     const totalAmount = Number(order.total_amount) || 0
     const discountAmount = Number(order.discount_amount) || 0

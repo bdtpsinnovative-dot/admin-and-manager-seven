@@ -4,6 +4,7 @@ import { createClient } from "../lib/supabase/server"
 import { resolveCategoryInfo } from "../lib/propFilterModel"
 import { type DashboardBrandKey, isMatchingBrand } from "../lib/dashboardBrand"
 import { parseDashboardBranchIds } from "../lib/dashboardBranch"
+import { getCachedProductsMapByIds } from "@/lib/cached-product-lookup"
 
 export type { DashboardBrandKey } from "../lib/dashboardBrand"
 
@@ -354,18 +355,7 @@ export async function getDashboardData(
           qty,
           price_at_sale,
           total_item_amount,
-          discount_amount_per_piece,
-          products:products!order_items_product_fk (
-            id,
-            name,
-            sku,
-            image_url,
-            price,
-            category_id,
-            collection_group_id,
-            specs,
-            collection_groups ( id, name, product_sup, tag )
-          )
+          discount_amount_per_piece
         )
       `)
       .neq("status", "PENDING")
@@ -375,6 +365,7 @@ export async function getDashboardData(
       .from("damaged_goods_records")
       .select(`
         id,
+        product_id,
         qty,
         reason,
         rfid_tag,
@@ -382,20 +373,7 @@ export async function getDashboardData(
         created_at,
         branch_id,
         branches ( id, branch_name ),
-        profiles!damaged_goods_records_profile_fk ( full_name ),
-        products (
-          id,
-          name,
-          sku,
-          barcode,
-          image_url,
-          price,
-          cost,
-          category_id,
-          collection_group_id,
-          specs,
-          collection_groups ( id, name, product_sup, tag )
-        )
+        profiles!damaged_goods_records_profile_fk ( full_name )
       `)
       .order("created_at", { ascending: false })
 
@@ -437,6 +415,13 @@ export async function getDashboardData(
 
     if (branchesError) throw new Error(branchesError.message)
     if (ordersError) throw new Error(ordersError.message)
+
+    // ⚡ ดึงข้อมูลสินค้าเฉพาะ product_id ในออเดอร์และของชำรุดเหล่านี้จาก Cache (ไม่ต้อง Join SQL ให้ช้า)
+    const allProductIds = [
+      ...(orders || []).flatMap((o: any) => (o.order_items || []).map((i: any) => i.product_id)),
+      ...(damageRecords || []).map((d: any) => (d as any).product_id),
+    ]
+    const productMetaMap = await getCachedProductsMapByIds(allProductIds)
 
     const availableBranches = (branches || []).map((branch: { id: number; branch_name: string | null }) => ({
       id: branch.id,
@@ -622,7 +607,7 @@ export async function getDashboardData(
         price_at_sale: number | null
         total_item_amount: number | null
         discount_amount_per_piece: number | null
-        products: { name: string | null; sku: string | null; image_url: string | null; price?: number | null } | { name: string | null; sku: string | null; image_url: string | null; price?: number | null }[] | null
+        products?: { name: string | null; sku: string | null; image_url: string | null; price?: number | null } | { name: string | null; sku: string | null; image_url: string | null; price?: number | null }[] | null
       }[] | null
     }) => {
       const branchId = Number(order.branch_id)
@@ -651,9 +636,10 @@ export async function getDashboardData(
       let hasMatchingItemInOrder = false
 
       order.order_items?.forEach((item) => {
-        const product = Array.isArray(item.products) ? item.products[0] : item.products
+        const product = (item.product_id ? productMetaMap.get(item.product_id) : undefined) ||
+          (Array.isArray((item as any).products) ? (item as any).products[0] : (item as any).products)
         const productKey = String(item.product_id ?? product?.sku ?? product?.name ?? "unknown")
-        const current = productMap.get(productKey) || {
+        const current: DashboardProductSummary = productMap.get(productKey) || {
           key: productKey,
           name: product?.name || "ไม่พบชื่อสินค้า",
           sku: product?.sku || null,
@@ -1287,7 +1273,9 @@ export async function getDashboardData(
     const damageItems: DashboardDamageItem[] = []
 
     for (const item of (damageRecords || [])) {
-      const catInfo = resolveCategoryInfo(item.products)
+      const product = ((item as any).product_id ? productMetaMap.get((item as any).product_id) : undefined) ||
+        (Array.isArray((item as any).products) ? (item as any).products[0] : (item as any).products)
+      const catInfo = resolveCategoryInfo(product)
       if (!isAllCategory && !isMatchingCategoryKey(catInfo, selectedCategoryKey)) {
         continue
       }
@@ -1297,8 +1285,8 @@ export async function getDashboardData(
 
       const q = Number(item.qty || 0)
       damageTotalQty += q
-      const price = Number((item.products as any)?.price || 0)
-      const cost = Number((item.products as any)?.cost || 0)
+      const price = Number((product as any)?.price || 0)
+      const cost = Number((product as any)?.cost || 0)
       const totalCost = Math.round(q * cost * 100) / 100
       const totalRetail = Math.round(q * price * 100) / 100
       damageTotalRetail += totalRetail
@@ -1306,11 +1294,11 @@ export async function getDashboardData(
 
       damageItems.push({
         id: item.id,
-        productId: (item.products as any)?.id,
-        productName: (item.products as any)?.name || 'ไม่ระบุชื่อสินค้า',
-        productSku: (item.products as any)?.sku || '-',
-        productBarcode: (item.products as any)?.barcode || undefined,
-        productImageUrl: (item.products as any)?.image_url || undefined,
+        productId: (product as any)?.id ?? (item as any).product_id,
+        productName: (product as any)?.name || 'ไม่ระบุชื่อสินค้า',
+        productSku: (product as any)?.sku || '-',
+        productBarcode: (product as any)?.barcode || undefined,
+        productImageUrl: (product as any)?.image_url || undefined,
         qty: q,
         reason: (item.reason || '').trim() || 'ไม่ระบุสาเหตุ',
         branchId: item.branch_id,
