@@ -2,6 +2,7 @@
 "use server"
 
 import { supabaseAdmin } from "../lib/supabase/admin";
+import { getCachedProductsMapByIds } from "@/lib/cached-product-lookup";
 
 // ✅ แก้ไข Interface ให้ตรงกับสถาปัตยกรรมข้อมูลที่ดึงมาจริง
 export interface AdminStockData {
@@ -22,28 +23,56 @@ export interface AdminStockData {
 
 export async function getAllInventory(query: string = "") {
   try {
-    const dbQuery = supabaseAdmin
+    let dbQuery = supabaseAdmin
       .from("stock")
       .select(`
         id,
+        product_id,
         qty,
         updated_at,
-        products:product_id (name, sku, barcode, unit),
         branches:branch_id (branch_name, branch_code)
       `, { count: "exact" })
       .order("updated_at", { ascending: false });
 
-    if (query) {
-      dbQuery.or(`name.ilike.%${query}%,sku.ilike.%${query}%`, { referencedTable: 'products' });
+    if (query && query.trim().length > 0) {
+      const term = query.trim();
+      const { data: matched } = await supabaseAdmin
+        .from("products")
+        .select("id")
+        .or(`name.ilike.%${term}%,sku.ilike.%${term}%,barcode.ilike.%${term}%`)
+        .limit(300);
+      const matchedIds = (matched || []).map((p: any) => p.id);
+      if (matchedIds.length === 0) {
+        return { data: [], totalCount: 0 };
+      }
+      dbQuery = dbQuery.in("product_id", matchedIds);
     }
 
     const { data, error, count } = await dbQuery;
-
     if (error) throw error;
-    
-    // ✅ Cast ข้อมูลให้ตรงกับ Interface ที่เราแก้ไข
+
+    // ⚡ ดึงข้อมูลสินค้าจาก Cache แทนการ Join SQL
+    const productIds = (data || []).map((s: any) => s.product_id).filter(Boolean);
+    const productMap = await getCachedProductsMapByIds(productIds);
+
+    const mapped = (data || []).map((s: any) => {
+      const prod = productMap.get(s.product_id);
+      return {
+        id: s.id,
+        qty: s.qty,
+        updated_at: s.updated_at,
+        branches: s.branches,
+        products: prod ? {
+          name: prod.name,
+          sku: prod.sku || '',
+          barcode: prod.barcode || '',
+          unit: (prod as any).unit || '',
+        } : null
+      };
+    });
+
     return { 
-      data: (data as any) as AdminStockData[], 
+      data: mapped as AdminStockData[], 
       totalCount: count || 0 
     };
   } catch (error: any) {

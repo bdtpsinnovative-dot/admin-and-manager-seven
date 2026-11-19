@@ -4,6 +4,7 @@
 import { createClient } from "../lib/supabase/server" // ✅ ตรวจสอบ Path ให้ตรงกับไฟล์ server.ts ของคุณ
 import { revalidatePath } from "next/cache"
 import sharp from "sharp"
+import { getCachedProductsMapByIds } from "@/lib/cached-product-lookup"
 
 // --- Types ---
 export interface ProductStock {
@@ -60,17 +61,23 @@ export async function getStockList(
 
     let query = supabase
       .from('stock')
-      .select(`
-        id, product_id, qty, updated_at,
-        products!inner (name, sku, barcode, unit, image_url)
-      `, { count: 'exact' })
+      .select('id, product_id, qty, updated_at', { count: 'exact' })
       .eq('branch_id', branchId)
 
     if (onlyNegative) query = query.lt('qty', 0)
 
-    // 🌟 นำกับดักตัวเลขออก ให้ค้นหาจาก ชื่อ, SKU, Barcode ไปเลยตรงๆ
-    if (search) {
-      query = query.or(`name.ilike.%${search}%,sku.ilike.%${search}%,barcode.ilike.%${search}%`, { foreignTable: 'products' })
+    if (search && search.trim().length > 0) {
+      const term = search.trim()
+      const { data: matched } = await supabase
+        .from('products')
+        .select('id')
+        .or(`name.ilike.%${term}%,sku.ilike.%${term}%,barcode.ilike.%${term}%`)
+        .limit(300)
+      const matchedIds = (matched || []).map((p: any) => p.id)
+      if (matchedIds.length === 0) {
+        return { data: [], total: 0 }
+      }
+      query = query.in('product_id', matchedIds)
     }
 
     // จัดเรียงและแบ่งหน้า
@@ -79,7 +86,28 @@ export async function getStockList(
     const { data, count, error } = await query
     if (error) throw error
 
-    return { data: data as unknown as ProductStock[], total: count || 0 }
+    // ⚡ ดึงข้อมูลสินค้าเฉพาะหน้านี้จาก Cache (ตัด Join SQL ออก)
+    const pageProductIds = (data || []).map((s: any) => s.product_id).filter(Boolean)
+    const productMap = await getCachedProductsMapByIds(pageProductIds)
+
+    const mapped = (data || []).map((s: any) => {
+      const prod = productMap.get(s.product_id)
+      return {
+        id: s.id,
+        product_id: s.product_id,
+        qty: s.qty,
+        updated_at: s.updated_at,
+        products: prod ? {
+          name: prod.name,
+          sku: prod.sku,
+          barcode: prod.barcode || null,
+          unit: (prod as any).unit || null,
+          image_url: prod.image_url,
+        } : null
+      }
+    })
+
+    return { data: mapped as unknown as ProductStock[], total: count || 0 }
   } catch (error: any) {
     return { data: [], total: 0, error: error.message }
   }

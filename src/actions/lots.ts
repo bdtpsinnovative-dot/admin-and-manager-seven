@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server"
 import { supabaseAdmin } from "@/lib/supabase/admin"
 import { revalidatePath } from "next/cache"
+import { getCachedProductsMapByIds } from "@/lib/cached-product-lookup"
 
 // ---- Types ----
 
@@ -141,22 +142,56 @@ export async function getLotDetail(lotId: number) {
 
   const { data: items } = await supabaseAdmin
     .from("stock_lot_items")
-    .select(`id, lot_id, product_id, expected_qty, received_qty, updated_at,
-             products:product_id (id, name, sku, barcode, image_url, unit)`)
+    .select(`id, lot_id, product_id, expected_qty, received_qty, updated_at`)
     .eq("lot_id", lotId)
     .order("id")
 
   const { data: rfidTags } = await supabaseAdmin
     .from("product_rfid_tags")
-    .select(`id, product_id, rfid, status, branch_id, created_at, lot_id,
-             products:product_id (id, name, sku, barcode, image_url)`)
+    .select(`id, product_id, rfid, status, branch_id, created_at, lot_id`)
     .eq("lot_id", lotId)
     .order("created_at", { ascending: false })
 
+  // ⚡ ดึงข้อมูลสินค้าจาก Cache แทนการ Join ซ้อน 2 ตาราง
+  const lotProductIds = [
+    ...(items ?? []).map((i: any) => i.product_id),
+    ...(rfidTags ?? []).map((t: any) => t.product_id)
+  ].filter(Boolean)
+  const productMap = await getCachedProductsMapByIds(lotProductIds)
+
+  const mappedItems = (items ?? []).map((i: any) => {
+    const prod = productMap.get(i.product_id)
+    return {
+      ...i,
+      products: prod ? {
+        id: prod.id,
+        name: prod.name,
+        sku: prod.sku,
+        barcode: prod.barcode || '',
+        image_url: prod.image_url,
+        unit: (prod as any).unit || '',
+      } : (i.products || null)
+    }
+  })
+
+  const mappedTags = (rfidTags ?? []).map((t: any) => {
+    const prod = productMap.get(t.product_id)
+    return {
+      ...t,
+      products: prod ? {
+        id: prod.id,
+        name: prod.name,
+        sku: prod.sku,
+        barcode: prod.barcode || '',
+        image_url: prod.image_url,
+      } : (t.products || null)
+    }
+  })
+
   return {
     lot: lot as unknown as StockLot,
-    items: (items ?? []) as unknown as LotItem[],
-    rfid_tags: (rfidTags ?? []) as unknown as LotRfidTag[],
+    items: mappedItems as unknown as LotItem[],
+    rfid_tags: mappedTags as unknown as LotRfidTag[],
   }
 }
 
@@ -550,7 +585,7 @@ export async function getLotDiscrepancies(branchId: number): Promise<{
   // 2. Fetch all lot items with product info
   const { data: itemsRaw } = await supabaseAdmin
     .from("stock_lot_items")
-    .select("id, lot_id, product_id, expected_qty, received_qty, products:product_id (id, name, sku)")
+    .select("id, lot_id, product_id, expected_qty, received_qty")
     .in("lot_id", lotIds)
 
   // 3. Fetch actual movements (type=IN) per lot + product
@@ -592,16 +627,18 @@ export async function getLotDiscrepancies(branchId: number): Promise<{
     }
   }
 
+  // ⚡ ดึงข้อมูลสินค้าจาก Cache สำหรับทั้ง Lot items และ Ghost items
+  const allLotProdIds = Array.from(new Set([
+    ...(itemsRaw ?? []).map((i: any) => Number(i.product_id)),
+    ...Array.from(ghostProdIds)
+  ].filter(Boolean)))
+  const lotProductMap = await getCachedProductsMapByIds(allLotProdIds)
+
   // Fetch names for ghost products
   const ghostNameMap: Record<number, { name: string; sku: string | null }> = {}
-  if (ghostProdIds.size > 0) {
-    const { data: ghostProds } = await supabaseAdmin
-      .from("products")
-      .select("id, name, sku")
-      .in("id", Array.from(ghostProdIds))
-    for (const p of ghostProds ?? []) {
-      ghostNameMap[p.id] = { name: p.name, sku: p.sku ?? null }
-    }
+  for (const pid of ghostProdIds) {
+    const p = lotProductMap.get(pid)
+    ghostNameMap[pid] = { name: p?.name || `#${pid}`, sku: p?.sku ?? null }
   }
 
   // Build summaries
@@ -613,11 +650,12 @@ export async function getLotDiscrepancies(branchId: number): Promise<{
       const expected = Number(item.expected_qty)
       const received = Number(item.received_qty)
       const movement = moveMap[lot.id]?.[Number(item.product_id)] ?? 0
+      const prod = lotProductMap.get(item.product_id)
       return {
         item_id:      item.id,
         product_id:   Number(item.product_id),
-        product_name: item.products?.name ?? `#${item.product_id}`,
-        product_sku:  item.products?.sku ?? null,
+        product_name: prod?.name ?? item.products?.name ?? `#${item.product_id}`,
+        product_sku:  prod?.sku ?? item.products?.sku ?? null,
         expected_qty: expected,
         received_qty: received,
         movement_qty: movement,

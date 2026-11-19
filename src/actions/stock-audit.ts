@@ -3,6 +3,7 @@
 import { supabaseAdmin } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
+import { getCachedProductsMapByIds } from "@/lib/cached-product-lookup"
 
 export interface StockAudit {
   id: number
@@ -265,10 +266,7 @@ export async function getStockAuditDetail(auditId: number) {
     // ดึงรายการสรุป 3 เสา
     const { data: items, error: itemsErr } = await supabaseAdmin
       .from("stock_audit_items")
-      .select(`
-        *,
-        products:product_id (id, name, sku, barcode, image_url, price)
-      `)
+      .select("*")
       .eq("audit_id", auditId)
       .order("diff_qty", { ascending: true })
 
@@ -277,21 +275,51 @@ export async function getStockAuditDetail(auditId: number) {
     // ดึงสถิติการยิงสแกนดิบ
     const { data: scans, error: scansErr } = await supabaseAdmin
       .from("stock_audit_scans")
-      .select(`
-        *,
-        products:product_id (name, sku)
-      `)
+      .select("*")
       .eq("audit_id", auditId)
       .order("scanned_at", { ascending: false })
       .limit(500)
 
     if (scansErr) throw scansErr
 
+    // ⚡ ดึงข้อมูลสินค้าจาก Cache แทนการ Join ซ้ำซ้อน 2 ตาราง
+    const auditProductIds = [
+      ...(items || []).map((i: any) => i.product_id),
+      ...(scans || []).map((s: any) => s.product_id),
+    ].filter(Boolean)
+    const productMap = await getCachedProductsMapByIds(auditProductIds)
+
+    const mappedItems = (items || []).map((item: any) => {
+      const prod = productMap.get(item.product_id)
+      return {
+        ...item,
+        products: prod ? {
+          id: prod.id,
+          name: prod.name,
+          sku: prod.sku || '-',
+          barcode: prod.barcode || '-',
+          image_url: prod.image_url || null,
+          price: prod.price || 0,
+        } : (item.products || null)
+      }
+    })
+
+    const mappedScans = (scans || []).map((scan: any) => {
+      const prod = productMap.get(scan.product_id)
+      return {
+        ...scan,
+        products: prod ? {
+          name: prod.name,
+          sku: prod.sku || '-',
+        } : (scan.products || null)
+      }
+    })
+
     return {
       data: {
         audit: audit as StockAudit,
-        items: (items || []) as StockAuditItem[],
-        scans: (scans || []) as StockAuditScan[]
+        items: mappedItems as StockAuditItem[],
+        scans: mappedScans as StockAuditScan[]
       }
     }
   } catch (err: any) {
@@ -766,11 +794,20 @@ export async function getSimpleStockComparison(branchId?: number): Promise<{ dat
       { data: manualRows }
     ] = await Promise.all([
       supabaseAdmin.from("stock").select("product_id, qty").eq("branch_id", targetBranch),
-      supabaseAdmin.from("stock").select("product_id, qty, products(id, name, sku, barcode, image_url, price)").eq("branch_id", targetBranch).gt("qty", 0),
-      supabaseAdmin.from("product_rfid_tags").select("rfid, product_id, status, products(id, name, sku, barcode, image_url, price)").eq("branch_id", targetBranch).eq("status", "IN_STOCK"),
-      supabaseAdmin.from("reader_stock").select("product_id, qty, products(id, name, sku, barcode, image_url, price)").eq("branch_id", targetBranch),
-      supabaseAdmin.from("stock_initial_count_items").select("product_id, qty, products(id, name, sku, barcode, image_url, price), stock_initial_counts!inner(branch_id)").eq("stock_initial_counts.branch_id", targetBranch)
+      supabaseAdmin.from("stock").select("product_id, qty").eq("branch_id", targetBranch).gt("qty", 0),
+      supabaseAdmin.from("product_rfid_tags").select("rfid, product_id, status").eq("branch_id", targetBranch).eq("status", "IN_STOCK"),
+      supabaseAdmin.from("reader_stock").select("product_id, qty").eq("branch_id", targetBranch),
+      supabaseAdmin.from("stock_initial_count_items").select("product_id, qty, stock_initial_counts!inner(branch_id)").eq("stock_initial_counts.branch_id", targetBranch)
     ])
+
+    // ⚡ ดึงข้อมูลสินค้าจาก Cache แทนการ Join ซ้ำ 4 ตาราง
+    const allPids = Array.from(new Set([
+      ...(stockRows || []).map((s: any) => Number(s.product_id)),
+      ...(branchTags || []).map((t: any) => Number(t.product_id)),
+      ...(readerRows || []).map((r: any) => Number(r.product_id)),
+      ...(manualRows || []).map((m: any) => Number(m.product_id)),
+    ].filter(Boolean)))
+    const productMap = await getCachedProductsMapByIds(allPids)
 
     // สร้าง Map ยอดในระบบ (system stock)
     const systemMap = new Map<number, number>()
@@ -788,9 +825,9 @@ export async function getSimpleStockComparison(branchId?: number): Promise<{ dat
 
     const itemMap = new Map<number, SimpleStockCompareItem>()
 
-    const ensureItem = (pId: number, prodData: any, initialSysQty?: number) => {
+    const ensureItem = (pId: number, initialSysQty?: number) => {
       if (!itemMap.has(pId)) {
-        const prod = Array.isArray(prodData) ? prodData[0] : prodData
+        const prod = productMap.get(pId)
         itemMap.set(pId, {
           productId: pId,
           name: prod?.name || "ไม่ทราบชื่อสินค้า",
@@ -811,25 +848,25 @@ export async function getSimpleStockComparison(branchId?: number): Promise<{ dat
 
     // 1. ใส่สินค้าที่มีสต็อกจริงในระบบของสาขานี้ (ยอดในระบบ)
     stockRows?.forEach((s: any) => {
-      ensureItem(Number(s.product_id), s.products, Number(s.qty) || 0)
+      ensureItem(Number(s.product_id), Number(s.qty) || 0)
     })
 
     // 2. ใส่สินค้าที่มีแท็ก RFID ประจำสาขานี้
     branchTags?.forEach((t: any) => {
-      ensureItem(Number(t.product_id), t.products)
+      ensureItem(Number(t.product_id))
     })
 
     // 3. ใส่/อัปเดตยอดที่นับได้จาก RFID
     readerRows?.forEach((r: any) => {
       const pId = Number(r.product_id)
-      ensureItem(pId, r.products)
+      ensureItem(pId)
       itemMap.get(pId)!.rfidQty = Number(r.qty) || 0
     })
 
     // 4. ใส่/อัปเดตยอดที่นับได้จาก แมนนวล
     manualRows?.forEach((m: any) => {
       const pId = Number(m.product_id)
-      ensureItem(pId, m.products)
+      ensureItem(pId)
       itemMap.get(pId)!.manualQty += Number(m.qty) || 0
     })
 

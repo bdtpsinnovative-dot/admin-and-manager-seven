@@ -9,17 +9,34 @@ import { CATEGORY_MAP } from "@/lib/propFilterModel"
 import { requestR2Object } from "../lib/r2"
 import { revalidateZenslabCache } from "../lib/revalidateZenslab"
 import { ADMIN_CACHE_TAGS, ADMIN_CACHE_TTL, invalidateAdminTags } from "../lib/admin-cache"
+import { clearPosCache } from "./pos"
 
 const TABLE_NAME = "products"
 const STORAGE_BUCKET = "product-images"
 
 function revalidateAllProductAndPropsPaths(extraPath?: string) {
+  invalidateAdminTags(ADMIN_CACHE_TAGS.INVENTORY_META, ADMIN_CACHE_TAGS.FILTERS);
+  clearPosCache();
   revalidatePath('/inventory')
   revalidatePath('/props')
   revalidatePath('/propsfina')
   revalidatePath('/propsfinatest')
   revalidatePath('/propsfinatest2')
   revalidatePath('/props2')
+  revalidatePath('/sales-history')
+  revalidatePath('/dashboard')
+  revalidatePath('/manager/damage-history')
+  revalidatePath('/manager/stocklog')
+  revalidatePath('/sale/stocklog')
+  revalidatePath('/manager/stock-compare')
+  revalidatePath('/manager/stock-audit')
+  revalidatePath('/sale/publicstock')
+  revalidatePath('/manager/publicstock')
+  revalidatePath('/admin/stock-all')
+  revalidatePath('/admin/lots')
+  revalidatePath('/manager/lots')
+  revalidatePath('/sale/pos')
+  revalidatePath('/manager/pos')
   if (extraPath) revalidatePath(extraPath)
 }
 
