@@ -3,6 +3,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
+import { getCachedProductsMapByIds } from '@/lib/cached-product-lookup'
 
 // 💡 1. ฟังก์ชันหา Branch ID จากคุกกี้ของคนที่ล็อกอินอยู่
 async function getCurrentBranchId() {
@@ -51,7 +52,7 @@ export async function getComparisonData() {
     // 🔴 1. ดึงของที่มีในระบบทั้งหมด (ตาราง stock)
     const { data: systemStock, error: err1 } = await supabase
       .from('stock')
-      .select('qty, product_id, products (id, sku, name, image_url, specs)')
+      .select('qty, product_id')
       .eq('branch_id', branchId)
 
     if (err1) throw err1
@@ -59,10 +60,17 @@ export async function getComparisonData() {
     // 🔴 2. ดึงของที่สแกนได้ทั้งหมด (ตาราง reader_stock)
     const { data: scannedStock, error: err2 } = await supabase
       .from('reader_stock')
-      .select('qty, product_id, products (id, sku, name, image_url, specs)')
+      .select('qty, product_id')
       .eq('branch_id', branchId)
 
     if (err2) throw err2
+
+    // ⚡ ดึงข้อมูลสินค้าเฉพาะ product_id ของสาขานี้จาก Cache (ตัด Join 2 รอบออก)
+    const allProductIds = [
+      ...(systemStock || []).map((s: any) => s.product_id),
+      ...(scannedStock || []).map((s: any) => s.product_id)
+    ]
+    const productMap = await getCachedProductsMapByIds(allProductIds)
 
     // 🔴 3. จับข้อมูล 2 ตารางมาชนกัน (ด้วย Map) เพื่อหาว่าอะไรขาด อะไรเกิน
     const itemMap = new Map()
@@ -70,13 +78,13 @@ export async function getComparisonData() {
     // เอาของในระบบมาตั้งโต๊ะก่อน (ให้ยอดสแกนเริ่มต้นเป็น 0)
     if (systemStock) {
       systemStock.forEach((item: any) => {
-        const prod = Array.isArray(item.products) ? item.products[0] : item.products || {}
+        const prod = productMap.get(item.product_id)
         itemMap.set(item.product_id, {
           productId: item.product_id,
-          sku: prod.sku || 'N/A',
-          name: prod.name || 'ไม่ทราบชื่อสินค้า',
-          imageUrl: prod.image_url || null,
-          specs: prod.specs || {},
+          sku: prod?.sku || 'N/A',
+          name: prod?.name || 'ไม่ทราบชื่อสินค้า',
+          imageUrl: prod?.image_url || null,
+          specs: prod?.specs || {},
           systemQty: Number(item.qty) || 0,
           countedQty: 0 
         })
@@ -87,7 +95,7 @@ export async function getComparisonData() {
     if (scannedStock) {
       scannedStock.forEach((item: any) => {
         const countedQty = Number(item.qty) || 0
-        const prod = Array.isArray(item.products) ? item.products[0] : item.products || {}
+        const prod = productMap.get(item.product_id)
 
         if (itemMap.has(item.product_id)) {
           // ถ้ามีในระบบอยู่แล้ว ก็แค่อัปเดตยอดสแกนเข้าไป
@@ -96,10 +104,10 @@ export async function getComparisonData() {
           // ถ้าสแกนเจอ "ของใหม่" ที่ไม่มีในสต๊อกระบบเลย! (ยอดระบบเป็น 0)
           itemMap.set(item.product_id, {
             productId: item.product_id,
-            sku: prod.sku || 'N/A',
-            name: prod.name || 'ไม่ทราบชื่อสินค้า',
-            imageUrl: prod.image_url || null,
-            specs: prod.specs || {},
+            sku: prod?.sku || 'N/A',
+            name: prod?.name || 'ไม่ทราบชื่อสินค้า',
+            imageUrl: prod?.image_url || null,
+            specs: prod?.specs || {},
             systemQty: 0, 
             countedQty: countedQty
           })

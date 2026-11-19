@@ -1,6 +1,7 @@
 "use server"
 
 import { createClient } from '../lib/supabase/server'
+import { getCachedProductsMapByIds } from '@/lib/cached-product-lookup'
 
 export async function getDamageHistory(requestedBranchId?: number | "ALL") {
   const supabase = await createClient()
@@ -20,6 +21,7 @@ export async function getDamageHistory(requestedBranchId?: number | "ALL") {
     .from('damaged_goods_records')
     .select(`
       id,
+      product_id,
       qty,
       reason,
       created_at,
@@ -30,14 +32,6 @@ export async function getDamageHistory(requestedBranchId?: number | "ALL") {
       ),
       profiles!damaged_goods_records_profile_fk (
         full_name
-      ),
-      products (
-        id,
-        name,
-        barcode,
-        image_url,
-        price,
-        cost
       )
     `)
     .order('created_at', { ascending: false })
@@ -56,8 +50,16 @@ export async function getDamageHistory(requestedBranchId?: number | "ALL") {
     return { success: false, error: "ดึงข้อมูลประวัติล้มเหลว" }
   }
 
+  const productIds = (records || []).map((r: any) => r.product_id).filter(Boolean)
+  const productMap = await getCachedProductsMapByIds(productIds)
+
+  const mapped = (records || []).map((r: any) => ({
+    ...r,
+    products: productMap.get(r.product_id) || null
+  }))
+
   return { 
     success: true, 
-    data: records || [] 
+    data: mapped
   }
 }

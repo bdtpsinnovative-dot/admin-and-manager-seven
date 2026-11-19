@@ -2,6 +2,7 @@
 
 import { supabaseAdmin } from "../lib/supabase/admin";
 import { createClient } from "../lib/supabase/server";
+import { getCachedProductsMapByIds } from "@/lib/cached-product-lookup";
 
 export interface StockMovement {
   id: number;
@@ -129,8 +130,7 @@ export async function getManagerStockLog(params: {
       .from("stock_movements")
       .select(`
         id, type, qty, note, batch_ref, ref_type,
-        created_at_ts, created_by_name, product_id_bigint,
-        products:product_id_bigint (name, sku, barcode, unit, image_url)
+        created_at_ts, created_by_name, product_id_bigint
       `, { count: "exact" })
       .eq("branch_id", effectiveBranchId)
       .order("created_at_ts", { ascending: false })
@@ -163,12 +163,27 @@ export async function getManagerStockLog(params: {
     const { data, count, error } = await query.range(from, from + pageSize - 1)
     if (error) throw error
 
+    // ⚡ ดึงข้อมูลสินค้าเฉพาะ product_id ในหน้าปัจจุบันจาก Cache
+    const pageProductIds = (data || []).map((m: any) => m.product_id_bigint).filter(Boolean)
+    const productMap = await getCachedProductsMapByIds(pageProductIds)
+
     // คำนวณ running balance — เรียงจากเก่าไปใหม่ก่อน แล้วกลับด้าน
     const ordered = [...(data ?? [])].reverse()
     let running = 0
-    const withBalance = ordered.map(m => {
+    const withBalance = ordered.map((m: any) => {
       running += Number(m.qty ?? 0)
-      return { ...m, balance: running }
+      const prod = productMap.get(m.product_id_bigint)
+      return {
+        ...m,
+        products: prod ? {
+          name: prod.name,
+          sku: prod.sku,
+          barcode: prod.barcode || null,
+          unit: (prod as any).unit || null,
+          image_url: prod.image_url,
+        } : (m.products || null),
+        balance: running,
+      }
     })
     withBalance.reverse()
 
