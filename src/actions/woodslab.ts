@@ -13,6 +13,16 @@ import { ADMIN_CACHE_TAGS, ADMIN_CACHE_TTL, invalidateAdminTags } from "../lib/a
 const TABLE_NAME = "products"
 const STORAGE_BUCKET = "product-images"
 
+function revalidateAllProductAndPropsPaths(extraPath?: string) {
+  revalidatePath('/inventory')
+  revalidatePath('/props')
+  revalidatePath('/propsfina')
+  revalidatePath('/propsfinatest')
+  revalidatePath('/propsfinatest2')
+  revalidatePath('/props2')
+  if (extraPath) revalidatePath(extraPath)
+}
+
 function isZenslabCategory(categoryId?: string | null): boolean {
   if (!categoryId) return true
   return categoryId === 'SLABS' || categoryId === 'rough_wood'
@@ -1154,7 +1164,7 @@ export async function createInitialProduct(productData: any) {
   const { data, error } = await supabase.from(TABLE_NAME).insert([cleanProductData]).select('id').single()
   if (error) return { error: error.message }
   
-  revalidatePath('/inventory')
+  revalidateAllProductAndPropsPaths()
   invalidateAdminTags(ADMIN_CACHE_TAGS.INVENTORY_META, ADMIN_CACHE_TAGS.FILTERS)
   if (isZenslabCategory(cleanProductData.category_id)) {
     await revalidateZenslabCache({ scope: 'products', productIds: [data.id] })
@@ -1202,7 +1212,7 @@ export async function updateProduct(id: string | number, updateData: any) {
     delete filterOptionsCache[cleanUpdateData.category_id]
   }
 
-  revalidatePath('/inventory')
+  revalidateAllProductAndPropsPaths()
   invalidateAdminTags(ADMIN_CACHE_TAGS.INVENTORY_META, ADMIN_CACHE_TAGS.FILTERS)
   revalidatePath(`/inventory/${id}`)
   if (isZenslabCategory(cleanUpdateData.category_id)) {
@@ -1323,7 +1333,7 @@ export async function bulkCreateProducts(productsArray: any[]) {
     totalSaved += (data?.length || 0)
   }
 
-  revalidatePath('/inventory')
+  revalidateAllProductAndPropsPaths()
   invalidateAdminTags(ADMIN_CACHE_TAGS.INVENTORY_META, ADMIN_CACHE_TAGS.FILTERS)
   const hasZenslabItems = cleanProductsArray.some((p: any) => isZenslabCategory(p?.category_id))
   if (hasZenslabItems && totalSaved > 0) {
@@ -1584,7 +1594,7 @@ export async function deleteProductsBulk(ids: (string | number)[]) {
     delete filterOptionsCache[key]
   }
 
-  revalidatePath('/inventory')
+  revalidateAllProductAndPropsPaths()
   invalidateAdminTags(ADMIN_CACHE_TAGS.INVENTORY_META, ADMIN_CACHE_TAGS.FILTERS)
   await revalidateZenslabCache({ scope: 'products', productIds: numericIds })
   return { success: true }
@@ -1652,7 +1662,7 @@ export async function deleteCollectionGroup(groupId: string) {
     return { error: groupDeleteError.message }
   }
 
-  revalidatePath('/inventory')
+  revalidateAllProductAndPropsPaths()
   invalidateAdminTags(ADMIN_CACHE_TAGS.INVENTORY_META, ADMIN_CACHE_TAGS.FILTERS)
   return { success: true }
 }
