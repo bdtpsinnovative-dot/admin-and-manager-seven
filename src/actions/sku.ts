@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
 import { revalidateZenslabCache } from "@/lib/revalidateZenslab";
+import { ADMIN_CACHE_TAGS, invalidateAdminTags } from "@/lib/admin-cache";
 
 async function checkAuth() {
   const supabase = await createClient();
@@ -93,6 +94,7 @@ export async function updateProductSku(
     }
 
     // Revalidate paths เพื่อให้หน้าต่างๆ โหลด SKU ใหม่ทันที
+    invalidateAdminTags(ADMIN_CACHE_TAGS.INVENTORY_META, ADMIN_CACHE_TAGS.FILTERS);
     revalidatePath("/inventory");
     revalidatePath(`/inventory/${numId}`);
     revalidatePath("/inventory/update-sku");
@@ -176,6 +178,7 @@ export async function bulkUpdateProductSkus(
       }
     }
 
+    invalidateAdminTags(ADMIN_CACHE_TAGS.INVENTORY_META, ADMIN_CACHE_TAGS.FILTERS);
     revalidatePath("/inventory");
     revalidatePath("/inventory/update-sku");
     if (updatedCount > 0) {

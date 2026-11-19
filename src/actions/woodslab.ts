@@ -260,6 +260,241 @@ export interface ProductExtraFilters {
   location?: string
 }
 
+// ⚡ 1. Live Stock Fetcher — ดึงสดเฉพาะ stock ของสินค้า 250 รายการในหน้านั้น (ไม่แคชสต็อก)
+async function fetchLiveStockForProducts(productIds: (number | string)[]) {
+  if (!productIds || productIds.length === 0) return new Map<string, any[]>()
+
+  const { data, error } = await supabaseAdmin
+    .from('stock')
+    .select('product_id, branch_id, qty, branches(id, branch_name, branch_type)')
+    .in('product_id', productIds)
+
+  if (error || !data) {
+    console.warn('[fetchLiveStockForProducts] error:', error)
+    return new Map<string, any[]>()
+  }
+
+  const map = new Map<string, any[]>()
+  for (const s of data) {
+    const pid = String(s.product_id)
+    if (!map.has(pid)) map.set(pid, [])
+    map.get(pid)!.push(s)
+  }
+  return map
+}
+
+// ⚡ 2. Cached Product Metadata — แคช Metadata สินค้า 1 ปี (ล้างอัตโนมัติเมื่อแก้สินค้า/นำเข้า)
+async function getCachedProductsMeta(params: {
+  category?: string
+  specType?: string
+  searchQuery?: string
+  statusFilter?: string
+  extraFilters?: ProductExtraFilters
+  costFilter?: string
+  canViewCosts: boolean
+  offset: number
+  limit: number
+}) {
+  const {
+    category,
+    specType,
+    searchQuery,
+    statusFilter,
+    extraFilters,
+    costFilter,
+    canViewCosts,
+    offset,
+    limit,
+  } = params
+
+  const cacheKey = JSON.stringify({
+    c: category || '',
+    st: specType || '',
+    q: (searchQuery || '').trim().toLowerCase(),
+    s: statusFilter || '',
+    m: extraFilters?.material?.trim() || '',
+    g: extraFilters?.grade?.trim() || '',
+    cr: extraFilters?.craft?.trim() || '',
+    cl: extraFilters?.color?.trim() || '',
+    b: extraFilters?.brand?.trim() || '',
+    sz: extraFilters?.size?.trim() || '',
+    minH: extraFilters?.minH ?? '',
+    maxH: extraFilters?.maxH ?? '',
+    minW: extraFilters?.minW ?? '',
+    maxW: extraFilters?.maxW ?? '',
+    minL: extraFilters?.minL ?? '',
+    maxL: extraFilters?.maxL ?? '',
+    cf: costFilter || '',
+    cvc: Boolean(canViewCosts),
+    off: offset,
+    lim: limit,
+  })
+
+  const run = unstable_cache(
+    async () => {
+      let query = supabaseAdmin
+        .from(TABLE_NAME)
+        .select('*, collection_groups(id, name, cover_image_url, product_sup)', { count: 'exact' })
+
+      if (canViewCosts) {
+        query = query.order('cost', { ascending: false, nullsFirst: false })
+      }
+      query = query.order('created_at', { ascending: false })
+
+      if (category) {
+        query = query.eq('category_id', category)
+      }
+
+      if (specType) {
+        const trimmedType = specType.trim()
+        if (category === 'prop') {
+          const allowed = (CATEGORY_MAP[trimmedType] || CATEGORY_MAP[trimmedType.toUpperCase()] || [trimmedType.toLowerCase()]).map(s => s.trim().toLowerCase())
+          const colGroups = await getCachedCollectionGroupsPersistent()
+          const matchedIds = colGroups
+            .filter(c => c.product_sup && allowed.some(a => c.product_sup!.toLowerCase().includes(a) || a.includes(c.product_sup!.toLowerCase().trim())))
+            .map(c => c.id)
+
+          if (matchedIds.length > 0) {
+            query = query.in('collection_group_id', matchedIds)
+          } else {
+            query = query.or(`specs->>type.ilike.%${trimmedType}%,specs->>spec_type.ilike.%${trimmedType}%`)
+          }
+        } else if (category === 'furniture') {
+          const lower = trimmedType.toLowerCase()
+          const colGroups = await getCachedCollectionGroupsPersistent()
+          const matchedIds = colGroups
+            .filter(c => c.product_sup && c.product_sup.toLowerCase().includes(lower))
+            .map(c => c.id)
+
+          if (matchedIds.length > 0) {
+            query = query.in('collection_group_id', matchedIds)
+          } else {
+            query = query.or(`specs->>type.ilike.%${trimmedType}%,specs->>spec_type.ilike.%${trimmedType}%`)
+          }
+        } else {
+          query = query.or(`specs->>type.ilike.%${trimmedType}%,specs->>spec_type.ilike.%${trimmedType}%`)
+        }
+      }
+
+      if (statusFilter) {
+        if (statusFilter === 'active') {
+          query = query.or('status.eq.active,status.is.null')
+        } else {
+          query = query.eq('status', statusFilter)
+        }
+      }
+
+      // 💰 ฟิลเตอร์ต้นทุน (Cost) - เฉพาะผู้มีสิทธิ์ดูต้นทุนเท่านั้น
+      if (canViewCosts) {
+        if (costFilter === 'has_cost') {
+          query = query.gt('cost', 0)
+        } else if (costFilter === 'no_cost') {
+          query = query.or('cost.eq.0,cost.is.null')
+        }
+      }
+
+      if (extraFilters?.material) {
+        query = query.ilike('specs->>material', `%${extraFilters.material.trim()}%`)
+      }
+      if (extraFilters?.grade) {
+        query = query.ilike('specs->>grade', `%${extraFilters.grade.trim()}%`)
+      }
+      if (extraFilters?.craft) {
+        query = query.ilike('specs->>panel_craft', `%${extraFilters.craft.trim()}%`)
+      }
+      if (extraFilters?.color) {
+        query = query.ilike('color', `%${extraFilters.color.trim()}%`)
+      }
+      if (extraFilters?.brand) {
+        query = query.ilike('specs->>brand', extraFilters.brand.trim())
+      }
+      if (extraFilters?.size) {
+        const s = extraFilters.size.trim()
+        if (category === 'prop' || category === 'furniture') {
+          const isStd = ['s', 'm', 'l', 'xl', 'XXL'].includes(s.toLowerCase())
+          if (isStd) {
+            query = query.ilike('specs->>group_size', s)
+          } else {
+            query = query.or(`specs->>group_size.ilike.%${s}%,specs->>size.ilike.%${s}%`)
+          }
+        } else if (category === 'SLABS') {
+          query = query.ilike('specs->>size', `%${s}%`)
+        } else if (category === 'rough_wood') {
+          query = query.or(`specs->>size_raw.ilike.%${s}%,specs->>size.ilike.%${s}%`)
+        } else {
+          query = query.or(`specs->>group_size.ilike.${s},specs->>size.ilike.%${s}%,specs->>size_raw.ilike.%${s}%`)
+        }
+      }
+
+      // 📏 Custom Dimensions (แบบรูปที่ 2: ความสูง, ความกว้าง, ความลึก/ความยาว Min - Max ซม.)
+      const isMmUnit = category === 'SLABS' || category === 'rough_wood'
+
+      if (extraFilters?.minH !== undefined && !isNaN(extraFilters.minH)) {
+        const val = isMmUnit && extraFilters.minH < 500 ? extraFilters.minH * 10 : extraFilters.minH
+        query = query.gte('specs->thickness_cm', val)
+      }
+      if (extraFilters?.maxH !== undefined && !isNaN(extraFilters.maxH)) {
+        const val = isMmUnit && extraFilters.maxH < 500 ? extraFilters.maxH * 10 : extraFilters.maxH
+        query = query.lte('specs->thickness_cm', val)
+      }
+
+      if (extraFilters?.minW !== undefined && !isNaN(extraFilters.minW)) {
+        const val = isMmUnit && extraFilters.minW < 500 ? extraFilters.minW * 10 : extraFilters.minW
+        query = query.gte('specs->width_cm', val)
+      }
+      if (extraFilters?.maxW !== undefined && !isNaN(extraFilters.maxW)) {
+        const val = isMmUnit && extraFilters.maxW < 500 ? extraFilters.maxW * 10 : extraFilters.maxW
+        query = query.lte('specs->width_cm', val)
+      }
+
+      if (extraFilters?.minL !== undefined && !isNaN(extraFilters.minL)) {
+        const val = isMmUnit && extraFilters.minL < 500 ? extraFilters.minL * 10 : extraFilters.minL
+        query = query.gte('specs->length_cm', val)
+      }
+      if (extraFilters?.maxL !== undefined && !isNaN(extraFilters.maxL)) {
+        const val = isMmUnit && extraFilters.maxL < 500 ? extraFilters.maxL * 10 : extraFilters.maxL
+        query = query.lte('specs->length_cm', val)
+      }
+
+      // 💡 ค้นหาจากชื่อ, SKU หรือ Barcode
+      if (searchQuery) {
+        query = query.or(`sku.ilike.%${searchQuery}%,name.ilike.%${searchQuery}%,barcode.ilike.%${searchQuery}%`)
+      }
+
+      // ⚡ แบ่งหน้าทีละ limit รายการ (เช่น 250) เพื่อประหยัด Database
+      const from = Math.max(0, offset)
+      const to = from + limit - 1
+      query = query.range(from, to)
+
+      const { data, count, error } = await query
+      if (error) {
+        console.error('[getCachedProductsMeta] Error:', error)
+        return { data: [], count: 0, error: error.message }
+      }
+      return { data: data || [], count: count || 0, error: null }
+    },
+    ['admin:inventory-products-meta:v1', cacheKey],
+    {
+      revalidate: ADMIN_CACHE_TTL.MASTER_SECONDS,
+      tags: [ADMIN_CACHE_TAGS.INVENTORY_META],
+    }
+  )
+
+  try {
+    return await run()
+  } catch (err) {
+    console.warn('[getCachedProductsMeta] fallback to direct query:', err)
+    const from = Math.max(0, offset)
+    const to = from + limit - 1
+    const { data, count, error } = await supabaseAdmin
+      .from(TABLE_NAME)
+      .select('*, collection_groups(id, name, cover_image_url, product_sup)', { count: 'exact' })
+      .order('created_at', { ascending: false })
+      .range(from, to)
+    return { data: data || [], count: count || 0, error: error ? error.message : null }
+  }
+}
+
 export async function getProducts(
   category?: string, 
   specType?: string, 
@@ -273,201 +508,237 @@ export async function getProducts(
   const supabase = await createClient()
   const canViewCosts = await checkCanViewCosts()
 
-  const loc = extraFilters?.location?.trim().toLowerCase()
-  let query: any
-
-  if (loc === 'showroom') {
-    query = supabase
-      .from(TABLE_NAME)
-      .select('*, collection_groups(id, name, cover_image_url, product_sup), stock!inner(branch_id, qty, branches!inner(id, branch_name, branch_type))', { count: 'exact' })
-      .gt('stock.qty', 0)
-      .eq('stock.branches.branch_type', 'SHOWROOM')
-  } else if (loc === 'warehouse') {
-    query = supabase
-      .from(TABLE_NAME)
-      .select('*, collection_groups(id, name, cover_image_url, product_sup), stock!inner(branch_id, qty, branches!inner(id, branch_name, branch_type))', { count: 'exact' })
-      .gt('stock.qty', 0)
-      .eq('stock.branches.branch_type', 'FACTORY')
-  } else if (loc === 'in_stock') {
-    query = supabase
-      .from(TABLE_NAME)
-      .select('*, collection_groups(id, name, cover_image_url, product_sup), stock!inner(branch_id, qty, branches(id, branch_name, branch_type))', { count: 'exact' })
-      .gt('stock.qty', 0)
-  } else if (loc === 'out_of_stock') {
-    const { data: positiveStock } = await supabase.from('stock').select('product_id').gt('qty', 0)
-    const positiveIds = Array.from(new Set(positiveStock?.map((s: any) => s.product_id) || []))
-    query = supabase
-      .from(TABLE_NAME)
-      .select('*, collection_groups(id, name, cover_image_url, product_sup), stock(branch_id, qty, branches(id, branch_name, branch_type))', { count: 'exact' })
-    if (positiveIds.length > 0) {
-      query = query.not('id', 'in', `(${positiveIds.join(',')})`)
-    }
-  } else if (loc?.startsWith('branch_')) {
-    const branchId = parseInt(loc.replace('branch_', ''), 10)
-    query = supabase
-      .from(TABLE_NAME)
-      .select('*, collection_groups(id, name, cover_image_url, product_sup), stock!inner(branch_id, qty, branches(id, branch_name, branch_type))', { count: 'exact' })
-      .gt('stock.qty', 0)
-      .eq('stock.branch_id', branchId)
-  } else if (loc === 'both') {
-    const [whRes, srRes] = await Promise.all([
-      supabase.from('stock').select('product_id, branches!inner(branch_type)').gt('qty', 0).eq('branches.branch_type', 'FACTORY'),
-      supabase.from('stock').select('product_id, branches!inner(branch_type)').gt('qty', 0).eq('branches.branch_type', 'SHOWROOM')
-    ])
-    const whIds = new Set(whRes.data?.map((s: any) => s.product_id) || [])
-    const bothIds = Array.from(new Set((srRes.data || []).map((s: any) => s.product_id).filter((id: any) => whIds.has(id))))
-    query = supabase
-      .from(TABLE_NAME)
-      .select('*, collection_groups(id, name, cover_image_url, product_sup), stock(branch_id, qty, branches(id, branch_name, branch_type))', { count: 'exact' })
-    if (bothIds.length > 0) {
-      query = query.in('id', bothIds)
-    } else {
-      query = query.eq('id', -999999)
-    }
-  } else {
-    query = supabase
-      .from(TABLE_NAME)
-      .select('*, collection_groups(id, name, cover_image_url, product_sup), stock(branch_id, qty, branches(id, branch_name, branch_type))', { count: 'exact' })
-  }
-
-  if (canViewCosts) {
-    query = query.order('cost', { ascending: false, nullsFirst: false })
-  }
-  query = query.order('created_at', { ascending: false })
-
-  if (category) {
-    query = query.eq('category_id', category)
-  }
-
-  if (specType) {
-    const trimmedType = specType.trim()
-    if (category === 'prop') {
-      const allowed = (CATEGORY_MAP[trimmedType] || CATEGORY_MAP[trimmedType.toUpperCase()] || [trimmedType.toLowerCase()]).map(s => s.trim().toLowerCase())
-      const colGroups = await getCachedCollectionGroups(supabase)
-      const matchedIds = colGroups
-        .filter(c => c.product_sup && allowed.some(a => c.product_sup!.toLowerCase().includes(a) || a.includes(c.product_sup!.toLowerCase().trim())))
-        .map(c => c.id)
-
-      if (matchedIds.length > 0) {
-        query = query.in('collection_group_id', matchedIds)
-      } else {
-        query = query.or(`specs->>type.ilike.%${trimmedType}%,specs->>spec_type.ilike.%${trimmedType}%`)
-      }
-    } else if (category === 'furniture') {
-      const lower = trimmedType.toLowerCase()
-      const colGroups = await getCachedCollectionGroups(supabase)
-      const matchedIds = colGroups
-        .filter(c => c.product_sup && c.product_sup.toLowerCase().includes(lower))
-        .map(c => c.id)
-
-      if (matchedIds.length > 0) {
-        query = query.in('collection_group_id', matchedIds)
-      } else {
-        query = query.or(`specs->>type.ilike.%${trimmedType}%,specs->>spec_type.ilike.%${trimmedType}%`)
-      }
-    } else {
-      query = query.or(`specs->>type.ilike.%${trimmedType}%,specs->>spec_type.ilike.%${trimmedType}%`)
-    }
-  }
-
-  if (statusFilter) {
-    if (statusFilter === 'active') {
-      query = query.or('status.eq.active,status.is.null')
-    } else {
-      query = query.eq('status', statusFilter)
-    }
-  }
-
-  // 💰 ฟิลเตอร์ต้นทุน (Cost) - เฉพาะผู้มีสิทธิ์ดูต้นทุนเท่านั้น
-  if (canViewCosts) {
-    if (costFilter === 'has_cost') {
-      query = query.gt('cost', 0)
-    } else if (costFilter === 'no_cost') {
-      query = query.or('cost.eq.0,cost.is.null')
-    }
-  }
-
-  if (extraFilters?.material) {
-    query = query.ilike('specs->>material', `%${extraFilters.material.trim()}%`)
-  }
-  if (extraFilters?.grade) {
-    query = query.ilike('specs->>grade', `%${extraFilters.grade.trim()}%`)
-  }
-  if (extraFilters?.craft) {
-    query = query.ilike('specs->>panel_craft', `%${extraFilters.craft.trim()}%`)
-  }
-  if (extraFilters?.color) {
-    query = query.ilike('color', `%${extraFilters.color.trim()}%`)
-  }
-  if (extraFilters?.brand) {
-    query = query.ilike('specs->>brand', extraFilters.brand.trim())
-  }
-  if (extraFilters?.size) {
-    const s = extraFilters.size.trim()
-    if (category === 'prop' || category === 'furniture') {
-      const isStd = ['s', 'm', 'l', 'xl', 'xxl'].includes(s.toLowerCase())
-      if (isStd) {
-        query = query.ilike('specs->>group_size', s)
-      } else {
-        query = query.or(`specs->>group_size.ilike.%${s}%,specs->>size.ilike.%${s}%`)
-      }
-    } else if (category === 'SLABS') {
-      query = query.ilike('specs->>size', `%${s}%`)
-    } else if (category === 'rough_wood') {
-      query = query.or(`specs->>size_raw.ilike.%${s}%,specs->>size.ilike.%${s}%`)
-    } else {
-      query = query.or(`specs->>group_size.ilike.${s},specs->>size.ilike.%${s}%,specs->>size_raw.ilike.%${s}%`)
-    }
-  }
-
-  // 📏 Custom Dimensions (แบบรูปที่ 2: ความสูง, ความกว้าง, ความลึก/ความยาว Min - Max ซม.)
-  const isMmUnit = category === 'SLABS' || category === 'rough_wood'
-
-  if (extraFilters?.minH !== undefined && !isNaN(extraFilters.minH)) {
-    const val = isMmUnit && extraFilters.minH < 500 ? extraFilters.minH * 10 : extraFilters.minH
-    query = query.gte('specs->thickness_cm', val)
-  }
-  if (extraFilters?.maxH !== undefined && !isNaN(extraFilters.maxH)) {
-    const val = isMmUnit && extraFilters.maxH < 500 ? extraFilters.maxH * 10 : extraFilters.maxH
-    query = query.lte('specs->thickness_cm', val)
-  }
-
-  if (extraFilters?.minW !== undefined && !isNaN(extraFilters.minW)) {
-    const val = isMmUnit && extraFilters.minW < 500 ? extraFilters.minW * 10 : extraFilters.minW
-    query = query.gte('specs->width_cm', val)
-  }
-  if (extraFilters?.maxW !== undefined && !isNaN(extraFilters.maxW)) {
-    const val = isMmUnit && extraFilters.maxW < 500 ? extraFilters.maxW * 10 : extraFilters.maxW
-    query = query.lte('specs->width_cm', val)
-  }
-
-  if (extraFilters?.minL !== undefined && !isNaN(extraFilters.minL)) {
-    const val = isMmUnit && extraFilters.minL < 500 ? extraFilters.minL * 10 : extraFilters.minL
-    query = query.gte('specs->length_cm', val)
-  }
-  if (extraFilters?.maxL !== undefined && !isNaN(extraFilters.maxL)) {
-    const val = isMmUnit && extraFilters.maxL < 500 ? extraFilters.maxL * 10 : extraFilters.maxL
-    query = query.lte('specs->length_cm', val)
-  }
-
-  // 💡 ค้นหาจากชื่อ, SKU หรือ Barcode
-  if (searchQuery) {
-    query = query.or(`sku.ilike.%${searchQuery}%,name.ilike.%${searchQuery}%,barcode.ilike.%${searchQuery}%`)
-  }
-
-  // ⚡ แบ่งหน้าทีละ limit รายการ (เช่น 250) เพื่อประหยัด Database
   const from = Math.max(0, offset)
-  const to = from + limit - 1
-  query = query.range(from, to)
+  const loc = extraFilters?.location?.trim().toLowerCase()
+  let rawData: any[] = []
+  let totalCount = 0
 
-  const { data, count, error } = await query
+  if (!loc) {
+    // ⚡ 1. ดึง Metadata สินค้าจาก Cache 1 ปี (และล้างอัตโนมัติเมื่อแก้สินค้า/นำเข้า)
+    const cached = await getCachedProductsMeta({
+      category,
+      specType,
+      searchQuery,
+      statusFilter,
+      extraFilters,
+      costFilter,
+      canViewCosts,
+      offset,
+      limit,
+    })
 
-  if (error) {
-    console.error("Error fetching products:", error)
-    return { data: [], count: 0, hasMore: false, nextOffset: offset, error: error.message }
+    if (cached.error) {
+      console.error("Error fetching products from cache:", cached.error)
+      return { data: [], count: 0, hasMore: false, nextOffset: offset, error: cached.error }
+    }
+
+    // ⚡ 2. ดึงสต็อกสด (Live Stock) จาก Supabase ใน 1 Query สำหรับสินค้าในหน้านี้ (ไม่แคชสต็อกเด็ดขาด)
+    const productIds = (cached.data || []).map((item: any) => item.id)
+    const liveStockMap = await fetchLiveStockForProducts(productIds)
+
+    rawData = (cached.data || []).map((item: any) => ({
+      ...item,
+      stock: liveStockMap.get(String(item.id)) || [],
+    }))
+    totalCount = cached.count || 0
+  } else {
+    // 🔍 กรณีมีการฟิลเตอร์เจาะจงสถานที่/คลัง (เช่น showroom, warehouse, in_stock, branch_X) -> Query สดผ่าน Stock Join
+    let query: any
+
+    if (loc === 'showroom') {
+      query = supabase
+        .from(TABLE_NAME)
+        .select('*, collection_groups(id, name, cover_image_url, product_sup), stock!inner(branch_id, qty, branches!inner(id, branch_name, branch_type))', { count: 'exact' })
+        .gt('stock.qty', 0)
+        .eq('stock.branches.branch_type', 'SHOWROOM')
+    } else if (loc === 'warehouse') {
+      query = supabase
+        .from(TABLE_NAME)
+        .select('*, collection_groups(id, name, cover_image_url, product_sup), stock!inner(branch_id, qty, branches!inner(id, branch_name, branch_type))', { count: 'exact' })
+        .gt('stock.qty', 0)
+        .eq('stock.branches.branch_type', 'FACTORY')
+    } else if (loc === 'in_stock') {
+      query = supabase
+        .from(TABLE_NAME)
+        .select('*, collection_groups(id, name, cover_image_url, product_sup), stock!inner(branch_id, qty, branches(id, branch_name, branch_type))', { count: 'exact' })
+        .gt('stock.qty', 0)
+    } else if (loc === 'out_of_stock') {
+      const { data: positiveStock } = await supabase.from('stock').select('product_id').gt('qty', 0)
+      const positiveIds = Array.from(new Set(positiveStock?.map((s: any) => s.product_id) || []))
+      query = supabase
+        .from(TABLE_NAME)
+        .select('*, collection_groups(id, name, cover_image_url, product_sup), stock(branch_id, qty, branches(id, branch_name, branch_type))', { count: 'exact' })
+      if (positiveIds.length > 0) {
+        query = query.not('id', 'in', `(${positiveIds.join(',')})`)
+      }
+    } else if (loc?.startsWith('branch_')) {
+      const branchId = parseInt(loc.replace('branch_', ''), 10)
+      query = supabase
+        .from(TABLE_NAME)
+        .select('*, collection_groups(id, name, cover_image_url, product_sup), stock!inner(branch_id, qty, branches(id, branch_name, branch_type))', { count: 'exact' })
+        .gt('stock.qty', 0)
+        .eq('stock.branch_id', branchId)
+    } else if (loc === 'both') {
+      const [whRes, srRes] = await Promise.all([
+        supabase.from('stock').select('product_id, branches!inner(branch_type)').gt('qty', 0).eq('branches.branch_type', 'FACTORY'),
+        supabase.from('stock').select('product_id, branches!inner(branch_type)').gt('qty', 0).eq('branches.branch_type', 'SHOWROOM')
+      ])
+      const whIds = new Set(whRes.data?.map((s: any) => s.product_id) || [])
+      const bothIds = Array.from(new Set((srRes.data || []).map((s: any) => s.product_id).filter((id: any) => whIds.has(id))))
+      query = supabase
+        .from(TABLE_NAME)
+        .select('*, collection_groups(id, name, cover_image_url, product_sup), stock(branch_id, qty, branches(id, branch_name, branch_type))', { count: 'exact' })
+      if (bothIds.length > 0) {
+        query = query.in('id', bothIds)
+      } else {
+        query = query.eq('id', -999999)
+      }
+    } else {
+      query = supabase
+        .from(TABLE_NAME)
+        .select('*, collection_groups(id, name, cover_image_url, product_sup), stock(branch_id, qty, branches(id, branch_name, branch_type))', { count: 'exact' })
+    }
+
+    if (canViewCosts) {
+      query = query.order('cost', { ascending: false, nullsFirst: false })
+    }
+    query = query.order('created_at', { ascending: false })
+
+    if (category) {
+      query = query.eq('category_id', category)
+    }
+
+    if (specType) {
+      const trimmedType = specType.trim()
+      if (category === 'prop') {
+        const allowed = (CATEGORY_MAP[trimmedType] || CATEGORY_MAP[trimmedType.toUpperCase()] || [trimmedType.toLowerCase()]).map(s => s.trim().toLowerCase())
+        const colGroups = await getCachedCollectionGroups(supabase)
+        const matchedIds = colGroups
+          .filter(c => c.product_sup && allowed.some(a => c.product_sup!.toLowerCase().includes(a) || a.includes(c.product_sup!.toLowerCase().trim())))
+          .map(c => c.id)
+
+        if (matchedIds.length > 0) {
+          query = query.in('collection_group_id', matchedIds)
+        } else {
+          query = query.or(`specs->>type.ilike.%${trimmedType}%,specs->>spec_type.ilike.%${trimmedType}%`)
+        }
+      } else if (category === 'furniture') {
+        const lower = trimmedType.toLowerCase()
+        const colGroups = await getCachedCollectionGroups(supabase)
+        const matchedIds = colGroups
+          .filter(c => c.product_sup && c.product_sup.toLowerCase().includes(lower))
+          .map(c => c.id)
+
+        if (matchedIds.length > 0) {
+          query = query.in('collection_group_id', matchedIds)
+        } else {
+          query = query.or(`specs->>type.ilike.%${trimmedType}%,specs->>spec_type.ilike.%${trimmedType}%`)
+        }
+      } else {
+        query = query.or(`specs->>type.ilike.%${trimmedType}%,specs->>spec_type.ilike.%${trimmedType}%`)
+      }
+    }
+
+    if (statusFilter) {
+      if (statusFilter === 'active') {
+        query = query.or('status.eq.active,status.is.null')
+      } else {
+        query = query.eq('status', statusFilter)
+      }
+    }
+
+    // 💰 ฟิลเตอร์ต้นทุน (Cost) - เฉพาะผู้มีสิทธิ์ดูต้นทุนเท่านั้น
+    if (canViewCosts) {
+      if (costFilter === 'has_cost') {
+        query = query.gt('cost', 0)
+      } else if (costFilter === 'no_cost') {
+        query = query.or('cost.eq.0,cost.is.null')
+      }
+    }
+
+    if (extraFilters?.material) {
+      query = query.ilike('specs->>material', `%${extraFilters.material.trim()}%`)
+    }
+    if (extraFilters?.grade) {
+      query = query.ilike('specs->>grade', `%${extraFilters.grade.trim()}%`)
+    }
+    if (extraFilters?.craft) {
+      query = query.ilike('specs->>panel_craft', `%${extraFilters.craft.trim()}%`)
+    }
+    if (extraFilters?.color) {
+      query = query.ilike('color', `%${extraFilters.color.trim()}%`)
+    }
+    if (extraFilters?.brand) {
+      query = query.ilike('specs->>brand', extraFilters.brand.trim())
+    }
+    if (extraFilters?.size) {
+      const s = extraFilters.size.trim()
+      if (category === 'prop' || category === 'furniture') {
+        const isStd = ['s', 'm', 'l', 'xl', 'xxl'].includes(s.toLowerCase())
+        if (isStd) {
+          query = query.ilike('specs->>group_size', s)
+        } else {
+          query = query.or(`specs->>group_size.ilike.%${s}%,specs->>size.ilike.%${s}%`)
+        }
+      } else if (category === 'SLABS') {
+        query = query.ilike('specs->>size', `%${s}%`)
+      } else if (category === 'rough_wood') {
+        query = query.or(`specs->>size_raw.ilike.%${s}%,specs->>size.ilike.%${s}%`)
+      } else {
+        query = query.or(`specs->>group_size.ilike.${s},specs->>size.ilike.%${s}%,specs->>size_raw.ilike.%${s}%`)
+      }
+    }
+
+    // 📏 Custom Dimensions (แบบรูปที่ 2: ความสูง, ความกว้าง, ความลึก/ความยาว Min - Max ซม.)
+    const isMmUnit = category === 'SLABS' || category === 'rough_wood'
+
+    if (extraFilters?.minH !== undefined && !isNaN(extraFilters.minH)) {
+      const val = isMmUnit && extraFilters.minH < 500 ? extraFilters.minH * 10 : extraFilters.minH
+      query = query.gte('specs->thickness_cm', val)
+    }
+    if (extraFilters?.maxH !== undefined && !isNaN(extraFilters.maxH)) {
+      const val = isMmUnit && extraFilters.maxH < 500 ? extraFilters.maxH * 10 : extraFilters.maxH
+      query = query.lte('specs->thickness_cm', val)
+    }
+
+    if (extraFilters?.minW !== undefined && !isNaN(extraFilters.minW)) {
+      const val = isMmUnit && extraFilters.minW < 500 ? extraFilters.minW * 10 : extraFilters.minW
+      query = query.gte('specs->width_cm', val)
+    }
+    if (extraFilters?.maxW !== undefined && !isNaN(extraFilters.maxW)) {
+      const val = isMmUnit && extraFilters.maxW < 500 ? extraFilters.maxW * 10 : extraFilters.maxW
+      query = query.lte('specs->width_cm', val)
+    }
+
+    if (extraFilters?.minL !== undefined && !isNaN(extraFilters.minL)) {
+      const val = isMmUnit && extraFilters.minL < 500 ? extraFilters.minL * 10 : extraFilters.minL
+      query = query.gte('specs->length_cm', val)
+    }
+    if (extraFilters?.maxL !== undefined && !isNaN(extraFilters.maxL)) {
+      const val = isMmUnit && extraFilters.maxL < 500 ? extraFilters.maxL * 10 : extraFilters.maxL
+      query = query.lte('specs->length_cm', val)
+    }
+
+    // 💡 ค้นหาจากชื่อ, SKU หรือ Barcode
+    if (searchQuery) {
+      query = query.or(`sku.ilike.%${searchQuery}%,name.ilike.%${searchQuery}%,barcode.ilike.%${searchQuery}%`)
+    }
+
+    // ⚡ แบ่งหน้าทีละ limit รายการ (เช่น 250) เพื่อประหยัด Database
+    const to = from + limit - 1
+    query = query.range(from, to)
+
+    const { data, count, error } = await query
+
+    if (error) {
+      console.error("Error fetching products:", error)
+      return { data: [], count: 0, hasMore: false, nextOffset: offset, error: error.message }
+    }
+    rawData = data || []
+    totalCount = count || 0
   }
 
-  const processedData = (data || []).map((item: any) => {
+  const processedData = (rawData || []).map((item: any) => {
     let publicUrl = null
     if (item.image_url) {
        if(item.image_url.startsWith('http')) {
@@ -511,7 +782,6 @@ export async function getProducts(
     return cleanItem
   })
 
-  const totalCount = count ?? 0
   const returnedCount = processedData.length
   const hasMore = from + returnedCount < totalCount
 
