@@ -50,84 +50,84 @@ export default function DashboardBranchFilter({
   const [draftIds, setDraftIds] = useState<number[]>(checkedSelectedIds)
 
   useEffect(() => {
-    setDraftIds(checkedSelectedIds)
-  }, [checkedSelectedIds])
+  setDraftIds(checkedSelectedIds)
+}, [checkedSelectedIds])
 
-  const isAllDraftSelected =
-    branches.length > 0 && draftIds.length >= branches.length
-  const isSomeDraftSelected =
-    draftIds.length > 0 && draftIds.length < branches.length
+const isAllDraftSelected =
+  branches.length > 0 && draftIds.length >= branches.length
+const isSomeDraftSelected =
+  draftIds.length > 0 && draftIds.length < branches.length
 
-  useEffect(() => {
-    if (selectAllCheckboxRef.current) {
-      selectAllCheckboxRef.current.indeterminate = isSomeDraftSelected
-    }
-  }, [isOpen, isSomeDraftSelected])
+useEffect(() => {
+  if (selectAllCheckboxRef.current) {
+    selectAllCheckboxRef.current.indeterminate = isSomeDraftSelected
+  }
+}, [isOpen, isSomeDraftSelected])
 
-  useEffect(() => {
-    if (!isOpen) return
-    const handleClickOutside = (event: MouseEvent) => {
-      if (popoverRef.current && !popoverRef.current.contains(event.target as Node)) {
-        setIsOpen(false)
-        setDraftIds(checkedSelectedIds)
-      }
-    }
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setIsOpen(false)
-        setDraftIds(checkedSelectedIds)
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside)
-    document.addEventListener("keydown", handleKeyDown)
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside)
-      document.removeEventListener("keydown", handleKeyDown)
-    }
-  }, [isOpen, checkedSelectedIds])
-
-  const selectedBranches = useMemo(() => {
-    const selectedSet = new Set(validSelectedIds)
-    return branches.filter((b) => selectedSet.has(b.id))
-  }, [branches, validSelectedIds])
-
-  const filteredBranches = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase()
-    if (!q) return branches
-    return branches.filter((b) => b.name.toLowerCase().includes(q))
-  }, [branches, searchQuery])
-
-  const draftSet = useMemo(() => new Set(draftIds), [draftIds])
-
-  const triggerLabel = useMemo(() => {
-    if (isAllActive) {
-      return branches.length > 0 ? `ทุกสาขา (${branches.length})` : "ทุกสาขา"
-    }
-    if (selectedBranches.length === 1) {
-      return selectedBranches[0].name
-    }
-    if (selectedBranches.length === 2) {
-      return `${selectedBranches[0].name}, ${selectedBranches[1].name}`
-    }
-    return `เลือกแล้ว ${selectedBranches.length} สาขา`
-  }, [isAllActive, branches.length, selectedBranches])
-
-  const toggleOpen = () => {
-    if (isOpen) {
+useEffect(() => {
+  if (!isOpen) return
+  const handleClickOutside = (event: MouseEvent) => {
+    if (popoverRef.current && !popoverRef.current.contains(event.target as Node)) {
       setIsOpen(false)
       setDraftIds(checkedSelectedIds)
-    } else {
-      setDraftIds(checkedSelectedIds)
-      setSearchQuery("")
-      setIsOpen(true)
     }
   }
-
-  const toggleBranch = (branchId: number) => {
-    setDraftIds((prev) =>
-      prev.includes(branchId) ? prev.filter((id) => id !== branchId) : [...prev, branchId]
-    )
+  const handleKeyDown = (event: KeyboardEvent) => {
+    if (event.key === "Escape") {
+      setIsOpen(false)
+      setDraftIds(checkedSelectedIds)
+    }
   }
+  document.addEventListener("mousedown", handleClickOutside)
+  document.addEventListener("keydown", handleKeyDown)
+  return () => {
+    document.removeEventListener("mousedown", handleClickOutside)
+    document.removeEventListener("keydown", handleKeyDown)
+  }
+  }, [isOpen, checkedSelectedIds])
+
+const selectedBranches = useMemo(() => {
+  const selectedSet = new Set(validSelectedIds)
+  return branches.filter((b) => selectedSet.has(b.id))
+}, [branches, validSelectedIds])
+
+const filteredBranches = useMemo(() => {
+  const q = searchQuery.trim().toLowerCase()
+  if (!q) return branches
+  return branches.filter((b) => b.name.toLowerCase().includes(q))
+}, [branches, searchQuery])
+
+const draftSet = useMemo(() => new Set(draftIds), [draftIds])
+
+const triggerLabel = useMemo(() => {
+  if (isAllActive) {
+    return branches.length > 0 ? `ทุกสาขา (${branches.length})` : "ทุกสาขา"
+  }
+  if (selectedBranches.length === 1) {
+    return selectedBranches[0].name
+  }
+  if (selectedBranches.length === 2) {
+    return `${selectedBranches[0].name}, ${selectedBranches[1].name}`
+  }
+  return `เลือกแล้ว ${selectedBranches.length} สาขา`
+}, [isAllActive, branches.length, selectedBranches])
+
+const toggleOpen = () => {
+  if (isOpen) {
+    setIsOpen(false)
+    setDraftIds(checkedSelectedIds)
+  } else {
+    setDraftIds(checkedSelectedIds)
+    setSearchQuery("")
+    setIsOpen(true)
+  }
+}
+
+const toggleBranch = (branchId: number) => {
+  setDraftIds((prev) =>
+    prev.includes(branchId) ? prev.filter((id) => id !== branchId) : [...prev, branchId]
+  )
+}
 
   const toggleAllBranches = () => {
     if (isAllDraftSelected) {
@@ -174,11 +174,10 @@ export default function DashboardBranchFilter({
         aria-haspopup="dialog"
         aria-label="เลือกสาขา"
         disabled={isPending}
-        className={`flex items-center gap-2 min-w-60 max-w-full sm:max-w-xs rounded-xl border px-4 py-2.5 text-sm font-bold outline-none shadow-sm transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-wait ${
-          isAllActive
+        className={`flex items-center gap-2 min-w-60 max-w-full sm:max-w-xs rounded-xl border px-4 py-2.5 text-sm font-bold outline-none shadow-sm transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-wait ${isAllActive
             ? "border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300"
             : "border-blue-300 bg-blue-50/70 text-blue-800 hover:border-blue-400"
-        }`}
+          }`}
       >
         <Building2
           className={`w-4 h-4 shrink-0 ${isAllActive ? "text-slate-500" : "text-blue-600"}`}
@@ -190,9 +189,8 @@ export default function DashboardBranchFilter({
           </span>
         )}
         <ChevronDown
-          className={`w-4 h-4 shrink-0 ml-auto transition-transform duration-200 ${
-            isAllActive ? "text-slate-400" : "text-blue-500"
-          } ${isOpen ? "rotate-180" : ""}`}
+          className={`w-4 h-4 shrink-0 ml-auto transition-transform duration-200 ${isAllActive ? "text-slate-400" : "text-blue-500"
+            } ${isOpen ? "rotate-180" : ""}`}
         />
       </button>
 
@@ -253,102 +251,103 @@ export default function DashboardBranchFilter({
             </span>
           </label>
 
-          {/* แถบสถานะและปุ่มช่วยเลือก */}
-          <div className="mb-2 flex items-center justify-between text-[11px]">
-            <span className={`font-bold ${draftIds.length === 0 ? "text-rose-600" : "text-slate-500"}`}>
-              {draftIds.length === 0
-                ? "กรุณาเลือกอย่างน้อย 1 สาขา"
-                : `เลือกอยู่ ${draftIds.length} จาก ${branches.length} สาขา`}
-            </span>
-            <div className="flex items-center gap-2">
-              {searchQuery.trim() && filteredBranches.length > 0 && (
-                <button
-                  type="button"
-                  onClick={selectFiltered}
-                  className="font-bold text-blue-600 hover:text-blue-700 cursor-pointer"
-                >
-                  เลือกที่ค้นหา ({filteredBranches.length})
-                </button>
-              )}
+          {/* แถบสถานะและปุ่มช่วยเลือก */ }
+  <div className="mb-2 flex items-center justify-between text-[11px]">
+      <span className={`font-bold ${draftIds.length === 0 ? "text-rose-600" : "text-slate-500"}`}>
+        {draftIds.length === 0
+        ? "กรุณาเลือกอย่างน้อย 1 สาขา"
+        : `เลือกอยู่ ${draftIds.length} จาก ${branches.length} สาขา`}
+      </span>
+      <div className="flex items-center gap-2">
+          {
+            searchQuery.trim() && filteredBranches.length > 0 && (
+              <button
+                type="button"
+                onClick={selectFiltered}
+                className="font-bold text-blue-600 hover:text-blue-700 cursor-pointer"
+              >
+                เลือกที่ค้นหา ({filteredBranches.length})
+              </button>
+            )
+          }
               {draftIds.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setDraftIds([])}
-                  className="font-bold text-slate-400 hover:text-rose-600 cursor-pointer"
-                >
-                  ล้างทั้งหมด
-                </button>
-              )}
-            </div>
-          </div>
+          <button
+            type="button"
+            onClick={() => setDraftIds([])}
+            className="font-bold text-slate-400 hover:text-rose-600 cursor-pointer"
+          >
+            ล้างทั้งหมด
+          </button>
+        )}
+      </div>
+  </div>
 
-          {/* รายการเช็กบ็อกซ์สาขา */}
-          <div className="max-h-64 space-y-1 overflow-y-auto pr-1">
-            {filteredBranches.map((branch) => {
-              const checked = draftSet.has(branch.id)
-              return (
-                <label
-                  key={branch.id}
-                  className={`flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm transition-colors cursor-pointer select-none ${
-                    checked
-                      ? "bg-blue-50/80 text-blue-900 font-bold"
-                      : "text-slate-700 font-medium hover:bg-slate-50"
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    onChange={() => toggleBranch(branch.id)}
-                    className="h-4 w-4 shrink-0 rounded border-slate-300 text-blue-600 accent-blue-600 focus:ring-blue-500 cursor-pointer"
-                  />
-                  <span className="truncate">{branch.name}</span>
-                </label>
-              )
-            })}
-            {filteredBranches.length === 0 && (
-              <p className="py-6 text-center text-xs text-slate-400">
-                ไม่พบสาขาที่ค้นหา &ldquo;{searchQuery}&rdquo;
-              </p>
-            )}
-          </div>
+  {/* รายการเช็กบ็อกซ์สาขา */ }
+  <div className="max-h-64 space-y-1 overflow-y-auto pr-1">
+    {filteredBranches.map((branch) => {
+      const checked = draftSet.has(branch.id)
+      return (
+        <label
+          key={branch.id}
+          className={`flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm transition-colors cursor-pointer select-none ${checked
+              ? "bg-blue-50/80 text-blue-900 font-bold"
+              : "text-slate-700 font-medium hover:bg-slate-50"
+            }`}
+        >
+          <input
+            type="checkbox"
+            checked={checked}
+            onChange={() => toggleBranch(branch.id)}
+            className="h-4 w-4 shrink-0 rounded border-slate-300 text-blue-600 accent-blue-600 focus:ring-blue-500 cursor-pointer"
+          />
+          <span className="truncate">{branch.name}</span>
+        </label>
+      )
+    })}
+    {filteredBranches.length === 0 && (
+      <p className="py-6 text-center text-xs text-slate-400">
+        ไม่พบสาขาที่ค้นหา &ldquo;{searchQuery}&rdquo;
+      </p>
+    )}
+  </div>
 
-          {/* ปุ่มด้านล่าง: ดูทุกสาขา / ยกเลิก / ตกลง */}
-          <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
-            <button
-              type="button"
-              onClick={() => applyBranchIds(availableIds)}
-              className="text-xs font-semibold text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
-            >
-              ดูทุกสาขา
-            </button>
+  {/* ปุ่มด้านล่าง: ดูทุกสาขา / ยกเลิก / ตกลง */ }
+  <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
+    <button
+      type="button"
+      onClick={() => applyBranchIds(availableIds)}
+      className="text-xs font-semibold text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
+    >
+      ดูทุกสาขา
+    </button>
 
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsOpen(false)
-                  setDraftIds(checkedSelectedIds)
-                }}
-                className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer"
-              >
-                ยกเลิก
-              </button>
-              <button
-                type="button"
-                disabled={draftIds.length === 0}
-                onClick={() => applyBranchIds(draftIds)}
-                className="rounded-lg bg-blue-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-xs transition-colors hover:bg-blue-700 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {isAllDraftSelected
-                  ? "ตกลง (ทุกสาขา)"
-                  : draftIds.length === 0
-                  ? "ตกลง"
-                  : `ตกลง (${draftIds.length} สาขา)`}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+    <div className="flex items-center gap-1.5">
+      <button
+        type="button"
+        onClick={() => {
+          setIsOpen(false)
+          setDraftIds(checkedSelectedIds)
+        }}
+        className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer"
+      >
+        ยกเลิก
+      </button>
+      <button
+        type="button"
+        disabled={draftIds.length === 0}
+        onClick={() => applyBranchIds(draftIds)}
+        className="rounded-lg bg-blue-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-xs transition-colors hover:bg-blue-700 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+      >
+        {isAllDraftSelected
+          ? "ตกลง (ทุกสาขา)"
+          : draftIds.length === 0
+            ? "ตกลง"
+            : `ตกลง (${draftIds.length} สาขา)`}
+      </button>
     </div>
+  </div>
+        </div >
+      )}
+    </div >
   )
 }

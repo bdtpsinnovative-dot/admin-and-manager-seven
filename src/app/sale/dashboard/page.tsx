@@ -27,6 +27,7 @@ import DashboardVatCard from "@/components/DashboardVatCard"
 import DashboardProductTable from "@/components/DashboardProductTable"
 import DashboardMonthFilter from "@/components/DashboardMonthFilter"
 import DashboardDamageCard from "@/components/DashboardDamageCard"
+import PaymentSlipViewer from "@/components/PaymentSlipViewer"
 
 const money = (value: number) =>
   value.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -423,11 +424,19 @@ export default async function SaleDashboardPage({
             </Link>
           </div>
           <div className="overflow-x-auto">
-            <table className="min-w-[950px] w-full text-left text-sm">
+            <table className="min-w-[1140px] w-full text-left text-sm">
               <thead className="bg-slate-50/50 text-[11px] font-black uppercase text-slate-400 tracking-wider">
                 <tr>
                   <th className="px-6 py-4">รหัสใบขาย</th>
-                  <th className="px-6 py-4">วันที่ / เวลา</th>
+                  <th className="px-6 py-4">
+                    <div>วันที่ออกบิล</div>
+                    <div className="text-[9px] font-medium text-slate-400 normal-case">(เปิดบิล)</div>
+                  </th>
+                  <th className="px-6 py-4 bg-emerald-50/40 text-emerald-900">
+                    <div>วันที่ขายจริง</div>
+                    <div className="text-[9px] font-medium text-emerald-700 normal-case">(ปิดบิล)</div>
+                  </th>
+                  <th className="px-3 py-4 text-center w-16">สลิป</th>
                   <th className="px-6 py-4 text-right">ยอดก่อนลด</th>
                   <th className="px-6 py-4 text-right">ส่วนลด (%)</th>
                   <th className="px-6 py-4 text-center">ค่าส่ง (ผู้จ่าย)</th>
@@ -452,8 +461,44 @@ export default async function SaleDashboardPage({
                     <td className="px-6 py-4 font-mono font-bold text-slate-800">
                       {order.orderCode}
                     </td>
-                    <td className="px-6 py-4 text-xs text-slate-500">
+                    <td className="px-6 py-4 text-xs text-slate-500 whitespace-nowrap">
                       {dateTime(order.createdAt)}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap bg-emerald-50/20 text-xs">
+                      {order.status === "COMPLETED" || order.status === "PROCESSING" ? (() => {
+                        const closedAt = order.completedAt || order.createdAt
+                        const isCrossDay = closedAt && new Date(closedAt).toDateString() !== new Date(order.createdAt).toDateString()
+                        const diffDays = closedAt ? Math.max(1, Math.round((new Date(closedAt).getTime() - new Date(order.createdAt).getTime()) / (1000 * 60 * 60 * 24))) : 0
+
+                        return (
+                          <div>
+                            <div className="font-bold text-emerald-700">
+                              {dateTime(closedAt)}
+                            </div>
+                            {isCrossDay && (
+                              <span className="text-[10px] text-amber-600 font-semibold block">
+                                (เปิดค้างไว้ {diffDays} วัน)
+                              </span>
+                            )}
+                            {order.status === "PROCESSING" && (
+                              <span className="text-[9px] text-blue-600 font-semibold block mt-0.5">
+                                (รอแพ็คจัดส่ง)
+                              </span>
+                            )}
+                          </div>
+                        )
+                      })() : order.status === "PENDING" ? (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+                          รอคิดเงิน
+                        </span>
+                      ) : order.status === "CANCELLED" ? (
+                        <span className="text-xs text-red-400">ยกเลิก</span>
+                      ) : (
+                        <span className="text-slate-300">-</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      <PaymentSlipViewer orderId={order.id} orderCode={order.orderCode} compact />
                     </td>
                     <td className="px-6 py-4 text-right text-slate-500 font-medium">
                       ฿{money(order.subtotal)}
@@ -506,7 +551,7 @@ export default async function SaleDashboardPage({
                 ))}
                 {data.recentOrders.length === 0 && (
                   <tr>
-                    <td colSpan={9} className="py-12 text-center text-xs text-slate-400 italic">
+                    <td colSpan={11} className="py-12 text-center text-xs text-slate-400 italic">
                       ไม่พบประวัติการขายในสาขานี้
                     </td>
                   </tr>

@@ -46,3 +46,5 @@ scratch/
 scripts/*.local.*
 backups/
 data/snapshots/
+
+.vercel

@@ -1,7 +1,8 @@
 "use client"
 
 import React, { useState, useMemo } from "react"
-import { Package, Tag, Clock, TrendingUp, Layers, HelpCircle } from "lucide-react"
+import { Package, Tag, Clock, TrendingUp, Layers, HelpCircle, FileSpreadsheet, ImageIcon, Loader2 } from "lucide-react"
+import { toast } from "sonner"
 import type { DashboardProductSummary } from "@/actions/dashboard"
 
 const money = (value: number) =>
@@ -45,6 +46,60 @@ export default function DashboardProductTable({
     }
   }, [products, sortBy])
 
+  const [exportingMode, setExportingMode] = useState<"no-image" | "with-image" | null>(null)
+
+  const handleExportExcel = async (includeImages: boolean) => {
+    if (exportingMode !== null || sortedProducts.length === 0) return
+    const mode = includeImages ? "with-image" : "no-image"
+    setExportingMode(mode)
+    const toastId = toast.loading(
+      includeImages
+        ? "กำลังประมวลผลรูปภาพและสร้างไฟล์ Excel..."
+        : "กำลังสร้างไฟล์ Excel..."
+    )
+
+    try {
+      const res = await fetch("/api/dashboard/export-products", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          products: sortedProducts,
+          title,
+          includeImages,
+        }),
+      })
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => null)
+        throw new Error(errJson?.error || "ดาวน์โหลดไฟล์ Excel ไม่สำเร็จ")
+      }
+
+      const blob = await res.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      const dateStr = new Date().toISOString().split("T")[0]
+      const cleanTitle = title.replace(/[\/\\]/g, "_")
+      a.download = `${cleanTitle}_${includeImages ? "พร้อมรูป" : "ไม่มีรูป"}_${dateStr}.xlsx`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      window.URL.revokeObjectURL(url)
+
+      toast.success(
+        includeImages
+          ? "ดาวน์โหลด Excel พร้อมรูปภาพสินค้าสำเร็จแล้ว!"
+          : "ดาวน์โหลด Excel เรียบร้อยแล้ว!",
+        { id: toastId }
+      )
+    } catch (err: any) {
+      console.error("Export excel error:", err)
+      toast.error(err.message || "เกิดข้อผิดพลาดในการดาวน์โหลด", { id: toastId })
+    } finally {
+      setExportingMode(null)
+    }
+  }
+
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
       {/* Header & Sorters */}
@@ -61,44 +116,80 @@ export default function DashboardProductTable({
           </div>
         </div>
 
-        {/* ปุ่มสลับการเรียงลำดับ */}
-        <div className="inline-flex rounded-xl bg-slate-100 p-1 self-start lg:self-auto shrink-0">
-          <button
-            type="button"
-            onClick={() => setSortBy("sales")}
-            className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              sortBy === "sales"
-                ? "bg-white text-blue-700 shadow-xs"
-                : "text-slate-500 hover:text-slate-800"
-            }`}
-          >
-            <TrendingUp className="w-3.5 h-3.5" />
-            เงินเข้าร้านสูงสุด
-          </button>
-          <button
-            type="button"
-            onClick={() => setSortBy("latest")}
-            className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              sortBy === "latest"
-                ? "bg-white text-blue-700 shadow-xs"
-                : "text-slate-500 hover:text-slate-800"
-            }`}
-          >
-            <Clock className="w-3.5 h-3.5" />
-            ขายล่าสุด
-          </button>
-          <button
-            type="button"
-            onClick={() => setSortBy("qty")}
-            className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              sortBy === "qty"
-                ? "bg-white text-blue-700 shadow-xs"
-                : "text-slate-500 hover:text-slate-800"
-            }`}
-          >
-            <Layers className="w-3.5 h-3.5" />
-            จำนวนขายสูงสุด
-          </button>
+        {/* แถบเครื่องมือ: จัดเรียง & ดาวน์โหลด Excel */}
+        <div className="flex flex-wrap items-center gap-2.5 self-start lg:self-auto shrink-0">
+          {/* ปุ่มสลับการเรียงลำดับ */}
+          <div className="inline-flex rounded-xl bg-slate-100 p-1 shrink-0">
+            <button
+              type="button"
+              onClick={() => setSortBy("sales")}
+              className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                sortBy === "sales"
+                  ? "bg-white text-blue-700 shadow-xs"
+                  : "text-slate-500 hover:text-slate-800"
+              }`}
+            >
+              <TrendingUp className="w-3.5 h-3.5" />
+              เงินเข้าร้านสูงสุด
+            </button>
+            <button
+              type="button"
+              onClick={() => setSortBy("latest")}
+              className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                sortBy === "latest"
+                  ? "bg-white text-blue-700 shadow-xs"
+                  : "text-slate-500 hover:text-slate-800"
+              }`}
+            >
+              <Clock className="w-3.5 h-3.5" />
+              ขายล่าสุด
+            </button>
+            <button
+              type="button"
+              onClick={() => setSortBy("qty")}
+              className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                sortBy === "qty"
+                  ? "bg-white text-blue-700 shadow-xs"
+                  : "text-slate-500 hover:text-slate-800"
+              }`}
+            >
+              <Layers className="w-3.5 h-3.5" />
+              จำนวนขายสูงสุด
+            </button>
+          </div>
+
+          {/* ปุ่มดาวน์โหลด Excel (มี 2 แบบ: ไม่มีรูป & พร้อมรูป) */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={() => handleExportExcel(false)}
+              disabled={exportingMode !== null || sortedProducts.length === 0}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-white border border-slate-200 text-slate-700 shadow-xs hover:bg-slate-50 hover:border-slate-300 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              title="ดาวน์โหลดเป็นไฟล์ Excel (.xlsx) แบบตัวเลขข้อมูลล้วน โหลดไว"
+            >
+              {exportingMode === "no-image" ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600" />
+              ) : (
+                <FileSpreadsheet className="w-3.5 h-3.5 text-slate-600" />
+              )}
+              <span>{exportingMode === "no-image" ? "กำลังโหลด..." : "โหลด Excel (ไม่มีรูป)"}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleExportExcel(true)}
+              disabled={exportingMode !== null || sortedProducts.length === 0}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-600 text-white shadow-xs hover:bg-emerald-700 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              title="ดาวน์โหลดเป็นไฟล์ Excel (.xlsx) พร้อมฝังรูปภาพสินค้าจริงในแต่ละแถว"
+            >
+              {exportingMode === "with-image" ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
+              ) : (
+                <ImageIcon className="w-3.5 h-3.5 text-white" />
+              )}
+              <span>{exportingMode === "with-image" ? "กำลังประมวลผลรูป..." : "โหลด Excel (พร้อมรูป)"}</span>
+            </button>
+          </div>
         </div>
       </div>
 

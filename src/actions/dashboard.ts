@@ -71,6 +71,7 @@ export interface DashboardOrder {
   id: number
   orderCode: string
   createdAt: string
+  completedAt?: string | null
   branchName: string
   subtotal: number
   discountAmount: number
@@ -613,6 +614,7 @@ export async function getDashboardData(
       vat_amount: number | null
       total_amount: number | null
       status: string | null
+      discount_snapshot?: any
       branches: { branch_name: string | null }[] | null
       order_items: {
         product_id: number | null
@@ -993,10 +995,21 @@ export async function getDashboardData(
         }
 
         if (recentOrders.length < 10) {
+          let snapCompletedAt: string | null = null
+          if (order.discount_snapshot) {
+            const snap = typeof order.discount_snapshot === "string"
+              ? (() => { try { return JSON.parse(order.discount_snapshot) } catch { return {} } })()
+              : order.discount_snapshot
+            snapCompletedAt = snap?.completed_at || null
+          }
+          const isPaid = status === "COMPLETED" || status === "PROCESSING"
+          const completedAt = snapCompletedAt || (isPaid ? order.created_at : null)
+
           recentOrders.push({
             id: order.id,
             orderCode: order.order_code || `#${order.id}`,
             createdAt: order.created_at,
+            completedAt,
             branchName: order.branches?.[0]?.branch_name || (order.branches as any)?.branch_name || branch?.name || "ไม่ระบุสาขา",
             subtotal: effGross,
             discountAmount: effDiscount,
