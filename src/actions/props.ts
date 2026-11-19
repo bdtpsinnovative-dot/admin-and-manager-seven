@@ -49,70 +49,80 @@ export async function addProp(formData: FormData) {
   }
 }
 
-// ⚡ 1-Year Cached Props List (Auto-cleared on mutations/SKU edits)
-export async function getAllProps(categoryId: string = "prop") {
+// ── Lightweight Select Fields to Avoid Vector/Heavy Payloads (Crucial to stay under 2MB cache limit) ──
+const PROPS_SELECT_FIELDS =
+  "id, name, sku, color, barcode, price, category_id, image_url, status, specs, length_cm, width_cm, thickness_cm";
+
+const CHUNK_SIZE = 1000;
+
+// ⚡ Chunk-level Cache: แบ่งแคชเป็นก้อนละ 1,000 ชิ้น (~550KB ต่อก้อน) เพื่อให้อยู่ใต้เพดาน 2MB ของ Next.js
+async function getCachedPropsChunk(categoryId: string, chunkIndex: number) {
+  const from = chunkIndex * CHUNK_SIZE;
+  const to = from + CHUNK_SIZE - 1;
+
   const run = unstable_cache(
     async () => {
-      const productMap = new Map<number, any>();
-      let page = 0;
-      const limit = 1000;
-      let hasMore = true;
+      let query = supabaseAdmin
+        .from("products")
+        .select(PROPS_SELECT_FIELDS)
+        .order("id", { ascending: false })
+        .range(from, to);
 
-      while (hasMore) {
-        const from = page * limit;
-        const to = from + limit - 1;
-
-        let query = supabaseAdmin
-          .from("products")
-          .select("*")
-          .order("id", { ascending: false })
-          .range(from, to);
-
-        if (categoryId && categoryId !== "ALL") {
-          query = query.eq("category_id", categoryId);
-        }
-
-        const { data, error } = await query;
-
-        if (error) {
-          console.error("Error fetching props in cache:", error);
-          break;
-        }
-
-        if (data && data.length > 0) {
-          for (const item of data) {
-            if (item && item.id != null) {
-              productMap.set(item.id, item);
-            }
-          }
-          if (data.length < limit) {
-            hasMore = false;
-          } else {
-            page++;
-          }
-        } else {
-          hasMore = false;
-        }
+      if (categoryId && categoryId !== "ALL") {
+        query = query.eq("category_id", categoryId);
       }
 
-      return Array.from(productMap.values());
+      const { data, error } = await query;
+      if (error) {
+        console.error(`[getCachedPropsChunk] error for chunk ${chunkIndex}:`, error);
+        return [];
+      }
+      return data || [];
     },
-    ['admin:all-props:v1', categoryId],
+    ['admin:props-chunk:v2', categoryId, String(chunkIndex)],
     {
       revalidate: ADMIN_CACHE_TTL.MASTER_SECONDS,
       tags: [ADMIN_CACHE_TAGS.INVENTORY_META, `admin:props:${categoryId}`],
     }
   );
 
+  return run();
+}
+
+// ⚡ 1-Year Cached Props List (Auto-cleared on mutations/SKU edits)
+export async function getAllProps(categoryId: string = "prop") {
   try {
-    return await run();
+    let countQuery = supabaseAdmin
+      .from("products")
+      .select("id", { count: "exact", head: true });
+
+    if (categoryId && categoryId !== "ALL") {
+      countQuery = countQuery.eq("category_id", categoryId);
+    }
+
+    const { count, error } = await countQuery;
+    const totalCount = count || 0;
+    if (error || totalCount === 0) return [];
+
+    const totalChunks = Math.ceil(totalCount / CHUNK_SIZE);
+    const chunkPromises: Promise<any[]>[] = [];
+
+    for (let i = 0; i < totalChunks; i++) {
+      chunkPromises.push(getCachedPropsChunk(categoryId, i));
+    }
+
+    const chunkResults = await Promise.all(chunkPromises);
+    return chunkResults.flat();
   } catch (err) {
     console.warn('[getAllProps] cache error, fallback to direct query:', err);
-    const { data } = await supabaseAdmin
+    let query = supabaseAdmin
       .from("products")
-      .select("*")
-      .eq("category_id", categoryId)
+      .select(PROPS_SELECT_FIELDS)
       .order("id", { ascending: false });
+    if (categoryId && categoryId !== "ALL") {
+      query = query.eq("category_id", categoryId);
+    }
+    const { data } = await query.limit(2000);
     return data || [];
   }
 }
@@ -135,10 +145,6 @@ export async function updatePropImageUrl(id: number, imageUrl: string) {
   revalidatePath("/props2");
   return { success: true };
 }
-
-// ── Lightweight Select Fields to Avoid Vector/Heavy Payloads ──
-const PROPS_SELECT_FIELDS =
-  "id, name, sku, color, barcode, price, category_id, image_url, status, specs, length_cm, width_cm, thickness_cm";
 
 // ── Fast Parallel Category Summary Counts (Cached with auto-purge) ──
 export async function getCategorySummaryCounts() {
