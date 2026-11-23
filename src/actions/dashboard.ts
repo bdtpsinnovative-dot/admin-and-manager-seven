@@ -84,6 +84,9 @@ export interface DashboardOrder {
   shippingCost?: number
   shippingWaived?: boolean
   shippingPayer?: 'COMPANY' | 'CUSTOMER' | 'NONE'
+  isDropShip?: boolean
+  dropShipAmount?: number
+  dropShipBranchNames?: string[]
 }
 
 export interface DashboardShippingSummary {
@@ -231,6 +234,10 @@ export interface DashboardData {
     billCount: number
     cancelledCount: number
     cancelledSales: number
+    pendingCount: number
+    pendingSales: number
+    dropShipCount: number
+    dropShipSales: number
     branchCount: number
   }
   brandSummaries: DashboardBrandSummary[]
@@ -249,7 +256,7 @@ export interface DashboardData {
 }
 
 const emptyDashboard = (error: string | null = null): DashboardData => ({
-  summary: { grossSales: 0, netSales: 0, totalDiscount: 0, totalVat: 0, netSalesBeforeVat: 0, billCount: 0, cancelledCount: 0, cancelledSales: 0, branchCount: 0 },
+  summary: { grossSales: 0, netSales: 0, totalDiscount: 0, totalVat: 0, netSalesBeforeVat: 0, billCount: 0, cancelledCount: 0, cancelledSales: 0, pendingCount: 0, pendingSales: 0, dropShipCount: 0, dropShipSales: 0, branchCount: 0 },
   brandSummaries: [],
   vatBreakdown: {
     totalVat: 0,
@@ -355,10 +362,11 @@ export async function getDashboardData(
           qty,
           price_at_sale,
           total_item_amount,
-          discount_amount_per_piece
+          discount_amount_per_piece,
+          fulfill_branch_id,
+          branches:fulfill_branch_id ( branch_name )
         )
       `)
-      .neq("status", "PENDING")
       .order("created_at", { ascending: false })
 
     let damageQuery = supabase
@@ -454,6 +462,10 @@ export async function getDashboardData(
     let billCount = 0
     let cancelledCount = 0
     let cancelledSales = 0
+    let pendingCount = 0
+    let pendingSales = 0
+    let dropShipCount = 0
+    let dropShipSales = 0
     let companyPaidCount = 0
     let companyPaidTotal = 0
     let customerPaidCount = 0
@@ -607,6 +619,8 @@ export async function getDashboardData(
         price_at_sale: number | null
         total_item_amount: number | null
         discount_amount_per_piece: number | null
+        fulfill_branch_id?: number | null
+        branches?: { branch_name: string | null } | { branch_name: string | null }[] | null
         products?: { name: string | null; sku: string | null; image_url: string | null; price?: number | null } | { name: string | null; sku: string | null; image_url: string | null; price?: number | null }[] | null
       }[] | null
     }) => {
@@ -616,11 +630,33 @@ export async function getDashboardData(
       const orderSubtotal = Number(order.subtotal) > 0 ? Number(order.subtotal) : (amount + discount)
       const status = String(order.status || "")
       const isCancelled = status === "CANCELLED"
+      const isPending = status === "PENDING"
+      const isCompleted = status === "COMPLETED" || status === "PROCESSING"
       // คำนวณ VAT 7% จากยอดสุทธิ (ถ้าระบุ vat_amount > 0 ให้ใช้ค่านั้น หรือคำนวณตามสูตร Included VAT 7%: total - total/1.07)
       const orderVat = Number(order.vat_amount) > 0
         ? Number(order.vat_amount)
         : (amount - (amount / 1.07))
       const branch = branchMap.get(branchId)
+
+      // คำนวณยอดจัดส่งข้ามสาขา (Drop Ship) ของออเดอร์นี้
+      let orderMyBranchRevenue = 0
+      let orderOtherBranchRevenue = 0
+      const orderRemoteBranchNames: string[] = []
+
+      order.order_items?.forEach((item: any) => {
+        const fulfillBranchId = item.fulfill_branch_id
+        const itemTotal = Number(item.total_item_amount) || 0
+        const fulfillBranchName = item.branches?.branch_name || null
+
+        if (fulfillBranchId && Number(fulfillBranchId) !== branchId) {
+          orderOtherBranchRevenue += itemTotal
+          if (fulfillBranchName && !orderRemoteBranchNames.includes(fulfillBranchName)) {
+            orderRemoteBranchNames.push(fulfillBranchName)
+          }
+        } else {
+          orderMyBranchRevenue += itemTotal
+        }
+      })
 
       // สัดส่วนส่วนลดของบิลนี้ (ถ้ามี เช่น คูปอง หรือส่วนลดท้ายบิล)
       const billDiscountRatio = orderSubtotal > 0 && discount > 0
@@ -633,6 +669,7 @@ export async function getDashboardData(
       let orderCatNet = 0
       let orderCatVat = 0
       let orderCatNetBeforeVat = 0
+      let orderCatOtherBranchRevenue = 0
       let hasMatchingItemInOrder = false
 
       order.order_items?.forEach((item) => {
@@ -697,9 +734,12 @@ export async function getDashboardData(
           orderCatNet += itemNet
           orderCatVat += itemVat
           orderCatNetBeforeVat += itemNetBeforeVat
+          if (item.fulfill_branch_id && Number(item.fulfill_branch_id) !== branchId) {
+            orderCatOtherBranchRevenue += Number(item.total_item_amount) || 0
+          }
         }
 
-        if (!isCancelled) {
+        if (!isCancelled && !isPending) {
           current.groupType = catInfo.groupType
           current.quantity += itemQty
           current.grossSales += itemGross
@@ -827,6 +867,8 @@ export async function getDashboardData(
           if (isCancelled) {
             branch.cancelledCount += 1
             branch.cancelledSales += effNet > 0 ? effNet : effGross
+          } else if (isPending) {
+            // บิลรอคิดเงิน ไม่รวมในยอดสำเร็จของสาขา
           } else {
             branch.billCount += 1
             branch.grossSales += effGross
@@ -840,9 +882,18 @@ export async function getDashboardData(
           }
         }
 
+        const effDropShip = isFiltered ? orderCatOtherBranchRevenue : orderOtherBranchRevenue
+        if (!isCancelled && effDropShip > 0) {
+          dropShipCount += 1
+          dropShipSales += effDropShip
+        }
+
         if (isCancelled) {
           cancelledCount += 1
           cancelledSales += effNet > 0 ? effNet : effGross
+        } else if (isPending) {
+          pendingCount += 1
+          pendingSales += effNet > 0 ? effNet : effGross
         } else {
           billCount += 1
           grossSales += effGross
@@ -980,7 +1031,7 @@ export async function getDashboardData(
           }
         }
 
-        if (recentOrders.length < 10) {
+        if (recentOrders.length < 200) {
           let snapCompletedAt: string | null = null
           if (order.discount_snapshot) {
             const snap = typeof order.discount_snapshot === "string"
@@ -1007,6 +1058,9 @@ export async function getDashboardData(
             shippingCost,
             shippingWaived,
             shippingPayer,
+            isDropShip: effDropShip > 0,
+            dropShipAmount: effDropShip,
+            dropShipBranchNames: orderRemoteBranchNames,
           })
         }
       }
@@ -1452,6 +1506,10 @@ export async function getDashboardData(
         billCount,
         cancelledCount,
         cancelledSales,
+        pendingCount,
+        pendingSales: Math.round(pendingSales * 100) / 100,
+        dropShipCount,
+        dropShipSales: Math.round(dropShipSales * 100) / 100,
         branchCount: isAllCategory && (!selectedBrand || selectedBrand === "ALL")
           ? branchMap.size
           : Array.from(branchMap.values()).filter((b) => b.billCount > 0).length,

@@ -37,7 +37,9 @@ import DashboardCategoryTable from "../../../components/DashboardCategoryTable"
 import DashboardCategoryFilter from "../../../components/DashboardCategoryFilter"
 import DashboardProductTable from "../../../components/DashboardProductTable"
 import DashboardDamageCard from "../../../components/DashboardDamageCard"
-import PaymentSlipViewer from "@/components/PaymentSlipViewer"
+import DashboardStatusFilter, { OrderFilterStatus } from "../../../components/DashboardStatusFilter"
+import DashboardFilteredOrders from "../../../components/DashboardFilteredOrders"
+import DashboardOperationsCards from "../../../components/DashboardOperationsCards"
 
 const money = (value: number) =>
   value.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -53,20 +55,6 @@ const dateTime = (value: string) =>
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
-
-const statusClass = (status: string) => {
-  if (status === "COMPLETED") return "bg-emerald-50 text-emerald-700 border-emerald-200"
-  if (status === "PROCESSING") return "bg-blue-50 text-blue-700 border-blue-200"
-  if (status === "CANCELLED") return "bg-red-50 text-red-700 border-red-200"
-  return "bg-amber-50 text-amber-700 border-amber-200"
-}
-
-const statusLabel = (status: string) => {
-  if (status === "COMPLETED") return "สำเร็จแล้ว"
-  if (status === "PROCESSING") return "รอแพ็คจัดส่ง"
-  if (status === "CANCELLED") return "ยกเลิกแล้ว"
-  return status || "ไม่ระบุสถานะ"
-}
 
 function BranchRow({ branch }: { branch: DashboardBranchSummary }) {
   const discountPercent = branch.grossSales > 0 ? Math.round((branch.totalDiscount / branch.grossSales) * 1000) / 10 : 0
@@ -132,6 +120,7 @@ export default async function DashboardPage({
     endDate?: string | string[];
     year?: string | string[];
     preset?: string | string[];
+    status?: string | string[];
   }>
 }) {
   const params = await searchParams
@@ -169,6 +158,10 @@ export default async function DashboardPage({
 
   // หมวดหมู่ที่เลือก (ชื่อหมวดหมู่จริงๆ เช่น VASE & VESSELS, FIGURE หรือ ALL)
   const selectedCategoryKey = typeof params?.cat === "string" && params.cat.length > 0 ? params.cat : "ALL"
+
+  // วิเคราะห์ตัวกรองสถานะการขาย (ALL, COMPLETED, PENDING, DROPSHIP, CANCELLED)
+  const rawStatus = typeof params?.status === "string" ? params.status.toUpperCase() : "ALL"
+  const selectedStatus: OrderFilterStatus = (["COMPLETED", "PENDING", "DROPSHIP", "CANCELLED"].includes(rawStatus) ? rawStatus : "ALL") as OrderFilterStatus
 
   const data = await getDashboardData(selectedBranchParam, dateFrom, dateTo, selectedCategoryKey, filterState.type, selectedBrand)
   const trendData: DashboardSalesTrend = data.salesTrend || {
@@ -221,6 +214,7 @@ export default async function DashboardPage({
     branchIds?: number[]
     brand?: DashboardBrandKey
     cat?: string
+    status?: OrderFilterStatus
   }) => {
     const nextParams = new URLSearchParams()
     const nextBranchParam = formatDashboardBranchParam(
@@ -228,11 +222,13 @@ export default async function DashboardPage({
     )
     const nextBrand = overrides.brand !== undefined ? overrides.brand : selectedBrand
     const nextCat = overrides.cat !== undefined ? overrides.cat : selectedCategoryKey
+    const nextStatus = overrides.status !== undefined ? overrides.status : selectedStatus
 
     if (nextBranchParam !== "ALL") nextParams.set("branch", nextBranchParam)
     // คง brand=ALL ไว้เสมอเมื่อไม่ได้เลือกแบรนด์ เพื่อไม่ให้ถูก redirect กลับไปเป็นค่าเริ่มต้น TERRA
     nextParams.set("brand", nextBrand)
     if (nextCat !== "ALL") nextParams.set("cat", nextCat)
+    if (nextStatus !== "ALL") nextParams.set("status", nextStatus)
 
     if (filterState.type === "daily" && filterState.date) {
       nextParams.set("period", "daily")
@@ -256,6 +252,7 @@ export default async function DashboardPage({
 
   const clearCatUrl = buildDashboardUrl({ cat: "ALL" })
   const clearBrandUrl = buildDashboardUrl({ brand: "ALL" })
+  const clearStatusUrl = buildDashboardUrl({ status: "ALL" })
 
   return (
     <div className="min-h-screen bg-[#F4F7F9] p-4 font-sans md:px-6 md:py-6">
@@ -289,6 +286,22 @@ export default async function DashboardPage({
               selectedCatKey={selectedCategoryKey}
               categories={data.categories.map((c) => ({ key: c.key, name: c.name, groupType: c.groupType }))}
             />
+
+            {/* 🔽 ฟิลเตอร์สถานะการขายแบบดรอปดาวน์ (ขายสำเร็จ, ยอดยังไม่คิดเงิน, จัดส่งข้ามสาขา, ยกเลิก) */}
+            <DashboardStatusFilter
+              selectedStatus={selectedStatus}
+              summary={data.summary}
+            />
+
+            {selectedStatus !== "ALL" && (
+              <Link
+                href={clearStatusUrl}
+                className="inline-flex items-center gap-1 rounded-xl border border-indigo-200 bg-indigo-50 hover:bg-rose-50 hover:border-rose-200 hover:text-rose-700 px-3 py-2 text-xs font-bold text-indigo-700 transition-colors shadow-sm"
+                title="คลิกเพื่อล้างตัวกรองสถานะ และดูทุกสถานะ"
+              >
+                <span>✕ ล้างสถานะ</span>
+              </Link>
+            )}
 
             {selectedBrand !== "ALL" && (
               <Link
@@ -425,84 +438,22 @@ export default async function DashboardPage({
 
           </div>
 
-          {/* --- ส่วนที่ 2: สถิติการขายและสถานะบิล (Sales & Operations) 6 ใบ สะอาดตา --- */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-            
-            {/* 1. ยอดรวมก่อนลด */}
-            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500">ยอดรวมก่อนลด</span>
-                  <ShoppingBag className="h-4 w-4 text-slate-400" />
-                </div>
-                <p className="mt-2 text-2xl sm:text-3xl font-black text-slate-800 tracking-tight">฿{money(data.summary.grossSales)}</p>
-              </div>
-              <p className="mt-2 text-xs text-slate-400">มูลค่าสินค้าราคาป้ายเต็ม</p>
-            </div>
+          {/* --- ส่วนที่ 2: สถิติการขายและดำเนินงาน 6 ใบ สะอาดตา ไม่รก (คลิกเพื่อฟิลเตอร์ดูบิลได้) --- */}
+          <DashboardOperationsCards
+            summary={data.summary}
+            damageSummary={data.damageSummary}
+            hasBranchFilter={hasBranchFilter}
+          />
 
-            {/* 2. ส่วนลดรวม */}
-            <div className="rounded-2xl border border-orange-100 bg-white p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-orange-600">ส่วนลดรวม</span>
-                  <Tag className="h-4 w-4 text-orange-500" />
-                </div>
-                <p className="mt-2 text-2xl sm:text-3xl font-black text-orange-600 tracking-tight">-฿{money(data.summary.totalDiscount)}</p>
-              </div>
-              <p className="mt-2 text-xs text-slate-400">ส่วนลดพิเศษ & โปรโมชั่น</p>
-            </div>
-
-            {/* 3. ใบขายสำเร็จ */}
-            <div className="rounded-2xl border border-blue-100 bg-white p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-600">ใบขายสำเร็จ</span>
-                  <FileText className="h-4 w-4 text-blue-500" />
-                </div>
-                <p className="mt-2 text-3xl sm:text-4xl font-black text-slate-800 tracking-tight flex items-baseline gap-1.5">
-                  <span>{data.summary.billCount.toLocaleString()}</span>
-                  <span className="text-sm font-bold text-slate-400">บิล</span>
-                </p>
-              </div>
-              <p className="mt-2 text-xs text-emerald-600 font-semibold">รับชำระเงินเรียบร้อย</p>
-            </div>
-
-            {/* 4. บิลยกเลิก */}
-            <div className="rounded-2xl border border-red-100 bg-white p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-red-500">บิลยกเลิก</span>
-                  <XCircle className="h-4 w-4 text-red-500" />
-                </div>
-                <p className="mt-2 text-3xl sm:text-4xl font-black text-red-600 tracking-tight flex items-baseline gap-1.5">
-                  <span>{data.summary.cancelledCount.toLocaleString()}</span>
-                  <span className="text-sm font-bold text-red-400">บิล</span>
-                </p>
-              </div>
-              <p className="mt-2 text-xs font-semibold text-red-500">มูลค่ายกเลิก: ฿{money(data.summary.cancelledSales)}</p>
-            </div>
-
-            {/* 5. สาขาที่ดูแล */}
-            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500">สาขาที่ดูแล</span>
-                  <Building2 className="h-4 w-4 text-emerald-500" />
-                </div>
-                <p className="mt-2 text-3xl sm:text-4xl font-black text-slate-800 tracking-tight flex items-baseline gap-1.5">
-                  <span>{data.summary.branchCount.toLocaleString()}</span>
-                  <span className="text-sm font-bold text-slate-400">สาขา</span>
-                </p>
-              </div>
-              <p className="mt-2 text-xs text-slate-400">
-                {hasBranchFilter ? "จำนวนสาขาที่เลือกกรองอยู่" : "ทุกสาขาที่เปิดให้บริการ"}
-              </p>
-            </div>
-
-            {/* 6. สินค้าชำรุด/เสียหาย */}
-            <DashboardDamageCard damageSummary={data.damageSummary} />
-
-          </div>
+          {/* แสดงตารางรายการบิลเฉพาะตอนที่ผู้ใช้เลือกฟิลเตอร์สถานะจากดรอปดาวน์เท่านั้น (หน้าจอปกติไม่รก 100%) */}
+          {selectedStatus !== "ALL" && (
+            <DashboardFilteredOrders
+              selectedStatus={selectedStatus}
+              orders={data.recentOrders}
+              summary={data.summary}
+              clearUrl={clearStatusUrl}
+            />
+          )}
         </div>
 
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
@@ -634,125 +585,6 @@ export default async function DashboardPage({
               <tbody className="divide-y divide-slate-100">
                 {data.branches.map((branch) => <BranchRow key={branch.id} branch={branch} />)}
                 {data.branches.length === 0 && <tr><td colSpan={9} className="px-5 py-16 text-center text-slate-400">ไม่พบข้อมูลสาขา</td></tr>}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
-          <div className="border-b border-slate-100 p-6">
-            <h2 className="text-lg font-black text-slate-800">
-              {scopeLabel
-                ? `ใบขายล่าสุดที่มีสินค้า${scopeLabel}`
-                : hasBranchFilter
-                ? "ใบขายล่าสุดจากสาขาที่เลือก"
-                : "ใบขายล่าสุดจากทุกสาขา"}
-            </h2>
-            <p className="mt-1 text-xs text-slate-400">
-              {scopeLabel
-                ? `แสดงเฉพาะใบขายที่มีสินค้า${scopeLabel} (คิดเฉพาะยอดสินค้าในขอบเขตนี้)`
-                : "ใช้ตรวจสอบรายการล่าสุดได้อย่างรวดเร็ว เรียงตามวันที่ขายล่าสุด"}
-            </p>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-[1140px] w-full text-left text-sm">
-              <thead className="bg-slate-50 text-[11px] uppercase tracking-wider text-slate-500 font-bold border-b border-slate-100">
-                <tr>
-                  <th className="px-5 py-4">เลขที่ใบขาย</th>
-                  <th className="px-4 py-4">สาขา</th>
-                  <th className="px-4 py-4">
-                    <div>วันที่ออกบิล</div>
-                    <div className="text-[9px] font-medium text-slate-400 normal-case">(เปิดบิล)</div>
-                  </th>
-                  <th className="px-4 py-4 bg-emerald-50/40 text-emerald-900">
-                    <div>วันที่ขายจริง</div>
-                    <div className="text-[9px] font-medium text-emerald-700 normal-case">(ปิดบิล)</div>
-                  </th>
-                  <th className="px-3 py-4 text-center w-16">สลิป</th>
-                  <th className="px-4 py-4 text-right">ยอดก่อนลด</th>
-                  <th className="px-4 py-4 text-right">ส่วนลด (%)</th>
-                  <th className="px-4 py-4 text-right">
-                    <div>ยอดรับเงินลูกค้า</div>
-                    <div className="text-[9px] font-medium text-slate-400 normal-case">(รวม VAT)</div>
-                  </th>
-                  <th className="px-4 py-4 text-right">
-                    <div>VAT (7%)</div>
-                    <div className="text-[9px] font-medium text-purple-600 normal-case">(ภาษีนำส่งรัฐ)</div>
-                  </th>
-                  <th className="px-5 py-4 text-right bg-emerald-50/50">
-                    <div className="text-emerald-800 font-bold">เงินเข้าร้าน (ก่อน VAT)</div>
-                    <div className="text-[9px] font-bold text-emerald-600 normal-case">(เงินแท้จริงที่ได้รับ)</div>
-                  </th>
-                  <th className="px-4 py-4 text-center">สถานะ</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {data.recentOrders.map((order) => (
-                  <tr key={order.id} className="transition-colors hover:bg-slate-50">
-                    <td className="px-5 py-4 font-black text-slate-800">{order.orderCode}</td>
-                    <td className="px-4 py-4 font-bold text-blue-600">{order.branchName}</td>
-                    <td className="px-4 py-4 text-xs text-slate-500 whitespace-nowrap">{dateTime(order.createdAt)}</td>
-                    <td className="px-4 py-4 whitespace-nowrap bg-emerald-50/20">
-                      {order.status === "COMPLETED" || order.status === "PROCESSING" ? (() => {
-                        const closedAt = order.completedAt || order.createdAt
-                        const isCrossDay = closedAt && new Date(closedAt).toDateString() !== new Date(order.createdAt).toDateString()
-                        const diffDays = closedAt ? Math.max(1, Math.round((new Date(closedAt).getTime() - new Date(order.createdAt).getTime()) / (1000 * 60 * 60 * 24))) : 0
-
-                        return (
-                          <div>
-                            <div className="font-bold text-emerald-700 text-xs">
-                              {dateTime(closedAt)}
-                            </div>
-                            {isCrossDay && (
-                              <span className="text-[10px] text-amber-600 font-semibold block">
-                                (เปิดค้างไว้ {diffDays} วัน)
-                              </span>
-                            )}
-                            {order.status === "PROCESSING" && (
-                              <span className="text-[9px] text-blue-600 font-semibold block mt-0.5">
-                                (รอแพ็คจัดส่ง)
-                              </span>
-                            )}
-                          </div>
-                        )
-                      })() : order.status === "PENDING" ? (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
-                          รอคิดเงิน
-                        </span>
-                      ) : order.status === "CANCELLED" ? (
-                        <span className="text-xs text-red-400">ยกเลิก</span>
-                      ) : (
-                        <span className="text-slate-300">-</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 text-center">
-                      <PaymentSlipViewer orderId={order.id} orderCode={order.orderCode} compact />
-                    </td>
-                    <td className="px-4 py-4 text-right text-slate-600 font-medium">฿{money(order.subtotal)}</td>
-                    <td className="px-4 py-4 text-right">
-                      {order.discountAmount > 0 ? (
-                        <div className="inline-flex flex-col items-end">
-                          <span className="inline-flex items-center gap-1 font-bold text-orange-600 bg-orange-50 border border-orange-200 px-2 py-0.5 rounded-md text-xs">
-                            <Tag className="w-3 h-3" />
-                            -฿{money(order.discountAmount)}
-                          </span>
-                          <span className="text-[10px] font-bold text-orange-500 mt-0.5">ลด {order.discountPercent}%</span>
-                        </div>
-                      ) : (
-                        <span className="text-slate-300 font-mono text-xs">-</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-4 text-right font-bold text-slate-700">฿{money(order.totalAmount)}</td>
-                    <td className="px-4 py-4 text-right text-purple-700 font-medium text-xs">
-                      ฿{money(order.vatAmount)}
-                    </td>
-                    <td className="px-5 py-4 text-right font-black text-emerald-600 bg-emerald-50/20 text-xs">
-                      ฿{money(order.netBeforeVat)}
-                    </td>
-                    <td className="px-4 py-4 text-center"><span className={`inline-flex rounded-full border px-3 py-1 text-[10px] font-black ${statusClass(order.status)}`}>{statusLabel(order.status)}</span></td>
-                  </tr>
-                ))}
-                {data.recentOrders.length === 0 && <tr><td colSpan={11} className="px-5 py-16 text-center text-slate-400">ยังไม่มีใบขาย</td></tr>}
               </tbody>
             </table>
           </div>
