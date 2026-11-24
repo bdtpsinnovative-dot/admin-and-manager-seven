@@ -4,9 +4,11 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import { getCachedProductsMapByIds } from '@/lib/cached-product-lookup'
+import { resolveCategoryInfo } from '@/lib/propFilterModel'
 
 interface SalesOrderItemRow {
   id: number
+  product_id?: number
   qty: number
   price_at_sale: number
   total_item_amount: number
@@ -204,9 +206,32 @@ export async function getSalesHistory(showHidden = false, targetBranchId?: numbe
     const completedAt = snapCompletedAt || movementMap[order.id] || (isPaid ? order.created_at : null)
     const effectiveDate = isPaid && completedAt ? completedAt : order.created_at
 
+    // 🏢 จัดกลุ่มแบรนด์ของบิล (TERRA, ZENSLAB, EMBER_ASH) โดยค่าเริ่มต้นคือ TERRA
+    let brand: 'TERRA' | 'ZENSLAB' | 'EMBER_ASH' = 'TERRA'
+    const branchLower = branchName.toLowerCase()
+    const codeUpper = (order.order_code || '').toUpperCase()
+    if (branchLower.includes('zenslab') || codeUpper.startsWith('ZLB')) {
+      brand = 'ZENSLAB'
+    } else {
+      for (const item of (order.order_items || [])) {
+        const prod = item.product_id ? productMap.get(item.product_id) : undefined
+        if (prod) {
+          const catInfo = resolveCategoryInfo(prod)
+          if (catInfo.groupType === 'wood') {
+            brand = 'ZENSLAB'
+            break
+          } else if (catInfo.groupType === 'furniture') {
+            brand = 'EMBER_ASH'
+            break
+          }
+        }
+      }
+    }
+
     return {
       id: order.id,
       orderCode: order.order_code,
+      brand,
       createdAt: order.created_at,
       completedAt,
       effectiveDate,

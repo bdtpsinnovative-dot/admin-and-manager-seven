@@ -30,9 +30,14 @@ export interface OrderPrefixItem {
   count: number
 }
 
+export type SalesBrandFilter = 'ALL' | 'TERRA' | 'ZENSLAB' | 'EMBER_ASH'
+
 export interface SalesFilters {
   // General search
   search: string
+
+  // Brand filter (ค่าเริ่มต้น: TERRA)
+  brand: SalesBrandFilter
 
   // Column specific filters
   orderCode: string
@@ -141,18 +146,31 @@ export const createDefaultDateConfig = (): DateFilterConfig => ({
 
 export const initialSalesFilters: SalesFilters = {
   search: '',
+  brand: 'TERRA', // 🌟 ค่าเริ่มต้นคือแบรนด์ Terra ก่อน
   orderCode: '',
   orderCodePrefix: '',
   branchId: 'ALL',
   shippingType: 'ALL',
-  activeDateField: 'completedAt',
-  completedDate: createDefaultDateConfig(),
-  createdDate: createDefaultDateConfig(),
+  activeDateField: 'completedAt', // วันที่ขายจริง (ปิดบิล)
+  completedDate: {
+    mode: 'MONTH',
+    month: getCurrentThaiMonthString(),
+    day: getTodayThaiString(),
+    startDate: '',
+    endDate: '',
+  },
+  createdDate: {
+    mode: 'MONTH',
+    month: getCurrentThaiMonthString(),
+    day: getTodayThaiString(),
+    startDate: '',
+    endDate: '',
+  },
   slipStatus: 'ALL',
   saleName: 'ALL',
   hasDiscount: 'ALL',
   dropShip: 'ALL',
-  status: 'ALL',
+  status: 'COMPLETED', // 🌟 เข้ามาครั้งแรกให้แสดงแค่ยอดขายจริง (ขายสำเร็จ)
   minSubtotal: '',
   maxSubtotal: '',
   minTotalAmount: '',
@@ -225,6 +243,16 @@ export function matchDate(dateStr: string | null | undefined, config: DateFilter
 }
 
 export function filterSalesOrder(order: any, filters: SalesFilters): boolean {
+  // Brand filter (TERRA, ZENSLAB, EMBER_ASH)
+  if (filters.brand && filters.brand !== 'ALL') {
+    const orderBrand = order.brand || (
+      order.branchName?.toLowerCase().includes('zenslab') || order.orderCode?.toUpperCase().startsWith('ZLB')
+        ? 'ZENSLAB'
+        : 'TERRA'
+    )
+    if (orderBrand !== filters.brand) return false
+  }
+
   // Global search
   if (filters.search) {
     const q = filters.search.toLowerCase()
@@ -404,10 +432,67 @@ export function QuickDateSliderBar({
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 p-3 shadow-xs space-y-3">
-      {/* แถวบน: สลับฟิลด์วันที่ + ตัวเลื่อนวัน/เดือน + พรีเซ็ตด่วน */}
+      {/* แถวบน: ตัวเลือกแบรนด์ + สลับฟิลด์วันที่ + ตัวเลื่อนวัน/เดือน + พรีเซ็ตด่วน */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        {/* เลือกฟิลด์วันที่ที่จะเลื่อน */}
-        <div className="flex items-center gap-2">
+        {/* กลุ่มซ้าย: ตัวเลือกแบรนด์ + สลับฟิลด์วันที่ + สลับโหมด */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* ตัวเลือกแบรนด์ (TERRA, ZENSLAB, EMBER_ASH, ALL) */}
+          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl text-xs font-bold text-slate-700">
+            <button
+              type="button"
+              onClick={() => onChange(prev => ({ ...prev, brand: 'TERRA' }))}
+              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                filters.brand === 'TERRA'
+                  ? 'bg-purple-600 text-white shadow-2xs font-black'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+              title="แสดงเฉพาะสินค้าและยอดขายแบรนด์ Terra (ของแต่งบ้าน/พร็อพ)"
+            >
+              <span>🏺</span>
+              <span>Terra</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => onChange(prev => ({ ...prev, brand: 'ZENSLAB' }))}
+              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                filters.brand === 'ZENSLAB'
+                  ? 'bg-amber-700 text-white shadow-2xs font-black'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+              title="แบรนด์ ZenSlab (สแลป & ไม้ดิบ)"
+            >
+              <span>🌲</span>
+              <span>ZenSlab</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => onChange(prev => ({ ...prev, brand: 'EMBER_ASH' }))}
+              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                filters.brand === 'EMBER_ASH'
+                  ? 'bg-stone-700 text-white shadow-2xs font-black'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+              title="แบรนด์ Ember & Ash (เฟอร์นิเจอร์)"
+            >
+              <span>🛋️</span>
+              <span>Ember & Ash</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => onChange(prev => ({ ...prev, brand: 'ALL' }))}
+              className={`px-2.5 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
+                filters.brand === 'ALL'
+                  ? 'bg-slate-900 text-white shadow-2xs font-black'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+              title="ดูรวมทุกแบรนด์"
+            >
+              <span>🏢</span>
+              <span>ทุกแบรนด์</span>
+            </button>
+          </div>
+
+          {/* เลือกฟิลด์วันที่ที่จะเลื่อน */}
           <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl text-xs font-bold text-slate-700">
             <button
               type="button"
@@ -682,6 +767,20 @@ export function ActiveFilterBadges({
       key: 'createdDate',
       label: `วันเปิดบิล: ${text}`,
       onRemove: () => onChange(p => ({ ...p, createdDate: createDefaultDateConfig() })),
+    })
+  }
+
+  // Brand (TERRA, ZENSLAB, EMBER_ASH)
+  if (filters.brand !== 'ALL') {
+    const brandMap: Record<string, string> = {
+      TERRA: 'แบรนด์: 🏺 Terra',
+      ZENSLAB: 'แบรนด์: 🌲 ZenSlab',
+      EMBER_ASH: 'แบรนด์: 🛋️ Ember & Ash',
+    }
+    pills.push({
+      key: 'brand',
+      label: brandMap[filters.brand] || `แบรนด์: ${filters.brand}`,
+      onRemove: () => onChange(p => ({ ...p, brand: 'ALL' })),
     })
   }
 

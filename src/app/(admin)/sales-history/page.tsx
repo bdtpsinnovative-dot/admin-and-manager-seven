@@ -30,6 +30,7 @@ interface RemoteDetail {
 interface SaleOrder {
   id: number;
   orderCode: string;
+  brand?: 'TERRA' | 'ZENSLAB' | 'EMBER_ASH' | string;
   createdAt: string;
   completedAt?: string | null;
   effectiveDate?: string;
@@ -328,8 +329,21 @@ export default function AdminSalesHistoryPage() {
         {!showHidden && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
-              <span className="text-[11px] font-black text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                <DollarSign className="w-3.5 h-3.5 text-blue-500" /> ยอดขายสำเร็จ (Completed)
+              <span className="text-[11px] font-black text-slate-500 uppercase tracking-wider flex items-center justify-between gap-1.5">
+                <span className="flex items-center gap-1.5">
+                  <DollarSign className="w-3.5 h-3.5 text-blue-500" /> ยอดขายสำเร็จ (Completed)
+                </span>
+                {filters.brand !== 'ALL' && (
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                    filters.brand === 'TERRA'
+                      ? 'bg-purple-100 text-purple-700'
+                      : filters.brand === 'ZENSLAB'
+                      ? 'bg-amber-100 text-amber-800'
+                      : 'bg-stone-100 text-stone-700'
+                  }`}>
+                    {filters.brand === 'TERRA' ? '🏺 Terra' : filters.brand === 'ZENSLAB' ? '🌲 ZenSlab' : '🛋️ Ember & Ash'}
+                  </span>
+                )}
               </span>
               <div className="text-2xl font-black text-blue-600 mt-2">
                 {totalInvoiced.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿
@@ -800,6 +814,18 @@ export default function AdminSalesHistoryPage() {
                               <span className="inline-flex items-center gap-1 text-[10px] bg-blue-50 text-blue-700 font-bold px-2 py-0.5 rounded-md border border-blue-100">
                                 <Building2 className="w-3 h-3 text-blue-500" /> {order.branchName || 'ไม่ระบุสาขา'}
                               </span>
+
+                              {order.brand && (
+                                <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-md border ${
+                                  order.brand === 'TERRA'
+                                    ? 'bg-purple-50 text-purple-700 border-purple-200'
+                                    : order.brand === 'ZENSLAB'
+                                    ? 'bg-amber-50 text-amber-800 border-amber-200'
+                                    : 'bg-stone-50 text-stone-700 border-stone-200'
+                                }`}>
+                                  {order.brand === 'TERRA' ? '🏺 Terra' : order.brand === 'ZENSLAB' ? '🌲 ZenSlab' : '🛋️ Ember & Ash'}
+                                </span>
+                              )}
 
                               {/* ป้ายรูปแบบจัดส่ง */}
                               {order.shippingName ? (

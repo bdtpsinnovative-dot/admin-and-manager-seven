@@ -26,6 +26,7 @@ interface RemoteDetail {
 interface SaleOrder {
   id: number;
   orderCode: string;
+  brand?: 'TERRA' | 'ZENSLAB' | 'EMBER_ASH' | string;
   createdAt: string;
   completedAt?: string | null;
   effectiveDate?: string;
@@ -215,8 +216,21 @@ export default function SaleSalesHistoryPage() {
         {/* Stat Cards */}
         {!showHidden && <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
-            <span className="text-[11px] font-black text-emerald-600 uppercase tracking-wider flex items-center gap-1">
-              <DollarSign className="w-3.5 h-3.5 text-emerald-500" /> ยอดขายสำเร็จ (ชำระแล้ว)
+            <span className="text-[11px] font-black text-emerald-600 uppercase tracking-wider flex items-center justify-between gap-1">
+              <span className="flex items-center gap-1">
+                <DollarSign className="w-3.5 h-3.5 text-emerald-500" /> ยอดขายสำเร็จ (ชำระแล้ว)
+              </span>
+              {filters.brand !== 'ALL' && (
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                  filters.brand === 'TERRA'
+                    ? 'bg-purple-100 text-purple-700'
+                    : filters.brand === 'ZENSLAB'
+                    ? 'bg-amber-100 text-amber-800'
+                    : 'bg-stone-100 text-stone-700'
+                }`}>
+                  {filters.brand === 'TERRA' ? '🏺 Terra' : filters.brand === 'ZENSLAB' ? '🌲 ZenSlab' : '🛋️ Ember & Ash'}
+                </span>
+              )}
             </span>
             <div className="text-2xl font-black text-emerald-600 mt-2">{totalCompleted.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</div>
             <span className="text-[10px] text-slate-400 block mt-1 font-medium">รวมยอดเงินที่จัดส่งและตัดสต็อกสำเร็จแล้ว</span>
