@@ -644,15 +644,28 @@ export default function SaleSalesHistoryPage() {
                                 <Printer className="w-3.5 h-3.5" /> พิมพ์
                               </button>
                             </div>
-                            {order.shippingName ? (
-                              <span className="inline-flex items-center gap-1 mt-1 text-[10px] bg-emerald-50 text-emerald-600 font-bold px-2 py-0.5 rounded-md border border-emerald-100">
-                                <Truck className="w-3 h-3 mr-0.5" /> ส่งบ้าน: {order.shippingName}
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 mt-1 text-[10px] bg-slate-100 text-slate-600 font-bold px-2 py-0.5 rounded-md border border-slate-200">
-                                <User className="w-3 h-3 mr-0.5" /> หิ้วกลับเอง
-                              </span>
-                            )}
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              {order.brand && (
+                                <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-md border ${
+                                  order.brand === 'TERRA'
+                                    ? 'bg-purple-50 text-purple-700 border-purple-200'
+                                    : order.brand === 'ZENSLAB'
+                                    ? 'bg-amber-50 text-amber-800 border-amber-200'
+                                    : 'bg-stone-50 text-stone-700 border-stone-200'
+                                }`}>
+                                  {order.brand === 'TERRA' ? '🏺 Terra' : order.brand === 'ZENSLAB' ? '🌲 ZenSlab' : '🛋️ Ember & Ash'}
+                                </span>
+                              )}
+                              {order.shippingName ? (
+                                <span className="inline-flex items-center gap-1 text-[10px] bg-emerald-50 text-emerald-600 font-bold px-2 py-0.5 rounded-md border border-emerald-100">
+                                  <Truck className="w-3 h-3 mr-0.5" /> ส่งบ้าน: {order.shippingName}
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-[10px] bg-slate-100 text-slate-600 font-bold px-2 py-0.5 rounded-md border border-slate-200">
+                                  <User className="w-3 h-3 mr-0.5" /> หิ้วกลับเอง
+                                </span>
+                              )}
+                            </div>
                           </td>
 
                           {/* วันที่เปิดบิล */}

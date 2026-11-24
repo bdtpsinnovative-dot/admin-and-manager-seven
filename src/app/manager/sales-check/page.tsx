@@ -25,6 +25,7 @@ interface RemoteDetail {
 interface SaleOrder {
   id: number;
   orderCode: string;
+  brand?: 'TERRA' | 'ZENSLAB' | 'EMBER_ASH' | string;
   createdAt: string;
   completedAt?: string | null;
   effectiveDate?: string;
@@ -167,8 +168,21 @@ export default function SalesCheckPage() {
         {/* ✨ Stat Cards: แผงสรุปกองเงินเพื่อให้บัญชีดูยอดรวมไวๆ */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
-            <span className="text-[11px] font-black text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-              <DollarSign className="w-3.5 h-3.5 text-blue-500" /> ยอดสุทธิใบขายรวม
+            <span className="text-[11px] font-black text-slate-400 uppercase tracking-wider flex items-center justify-between gap-1.5">
+              <span className="flex items-center gap-1.5">
+                <DollarSign className="w-3.5 h-3.5 text-blue-500" /> ยอดสุทธิใบขายรวม
+              </span>
+              {filters.brand !== 'ALL' && (
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                  filters.brand === 'TERRA'
+                    ? 'bg-purple-100 text-purple-700'
+                    : filters.brand === 'ZENSLAB'
+                    ? 'bg-amber-100 text-amber-800'
+                    : 'bg-stone-100 text-stone-700'
+                }`}>
+                  {filters.brand === 'TERRA' ? '🏺 Terra' : filters.brand === 'ZENSLAB' ? '🌲 ZenSlab' : '🛋️ Ember & Ash'}
+                </span>
+              )}
             </span>
             <div className="text-2xl font-black text-blue-600 mt-2">{totalInvoiced.toLocaleString()} ฿</div>
             <span className="text-[10px] text-slate-400 block mt-1 font-medium">รวมเม็ดเงินทั้งหมดที่เรียกเก็บจากออเดอร์</span>
@@ -458,15 +472,28 @@ export default function SalesCheckPage() {
                             <Printer className="w-3.5 h-3.5" /> พิมพ์
                           </button>
                         </div>
-                        {order.shippingName ? (
-                          <span className="inline-flex items-center gap-1 mt-1 text-[10px] bg-blue-50 text-blue-600 font-bold px-2 py-0.5 rounded-md border border-blue-100">
-                            🚚 ส่งบ้าน: {order.shippingName}
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 mt-1 text-[10px] bg-slate-100 text-slate-600 font-bold px-2 py-0.5 rounded-md border border-slate-200">
-                            🙋‍♂️ หิ้วกลับเอง
-                          </span>
-                        )}
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {order.brand && (
+                            <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-md border ${
+                              order.brand === 'TERRA'
+                                ? 'bg-purple-50 text-purple-700 border-purple-200'
+                                : order.brand === 'ZENSLAB'
+                                ? 'bg-amber-50 text-amber-800 border-amber-200'
+                                : 'bg-stone-50 text-stone-700 border-stone-200'
+                            }`}>
+                              {order.brand === 'TERRA' ? '🏺 Terra' : order.brand === 'ZENSLAB' ? '🌲 ZenSlab' : '🛋️ Ember & Ash'}
+                            </span>
+                          )}
+                          {order.shippingName ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] bg-blue-50 text-blue-600 font-bold px-2 py-0.5 rounded-md border border-blue-100">
+                              🚚 ส่งบ้าน: {order.shippingName}
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[10px] bg-slate-100 text-slate-600 font-bold px-2 py-0.5 rounded-md border border-slate-200">
+                              🙋‍♂️ หิ้วกลับเอง
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* วันที่เปิดบิล */}
