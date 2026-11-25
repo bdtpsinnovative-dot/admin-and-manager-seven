@@ -22,7 +22,9 @@ import {
   FileText,
   Save,
   XCircle,
-  Download
+  Download,
+  Lock,
+  User
 } from 'lucide-react'
 import { toast } from 'sonner'
 import PrintDispatchModal from '@/components/PrintDispatchModal'
@@ -398,6 +400,13 @@ export default function SaleDispatchMonitorPage() {
                           {order.total_amount !== undefined && (
                             <span className="font-bold text-slate-800">| ยอดรวม: ฿{Number(order.total_amount).toLocaleString()}</span>
                           )}
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                            <User className="w-3 h-3 text-slate-500" />
+                            ผู้เปิดบิล: <strong className="text-slate-900">{order.creator_name || 'ไม่ระบุ'}</strong>
+                            {order.is_creator && (
+                              <span className="ml-1 px-1.5 py-0.2 bg-emerald-100 text-emerald-800 rounded text-[9px] font-bold">คุณสร้าง</span>
+                            )}
+                          </span>
                           {order.discount_snapshot?.coupon && (
                             <span className="px-1.5 py-0.5 bg-purple-50 text-purple-700 border border-purple-200 rounded text-[10px] font-bold inline-flex items-center gap-1">
                               🎟️ โค้ด: {order.discount_snapshot.coupon.code} (-฿{Number(order.discount_snapshot.coupon.discount_amount ?? order.discount_snapshot.coupon.discountAmount ?? order.discount_snapshot.coupon.amount ?? 0).toLocaleString()})
@@ -527,15 +536,21 @@ export default function SaleDispatchMonitorPage() {
                                 <p className="text-sm font-bold text-indigo-700">ลูกค้ารับสินค้าหน้าร้าน</p>
                                 <p className="text-xs text-slate-500">กรุณาพิมพ์เอกสารให้ลูกค้าก่อนส่งมอบ</p>
                                 <div className="pt-2">
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      setEditingCustomerOrder(order)
-                                    }}
-                                    className="mx-auto px-2.5 py-1 text-[11px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-md flex items-center gap-1 transition-colors cursor-pointer"
-                                  >
-                                    <Edit className="w-3 h-3" /> แก้ไขชื่อลูกค้า / ข้อมูลติดต่อ
-                                  </button>
+                                  {order.can_manage ? (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        setEditingCustomerOrder(order)
+                                      }}
+                                      className="mx-auto px-2.5 py-1 text-[11px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-md flex items-center gap-1 transition-colors cursor-pointer"
+                                    >
+                                      <Edit className="w-3 h-3" /> แก้ไขชื่อลูกค้า / ข้อมูลติดต่อ
+                                    </button>
+                                  ) : (
+                                    <span className="text-[10px] text-slate-400 inline-flex items-center gap-1">
+                                      <Lock className="w-2.5 h-2.5" /> สิทธิ์แก้ไขเฉพาะผู้เปิดบิล
+                                    </span>
+                                  )}
                                 </div>
                               </div>
                             ) : (
@@ -544,16 +559,22 @@ export default function SaleDispatchMonitorPage() {
                                   <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
                                     <Truck className="w-4 h-4 text-emerald-500" /> ข้อมูลจัดส่งลูกค้า
                                   </h3>
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      setEditingCustomerOrder(order)
-                                    }}
-                                    className="px-2.5 py-1 text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
-                                    title="แก้ไขชื่อผู้รับ, เบอร์โทร, และที่อยู่จัดส่ง"
-                                  >
-                                    <Edit className="w-3.5 h-3.5" /> แก้ไขข้อมูลผู้รับ
-                                  </button>
+                                  {order.can_manage ? (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        setEditingCustomerOrder(order)
+                                      }}
+                                      className="px-2.5 py-1 text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
+                                      title="แก้ไขชื่อผู้รับ, เบอร์โทร, และที่อยู่จัดส่ง"
+                                    >
+                                      <Edit className="w-3.5 h-3.5" /> แก้ไขข้อมูลผู้รับ
+                                    </button>
+                                  ) : (
+                                    <span className="px-2 py-0.5 text-[10px] font-medium text-slate-400 bg-slate-50 border border-slate-200 rounded-md flex items-center gap-1">
+                                      <Lock className="w-3 h-3" /> เฉพาะผู้เปิดบิล
+                                    </span>
+                                  )}
                                 </div>
                                 <div className="space-y-3 text-sm text-slate-600">
                                   <p><span className="font-semibold text-slate-700">ชื่อผู้รับ:</span> {order.shipping_name || '-'}</p>
@@ -654,22 +675,42 @@ export default function SaleDispatchMonitorPage() {
                                   )}
 
                                   {order.status === 'PENDING' && (
-                                    <button
-                                      onClick={() => handleApproveStock(order.id, order.order_code, order.order_items)}
-                                      disabled={approvingId === order.id}
-                                      className={`w-full py-2.5 text-white rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2 shadow-sm cursor-pointer
-                                        ${hasFrontRunItem ? 'bg-rose-600 hover:bg-rose-700' : isAnyItemOutOfStock ? 'bg-amber-600 hover:bg-amber-700' : 'bg-emerald-500 hover:bg-emerald-600'}`}
-                                    >
-                                      {approvingId === order.id ? (
-                                        'กำลังดำเนินการ...'
-                                      ) : hasFrontRunItem ? (
-                                        <><AlertTriangle className="w-4 h-4" /> ตรวจพบสินค้าโดนตัดหน้า (คลิกดูทางเลือก)</>
-                                      ) : isAnyItemOutOfStock ? (
-                                        <><AlertTriangle className="w-4 h-4" /> ยืนยันรับชำระเงิน (มีรายการพรีออเดอร์)</>
-                                      ) : (
-                                        <><Banknote className="w-4 h-4" /> ยืนยันรับชำระเงิน & ตัดสต็อก</>
-                                      )}
-                                    </button>
+                                    order.can_manage ? (
+                                      <button
+                                        onClick={() => handleApproveStock(order.id, order.order_code, order.order_items)}
+                                        disabled={approvingId === order.id}
+                                        className={`w-full py-2.5 text-white rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2 shadow-sm cursor-pointer
+                                          ${hasFrontRunItem ? 'bg-rose-600 hover:bg-rose-700' : isAnyItemOutOfStock ? 'bg-amber-600 hover:bg-amber-700' : 'bg-emerald-500 hover:bg-emerald-600'}`}
+                                      >
+                                        {approvingId === order.id ? (
+                                          'กำลังดำเนินการ...'
+                                        ) : hasFrontRunItem ? (
+                                          <><AlertTriangle className="w-4 h-4" /> ตรวจพบสินค้าโดนตัดหน้า (คลิกดูทางเลือก)</>
+                                        ) : isAnyItemOutOfStock ? (
+                                          <><AlertTriangle className="w-4 h-4" /> ยืนยันรับชำระเงิน (มีรายการพรีออเดอร์)</>
+                                        ) : (
+                                          <><Banknote className="w-4 h-4" /> ยืนยันรับชำระเงิน & ตัดสต็อก</>
+                                        )}
+                                      </button>
+                                    ) : (
+                                      <div className="space-y-1.5">
+                                        <div className="p-2.5 bg-slate-100/90 border border-slate-200 rounded-lg text-xs text-slate-600 flex items-start gap-2">
+                                          <Lock className="w-4 h-4 text-slate-500 shrink-0 mt-0.5" />
+                                          <div className="min-w-0">
+                                            <p className="font-bold text-slate-700">สิทธิ์เฉพาะผู้เปิดบิล ({order.creator_name}) หรือ Admin</p>
+                                            <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
+                                              สงวนสิทธิ์กดยืนยันรับชำระเงิน, แก้ไขบิล และยกเลิกออเดอร์ เพื่อป้องกันข้อผิดพลาด คุณยังสามารถพิมพ์ใบเสร็จ/PDF/Excel ได้ตามปกติ
+                                            </p>
+                                          </div>
+                                        </div>
+                                        <button
+                                          disabled
+                                          className="w-full py-2.5 bg-slate-100 text-slate-400 border border-slate-200 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 cursor-not-allowed"
+                                        >
+                                          <Lock className="w-4 h-4 text-slate-400" /> ยืนยันรับชำระเงิน (เฉพาะผู้เปิดบิล)
+                                        </button>
+                                      </div>
+                                    )
                                   )}
 
                                 {order.status !== 'PENDING' && (
@@ -727,20 +768,20 @@ export default function SaleDispatchMonitorPage() {
                               </button>
                             </div>
 
-                            {order.status === 'PENDING' && (
+                            {order.status === 'PENDING' && order.can_manage && (
                               <button
                                 onClick={() => {
                                   const isSaleRole = window.location.pathname.startsWith('/sale')
                                   const posUrl = isSaleRole ? `/sale/pos?edit=${order.order_code}` : `/manager/pos?edit=${order.order_code}`
                                   window.location.href = posUrl
                                 }}
-                                className="w-full py-2.5 bg-orange-50 border border-orange-200 text-orange-600 rounded-lg text-sm font-bold hover:bg-orange-100 transition-colors flex items-center justify-center gap-2 shadow-sm mt-2"
+                                className="w-full py-2.5 bg-orange-50 border border-orange-200 text-orange-600 rounded-lg text-sm font-bold hover:bg-orange-100 transition-colors flex items-center justify-center gap-2 shadow-sm mt-2 cursor-pointer"
                               >
                                 <Edit className="w-4 h-4" /> แก้ไขบิล (เพิ่ม/ลดสินค้า)
                               </button>
                             )}
 
-                            {activeTab !== 'cancelled' && order.status !== 'CANCELLED' && (
+                            {activeTab !== 'cancelled' && order.status !== 'CANCELLED' && order.can_manage && (
                               <button
                                 onClick={() => handleCancelOrder(order.id, order.order_code, order.order_items, order.status)}
                                 disabled={cancellingId === order.id}

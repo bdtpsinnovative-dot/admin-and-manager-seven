@@ -15,8 +15,15 @@ export async function getGroupedDispatches() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { success: false, error: "Unauthorized" }
 
-  const { data: profile } = await supabase.from('profiles').select('branch_id').eq('user_id', user.id).single()
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('branch_id, role, full_name')
+    .eq('user_id', user.id)
+    .maybeSingle()
   const myBranchId = profile?.branch_id || 1
+  const userRole = profile?.role || 'sale'
+  const isAdmin = userRole === 'admin'
+  const currentUserId = user.id
 
   const { data: hiddenRows, error: hiddenError } = await supabase
     .from('order_hidden_by_users')
@@ -27,12 +34,13 @@ export async function getGroupedDispatches() {
   const hiddenOrderIds = new Set((hiddenRows || []).map(row => Number(row.order_id)))
 
   // 1. งานที่คลังเราต้องจัดส่ง 
-  // ✨ เพิ่ม latitude, longitude, discount_snapshot, total_amount
+  // ✨ เพิ่ม user_id, profiles:user_id(full_name), latitude, longitude, discount_snapshot, total_amount
   const { data: myDispatchOrders, error: err1 } = await supabase
     .from('orders')
     .select(`
       id, 
       order_code, 
+      user_id,
       created_at, 
       shipping_name, 
       shipping_phone, 
@@ -43,6 +51,7 @@ export async function getGroupedDispatches() {
       total_amount,
       discount_amount,
       discount_snapshot,
+      profiles:user_id ( full_name ),
       order_items!inner (
         id, 
         qty, 
@@ -62,12 +71,13 @@ export async function getGroupedDispatches() {
     .order('created_at', { ascending: false })
 
   // 2. บิลที่เราขาย แต่ฝากสาขาอื่นส่ง
-  // ✨ เพิ่ม latitude, longitude, discount_snapshot, total_amount
+  // ✨ เพิ่ม user_id, profiles:user_id(full_name), latitude, longitude, discount_snapshot, total_amount
   const { data: followUpOrders, error: err2 } = await supabase
     .from('orders')
     .select(`
       id, 
       order_code, 
+      user_id,
       created_at, 
       shipping_name, 
       shipping_phone, 
@@ -78,6 +88,7 @@ export async function getGroupedDispatches() {
       total_amount,
       discount_amount,
       discount_snapshot,
+      profiles:user_id ( full_name ),
       order_items!inner (
         id, 
         qty, 
@@ -98,12 +109,13 @@ export async function getGroupedDispatches() {
     .order('created_at', { ascending: false })
 
   // 3. ประวัติบิลที่จัดส่งหรือขายเสร็จสมบูรณ์แล้ว (ดึง 50 รายการล่าสุด)
-  // ✨ เพิ่ม latitude, longitude, discount_snapshot, total_amount
+  // ✨ เพิ่ม user_id, profiles:user_id(full_name), latitude, longitude, discount_snapshot, total_amount
   const { data: completedOrders, error: err3 } = await supabase
     .from('orders')
     .select(`
       id, 
       order_code, 
+      user_id,
       created_at, 
       shipping_name, 
       shipping_phone, 
@@ -114,6 +126,7 @@ export async function getGroupedDispatches() {
       total_amount,
       discount_amount,
       discount_snapshot,
+      profiles:user_id ( full_name ),
       order_items!inner (
         id, 
         qty, 
@@ -139,6 +152,7 @@ export async function getGroupedDispatches() {
     .select(`
       id, 
       order_code, 
+      user_id,
       created_at, 
       shipping_name, 
       shipping_phone, 
@@ -149,6 +163,7 @@ export async function getGroupedDispatches() {
       total_amount,
       discount_amount,
       discount_snapshot,
+      profiles:user_id ( full_name ),
       order_items!inner (
         id, 
         qty, 
@@ -175,12 +190,31 @@ export async function getGroupedDispatches() {
 
   if (err1 || err2 || err3 || err4) return { success: false, error: "ดึงข้อมูลล้มเหลว" }
 
+  const formatOrder = (order: any) => {
+    const creatorProfile = Array.isArray(order.profiles) ? order.profiles[0] : order.profiles
+    const creatorName = creatorProfile?.full_name || 'ไม่ระบุผู้สร้าง'
+    const isCreator = Boolean(order.user_id && order.user_id === currentUserId)
+    const canManage = isAdmin || isCreator
+    return {
+      ...order,
+      creator_name: creatorName,
+      is_creator: isCreator,
+      can_manage: canManage
+    }
+  }
+
   return {
     success: true,
-    myDispatchOrders: myDispatchOrders || [],
-    followUpOrders: followUpOrders || [],
-    completedOrders: completedOrders || [],
-    cancelledOrders: (cancelledOrders || []).filter(order => !hiddenOrderIds.has(order.id))
+    currentUser: {
+      id: currentUserId,
+      role: userRole,
+      name: profile?.full_name || 'เจ้าหน้าที่',
+      isAdmin
+    },
+    myDispatchOrders: (myDispatchOrders || []).map(formatOrder),
+    followUpOrders: (followUpOrders || []).map(formatOrder),
+    completedOrders: (completedOrders || []).map(formatOrder),
+    cancelledOrders: (cancelledOrders || []).filter(order => !hiddenOrderIds.has(order.id)).map(formatOrder)
   }
 }
 
@@ -311,14 +345,29 @@ export async function approveAndCutStock(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { success: false, error: "Unauthorized" }
 
+  const { data: profile } = await supabase.from('profiles').select('role').eq('user_id', user.id).maybeSingle()
+  const isAdmin = profile?.role === 'admin'
+
   try {
     const { data: order } = await supabase
       .from('orders')
-      .select('status, latitude, longitude, shipping_address, discount_snapshot')
+      .select('user_id, status, latitude, longitude, shipping_address, discount_snapshot')
       .eq('id', orderId)
       .single()
+
+    if (!order) {
+      return { success: false, error: "ไม่พบข้อมูลออเดอร์นี้ในระบบ" }
+    }
+
+    // 🔒 Security Check: เฉพาะผู้สร้าง Quotation หรือ Admin เท่านั้น
+    if (!isAdmin && order.user_id && order.user_id !== user.id) {
+      return { 
+        success: false, 
+        error: "ไม่มีสิทธิ์ทำรายการ: สิทธิ์การยืนยันรับชำระเงินและตัดสต็อก สงวนเฉพาะผู้เปิดบิล (Quotation) หรือ Admin เท่านั้น" 
+      }
+    }
       
-    if (order?.status !== 'PENDING') {
+    if (order.status !== 'PENDING') {
       return { success: false, error: "ออเดอร์นี้ถูกอนุมัติไปแล้ว ไม่สามารถตัดสต็อกซ้ำได้" }
     }
 
@@ -583,19 +632,32 @@ export async function cancelOrder(orderId: number, orderCode: string, items: any
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('full_name')
+    .select('role, full_name')
     .eq('user_id', user.id)
     .maybeSingle()
+  const isAdmin = profile?.role === 'admin'
   const staffName = profile?.full_name || 'เจ้าหน้าที่'
 
   try {
     const { data: orderToCancel } = await supabase
       .from('orders')
-      .select('status, discount_snapshot')
+      .select('user_id, status, discount_snapshot')
       .eq('id', orderId)
       .single()
 
-    if (orderToCancel?.status === 'CANCELLED') {
+    if (!orderToCancel) {
+      return { success: false, error: "ไม่พบข้อมูลออเดอร์นี้ในระบบ" }
+    }
+
+    // 🔒 Security Check: เฉพาะผู้สร้าง Quotation หรือ Admin เท่านั้น
+    if (!isAdmin && orderToCancel.user_id && orderToCancel.user_id !== user.id) {
+      return { 
+        success: false, 
+        error: "ไม่มีสิทธิ์ยกเลิกบิลนี้: สิทธิ์การยกเลิกสงวนเฉพาะผู้เปิดบิล (Quotation) หรือ Admin เท่านั้น" 
+      }
+    }
+
+    if (orderToCancel.status === 'CANCELLED') {
       return { success: false, error: "บิลนี้ถูกยกเลิกและคืนสต็อกไปแล้ว" }
     }
 
@@ -727,7 +789,20 @@ export async function updateOrderCustomerInfo(orderId: number, data: {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { success: false, error: "Unauthorized" }
 
+  const { data: profile } = await supabase.from('profiles').select('role').eq('user_id', user.id).maybeSingle()
+  const isAdmin = profile?.role === 'admin'
+
   try {
+    const { data: order } = await supabase.from('orders').select('user_id').eq('id', orderId).single()
+    if (!order) return { success: false, error: "ไม่พบข้อมูลออเดอร์นี้ในระบบ" }
+
+    if (!isAdmin && order.user_id && order.user_id !== user.id) {
+      return {
+        success: false,
+        error: "ไม่มีสิทธิ์แก้ไขข้อมูลผู้รับ: สงวนเฉพาะผู้เปิดบิลหรือ Admin เท่านั้น"
+      }
+    }
+
     const { error } = await supabase
       .from('orders')
       .update({

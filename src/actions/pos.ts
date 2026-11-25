@@ -1705,10 +1705,16 @@ export async function getOrderForEdit(orderCode: string) {
     cookies: { getAll() { return cookieStore.getAll() } } 
   })
 
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { success: false, error: "กรุณาเข้าสู่ระบบก่อนทำรายการ" }
+
+  const { data: profile } = await supabase.from('profiles').select('role').eq('user_id', user.id).maybeSingle()
+  const isAdmin = profile?.role === 'admin'
+
   const { data: order, error } = await supabase
     .from('orders')
     .select(`
-      id, order_code, status, shipping_name, shipping_phone, shipping_address, latitude, longitude, company_name_th, company_name_en, company_address, tax_id, special_discount_percent, special_discount_baht, discount_snapshot,
+      id, order_code, user_id, status, shipping_name, shipping_phone, shipping_address, latitude, longitude, company_name_th, company_name_en, company_address, tax_id, special_discount_percent, special_discount_baht, discount_snapshot,
       order_items (
         id, product_id, qty, price_at_sale, fulfill_branch_id, discount_id, discount_name, discount_amount_per_piece,
         branches!order_items_fulfill_branch_fk ( branch_name ),
@@ -1724,6 +1730,11 @@ export async function getOrderForEdit(orderCode: string) {
 
   if (error || !order) return { success: false, error: error?.message || "ไม่พบบิลนี้ในระบบ" }
   if (order.status !== 'PENDING') return { success: false, error: "บิลนี้ชำระเงินหรือประมวลผลไปแล้ว ไม่สามารถแก้ไขได้" }
+
+  // 🔒 Security Check: เฉพาะผู้สร้าง Quotation หรือ Admin เท่านั้น
+  if (!isAdmin && order.user_id && order.user_id !== user.id) {
+    return { success: false, error: "ไม่มีสิทธิ์แก้ไขบิลนี้: สิทธิ์การแก้ไขสงวนเฉพาะผู้เปิดบิล (Quotation) หรือ Admin เท่านั้น" }
+  }
 
   return { success: true, order }
 }
