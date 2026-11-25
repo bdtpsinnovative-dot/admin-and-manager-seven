@@ -77,7 +77,7 @@ export default function SalesPeriodFilter({
 
   // ข้อความแสดงบนปุ่ม
   const buttonLabel = () => {
-    const fieldPrefix = activeField === "completedAt" ? "วันขายจริง" : "วันเปิดบิล"
+    const fieldPrefix = activeField === "completedAt" ? "วันจัดส่งสำเร็จ" : "วันขาย/เปิดบิล"
     switch (activeConfig.mode) {
       case "ALL":
         return `ทุกช่วงเวลา (${fieldPrefix})`
@@ -181,18 +181,6 @@ export default function SalesPeriodFilter({
             <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-100 rounded-xl text-xs font-bold">
               <button
                 type="button"
-                onClick={() => setSelectedField("completedAt")}
-                className={`py-1.5 px-2 rounded-lg transition-all text-center flex items-center justify-center gap-1 ${
-                  selectedField === "completedAt"
-                    ? "bg-white text-emerald-700 shadow-xs font-black"
-                    : "text-slate-500 hover:text-slate-800"
-                }`}
-              >
-                {selectedField === "completedAt" && <Check className="w-3.5 h-3.5 text-emerald-600" />}
-                <span>วันขายจริง (ปิดบิล)</span>
-              </button>
-              <button
-                type="button"
                 onClick={() => setSelectedField("createdAt")}
                 className={`py-1.5 px-2 rounded-lg transition-all text-center flex items-center justify-center gap-1 ${
                   selectedField === "createdAt"
@@ -201,7 +189,19 @@ export default function SalesPeriodFilter({
                 }`}
               >
                 {selectedField === "createdAt" && <Check className="w-3.5 h-3.5 text-blue-600" />}
-                <span>วันที่เปิดบิล</span>
+                <span>วันขาย / เปิดบิล</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedField("completedAt")}
+                className={`py-1.5 px-2 rounded-lg transition-all text-center flex items-center justify-center gap-1 ${
+                  selectedField === "completedAt"
+                    ? "bg-white text-emerald-700 shadow-xs font-black"
+                    : "text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                {selectedField === "completedAt" && <Check className="w-3.5 h-3.5 text-emerald-600" />}
+                <span>วันจัดส่งสำเร็จ</span>
               </button>
             </div>
           </div>

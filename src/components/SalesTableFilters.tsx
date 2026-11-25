@@ -151,16 +151,16 @@ export const initialSalesFilters: SalesFilters = {
   orderCodePrefix: '',
   branchId: 'ALL',
   shippingType: 'ALL',
-  activeDateField: 'completedAt', // วันที่ขายจริง (ปิดบิล)
+  activeDateField: 'createdAt', // 🌟 ค่าเริ่มต้นคือวันที่ขาย/เปิดบิล เพื่อให้ยอดตรงกับ Dashboard 100%
   completedDate: {
-    mode: 'MONTH',
+    mode: 'ALL',
     month: getCurrentThaiMonthString(),
     day: getTodayThaiString(),
     startDate: '',
     endDate: '',
   },
   createdDate: {
-    mode: 'ALL',
+    mode: 'MONTH',
     month: getCurrentThaiMonthString(),
     day: getTodayThaiString(),
     startDate: '',

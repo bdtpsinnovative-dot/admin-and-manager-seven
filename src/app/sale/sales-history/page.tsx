@@ -59,11 +59,11 @@ function getCompletedDate(order: SaleOrder) {
   if (order.completedAt) return order.completedAt
   const snap = order.discountSnapshot
   if (snap) {
-    if (typeof snap === 'object' && snap.completed_at) return snap.completed_at
+    if (typeof snap === 'object' && (snap.delivered_at || snap.completed_at)) return snap.delivered_at || snap.completed_at
     if (typeof snap === 'string') {
       try {
         const parsed = JSON.parse(snap)
-        if (parsed.completed_at) return parsed.completed_at
+        if (parsed.delivered_at || parsed.completed_at) return parsed.delivered_at || parsed.completed_at
       } catch (_) {}
     }
   }
@@ -366,7 +366,7 @@ export default function SaleSalesHistoryPage() {
                   {/* 2. วันที่เปิดบิล */}
                   <th className="p-4 whitespace-nowrap relative">
                     <div className="flex items-center justify-between gap-1.5">
-                      <span>วันที่เปิดบิล</span>
+                      <span>วันที่ขาย / เปิดบิล</span>
                       <ColumnFilterButton
                         columnKey="createdAt"
                         isActive={filters.createdDate.mode !== 'ALL'}
@@ -390,10 +390,10 @@ export default function SaleSalesHistoryPage() {
                     )}
                   </th>
 
-                  {/* 3. วันที่ขายจริง (ปิดบิล) */}
+                  {/* 3. วันที่จัดส่งสำเร็จ (ปิดบิล) */}
                   <th className="p-4 whitespace-nowrap bg-emerald-50/40 text-emerald-900 relative">
                     <div className="flex items-center justify-between gap-1.5">
-                      <span>วันที่ขายจริง (ปิดบิล)</span>
+                      <span>วันที่จัดส่งสำเร็จ (ปิดบิล)</span>
                       <ColumnFilterButton
                         columnKey="completedDate"
                         isActive={filters.completedDate.mode !== 'ALL'}

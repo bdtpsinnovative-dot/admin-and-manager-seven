@@ -195,16 +195,19 @@ export async function getSalesHistory(showHidden = false, targetBranchId?: numbe
     const netBeforeVat = Math.max(0, Math.round((totalAmount - vatAmount) * 100) / 100)
 
     let snapCompletedAt: string | null = null
+    let snapPaidAt: string | null = null
     if (order.discount_snapshot) {
       const snap = typeof order.discount_snapshot === 'string'
         ? (() => { try { return JSON.parse(order.discount_snapshot) } catch { return {} } })()
         : order.discount_snapshot
-      snapCompletedAt = snap?.completed_at || null
+      snapCompletedAt = snap?.completed_at || snap?.delivered_at || null
+      snapPaidAt = snap?.paid_at || null
     }
 
     const isPaid = order.status === 'COMPLETED' || order.status === 'PROCESSING'
     const completedAt = snapCompletedAt || movementMap[order.id] || (isPaid ? order.created_at : null)
-    const effectiveDate = isPaid && completedAt ? completedAt : order.created_at
+    // 🌟 วันที่ขาย/รับเงินจริง สอดคล้องกับ Dashboard 100%
+    const effectiveDate = snapPaidAt || order.created_at
 
     // 🏢 จัดกลุ่มแบรนด์ของบิล (TERRA, ZENSLAB, EMBER_ASH) โดยค่าเริ่มต้นคือ TERRA
     let brand: 'TERRA' | 'ZENSLAB' | 'EMBER_ASH' = 'TERRA'
