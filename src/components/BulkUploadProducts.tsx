@@ -362,6 +362,37 @@ const downloadTemplate = () => {
             return Number.isFinite(n) ? n : null;
           };
 
+          const extractExtraImages = (rowObj: any): { path: string; role: string; sort: number }[] => {
+            const images: { path: string; role: string; sort: number }[] = []
+            Object.keys(rowObj).forEach(k => {
+              const cleanKey = k.trim().toLowerCase()
+              if (
+                cleanKey === 'picture' ||
+                cleanKey === 'link picture' ||
+                cleanKey === 'linkpicture' ||
+                cleanKey === 'image group' ||
+                cleanKey === 'imagegroup' ||
+                cleanKey === 'name image group' ||
+                cleanKey === 'name group' ||
+                cleanKey === 'image_url' ||
+                cleanKey === 'cover_image' ||
+                cleanKey === 'cover_image_url'
+              ) {
+                return
+              }
+              const match = cleanKey.match(/(?:picture|images?)[_(\s]*(\d+)\)?/i)
+              if (match && rowObj[k] && String(rowObj[k]).trim() !== '') {
+                const val = String(rowObj[k]).trim()
+                if (val.startsWith('http://') || val.startsWith('https://') || val.startsWith('/')) {
+                  const sort = parseInt(match[1]) || (images.length + 1)
+                  images.push({ path: val, role: 'extra', sort })
+                }
+              }
+            })
+            images.sort((a, b) => a.sort - b.sort)
+            return images
+          };
+
         // --- Props / Furniture mode ---
           if (selectedType === 'prop' || selectedType === 'furniture') {
             const itemNo = getVal("Item NO")?.toString() || "";
@@ -445,12 +476,8 @@ const downloadTemplate = () => {
                 material: getVal("Material")?.toString() || null,
                 cost_dollar: finalCostDollar,
                 cost_th_shipping: finalCostThShipping,
-                images: [
-                  getVal("images_1")?.toString() || null,
-                  getVal("images_2")?.toString() || null,
-                  getVal("images_3")?.toString() || null,
-                ].filter(Boolean).map((path, i) => ({ path, role: "extra", sort: i + 1 })),
-                images_count: [getVal("images_1"), getVal("images_2"), getVal("images_3")].filter(v => v && String(v).trim()).length,
+                images: extractExtraImages(row),
+                images_count: extractExtraImages(row).length,
               }
             }
           }
@@ -520,12 +547,7 @@ const downloadTemplate = () => {
             }
           }
 
-          const extraImages: any[] = []
-          Object.keys(row).forEach(key => {
-            if (key.toLowerCase().startsWith('images_') && row[key] && String(row[key]).trim() !== '') {
-              extraImages.push({ path: String(row[key]).trim(), role: "extra", sort: parseInt(key.split('_')[1] || "1") })
-            }
-          })
+          const extraImages = extractExtraImages(row)
           specs.images = extraImages
           specs.images_count = extraImages.length
 
