@@ -612,16 +612,31 @@ export default function ImageCropperModal({
         throw new Error('พิกัดการตัดภาพไม่ถูกต้อง กรุณาเลื่อนกรอบตัดให้อยู่ในขอบเขตภาพ');
       }
 
-      // 3. Draw cropped slice onto final output canvas
+      // 3. Draw cropped slice onto final output canvas (Max 2560px to maintain crisp detail and avoid pixelation)
+      const MAX_CROP_DIM = 2560;
+      let finalW = srcW;
+      let finalH = srcH;
+      if (finalW > MAX_CROP_DIM || finalH > MAX_CROP_DIM) {
+        if (finalW >= finalH) {
+          finalH = Math.round((finalH * MAX_CROP_DIM) / finalW);
+          finalW = MAX_CROP_DIM;
+        } else {
+          finalW = Math.round((finalW * MAX_CROP_DIM) / finalH);
+          finalH = MAX_CROP_DIM;
+        }
+      }
+
       const outputCanvas = document.createElement('canvas');
-      outputCanvas.width = srcW;
-      outputCanvas.height = srcH;
+      outputCanvas.width = finalW;
+      outputCanvas.height = finalH;
       const outCtx = outputCanvas.getContext('2d');
       if (!outCtx) throw new Error('Cannot create output context');
 
-      outCtx.drawImage(tCanvas, srcX, srcY, srcW, srcH, 0, 0, srcW, srcH);
+      outCtx.imageSmoothingEnabled = true;
+      outCtx.imageSmoothingQuality = 'high';
+      outCtx.drawImage(tCanvas, srcX, srcY, srcW, srcH, 0, 0, finalW, finalH);
 
-      // 4. Convert to WebP and ensure file size < 1MB
+      // 4. Convert to WebP and ensure file size < 1MB (Keep quality high >= 0.72 to prevent artifacts)
       const getBlob = (quality: number): Promise<Blob> =>
         new Promise((resolve, reject) => {
           outputCanvas.toBlob(
@@ -631,10 +646,10 @@ export default function ImageCropperModal({
           );
         });
 
-      let quality = 0.9;
+      let quality = 0.90;
       let blob = await getBlob(quality);
-      while (blob.size > 1024 * 1024 && quality > 0.35) {
-        quality -= 0.1;
+      while (blob.size > 1024 * 1024 && quality > 0.72) {
+        quality -= 0.04;
         blob = await getBlob(quality);
       }
 

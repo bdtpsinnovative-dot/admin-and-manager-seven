@@ -19,6 +19,7 @@ const s3Client = new S3Client({
     accessKeyId,
     secretAccessKey,
   },
+  forcePathStyle: true,
 });
 
 // ใช้ bucket 'wallcraft' เสมอสำหรับคลังรูปภาพหลัก (ไม่ดึง R2_BUCKET_NAME ซึ่งเป็น hr-immage ของระบบ HR)
@@ -78,16 +79,28 @@ export async function POST(request: Request) {
       // Convert S3 stream to Buffer
       const fileBuffer = Buffer.from(await getResponse.Body.transformToByteArray());
 
-      // 3. Compress using Sharp
+      // 3. Compress using Sharp (Resize to max 2560px for high-definition sharpness and prevent compression artifacts)
       let quality = 85;
-      let compressedBuffer = await sharp(fileBuffer)
-        .webp({ quality })
+      let pipeline = sharp(fileBuffer)
+        .resize({ width: 2560, height: 2560, fit: 'inside', withoutEnlargement: true });
+
+      let compressedBuffer = await pipeline
+        .webp({ quality, effort: 6 })
         .toBuffer();
 
-      while (compressedBuffer.length > 1024 * 1024 && quality > 10) {
-        quality -= 10;
+      while (compressedBuffer.length > 1024 * 1024 && quality > 70) {
+        quality -= 5;
         compressedBuffer = await sharp(fileBuffer)
-          .webp({ quality })
+          .resize({ width: 2560, height: 2560, fit: 'inside', withoutEnlargement: true })
+          .webp({ quality, effort: 6 })
+          .toBuffer();
+      }
+
+      // If still slightly > 1MB, resize to 2048px with high quality instead of lowering quality
+      if (compressedBuffer.length > 1024 * 1024) {
+        compressedBuffer = await sharp(fileBuffer)
+          .resize({ width: 2048, height: 2048, fit: 'inside', withoutEnlargement: true })
+          .webp({ quality: 80, effort: 6 })
           .toBuffer();
       }
 

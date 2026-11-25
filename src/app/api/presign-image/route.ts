@@ -17,6 +17,7 @@ const S3 = new S3Client({
     accessKeyId,
     secretAccessKey,
   },
+  forcePathStyle: true,
 });
 
 const BUCKET_NAME = process.env.R2_WALLCRAFT_BUCKET_NAME || 'wallcraft';

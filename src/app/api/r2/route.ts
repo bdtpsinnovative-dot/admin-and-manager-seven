@@ -1,7 +1,6 @@
 import { S3Client, ListObjectsV2Command, PutObjectCommand, DeleteObjectsCommand, CopyObjectCommand, _Object } from "@aws-sdk/client-s3";
 import { NextResponse } from "next/server";
-import { unstable_cache } from "next/cache";
-import { ADMIN_CACHE_TAGS, ADMIN_CACHE_TTL, invalidateAdminTags, r2FolderTag } from "@/lib/admin-cache";
+import { ADMIN_CACHE_TAGS, invalidateAdminTags, r2FolderTag } from "@/lib/admin-cache";
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -18,6 +17,7 @@ const s3Client = new S3Client({
     accessKeyId,
     secretAccessKey,
   },
+  forcePathStyle: true,
 });
 
 // ใช้ bucket 'wallcraft' เสมอสำหรับคลังรูปภาพหลัก (ไม่ดึง R2_BUCKET_NAME ซึ่งเป็น hr-immage ของระบบ HR)
@@ -25,48 +25,38 @@ const BUCKET_NAME = process.env.R2_WALLCRAFT_BUCKET_NAME || 'wallcraft';
 const PUBLIC_URL = process.env.R2_PUBLIC_URL || process.env.NEXT_PUBLIC_R2_PUBLIC_URL || 'https://pub-258bd10e7e8c4a7690a74c54cfbdef93.r2.dev';
 const MASTER_PIN = process.env.R2_MASTER_PIN || 'oom1234';
 
-async function getCachedR2FolderImages(folder: string) {
-  const run = unstable_cache(
-    async () => {
-      let allFiles: _Object[] = [];
-      let isTruncated = true;
-      let continuationToken: string | undefined = undefined;
+async function getR2FolderImages(folder: string) {
+  let allFiles: _Object[] = [];
+  let isTruncated = true;
+  let continuationToken: string | undefined = undefined;
 
-      while (isTruncated) {
-        const command: ListObjectsV2Command = new ListObjectsV2Command({
-          Bucket: BUCKET_NAME,
-          Prefix: `${folder}/`,
-          ContinuationToken: continuationToken,
-        });
+  while (isTruncated) {
+    const command: ListObjectsV2Command = new ListObjectsV2Command({
+      Bucket: BUCKET_NAME,
+      Prefix: `${folder}/`,
+      ContinuationToken: continuationToken,
+    });
 
-        const response = await s3Client.send(command);
+    const response = await s3Client.send(command);
 
-        if (response.Contents) {
-          allFiles.push(...response.Contents);
-        }
-
-        isTruncated = response.IsTruncated ?? false;
-        continuationToken = response.NextContinuationToken;
-      }
-
-      const files = allFiles
-        .filter((file) => file.Key !== `${folder}/` && !file.Key?.endsWith('/.keep'))
-        .sort((a, b) => (b.LastModified?.getTime() || 0) - (a.LastModified?.getTime() || 0));
-
-      return files.map((file) => ({
-        name: file.Key?.replace(`${folder}/`, '') || '',
-        url: `${PUBLIC_URL}/${file.Key}`,
-        updatedAt: file.LastModified?.getTime() || Date.now(),
-        size: file.Size ?? 0,
-      }));
-    },
-    ['admin:r2-folder-list:v1', folder],
-    {
-      revalidate: ADMIN_CACHE_TTL.GALLERY_SECONDS,
-      tags: [ADMIN_CACHE_TAGS.R2_GALLERY, r2FolderTag(folder)],
+    if (response.Contents) {
+      allFiles.push(...response.Contents);
     }
-  );
-  return run();
+
+    isTruncated = response.IsTruncated ?? false;
+    continuationToken = response.NextContinuationToken;
+  }
+
+  const files = allFiles
+    .filter((file) => file.Key !== `${folder}/` && !file.Key?.endsWith('/.keep'))
+    .sort((a, b) => (b.LastModified?.getTime() || 0) - (a.LastModified?.getTime() || 0));
+
+  return files.map((file) => ({
+    name: file.Key?.replace(`${folder}/`, '') || '',
+    url: `${PUBLIC_URL}/${file.Key}`,
+    updatedAt: file.LastModified?.getTime() || Date.now(),
+    size: file.Size ?? 0,
+  }));
 }
 
 export async function GET(request: Request) {
@@ -88,7 +78,7 @@ export async function GET(request: Request) {
       }
     }
 
-    let files = await getCachedR2FolderImages(folder);
+    let files = await getR2FolderImages(folder);
 
     if (over1MB) {
       files = files.filter((file) => file.size > 1024 * 1024);
@@ -96,7 +86,14 @@ export async function GET(request: Request) {
 
     const images = files.slice(offset, offset + limit);
 
-    return NextResponse.json({ images, totalCount: files.length });
+    return NextResponse.json(
+      { images, totalCount: files.length },
+      {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate',
+        },
+      }
+    );
   } catch (error: any) {
     console.error("R2 GET Error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });

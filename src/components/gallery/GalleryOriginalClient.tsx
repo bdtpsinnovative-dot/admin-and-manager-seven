@@ -86,6 +86,7 @@ export default function GalleryOriginalClient(_props: GalleryOriginalClientProps
   const [replaceFileName, setReplaceFileName] = useState<string | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
+  const [lowResWarningMap, setLowResWarningMap] = useState<Record<number, string>>({});
   const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 });
 
   const [renameModalData, setRenameModalData] = useState<{ oldName: string; newName: string } | null>(null);
@@ -656,7 +657,7 @@ export default function GalleryOriginalClient(_props: GalleryOriginalClientProps
     return () => window.removeEventListener('paste', handlePaste);
   }, [isModalOpen, onFilesSelect, uploadStatus]);
 
-  // บีบอัดรูปเป็น WebP < 1MB
+  // บีบอัดรูปเป็น WebP คุณภาพสูง (< 1MB คมชัด ไม่แตก และคงรายละเอียดครบถ้วน)
   const convertToWebP = async (file: File): Promise<Blob> => {
     return new Promise((resolve, reject) => {
       const img = new window.Image();
@@ -664,29 +665,76 @@ export default function GalleryOriginalClient(_props: GalleryOriginalClientProps
       img.src = objectUrl;
 
       img.onload = async () => {
+        URL.revokeObjectURL(objectUrl);
+
+        // 1. ตรวจสอบขนาดพิกเซล ถ้าใหญ่เกิน 2560px ให้ย่อลงมาที่ 2560px (รักษาอัตราส่วน aspect ratio ไม่บิดเบี้ยว)
+        const MAX_DIM = 2560;
+        let targetWidth = img.naturalWidth || img.width;
+        let targetHeight = img.naturalHeight || img.height;
+
+        if (targetWidth > MAX_DIM || targetHeight > MAX_DIM) {
+          if (targetWidth >= targetHeight) {
+            targetHeight = Math.round((targetHeight * MAX_DIM) / targetWidth);
+            targetWidth = MAX_DIM;
+          } else {
+            targetWidth = Math.round((targetWidth * MAX_DIM) / targetHeight);
+            targetHeight = MAX_DIM;
+          }
+        }
+
         const canvas = document.createElement('canvas');
-        canvas.width  = img.width;
-        canvas.height = img.height;
+        canvas.width = targetWidth;
+        canvas.height = targetHeight;
 
         const ctx = canvas.getContext('2d');
         if (!ctx) {
-          URL.revokeObjectURL(objectUrl);
           return reject(new Error('Cannot get canvas context'));
         }
 
-        ctx.drawImage(img, 0, 0, img.width, img.height);
-        URL.revokeObjectURL(objectUrl);
+        // เปิดโหมดเกลี่ยสีคุณภาพสูง (Bicubic smoothing) ป้องกันรอยหยัก/รอยแตก
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
 
-        let quality = 0.85;
-        let blob: Blob | null = null;
-        const tryCompress = async (q: number): Promise<Blob> => 
+        // 2. แปลงเป็น WebP โดยคุมคุณภาพให้อยู่ในระดับสูง (เริ่มที่ 0.88 ไม่ต่ำกว่า 0.72 เพื่อป้องกันภาพแตก)
+        const tryBlob = (q: number): Promise<Blob> =>
           new Promise((r) => canvas.toBlob((b) => r(b!), 'image/webp', q));
 
-        do {
-          blob = await tryCompress(quality);
-          if (blob.size > 1024 * 1024) quality -= 0.1;
-          else break;
-        } while (quality > 0.1);
+        const ONE_MB = 1024 * 1024;
+        let quality = 0.88;
+        let blob = await tryBlob(quality);
+
+        while (blob.size > ONE_MB && quality > 0.72) {
+          quality -= 0.04;
+          blob = await tryBlob(quality);
+        }
+
+        // หากไฟล์ยังเกิน 1MB อยู่ (เช่น รูปที่มีรายละเอียดซับซ้อนมาก เช่น พื้นผิวหิน/ลายไม้ละเอียด)
+        // ให้ย่อขนาด Canvas ลงเหลือ 2048px แทนที่จะลด Quality จนรูปแตก
+        if (blob.size > ONE_MB && (targetWidth > 1920 || targetHeight > 1920)) {
+          const SECONDARY_MAX = 2048;
+          let w2 = img.naturalWidth || img.width;
+          let h2 = img.naturalHeight || img.height;
+          if (w2 >= h2) {
+            h2 = Math.round((h2 * SECONDARY_MAX) / w2);
+            w2 = SECONDARY_MAX;
+          } else {
+            w2 = Math.round((w2 * SECONDARY_MAX) / h2);
+            h2 = SECONDARY_MAX;
+          }
+          canvas.width = w2;
+          canvas.height = h2;
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+          ctx.drawImage(img, 0, 0, w2, h2);
+
+          quality = 0.82;
+          blob = await tryBlob(quality);
+          while (blob.size > ONE_MB && quality > 0.70) {
+            quality -= 0.04;
+            blob = await tryBlob(quality);
+          }
+        }
 
         resolve(blob);
       };
@@ -770,6 +818,7 @@ export default function GalleryOriginalClient(_props: GalleryOriginalClientProps
     previewUrls.forEach(url => URL.revokeObjectURL(url));
     setPreviewUrls([]);
     setSelectedFiles([]);
+    setLowResWarningMap({});
     setReplaceFileName(null); 
     setUploadProgress({ current: 0, total: 0 });
     setCropModalData((prev) => ({ ...prev, isOpen: false }));
@@ -1532,10 +1581,21 @@ export default function GalleryOriginalClient(_props: GalleryOriginalClientProps
                           src={url} 
                           alt={`Preview ${idx + 1}`} 
                           className="max-w-full max-h-full object-contain shadow-sm"
+                          onLoad={(e) => {
+                            const img = e.currentTarget;
+                            if (img.naturalWidth > 0 && (img.naturalWidth < 450 || img.naturalHeight < 450)) {
+                              setLowResWarningMap(prev => ({ ...prev, [idx]: `${img.naturalWidth}x${img.naturalHeight}` }));
+                            }
+                          }}
                         />
                         {previewUrls.length > 1 && (
                           <span className="absolute top-2 right-2 bg-black/60 text-white text-xs px-2 py-0.5 rounded-md shadow-sm">
                             {idx + 1}
+                          </span>
+                        )}
+                        {lowResWarningMap[idx] && (
+                          <span className="absolute top-2 left-2 bg-amber-600/90 text-white text-[11px] font-bold px-2 py-0.5 rounded-md shadow-md flex items-center gap-1 backdrop-blur-xs">
+                            ⚠️ รูปเล็ก ({lowResWarningMap[idx]})
                           </span>
                         )}
                         {/* Crop button on preview */}
@@ -1562,6 +1622,15 @@ export default function GalleryOriginalClient(_props: GalleryOriginalClientProps
                     ))}
                   </div>
 
+                  {Object.keys(lowResWarningMap).length > 0 && (
+                    <div className="text-xs text-amber-900 bg-amber-50 border border-amber-200/80 p-3 rounded-xl flex items-start gap-2.5">
+                      <span className="text-base leading-none">⚠️</span>
+                      <div className="flex-1 leading-relaxed">
+                        <strong className="font-bold">คำเตือนภาพความละเอียดต่ำ:</strong> มีภาพขนาดเล็กมาก (น้อยกว่า 450px) ซึ่งอาจเป็นรูปย่อ (Thumbnail) หรือรูปพรีวิว หากนำไปแสดงผลบนเว็บไซต์ ภาพจะแตกหรือไม่คมชัด แนะนำให้อัปโหลดไฟล์ต้นฉบับความละเอียดสูง
+                      </div>
+                    </div>
+                  )}
+
                   {previewUrls.length > 1 && (
                     <div className="text-xs md:text-sm font-semibold text-emerald-700 bg-emerald-50 py-2.5 px-3 rounded-xl text-center border border-emerald-100">
                       เตรียมอัปโหลดทั้งหมด {selectedFiles.length} ไฟล์ เข้าโฟลเดอร์ {activeFolderObj?.name || currentFolder}
@@ -1570,7 +1639,7 @@ export default function GalleryOriginalClient(_props: GalleryOriginalClientProps
 
                   <div className="flex justify-between items-center gap-3 mt-2">
                     <button 
-                      onClick={() => { setUploadStatus('idle'); previewUrls.forEach(u => URL.revokeObjectURL(u)); setPreviewUrls([]); setSelectedFiles([]); }}
+                      onClick={() => { setUploadStatus('idle'); previewUrls.forEach(u => URL.revokeObjectURL(u)); setPreviewUrls([]); setSelectedFiles([]); setLowResWarningMap({}); }}
                       className="px-4 py-2 text-xs md:text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
                     >
                       ยกเลิก

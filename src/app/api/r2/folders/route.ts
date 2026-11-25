@@ -1,8 +1,7 @@
 // src/app/api/r2/folders/route.ts
 import { S3Client, ListObjectsV2Command, PutObjectCommand, DeleteObjectsCommand } from "@aws-sdk/client-s3";
 import { NextResponse } from "next/server";
-import { unstable_cache } from "next/cache";
-import { ADMIN_CACHE_TAGS, ADMIN_CACHE_TTL, invalidateAdminTags } from "@/lib/admin-cache";
+import { ADMIN_CACHE_TAGS, invalidateAdminTags } from "@/lib/admin-cache";
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -19,6 +18,7 @@ const s3Client = new S3Client({
     accessKeyId,
     secretAccessKey,
   },
+  forcePathStyle: true,
 });
 
 const BUCKET_NAME = process.env.R2_WALLCRAFT_BUCKET_NAME || 'wallcraft';
@@ -30,47 +30,47 @@ export interface FolderItem {
   isProtected: boolean;
 }
 
-const getCachedR2Folders = unstable_cache(
-  async (): Promise<FolderItem[]> => {
-    const listCommand: ListObjectsV2Command = new ListObjectsV2Command({
-      Bucket: BUCKET_NAME,
-      Prefix: INTERNS_PREFIX,
-      Delimiter: '/',
-    });
-    const response = await s3Client.send(listCommand);
+async function getR2Folders(): Promise<FolderItem[]> {
+  const listCommand: ListObjectsV2Command = new ListObjectsV2Command({
+    Bucket: BUCKET_NAME,
+    Prefix: INTERNS_PREFIX,
+    Delimiter: '/',
+  });
+  const response = await s3Client.send(listCommand);
 
-    const internFolders: FolderItem[] = (response.CommonPrefixes || [])
-      .map((cp) => {
-        const fullPrefix = cp.Prefix || '';
-        const cleanName = fullPrefix.replace(INTERNS_PREFIX, '').replace(/\/$/, '');
-        return {
-          id: `interns/${cleanName}`,
-          name: cleanName,
-          isProtected: false,
-        };
-      })
-      .filter((f) => Boolean(f.name));
+  const internFolders: FolderItem[] = (response.CommonPrefixes || [])
+    .map((cp) => {
+      const fullPrefix = cp.Prefix || '';
+      const cleanName = fullPrefix.replace(INTERNS_PREFIX, '').replace(/\/$/, '');
+      return {
+        id: `interns/${cleanName}`,
+        name: cleanName,
+        isProtected: false,
+      };
+    })
+    .filter((f) => Boolean(f.name));
 
-    const masterFolder: FolderItem = {
-      id: 'original',
-      name: 'โฟลเดอร์หลัก (Original)',
-      isProtected: true,
-    };
+  const masterFolder: FolderItem = {
+    id: 'original',
+    name: 'โฟลเดอร์หลัก (Original)',
+    isProtected: true,
+  };
 
-    return [masterFolder, ...internFolders];
-  },
-  ['admin:r2-folders-list:v1'],
-  {
-    revalidate: ADMIN_CACHE_TTL.GALLERY_SECONDS,
-    tags: [ADMIN_CACHE_TAGS.R2_GALLERY],
-  }
-);
+  return [masterFolder, ...internFolders];
+}
 
 // GET: ดึงรายการโฟลเดอร์ทั้งหมด (โฟลเดอร์หลัก original + โฟลเดอร์น้องฝึกงานใน interns/)
 export async function GET() {
   try {
-    const folders = await getCachedR2Folders();
-    return NextResponse.json({ folders });
+    const folders = await getR2Folders();
+    return NextResponse.json(
+      { folders },
+      {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate',
+        },
+      }
+    );
   } catch (error: any) {
     console.error("List Folders Error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
