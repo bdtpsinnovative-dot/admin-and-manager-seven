@@ -9,7 +9,7 @@ import {
   Loader2, ArrowLeft, Image as ImageIcon, Trash2, 
   CheckSquare, Square, RefreshCcw, Search, Sparkles, Pencil,
   Folder, FolderPlus, Lock, Unlock, KeyRound, Eye, EyeOff, FolderOpen,
-  ChevronRight, Crop
+  ChevronRight, Crop, LayoutGrid, Grid3X3, ArrowUpDown, Tag
 } from 'lucide-react';
 import ImageCropperModal, { CropResult } from './ImageCropperModal';
 
@@ -88,6 +88,9 @@ export default function GalleryOriginalClient(_props: GalleryOriginalClientProps
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
   const [lowResWarningMap, setLowResWarningMap] = useState<Record<number, string>>({});
   const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 });
+  const [uploadSkuPrefix, setUploadSkuPrefix] = useState('');
+  const [isCompactView, setIsCompactView] = useState(false);
+  const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'name-asc' | 'size-desc'>('newest');
 
   const [renameModalData, setRenameModalData] = useState<{ oldName: string; newName: string } | null>(null);
   const [isRenaming, setIsRenaming] = useState(false);
@@ -762,9 +765,17 @@ export default function GalleryOriginalClient(_props: GalleryOriginalClientProps
         
         const compressedBlob = await convertToWebP(file);
         
-        const fileName = (replaceFileName && selectedFiles.length === 1) 
-          ? replaceFileName 
-          : `${Date.now()}-${Math.floor(Math.random() * 1000)}.webp`;
+        const cleanPrefix = uploadSkuPrefix.trim().replace(/[\/\\:*?"<>| ]/g, '-');
+        let fileName: string;
+        if (replaceFileName && selectedFiles.length === 1) {
+          fileName = replaceFileName;
+        } else if (cleanPrefix) {
+          fileName = selectedFiles.length === 1 
+            ? `${cleanPrefix}.webp` 
+            : `${cleanPrefix}_${i + 1}.webp`;
+        } else {
+          fileName = `${Date.now()}-${Math.floor(Math.random() * 1000)}.webp`;
+        }
 
         setUploadStatus('uploading');
 
@@ -819,6 +830,7 @@ export default function GalleryOriginalClient(_props: GalleryOriginalClientProps
     setPreviewUrls([]);
     setSelectedFiles([]);
     setLowResWarningMap({});
+    setUploadSkuPrefix('');
     setReplaceFileName(null); 
     setUploadProgress({ current: 0, total: 0 });
     setCropModalData((prev) => ({ ...prev, isOpen: false }));
@@ -855,10 +867,20 @@ export default function GalleryOriginalClient(_props: GalleryOriginalClientProps
   };
 
   const filteredImages = useMemo(() => {
-    if (!searchQuery.trim()) return images;
-    const q = searchQuery.toLowerCase().trim();
-    return images.filter(img => img.name.toLowerCase().includes(q));
-  }, [images, searchQuery]);
+    let result = images;
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      result = result.filter(img => img.name.toLowerCase().includes(q));
+    }
+    const sorted = [...result].sort((a, b) => {
+      if (sortBy === 'newest') return (b.updatedAt || 0) - (a.updatedAt || 0);
+      if (sortBy === 'oldest') return (a.updatedAt || 0) - (b.updatedAt || 0);
+      if (sortBy === 'name-asc') return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+      if (sortBy === 'size-desc') return (b.size || 0) - (a.size || 0);
+      return 0;
+    });
+    return sorted;
+  }, [images, searchQuery, sortBy]);
 
   const activeFolderObj = useMemo(() => {
     if (!currentFolder) return null;
@@ -1194,16 +1216,16 @@ export default function GalleryOriginalClient(_props: GalleryOriginalClientProps
 
         {/* Gallery Container */}
         <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-4 md:p-6 space-y-5">
-          {/* Controls: Search & Over 1MB Toggle */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
-            <div className="flex items-center gap-3">
+          {/* Controls: Search, Sort, Compact Toggle & Over 1MB Toggle */}
+          <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+            <div className="flex items-center gap-2.5 flex-1 flex-wrap sm:flex-nowrap">
               <div className="relative flex-1 sm:w-64">
                 <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input 
                   type="text" 
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="ค้นหาชื่อไฟล์..."
+                  placeholder="ค้นหาชื่อไฟล์ / SKU..."
                   className="w-full pl-9 pr-3 py-2 text-xs md:text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 bg-slate-50/50"
                 />
                 {searchQuery && (
@@ -1212,23 +1234,57 @@ export default function GalleryOriginalClient(_props: GalleryOriginalClientProps
                   </button>
                 )}
               </div>
-              <span className={`px-2.5 py-1 text-xs font-bold rounded-full whitespace-nowrap ${
+
+              {/* Sort Selector */}
+              <div className="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs shrink-0">
+                <ArrowUpDown size={13} className="text-slate-400" />
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as any)}
+                  className="bg-transparent text-slate-700 font-bold text-xs outline-none cursor-pointer"
+                >
+                  <option value="newest">🕒 ล่าสุด</option>
+                  <option value="oldest">⏳ เก่าสุด</option>
+                  <option value="name-asc">🔤 ชื่อ A-Z</option>
+                  <option value="size-desc">📦 ขนาดไฟล์</option>
+                </select>
+              </div>
+
+              <span className={`px-2.5 py-1 text-xs font-bold rounded-full whitespace-nowrap shrink-0 ${
                 showOver1MBOnly ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-600'
               }`}>
-                {showOver1MBOnly ? `เกิน 1MB: ${totalCount} รูป` : `ทั้งหมด: ${totalCount} รูป`}
+                {showOver1MBOnly ? `เกิน 1MB: ${filteredImages.length} รูป` : `ทั้งหมด: ${filteredImages.length} รูป`}
               </span>
             </div>
 
-            <button
-              onClick={() => handleToggleOver1MB(!showOver1MBOnly)}
-              className={`flex items-center justify-center gap-2 px-3.5 py-2 text-xs font-bold rounded-xl border transition-all shadow-sm ${
-                showOver1MBOnly 
-                  ? 'bg-rose-50 border-rose-200 text-rose-600 hover:bg-rose-100' 
-                  : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-              }`}
-            >
-              ⚠️ {showOver1MBOnly ? 'แสดงรูปภาพทั้งหมด' : 'แสดงเฉพาะรูปที่เกิน 1MB'}
-            </button>
+            <div className="flex items-center gap-2 shrink-0">
+              {/* Compact View Toggle */}
+              <button
+                type="button"
+                onClick={() => setIsCompactView(!isCompactView)}
+                className={`flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl border transition-all cursor-pointer ${
+                  isCompactView 
+                    ? 'bg-emerald-50 border-emerald-300 text-emerald-700 shadow-xs' 
+                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                }`}
+                title={isCompactView ? 'สลับเป็นมุมมองปกติ' : 'สลับเป็นมุมมองกะทัดรัด (Compact View เหมาะสำหรับดูรูปจำนวนมาก)'}
+              >
+                {isCompactView ? <Grid3X3 size={15} /> : <LayoutGrid size={15} />}
+                <span>{isCompactView ? 'มุมมองกะทัดรัด' : 'มุมมองปกติ'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleToggleOver1MB(!showOver1MBOnly)}
+                className={`flex items-center justify-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl border transition-all shadow-sm cursor-pointer ${
+                  showOver1MBOnly 
+                    ? 'bg-rose-50 border-rose-200 text-rose-600 hover:bg-rose-100' 
+                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                ⚠️ {showOver1MBOnly ? 'แสดงทั้งหมด' : 'เฉพาะเกิน 1MB'}
+              </button>
+            </div>
           </div>
 
           {isLoading ? (
@@ -1252,7 +1308,11 @@ export default function GalleryOriginalClient(_props: GalleryOriginalClientProps
           ) : (
             <>
               {/* Image Grid */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3.5 md:gap-4">
+              <div className={
+                isCompactView 
+                  ? "grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2.5" 
+                  : "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3.5 md:gap-4"
+              }>
                 {filteredImages.map((img) => {
                   const isSelected = selectedImages.includes(img.name);
                   const imageUrlWithCacheBuster = `${img.url}?v=${img.updatedAt}`;
@@ -1276,21 +1336,21 @@ export default function GalleryOriginalClient(_props: GalleryOriginalClientProps
                         }`}
                         title={isSelected ? 'ยกเลิกการเลือก' : 'เลือกรูปนี้'}
                       >
-                        {isSelected ? <CheckSquare size={18} /> : <Square size={18} />}
+                        {isSelected ? <CheckSquare size={isCompactView ? 15 : 18} /> : <Square size={isCompactView ? 15 : 18} />}
                       </button>
 
                       {/* Action buttons toolbar (Crop, Rename, Replace, Delete) */}
-                      <div className="absolute top-2 right-2 z-10 flex items-center gap-1 bg-white/95 backdrop-blur-xs p-1 rounded-xl shadow-md border border-slate-200/80 opacity-0 group-hover:opacity-100 transition-all">
+                      <div className="absolute top-2 right-2 z-10 flex items-center gap-0.5 bg-white/95 backdrop-blur-xs p-1 rounded-xl shadow-md border border-slate-200/80 opacity-0 group-hover:opacity-100 transition-all">
                         {/* Crop / Edit Existing Image */}
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             handleOpenCropExisting(img);
                           }}
-                          className="p-1.5 text-purple-600 hover:bg-purple-100/80 rounded-lg transition-colors cursor-pointer"
+                          className="p-1 text-purple-600 hover:bg-purple-100/80 rounded-lg transition-colors cursor-pointer"
                           title="ครอป / แต่งรูปภาพนี้ (คง URL เดิม)"
                         >
-                          <Crop size={15} />
+                          <Crop size={14} />
                         </button>
 
                         {/* Rename button */}
@@ -1299,10 +1359,10 @@ export default function GalleryOriginalClient(_props: GalleryOriginalClientProps
                             e.stopPropagation();
                             setRenameModalData({ oldName: img.name, newName: img.name });
                           }}
-                          className="p-1.5 text-blue-600 hover:bg-blue-100/80 rounded-lg transition-colors cursor-pointer"
+                          className="p-1 text-blue-600 hover:bg-blue-100/80 rounded-lg transition-colors cursor-pointer"
                           title="แก้ไขชื่อไฟล์รูปภาพนี้"
                         >
-                          <Pencil size={15} />
+                          <Pencil size={14} />
                         </button>
 
                         {/* Replace button */}
@@ -1311,10 +1371,10 @@ export default function GalleryOriginalClient(_props: GalleryOriginalClientProps
                             e.stopPropagation();
                             handleReplaceClick(img.name);
                           }}
-                          className="p-1.5 text-emerald-600 hover:bg-emerald-100/80 rounded-lg transition-colors cursor-pointer"
+                          className="p-1 text-emerald-600 hover:bg-emerald-100/80 rounded-lg transition-colors cursor-pointer"
                           title="อัปโหลดรูปใหม่มาแทนที่ (คง URL เดิม)"
                         >
-                          <RefreshCcw size={15} />
+                          <RefreshCcw size={14} />
                         </button>
 
                         {/* Delete button */}
@@ -1324,16 +1384,16 @@ export default function GalleryOriginalClient(_props: GalleryOriginalClientProps
                             handleDeleteImages([img.name]);
                           }}
                           disabled={isDeleting}
-                          className="p-1.5 text-red-500 hover:bg-red-100/80 hover:text-red-600 rounded-lg transition-colors cursor-pointer"
+                          className="p-1 text-red-500 hover:bg-red-100/80 hover:text-red-600 rounded-lg transition-colors cursor-pointer"
                           title="ลบรูปนี้"
                         >
-                          <Trash2 size={15} />
+                          <Trash2 size={14} />
                         </button>
                       </div>
 
                       {/* Image Thumbnail Container */}
                       <div 
-                        className="h-44 bg-slate-50/70 relative overflow-hidden flex items-center justify-center p-2.5 cursor-pointer"
+                        className={`${isCompactView ? 'h-28' : 'h-44'} bg-slate-50/70 relative overflow-hidden flex items-center justify-center p-2 cursor-pointer`}
                         onClick={() => toggleSelection(img.name)} 
                       >
                         <img 
@@ -1343,7 +1403,7 @@ export default function GalleryOriginalClient(_props: GalleryOriginalClientProps
                           className={`max-w-full max-h-full object-contain transition-transform duration-300 ${isSelected ? 'scale-95' : 'group-hover:scale-105'}`}
                         />
                         {/* Size Badge */}
-                        <span className={`absolute bottom-2 right-2 px-2 py-0.5 text-[10px] font-bold rounded-md shadow-sm border ${
+                        <span className={`absolute bottom-1.5 right-1.5 px-1.5 py-0.5 text-[9px] font-bold rounded-md shadow-sm border ${
                           img.size && img.size > 1024 * 1024 
                             ? 'bg-rose-50 border-rose-200 text-rose-600 font-extrabold' 
                             : 'bg-slate-900/70 border-transparent text-white backdrop-blur-sm'
@@ -1353,16 +1413,16 @@ export default function GalleryOriginalClient(_props: GalleryOriginalClientProps
                       </div>
 
                       {/* Filename & Copy button */}
-                      <div className="p-2.5 border-t border-slate-100 flex items-center justify-between gap-1.5 bg-white mt-auto">
-                        <span className="text-xs text-slate-600 font-medium truncate" title={img.name}>
+                      <div className={`${isCompactView ? 'p-1.5' : 'p-2.5'} border-t border-slate-100 flex items-center justify-between gap-1 bg-white mt-auto`}>
+                        <span className={`${isCompactView ? 'text-[11px]' : 'text-xs'} text-slate-600 font-medium truncate`} title={img.name}>
                           {img.name}
                         </span>
                         <button 
                           onClick={(e) => { e.stopPropagation(); copyToClipboard(img.url); }}
-                          className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors shrink-0"
+                          className="p-1 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors shrink-0"
                           title="คัดลอก URL"
                         >
-                          <Copy size={15} />
+                          <Copy size={isCompactView ? 13 : 15} />
                         </button>
                       </div>
                     </div>
@@ -1574,6 +1634,30 @@ export default function GalleryOriginalClient(_props: GalleryOriginalClientProps
 
               {uploadStatus === 'preview' && previewUrls.length > 0 && (
                 <div className="flex flex-col gap-4">
+                  {!replaceFileName && (
+                    <div className="bg-emerald-50/70 p-3.5 rounded-2xl border border-emerald-200/80 space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold text-emerald-900 flex items-center gap-1.5">
+                          <Tag size={14} className="text-emerald-600" />
+                          <span>รหัสสินค้า / ชื่อชุดรูปภาพ (SKU หรือ Prefix):</span>
+                        </label>
+                        <span className="text-[11px] font-medium text-emerald-700/80">(ไม่บังคับ)</span>
+                      </div>
+                      <input
+                        type="text"
+                        value={uploadSkuPrefix}
+                        onChange={(e) => setUploadSkuPrefix(e.target.value)}
+                        placeholder="เช่น CST-00066 หรือ marble-slab"
+                        className="w-full px-3.5 py-2 bg-white border border-emerald-300 rounded-xl text-xs md:text-sm font-semibold text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all placeholder:text-slate-400 placeholder:font-normal"
+                      />
+                      <p className="text-[11px] text-emerald-700/90 leading-tight">
+                        {uploadSkuPrefix.trim() 
+                          ? `✨ รูปจะถูกตั้งชื่อตามรหัสนี้อัตโนมัติ: ${uploadSkuPrefix.trim().replace(/[\/\\:*?"<>| ]/g, '-')}${previewUrls.length > 1 ? '_1.webp, ..._N.webp' : '.webp'}`
+                          : '💡 แนะนำให้ใส่รหัสสินค้า เช่น CST-00066 เพื่อให้ค้นหาในคลังภาพได้ทันที'}
+                      </p>
+                    </div>
+                  )}
+
                   <div className={`grid gap-3 overflow-y-auto max-h-[50vh] ${previewUrls.length > 1 ? 'grid-cols-2 md:grid-cols-3' : 'grid-cols-1'}`}>
                     {previewUrls.map((url, idx) => (
                       <div key={idx} className={`relative w-full ${previewUrls.length === 1 ? 'h-72' : 'h-36'} bg-slate-100 rounded-2xl overflow-hidden flex items-center justify-center p-2 border border-slate-200 group`}>
