@@ -677,19 +677,22 @@ export async function getDashboardData(
       const isPending = status === "PENDING"
       const isCompleted = status === "COMPLETED" || status === "PROCESSING"
 
-      // 🌟 คำนวณวันขายจริง (ปิดบิล) vs วันเปิดบิล
+      // 🌟 คำนวณวันขายจริง / วันรับชำระเงิน (Sales Date) vs วันจัดส่งสำเร็จ (Delivery Date)
       let snapCompletedAt: string | null = null
+      let snapPaidAt: string | null = null
       if (order.discount_snapshot) {
         const snap = typeof order.discount_snapshot === "string"
           ? (() => { try { return JSON.parse(order.discount_snapshot) } catch { return {} } })()
           : order.discount_snapshot
-        snapCompletedAt = snap?.completed_at || null
+        snapCompletedAt = snap?.completed_at || snap?.delivered_at || null
+        snapPaidAt = snap?.paid_at || null
       }
       const isPaid = status === "COMPLETED" || status === "PROCESSING"
       const completedAt = snapCompletedAt || (isPaid ? order.created_at : null)
-      // 🌟 ยอดขายบน Dashboard ยึดตาม "วันขายจริง (ปิดบิล)" เป็นหลัก 100%
-      // บิลขายสำเร็จจะใช้วันปิดบิล (completedAt) ส่วนบิลค้าง (PENDING) หรือยกเลิก จะใช้วันเปิดบิล (created_at)
-      const effectiveOrderDate = isPaid && completedAt ? completedAt : order.created_at
+      // 🌟 ยอดขายบน Dashboard ยึดตาม "วันขายจริง/วันรับชำระเงิน" เป็นหลัก 100%
+      // บิลขายสำเร็จ วันที่เกิดยอดขายคือวันรับเงิน (snapPaidAt หรือ order.created_at)
+      // ส่วน completedAt (วันส่งของสำเร็จ) ยังคงเก็บไว้ดูประวัติการขนส่ง ไม่เอามาดึงยอดขายข้ามเดือน
+      const effectiveOrderDate = snapPaidAt || order.created_at
 
       // ตรวจสอบช่วงเวลา (dateFrom, dateTo) ด้วย effectiveOrderDate
       if (!isAllTime && dateFrom && dateTo) {

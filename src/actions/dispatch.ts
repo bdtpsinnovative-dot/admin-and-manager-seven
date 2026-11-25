@@ -250,6 +250,7 @@ export async function markOrderItemsShipped(orderId: number, itemIds: number[], 
     const updatedSnap = {
       ...(currOrder?.discount_snapshot || {}),
       completed_at: new Date().toISOString(),
+      delivered_at: new Date().toISOString(),
       completed_by_id: user?.id || null
     }
     await supabase.from('orders').update({ 
@@ -552,19 +553,25 @@ export async function approveAndCutStock(
 
     const isStorefrontTakeaway = order.shipping_address?.startsWith('[รับหน้าร้าน]')
 
+    const updatedSnap = {
+      ...(order.discount_snapshot || {}),
+      paid_at: (order.discount_snapshot as any)?.paid_at || new Date().toISOString(),
+      completed_at: isStorefrontTakeaway ? new Date().toISOString() : ((order.discount_snapshot as any)?.completed_at || null),
+      delivered_at: isStorefrontTakeaway ? new Date().toISOString() : null,
+      completed_by_id: user.id
+    }
+
     if (isStorefrontTakeaway) {
-      const updatedSnap = {
-        ...(order.discount_snapshot || {}),
-        completed_at: new Date().toISOString(),
-        completed_by_id: user.id
-      }
       await supabase.from('orders').update({ 
         status: 'COMPLETED',
         discount_snapshot: updatedSnap
       }).eq('id', orderId)
       await supabase.from('order_items').update({ item_status: 'DELIVERED' }).eq('order_id', orderId)
     } else {
-      await supabase.from('orders').update({ status: 'PROCESSING' }).eq('id', orderId)
+      await supabase.from('orders').update({ 
+        status: 'PROCESSING',
+        discount_snapshot: updatedSnap
+      }).eq('id', orderId)
     }
 
     // 🎟️ นับยอดการใช้งานโค้ดคูปอง (used_count) หลังจากชำระเงินและอนุมัติสำเร็จแล้วเท่านั้น

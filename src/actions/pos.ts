@@ -1417,6 +1417,7 @@ export async function processCheckout(payload: CheckoutPayload): Promise<Checkou
       customer_type: payload.customerType || ((payload.companyNameTh || payload.companyNameEn || payload.taxId) ? 'CORPORATE' : 'INDIVIDUAL'),
       branch_type: payload.branchType || 'HEAD_OFFICE',
       branch_code: payload.branchCode || null,
+      paid_at: new Date().toISOString(),
       special_discount: {
         percent: payload.specialDiscountPercent || 0,
         baht: payload.specialDiscountBaht || 0
