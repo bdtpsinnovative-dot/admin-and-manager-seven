@@ -11,11 +11,11 @@ import PrintDispatchModal from '@/components/PrintDispatchModal'
 import PaymentSlipViewer from '@/components/PaymentSlipViewer'
 import EditQuotationModal, { EditQuotationTarget } from '@/components/EditQuotationModal'
 import DraggableTableWrapper from '@/components/DraggableTableWrapper'
+import SalesPeriodFilter from '@/components/SalesPeriodFilter'
 import {
   SalesFilters,
   initialSalesFilters,
   filterSalesOrder,
-  QuickDateSliderBar,
   ActiveFilterBadges,
   ColumnFilterButton,
   ColumnFilterPopover,
@@ -245,82 +245,147 @@ export default function AdminSalesHistoryPage() {
     <div className="min-h-screen bg-[#F4F7F9] p-4 md:p-8 font-sans select-none pb-24">
       <div className="max-w-[1680px] mx-auto space-y-6">
 
-        {/* --- Header Section (รวมการควบคุมและแถบเลื่อนวันที่ไว้ในกล่องเดียว) --- */}
-        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4">
-          {/* แถวบน: หัวข้อหน้าจอ (ซ้าย) + ตัวเลือกสาขา และ ช่องค้นหา (ขวา) */}
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        {/* --- Header Section & Unified Filter Toolbar (แนวเดียวกับ Dashboard) --- */}
+        <div className="bg-white p-5 md:p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4">
+          <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+            {/* ฝั่งซ้าย: หัวข้อหน้าจอและคำอธิบาย */}
             <div>
               <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600">
+                <div className="w-10 h-10 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 shrink-0">
                   <History className="w-5 h-5" />
                 </div>
                 <div>
                   <h1 className="text-xl md:text-2xl font-black text-slate-800">
                     ประวัติการขายหน้าร้าน (สำหรับ Admin)
                   </h1>
-                  <p className="text-slate-400 text-xs font-medium">
+                  <p className="text-slate-400 text-xs font-medium mt-0.5">
                     ตรวจสอบใบขาย ยอดเงิน และสลิปการโอนเงินแยกตามสาขาหรือดูรวมทุกสาขาทั่วประเทศ
                   </p>
                 </div>
               </div>
             </div>
 
-            {/* Controls: Branch Filter & Search Bar */}
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-              {/* ตัวเลือกสาขา */}
-              <div className="relative min-w-[240px]">
-                <Building2 className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            {/* ฝั่งขวา: Toolbar แบบ Dropdowns สะอาดตา ตรงตามมาตรฐาน Dashboard */}
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* 1. ตัวกรองช่วงเวลา (ปุ่มปฏิทิน + Popover พรีเซ็ตด่วน / รายเดือน / รายวัน / ช่วงวันที่) */}
+              <SalesPeriodFilter
+                filters={filters}
+                onChange={setFilters}
+              />
+
+              {/* 2. ตัวกรองแบรนด์สินค้า */}
+              <select
+                value={filters.brand}
+                onChange={(e) => setFilters(p => ({ ...p, brand: e.target.value as any }))}
+                aria-label="เลือกแบรนด์สินค้า"
+                className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100 shadow-xs cursor-pointer transition-colors hover:border-slate-300"
+              >
+                <option value="TERRA">🏺 Terra (เทอร์รา)</option>
+                <option value="ZENSLAB">🌲 ZenSlab (เซนสแลบ)</option>
+                <option value="EMBER_ASH">🛋️ Ember & Ash</option>
+                <option value="ALL">🌐 ทุกแบรนด์</option>
+              </select>
+
+              {/* 3. ตัวกรองสาขา */}
+              <select
+                value={filters.branchId}
+                onChange={(e) => {
+                  const val = e.target.value
+                  const bId = val === 'ALL' ? 'ALL' : Number(val)
+                  setSelectedBranch(bId)
+                  setFilters(p => ({ ...p, branchId: bId }))
+                }}
+                aria-label="เลือกสาขา"
+                className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100 shadow-xs cursor-pointer transition-colors hover:border-slate-300 max-w-[200px]"
+              >
+                <option value="ALL">🏢 ดูรวมทุกสาขาทั่วประเทศ</option>
+                {branches.map(b => (
+                  <option key={b.id} value={b.id}>
+                    {b.branch_name}
+                  </option>
+                ))}
+              </select>
+
+              {/* 4. ตัวกรองสถานะใบขาย */}
+              <select
+                value={filters.status}
+                onChange={(e) => setFilters(p => ({ ...p, status: e.target.value as any }))}
+                aria-label="เลือกสถานะใบขาย"
+                className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100 shadow-xs cursor-pointer transition-colors hover:border-slate-300"
+              >
+                <option value="COMPLETED">💳 ขายสำเร็จ (Completed)</option>
+                <option value="PENDING">⏳ ยังไม่คิดเงิน (Pending)</option>
+                <option value="CANCELLED">❌ ยกเลิกแล้ว (Cancelled)</option>
+                <option value="ALL">📋 ทุกสถานะ (All)</option>
+              </select>
+
+              {/* 5. ตัวกรองพนักงานขาย (ถ้ามี) */}
+              {uniqueSaleNames.length > 0 && (
                 <select
-                  value={filters.branchId}
-                  onChange={(e) => {
-                    const val = e.target.value
-                    const bId = val === 'ALL' ? 'ALL' : Number(val)
-                    setSelectedBranch(bId)
-                    setFilters(p => ({ ...p, branchId: bId }))
-                  }}
-                  className="w-full pl-10 pr-9 py-2.5 bg-slate-50 hover:bg-slate-100 text-xs font-bold text-slate-700 rounded-2xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all cursor-pointer appearance-none"
+                  value={filters.saleName}
+                  onChange={(e) => setFilters(p => ({ ...p, saleName: e.target.value }))}
+                  aria-label="เลือกพนักงานขาย"
+                  className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100 shadow-xs cursor-pointer transition-colors hover:border-slate-300 max-w-[160px]"
                 >
-                  <option value="ALL">ดูรวมทุกสาขาทั่วประเทศ</option>
-                  {branches.map(b => (
-                    <option key={b.id} value={b.id}>
-                      {b.branch_name}
+                  <option value="ALL">👤 พนักงานขายทั้งหมด ({uniqueSaleNames.length})</option>
+                  {uniqueSaleNames.map(name => (
+                    <option key={name} value={name}>{name}</option>
+                  ))}
+                </select>
+              )}
+
+              {/* 6. ตัวกรองรหัสหน้า 4 ตัว (ถ้ามี) */}
+              {uniquePrefixes.length > 0 && (
+                <select
+                  value={filters.orderCodePrefix || 'ALL'}
+                  onChange={(e) => setFilters(p => ({ ...p, orderCodePrefix: e.target.value === 'ALL' ? '' : e.target.value }))}
+                  aria-label="เลือกรหัสหน้า 4 ตัว"
+                  className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100 shadow-xs cursor-pointer transition-colors hover:border-slate-300 max-w-[150px]"
+                >
+                  <option value="ALL">🏷️ รหัสหน้าทั้งหมด ({uniquePrefixes.length})</option>
+                  {uniquePrefixes.map(item => (
+                    <option key={item.prefix} value={item.prefix}>
+                      {item.prefix} ({item.count})
                     </option>
                   ))}
                 </select>
-                <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-              </div>
+              )}
 
-              {/* ช่องค้นหา */}
-              <div className="relative min-w-[240px] sm:w-72">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              {/* 7. ช่องค้นหา */}
+              <div className="relative min-w-[190px] max-w-xs">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   type="text"
-                  placeholder="ค้นหาเลขใบขาย, ลูกค้า, สาขา..."
+                  placeholder="ค้นหาเลขบิล, ลูกค้า..."
                   value={filters.search}
                   onChange={(e) => setFilters(p => ({ ...p, search: e.target.value }))}
-                  className="w-full pl-10 pr-4 py-2.5 bg-slate-50 hover:bg-slate-100 focus:bg-white text-xs font-semibold text-slate-700 rounded-2xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                  className="w-full pl-8 pr-7 py-2 bg-slate-50 hover:bg-slate-100 focus:bg-white text-xs font-semibold text-slate-700 rounded-xl border border-slate-200 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100 shadow-xs transition-all placeholder:text-slate-400"
                 />
+                {filters.search && (
+                  <button
+                    type="button"
+                    onClick={() => setFilters(p => ({ ...p, search: '' }))}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs cursor-pointer"
+                  >
+                    ✕
+                  </button>
+                )}
               </div>
             </div>
           </div>
 
-          {/* แถวล่าง: แถบเลื่อนวันเดือน + เซลส์ + รหัสหน้า 4 ตัว + พรีเซ็ต + ป้ายตัวกรอง */}
+          {/* แถบล่าง: ป้ายตัวกรองที่เลือก (Active Filter Badges) + จำนวนรายการที่พบ */}
           {!showHidden && (
-            <div className="border-t border-slate-100 pt-3 space-y-2">
-              <QuickDateSliderBar
-                filters={filters}
-                onChange={setFilters}
-                onResetAll={handleResetAllFilters}
-                totalResults={filteredSales.length}
-                saleNames={uniqueSaleNames}
-                orderPrefixes={uniquePrefixes}
-              />
+            <div className="border-t border-slate-100 pt-2.5 flex items-center justify-between gap-2 flex-wrap">
               <ActiveFilterBadges
                 filters={filters}
                 branches={branches}
                 onChange={setFilters}
                 onResetAll={handleResetAllFilters}
               />
+              <div className="text-[11px] font-bold text-slate-400 ml-auto">
+                พบ {filteredSales.length.toLocaleString()} รายการ
+              </div>
             </div>
           )}
         </div>

@@ -160,7 +160,7 @@ export const initialSalesFilters: SalesFilters = {
     endDate: '',
   },
   createdDate: {
-    mode: 'MONTH',
+    mode: 'ALL',
     month: getCurrentThaiMonthString(),
     day: getTodayThaiString(),
     startDate: '',
@@ -307,13 +307,13 @@ export function filterSalesOrder(order: any, filters: SalesFilters): boolean {
   if (filters.dropShip === 'HAS_DROPSHIP' && (!order.otherBranchRevenue || order.otherBranchRevenue <= 0)) return false
   if (filters.dropShip === 'NO_DROPSHIP' && order.otherBranchRevenue && order.otherBranchRevenue > 0) return false
 
-  // Date filters
-  // 1) Completed Date
-  const closedAt = order.completedAt || order.discountSnapshot?.completed_at || ((order.status === 'COMPLETED' || order.status === 'PROCESSING') ? order.createdAt : null)
-  if (!matchDate(closedAt, filters.completedDate)) return false
-
-  // 2) Created Date
-  if (!matchDate(order.createdAt, filters.createdDate)) return false
+  // Date filters: กรองตาม activeDateField เท่านั้น เพื่อไม่ให้ 2 วันที่ชนกันจนข้อมูลหาย
+  if (filters.activeDateField === 'completedAt') {
+    const closedAt = order.completedAt || order.discountSnapshot?.completed_at || ((order.status === 'COMPLETED' || order.status === 'PROCESSING') ? order.createdAt : null)
+    if (!matchDate(closedAt, filters.completedDate)) return false
+  } else {
+    if (!matchDate(order.createdAt, filters.createdDate)) return false
+  }
 
   // Amounts
   if (filters.minSubtotal && order.subtotal < Number(filters.minSubtotal)) return false
@@ -738,36 +738,46 @@ export function ActiveFilterBadges({
 }) {
   const pills: { key: string; label: string; onRemove: () => void }[] = []
 
-  // Completed Date
-  if (filters.completedDate.mode !== 'ALL') {
-    let text = ''
-    if (filters.completedDate.mode === 'MONTH') text = formatThaiMonth(filters.completedDate.month)
-    else if (filters.completedDate.mode === 'DAY') text = formatThaiDateShort(filters.completedDate.day)
-    else if (filters.completedDate.mode === 'TODAY') text = 'วันนี้'
-    else if (filters.completedDate.mode === 'YESTERDAY') text = 'เมื่อวาน'
-    else if (filters.completedDate.mode === 'LAST_7_DAYS') text = '7 วันล่าสุด'
-    else if (filters.completedDate.mode === 'LAST_MONTH') text = 'เดือนที่แล้ว'
-    else if (filters.completedDate.mode === 'RANGE') text = `${filters.completedDate.startDate} ถึง ${filters.completedDate.endDate}`
+  // Search query
+  if (filters.search) {
     pills.push({
-      key: 'completedDate',
-      label: `วันขายจริง: ${text}`,
-      onRemove: () => onChange(p => ({ ...p, completedDate: createDefaultDateConfig() })),
+      key: 'search',
+      label: `ค้นหา: "${filters.search}"`,
+      onRemove: () => onChange(p => ({ ...p, search: '' })),
     })
   }
 
-  // Created Date
-  if (filters.createdDate.mode !== 'ALL') {
-    let text = ''
-    if (filters.createdDate.mode === 'MONTH') text = formatThaiMonth(filters.createdDate.month)
-    else if (filters.createdDate.mode === 'DAY') text = formatThaiDateShort(filters.createdDate.day)
-    else if (filters.createdDate.mode === 'TODAY') text = 'วันนี้'
-    else if (filters.createdDate.mode === 'RANGE') text = `${filters.createdDate.startDate} ถึง ${filters.createdDate.endDate}`
-    else text = filters.createdDate.mode
-    pills.push({
-      key: 'createdDate',
-      label: `วันเปิดบิล: ${text}`,
-      onRemove: () => onChange(p => ({ ...p, createdDate: createDefaultDateConfig() })),
-    })
+  // Active Date Filter (แสดงเฉพาะฟิลด์ที่กำลังใช้งานจริง ไม่แสดงซ้อนกัน)
+  if (filters.activeDateField === 'completedAt') {
+    if (filters.completedDate.mode !== 'ALL') {
+      let text = ''
+      if (filters.completedDate.mode === 'MONTH') text = formatThaiMonth(filters.completedDate.month)
+      else if (filters.completedDate.mode === 'DAY') text = formatThaiDateShort(filters.completedDate.day)
+      else if (filters.completedDate.mode === 'TODAY') text = 'วันนี้'
+      else if (filters.completedDate.mode === 'YESTERDAY') text = 'เมื่อวาน'
+      else if (filters.completedDate.mode === 'LAST_7_DAYS') text = '7 วันล่าสุด'
+      else if (filters.completedDate.mode === 'LAST_MONTH') text = 'เดือนก่อน'
+      else if (filters.completedDate.mode === 'RANGE') text = `${filters.completedDate.startDate} ถึง ${filters.completedDate.endDate}`
+      pills.push({
+        key: 'completedDate',
+        label: `วันขายจริง: ${text}`,
+        onRemove: () => onChange(p => ({ ...p, completedDate: { ...p.completedDate, mode: 'ALL' } })),
+      })
+    }
+  } else {
+    if (filters.createdDate.mode !== 'ALL') {
+      let text = ''
+      if (filters.createdDate.mode === 'MONTH') text = formatThaiMonth(filters.createdDate.month)
+      else if (filters.createdDate.mode === 'DAY') text = formatThaiDateShort(filters.createdDate.day)
+      else if (filters.createdDate.mode === 'TODAY') text = 'วันนี้'
+      else if (filters.createdDate.mode === 'RANGE') text = `${filters.createdDate.startDate} ถึง ${filters.createdDate.endDate}`
+      else text = filters.createdDate.mode
+      pills.push({
+        key: 'createdDate',
+        label: `วันเปิดบิล: ${text}`,
+        onRemove: () => onChange(p => ({ ...p, createdDate: { ...p.createdDate, mode: 'ALL' } })),
+      })
+    }
   }
 
   // Brand (TERRA, ZENSLAB, EMBER_ASH)
