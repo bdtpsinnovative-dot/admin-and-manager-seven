@@ -5,6 +5,11 @@ import { resolveCategoryInfo } from "../lib/propFilterModel"
 import { type DashboardBrandKey, isMatchingBrand } from "../lib/dashboardBrand"
 import { parseDashboardBranchIds } from "../lib/dashboardBranch"
 import { getCachedProductsMapByIds } from "@/lib/cached-product-lookup"
+import {
+  type DamageReasonCategory,
+  type DashboardDamageCategoryStats,
+  classifyDamageReason,
+} from "@/lib/damage-classification"
 
 export type { DashboardBrandKey } from "../lib/dashboardBrand"
 
@@ -160,6 +165,7 @@ export interface DashboardDamageItem {
   productImageUrl?: string
   qty: number
   reason: string
+  category: DamageReasonCategory
   branchId: number
   branchName: string
   cost: number
@@ -177,6 +183,12 @@ export interface DashboardDamageSummary {
   totalCostValue: number
   totalRetailValue: number
   items: DashboardDamageItem[]
+  actualBroken: DashboardDamageCategoryStats
+  duplicateStock: DashboardDamageCategoryStats
+  factoryOut: DashboardDamageCategoryStats
+  staffGift: DashboardDamageCategoryStats
+  other: DashboardDamageCategoryStats
+  nonDamageAdjustment: DashboardDamageCategoryStats
 }
 
 export interface DashboardDayOrder {
@@ -284,6 +296,12 @@ const emptyDashboard = (error: string | null = null): DashboardData => ({
     totalCostValue: 0,
     totalRetailValue: 0,
     items: [],
+    actualBroken: { qty: 0, cost: 0, retail: 0, recordCount: 0 },
+    duplicateStock: { qty: 0, cost: 0, retail: 0, recordCount: 0 },
+    factoryOut: { qty: 0, cost: 0, retail: 0, recordCount: 0 },
+    staffGift: { qty: 0, cost: 0, retail: 0, recordCount: 0 },
+    other: { qty: 0, cost: 0, retail: 0, recordCount: 0 },
+    nonDamageAdjustment: { qty: 0, cost: 0, retail: 0, recordCount: 0 },
   },
   shippingSummary: {
     companyPaidCount: 0,
@@ -1368,6 +1386,14 @@ export async function getDashboardData(
     let damageTotalRetail = 0
     const damageItems: DashboardDamageItem[] = []
 
+    const catStats: Record<DamageReasonCategory, { qty: number; cost: number; retail: number; recordCount: number }> = {
+      actual_broken: { qty: 0, cost: 0, retail: 0, recordCount: 0 },
+      duplicate_stock: { qty: 0, cost: 0, retail: 0, recordCount: 0 },
+      factory_out: { qty: 0, cost: 0, retail: 0, recordCount: 0 },
+      staff_gift: { qty: 0, cost: 0, retail: 0, recordCount: 0 },
+      other: { qty: 0, cost: 0, retail: 0, recordCount: 0 },
+    }
+
     for (const item of (damageRecords || [])) {
       const product = ((item as any).product_id ? productMetaMap.get((item as any).product_id) : undefined) ||
         (Array.isArray((item as any).products) ? (item as any).products[0] : (item as any).products)
@@ -1388,6 +1414,14 @@ export async function getDashboardData(
       damageTotalRetail += totalRetail
       damageTotalCost += totalCost
 
+      const reason = (item.reason || '').trim() || 'ไม่ระบุสาเหตุ'
+      const category = classifyDamageReason(reason)
+
+      catStats[category].qty += q
+      catStats[category].cost += totalCost
+      catStats[category].retail += totalRetail
+      catStats[category].recordCount += 1
+
       damageItems.push({
         id: item.id,
         productId: (product as any)?.id ?? (item as any).product_id,
@@ -1396,7 +1430,8 @@ export async function getDashboardData(
         productBarcode: (product as any)?.barcode || undefined,
         productImageUrl: (product as any)?.image_url || undefined,
         qty: q,
-        reason: (item.reason || '').trim() || 'ไม่ระบุสาเหตุ',
+        reason,
+        category,
         branchId: item.branch_id,
         branchName: (item.branches as any)?.branch_name || `สาขา ${item.branch_id}`,
         cost,
@@ -1409,12 +1444,69 @@ export async function getDashboardData(
       })
     }
 
+    const nonDamageQty =
+      catStats.duplicate_stock.qty +
+      catStats.factory_out.qty +
+      catStats.staff_gift.qty +
+      catStats.other.qty
+    const nonDamageCost =
+      catStats.duplicate_stock.cost +
+      catStats.factory_out.cost +
+      catStats.staff_gift.cost +
+      catStats.other.cost
+    const nonDamageRetail =
+      catStats.duplicate_stock.retail +
+      catStats.factory_out.retail +
+      catStats.staff_gift.retail +
+      catStats.other.retail
+    const nonDamageRecords =
+      catStats.duplicate_stock.recordCount +
+      catStats.factory_out.recordCount +
+      catStats.staff_gift.recordCount +
+      catStats.other.recordCount
+
     const damageSummary: DashboardDamageSummary = {
       totalQty: damageTotalQty,
       totalRecords: damageItems.length,
       totalCostValue: Math.round(damageTotalCost * 100) / 100,
       totalRetailValue: Math.round(damageTotalRetail * 100) / 100,
       items: damageItems,
+      actualBroken: {
+        qty: catStats.actual_broken.qty,
+        cost: Math.round(catStats.actual_broken.cost * 100) / 100,
+        retail: Math.round(catStats.actual_broken.retail * 100) / 100,
+        recordCount: catStats.actual_broken.recordCount,
+      },
+      duplicateStock: {
+        qty: catStats.duplicate_stock.qty,
+        cost: Math.round(catStats.duplicate_stock.cost * 100) / 100,
+        retail: Math.round(catStats.duplicate_stock.retail * 100) / 100,
+        recordCount: catStats.duplicate_stock.recordCount,
+      },
+      factoryOut: {
+        qty: catStats.factory_out.qty,
+        cost: Math.round(catStats.factory_out.cost * 100) / 100,
+        retail: Math.round(catStats.factory_out.retail * 100) / 100,
+        recordCount: catStats.factory_out.recordCount,
+      },
+      staffGift: {
+        qty: catStats.staff_gift.qty,
+        cost: Math.round(catStats.staff_gift.cost * 100) / 100,
+        retail: Math.round(catStats.staff_gift.retail * 100) / 100,
+        recordCount: catStats.staff_gift.recordCount,
+      },
+      other: {
+        qty: catStats.other.qty,
+        cost: Math.round(catStats.other.cost * 100) / 100,
+        retail: Math.round(catStats.other.retail * 100) / 100,
+        recordCount: catStats.other.recordCount,
+      },
+      nonDamageAdjustment: {
+        qty: nonDamageQty,
+        cost: Math.round(nonDamageCost * 100) / 100,
+        retail: Math.round(nonDamageRetail * 100) / 100,
+        recordCount: nonDamageRecords,
+      },
     }
 
     const totalBrandNetBeforeVat =
