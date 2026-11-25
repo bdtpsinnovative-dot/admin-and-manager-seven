@@ -309,8 +309,12 @@ export function filterSalesOrder(order: any, filters: SalesFilters): boolean {
 
   // Date filters: กรองตาม activeDateField เท่านั้น เพื่อไม่ให้ 2 วันที่ชนกันจนข้อมูลหาย
   if (filters.activeDateField === 'completedAt') {
-    const closedAt = order.completedAt || order.discountSnapshot?.completed_at || ((order.status === 'COMPLETED' || order.status === 'PROCESSING') ? order.createdAt : null)
-    if (!matchDate(closedAt, filters.completedDate)) return false
+    // 🌟 สำหรับบิลขายสำเร็จ (COMPLETED / PROCESSING): ใช้วันที่ปิดบิล/ชำระเงินจริง
+    // 🌟 สำหรับบิลที่ยังไม่คิดเงิน (PENDING) หรือยกเลิก (CANCELLED): เนื่องจากยังไม่มีวันปิดบิล ให้ใช้วันที่เปิดบิล (createdAt / effectiveDate) ในการกรองตามช่วงเวลา เพื่อไม่ให้บิลค้างในรอบเวลานั้นหลุดหาย
+    const targetDate = (order.status === 'COMPLETED' || order.status === 'PROCESSING')
+      ? (order.completedAt || order.discountSnapshot?.completed_at || order.createdAt)
+      : (order.effectiveDate || order.createdAt)
+    if (!matchDate(targetDate, filters.completedDate)) return false
   } else {
     if (!matchDate(order.createdAt, filters.createdDate)) return false
   }

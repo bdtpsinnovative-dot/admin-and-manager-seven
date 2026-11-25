@@ -426,9 +426,6 @@ export async function getDashboardData(
     // กำหนด date range เฉพาะเมื่อมีการระบุ dateFrom และ dateTo (ถ้าไม่ระบุ หรือส่ง "ALL" หมายถึง ทุกช่วงเวลา)
     const isAllTime = !dateFrom || dateFrom === "ALL"
     if (!isAllTime && dateTo) {
-      ordersQuery = ordersQuery
-        .gte("created_at", dateFrom)
-        .lte("created_at", dateTo)
       damageQuery = damageQuery
         .gte("created_at", dateFrom)
         .lte("created_at", dateTo)
@@ -679,6 +676,30 @@ export async function getDashboardData(
       const isCancelled = status === "CANCELLED"
       const isPending = status === "PENDING"
       const isCompleted = status === "COMPLETED" || status === "PROCESSING"
+
+      // 🌟 คำนวณวันขายจริง (ปิดบิล) vs วันเปิดบิล
+      let snapCompletedAt: string | null = null
+      if (order.discount_snapshot) {
+        const snap = typeof order.discount_snapshot === "string"
+          ? (() => { try { return JSON.parse(order.discount_snapshot) } catch { return {} } })()
+          : order.discount_snapshot
+        snapCompletedAt = snap?.completed_at || null
+      }
+      const isPaid = status === "COMPLETED" || status === "PROCESSING"
+      const completedAt = snapCompletedAt || (isPaid ? order.created_at : null)
+      // 🌟 ยอดขายบน Dashboard ยึดตาม "วันขายจริง (ปิดบิล)" เป็นหลัก 100%
+      // บิลขายสำเร็จจะใช้วันปิดบิล (completedAt) ส่วนบิลค้าง (PENDING) หรือยกเลิก จะใช้วันเปิดบิล (created_at)
+      const effectiveOrderDate = isPaid && completedAt ? completedAt : order.created_at
+
+      // ตรวจสอบช่วงเวลา (dateFrom, dateTo) ด้วย effectiveOrderDate
+      if (!isAllTime && dateFrom && dateTo) {
+        const effTime = new Date(effectiveOrderDate).getTime()
+        const fromTime = new Date(dateFrom).getTime()
+        const toTime = new Date(dateTo).getTime()
+        if (effTime < fromTime || effTime > toTime) {
+          return // ข้ามออเดอร์นี้เพราะไม่อยู่ในช่วงเวลาที่เลือก
+        }
+      }
       // คำนวณ VAT 7% จากยอดสุทธิ (ถ้าระบุ vat_amount > 0 ให้ใช้ค่านั้น หรือคำนวณตามสูตร Included VAT 7%: total - total/1.07)
       const orderVat = Number(order.vat_amount) > 0
         ? Number(order.vat_amount)
@@ -795,8 +816,8 @@ export async function getDashboardData(
           current.vatAmount += itemVat
           current.sales += itemNet
           current.billCount += 1
-          if (!current.lastSaleAt || new Date(order.created_at) > new Date(current.lastSaleAt)) {
-            current.lastSaleAt = order.created_at
+          if (!current.lastSaleAt || new Date(effectiveOrderDate) > new Date(current.lastSaleAt)) {
+            current.lastSaleAt = effectiveOrderDate
           }
 
           // 🏢 บันทึกสถิติแยกตามแบรนด์
@@ -924,8 +945,8 @@ export async function getDashboardData(
             branch.totalVat += effVat
             branch.netBeforeVat += effNetBeforeVat
           }
-          if (!branch.lastSaleAt || new Date(order.created_at) > new Date(branch.lastSaleAt)) {
-            branch.lastSaleAt = order.created_at
+          if (!branch.lastSaleAt || new Date(effectiveOrderDate) > new Date(branch.lastSaleAt)) {
+            branch.lastSaleAt = effectiveOrderDate
           }
         }
 
@@ -989,7 +1010,7 @@ export async function getDashboardData(
             includedNet += effNetBeforeVat
           }
 
-          const orderDate = new Date(order.created_at)
+          const orderDate = new Date(effectiveOrderDate)
           const bangkokDateStr = orderDate.toLocaleDateString("sv-SE", { timeZone: "Asia/Bangkok" })
           const [oYear, oMonth, oDay] = bangkokDateStr.split("-").map(Number)
           const oMonthKey = `${oYear}-${String(oMonth).padStart(2, "0")}`
@@ -1051,7 +1072,7 @@ export async function getDashboardData(
           }
 
           // บันทึกข้อมูลเพื่อใช้คำนวณกราฟแนวโน้มยอดขายตามช่วงเวลา (Sales Trend)
-          const bkk = new Date(new Date(order.created_at).getTime() + 7 * 3600 * 1000)
+          const bkk = new Date(new Date(effectiveOrderDate).getTime() + 7 * 3600 * 1000)
           const bkkYear = bkk.getUTCFullYear()
           const bkkMonth = bkk.getUTCMonth() + 1
           const bkkDay = bkk.getUTCDate()
