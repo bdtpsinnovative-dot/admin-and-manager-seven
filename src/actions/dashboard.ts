@@ -234,10 +234,23 @@ export interface DashboardData {
     billCount: number
     cancelledCount: number
     cancelledSales: number
+    cancelledGrossSales?: number
+    cancelledDiscount?: number
+    cancelledVat?: number
+    cancelledNetBeforeVat?: number
+    cancelledBranchCount?: number
     pendingCount: number
     pendingSales: number
+    pendingGrossSales?: number
+    pendingDiscount?: number
+    pendingVat?: number
+    pendingNetBeforeVat?: number
+    pendingBranchCount?: number
     dropShipCount: number
     dropShipSales: number
+    dropShipGrossSales?: number
+    dropShipDiscount?: number
+    dropShipBranchCount?: number
     branchCount: number
   }
   brandSummaries: DashboardBrandSummary[]
@@ -462,10 +475,26 @@ export async function getDashboardData(
     let billCount = 0
     let cancelledCount = 0
     let cancelledSales = 0
+    let cancelledGrossSales = 0
+    let cancelledDiscount = 0
+    let cancelledVat = 0
+    let cancelledNetBeforeVat = 0
+    const cancelledBranchSet = new Set<number>()
+
     let pendingCount = 0
     let pendingSales = 0
+    let pendingGrossSales = 0
+    let pendingDiscount = 0
+    let pendingVat = 0
+    let pendingNetBeforeVat = 0
+    const pendingBranchSet = new Set<number>()
+
     let dropShipCount = 0
     let dropShipSales = 0
+    let dropShipGrossSales = 0
+    let dropShipDiscount = 0
+    const dropShipBranchSet = new Set<number>()
+
     let companyPaidCount = 0
     let companyPaidTotal = 0
     let customerPaidCount = 0
@@ -886,14 +915,27 @@ export async function getDashboardData(
         if (!isCancelled && effDropShip > 0) {
           dropShipCount += 1
           dropShipSales += effDropShip
+          dropShipGrossSales += effGross
+          dropShipDiscount += effDiscount
+          if (order.branch_id) dropShipBranchSet.add(order.branch_id)
         }
 
         if (isCancelled) {
           cancelledCount += 1
           cancelledSales += effNet > 0 ? effNet : effGross
+          cancelledGrossSales += effGross
+          cancelledDiscount += effDiscount
+          cancelledVat += effVat
+          cancelledNetBeforeVat += effNetBeforeVat
+          if (order.branch_id) cancelledBranchSet.add(order.branch_id)
         } else if (isPending) {
           pendingCount += 1
           pendingSales += effNet > 0 ? effNet : effGross
+          pendingGrossSales += effGross
+          pendingDiscount += effDiscount
+          pendingVat += effVat
+          pendingNetBeforeVat += effNetBeforeVat
+          if (order.branch_id) pendingBranchSet.add(order.branch_id)
         } else {
           billCount += 1
           grossSales += effGross
@@ -1506,10 +1548,23 @@ export async function getDashboardData(
         billCount,
         cancelledCount,
         cancelledSales,
+        cancelledGrossSales: Math.round(cancelledGrossSales * 100) / 100,
+        cancelledDiscount: Math.round(cancelledDiscount * 100) / 100,
+        cancelledVat: Math.round(cancelledVat * 100) / 100,
+        cancelledNetBeforeVat: Math.round(cancelledNetBeforeVat * 100) / 100,
+        cancelledBranchCount: cancelledBranchSet.size,
         pendingCount,
         pendingSales: Math.round(pendingSales * 100) / 100,
+        pendingGrossSales: Math.round(pendingGrossSales * 100) / 100,
+        pendingDiscount: Math.round(pendingDiscount * 100) / 100,
+        pendingVat: Math.round(pendingVat * 100) / 100,
+        pendingNetBeforeVat: Math.round(pendingNetBeforeVat * 100) / 100,
+        pendingBranchCount: pendingBranchSet.size,
         dropShipCount,
         dropShipSales: Math.round(dropShipSales * 100) / 100,
+        dropShipGrossSales: Math.round(dropShipGrossSales * 100) / 100,
+        dropShipDiscount: Math.round(dropShipDiscount * 100) / 100,
+        dropShipBranchCount: dropShipBranchSet.size,
         branchCount: isAllCategory && (!selectedBrand || selectedBrand === "ALL")
           ? branchMap.size
           : Array.from(branchMap.values()).filter((b) => b.billCount > 0).length,

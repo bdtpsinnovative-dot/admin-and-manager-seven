@@ -17,6 +17,8 @@ import {
   TrendingUp,
   XCircle,
   Trash2,
+  Clock,
+  Truck,
 } from "lucide-react"
 import {
   getDashboardData,
@@ -374,78 +376,440 @@ export default async function DashboardPage({
           </div>
         )}
 
-        {/* --- ส่วนที่ 1: การ์ดสรุปการเงินหลัก (Financial Overview) 3 ใบใหญ่ ชัดเจน อ่านง่าย ไม่แสดงสมการ --- */}
+        {/* --- ส่วนที่ 1: การ์ดสรุปการเงินและสถานะ (ปรับเปลี่ยนตามฟิลเตอร์สถานะที่เลือกอย่างแม่นยำ ไม่ล็อค) --- */}
         <div className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            
-            {/* 1. ยอดเรียกเก็บลูกค้าทั้งหมด */}
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm hover:shadow-md transition-all flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                    {scopeLabel ? `ยอดรับชำระ (${scopeLabel})` : "ยอดรับชำระจากลูกค้าทั้งหมด"}
-                  </span>
-                  <div className="p-2.5 rounded-xl bg-blue-50 text-blue-600">
-                    <CreditCard className="w-5 h-5" />
-                  </div>
-                </div>
-                <div className="text-3xl sm:text-4xl font-black text-slate-800 tracking-tight">
-                  ฿{money(data.summary.netSales)}
-                </div>
-                <p className="mt-1 text-xs text-slate-400">
-                  {scopeLabel
-                    ? `ยอดรวมรับจริงจากสินค้า${scopeLabel}`
-                    : "ยอดรวมเงินสดและเงินโอนที่รับจริงจากลูกค้า"}
-                </p>
-              </div>
-              <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
-                <span className="text-slate-500">จำนวนบิลที่รับเงิน</span>
-                <span className="font-bold text-slate-700">{data.summary.billCount.toLocaleString()} บิล</span>
-              </div>
-            </div>
 
-            {/* 2. ภาษีมูลค่าเพิ่ม VAT 7% (คลิกเพื่อเปิด Modal แจกแจงแบบไดนามิก) */}
-            <DashboardVatCard
-              totalVat={data.summary.totalVat}
-              vatBreakdown={data.vatBreakdown}
-            />
-
-            {/* 3. เงินที่ได้จริงเข้าร้าน (หัก VAT แล้ว) - สว่าง คลีน สะอาดตา */}
-            <div className="rounded-2xl border border-emerald-200 bg-emerald-50/40 p-6 shadow-sm hover:shadow-md transition-all flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-xs font-bold uppercase tracking-wider text-emerald-800">
-                    {scopeLabel ? `เงินเข้าร้าน (${scopeLabel})` : "เงินแท้จริงเข้าร้าน (หัก VAT แล้ว)"}
-                  </span>
-                  <div className="p-2.5 rounded-xl bg-emerald-100 text-emerald-600">
+          {/* 🌟 เมื่อดูทุกสถานะ: แสดงบล็อกภาพรวม 4 สถานะหลักให้เห็นยอดครบถ้วนและคลิกสลับดูได้ทันที */}
+          {selectedStatus === "ALL" && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* 1. ขายสำเร็จ */}
+              <Link
+                href={buildDashboardUrl({ status: "COMPLETED" })}
+                className="rounded-2xl border border-emerald-200 bg-white p-4 shadow-sm hover:shadow-md hover:border-emerald-400 transition-all flex items-center justify-between group cursor-pointer"
+                title="คลิกเพื่อดูเฉพาะรายการขายสำเร็จ"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center group-hover:scale-105 transition-transform">
                     <CheckCircle2 className="w-5 h-5" />
                   </div>
+                  <div>
+                    <p className="text-xs font-bold text-slate-500">ขายสำเร็จ (Completed)</p>
+                    <p className="text-lg font-black text-slate-800 tracking-tight">฿{money(data.summary.netSales)}</p>
+                  </div>
                 </div>
-                <div className="text-3xl sm:text-4xl font-black text-emerald-700 tracking-tight">
-                  ฿{money(data.summary.netSalesBeforeVat)}
+                <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">
+                  {data.summary.billCount} บิล
+                </span>
+              </Link>
+
+              {/* 2. ยอดยังไม่คิดเงิน */}
+              <Link
+                href={buildDashboardUrl({ status: "PENDING" })}
+                className="rounded-2xl border border-amber-200 bg-white p-4 shadow-sm hover:shadow-md hover:border-amber-400 transition-all flex items-center justify-between group cursor-pointer"
+                title="คลิกเพื่อดูเฉพาะยอดยังไม่คิดเงิน / รอจัดส่ง"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center group-hover:scale-105 transition-transform">
+                    <Clock className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-slate-500">ยอดยังไม่คิดเงิน / รอจัดส่ง</p>
+                    <p className="text-lg font-black text-amber-700 tracking-tight">฿{money(data.summary.pendingSales)}</p>
+                  </div>
                 </div>
-                <p className="mt-1 text-xs text-emerald-600/90">
-                  {scopeLabel
-                    ? `รายรับสุทธิของ${scopeLabel} หลังหักภาษี`
-                    : "รายรับสุทธิที่ร้านค้าได้รับจริงเป็นต้นทุนและกำไร"}
-                </p>
-              </div>
-              <div className="mt-4 pt-3 border-t border-emerald-200/60 flex items-center justify-between text-xs">
-                <span className="text-emerald-700">สถานะเงิน</span>
-                <span className="font-bold text-emerald-700">รายรับสุทธิร้านค้า</span>
-              </div>
+                <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800">
+                  {data.summary.pendingCount} บิล
+                </span>
+              </Link>
+
+              {/* 3. จัดส่งข้ามสาขา */}
+              <Link
+                href={buildDashboardUrl({ status: "DROPSHIP" })}
+                className="rounded-2xl border border-orange-200 bg-white p-4 shadow-sm hover:shadow-md hover:border-orange-400 transition-all flex items-center justify-between group cursor-pointer"
+                title="คลิกเพื่อดูเฉพาะบิลจัดส่งข้ามสาขา"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center group-hover:scale-105 transition-transform">
+                    <Truck className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-slate-500">ยอดจัดส่งข้ามสาขา</p>
+                    <p className="text-lg font-black text-orange-700 tracking-tight">฿{money(data.summary.dropShipSales)}</p>
+                  </div>
+                </div>
+                <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-orange-100 text-orange-800">
+                  {data.summary.dropShipCount} บิล
+                </span>
+              </Link>
+
+              {/* 4. บิลยกเลิก */}
+              <Link
+                href={buildDashboardUrl({ status: "CANCELLED" })}
+                className="rounded-2xl border border-rose-200 bg-white p-4 shadow-sm hover:shadow-md hover:border-rose-400 transition-all flex items-center justify-between group cursor-pointer"
+                title="คลิกเพื่อดูเฉพาะบิลยกเลิก"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center group-hover:scale-105 transition-transform">
+                    <XCircle className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-slate-500">บิลยกเลิก (Cancelled)</p>
+                    <p className="text-lg font-black text-rose-600 tracking-tight">฿{money(data.summary.cancelledSales)}</p>
+                  </div>
+                </div>
+                <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-100 text-rose-800">
+                  {data.summary.cancelledCount} บิล
+                </span>
+              </Link>
             </div>
+          )}
+
+          {/* 🏷️ แถบแจ้งเตือนสถานะที่กำลังกรองอยู่ */}
+          {selectedStatus !== "ALL" && (
+            <div className={`p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-xs ${
+              selectedStatus === "PENDING"
+                ? "bg-amber-50/90 border-amber-200 text-amber-900"
+                : selectedStatus === "DROPSHIP"
+                ? "bg-orange-50/90 border-orange-200 text-orange-900"
+                : selectedStatus === "CANCELLED"
+                ? "bg-rose-50/90 border-rose-200 text-rose-900"
+                : "bg-emerald-50/90 border-emerald-200 text-emerald-900"
+            }`}>
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                  selectedStatus === "PENDING"
+                    ? "bg-amber-100 text-amber-700"
+                    : selectedStatus === "DROPSHIP"
+                    ? "bg-orange-100 text-orange-700"
+                    : selectedStatus === "CANCELLED"
+                    ? "bg-rose-100 text-rose-700"
+                    : "bg-emerald-100 text-emerald-700"
+                }`}>
+                  {selectedStatus === "PENDING" && <Clock className="w-5 h-5" />}
+                  {selectedStatus === "DROPSHIP" && <Truck className="w-5 h-5" />}
+                  {selectedStatus === "CANCELLED" && <XCircle className="w-5 h-5" />}
+                  {selectedStatus === "COMPLETED" && <CheckCircle2 className="w-5 h-5" />}
+                </div>
+                <div>
+                  <p className="font-bold text-sm">
+                    กำลังแสดงบล็อกและรายการบิล: {
+                      selectedStatus === "PENDING" ? `ยอดยังไม่คิดเงิน / รอจัดส่ง (${data.summary.pendingCount} บิล • รวม ฿${money(data.summary.pendingSales)})` :
+                      selectedStatus === "DROPSHIP" ? `ยอดจัดส่งข้ามสาขา (${data.summary.dropShipCount} บิล • รวม ฿${money(data.summary.dropShipSales)})` :
+                      selectedStatus === "CANCELLED" ? `บิลยกเลิก (${data.summary.cancelledCount} บิล • รวม ฿${money(data.summary.cancelledSales)})` :
+                      `ขายสำเร็จ (${data.summary.billCount} บิล • รวม ฿${money(data.summary.netSales)})`
+                    }
+                  </p>
+                  <p className="text-xs opacity-80 mt-0.5">
+                    บล็อกข้อมูลและสถิติต่างๆ ถูกปรับเปลี่ยนให้แสดงเฉพาะยอดของสถานะนี้โดยตรง
+                  </p>
+                </div>
+              </div>
+              <Link
+                href={clearStatusUrl}
+                className="self-start sm:self-center px-3 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 shadow-2xs transition-colors shrink-0 flex items-center gap-1.5 cursor-pointer"
+              >
+                <span>✕ ปิดตัวกรอง / ดูทุกสถานะ</span>
+              </Link>
+            </div>
+          )}
+
+          {/* การ์ดสรุปการเงิน 3 ใบใหญ่: ปรับเปลี่ยนตามสถานะที่เลือก ไม่ล็อค */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {selectedStatus === "PENDING" ? (
+              <>
+                {/* 1. ยอดยังไม่คิดเงิน */}
+                <div className="rounded-2xl border border-amber-300 bg-amber-50/50 p-6 shadow-sm hover:shadow-md transition-all flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-xs font-bold uppercase tracking-wider text-amber-800">
+                        {scopeLabel ? `ยอดยังไม่คิดเงิน (${scopeLabel})` : "ยอดยังไม่คิดเงิน / รอจัดส่ง (Pending)"}
+                      </span>
+                      <div className="p-2.5 rounded-xl bg-amber-100 text-amber-600">
+                        <Clock className="w-5 h-5" />
+                      </div>
+                    </div>
+                    <div className="text-3xl sm:text-4xl font-black text-amber-800 tracking-tight">
+                      ฿{money(data.summary.pendingSales)}
+                    </div>
+                    <p className="mt-1 text-xs text-amber-700/80">
+                      ยอดรวมใบเสนอราคา/ออเดอร์ที่ยังไม่ยืนยันชำระเงิน
+                    </p>
+                  </div>
+                  <div className="mt-4 pt-3 border-t border-amber-200 flex items-center justify-between text-xs">
+                    <span className="text-amber-700">จำนวนบิลรอดำเนินการ</span>
+                    <span className="font-bold text-amber-900">{data.summary.pendingCount.toLocaleString()} บิล</span>
+                  </div>
+                </div>
+
+                {/* 2. ยอดก่อนลด (Pending) */}
+                <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm hover:shadow-md transition-all flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                        ยอดรวมก่อนลด (Pending)
+                      </span>
+                      <div className="p-2.5 rounded-xl bg-slate-100 text-slate-600">
+                        <ShoppingBag className="w-5 h-5" />
+                      </div>
+                    </div>
+                    <div className="text-3xl sm:text-4xl font-black text-slate-800 tracking-tight">
+                      ฿{money(data.summary.pendingGrossSales || data.summary.pendingSales)}
+                    </div>
+                    <p className="mt-1 text-xs text-slate-400">
+                      มูลค่าสินค้าราคาป้ายเต็มก่อนหักส่วนลด
+                    </p>
+                  </div>
+                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+                    <span className="text-slate-500">สถานะ</span>
+                    <span className="font-bold text-amber-600">รอชำระเงิน/ตัดสต็อก</span>
+                  </div>
+                </div>
+
+                {/* 3. ส่วนลดรวม (Pending) */}
+                <div className="rounded-2xl border border-orange-200 bg-white p-6 shadow-sm hover:shadow-md transition-all flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-xs font-bold uppercase tracking-wider text-orange-600">
+                        ส่วนลดรวม (Pending)
+                      </span>
+                      <div className="p-2.5 rounded-xl bg-orange-50 text-orange-600">
+                        <Tag className="w-5 h-5" />
+                      </div>
+                    </div>
+                    <div className="text-3xl sm:text-4xl font-black text-orange-600 tracking-tight">
+                      -฿{money(data.summary.pendingDiscount || 0)}
+                    </div>
+                    <p className="mt-1 text-xs text-slate-400">
+                      ส่วนลดพิเศษ & โปรโมชั่นในบิลรอยังไม่คิดเงิน
+                    </p>
+                  </div>
+                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+                    <span className="text-slate-500">ยอดเฉลี่ยต่อบิล</span>
+                    <span className="font-bold text-slate-700">฿{money(data.summary.pendingCount > 0 ? data.summary.pendingSales / data.summary.pendingCount : 0)}</span>
+                  </div>
+                </div>
+              </>
+            ) : selectedStatus === "CANCELLED" ? (
+              <>
+                {/* 1. มูลค่ายกเลิกรวม */}
+                <div className="rounded-2xl border border-rose-200 bg-rose-50/40 p-6 shadow-sm hover:shadow-md transition-all flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-xs font-bold uppercase tracking-wider text-rose-700">
+                        {scopeLabel ? `มูลค่ายกเลิก (${scopeLabel})` : "มูลค่ายกเลิกรวม (Cancelled)"}
+                      </span>
+                      <div className="p-2.5 rounded-xl bg-rose-100 text-rose-600">
+                        <XCircle className="w-5 h-5" />
+                      </div>
+                    </div>
+                    <div className="text-3xl sm:text-4xl font-black text-rose-600 tracking-tight">
+                      ฿{money(data.summary.cancelledSales)}
+                    </div>
+                    <p className="mt-1 text-xs text-rose-500">
+                      ยอดรวมบิลที่ยกเลิกและคืนสต็อกกลับเข้าคลังแล้ว
+                    </p>
+                  </div>
+                  <div className="mt-4 pt-3 border-t border-rose-200 flex items-center justify-between text-xs">
+                    <span className="text-rose-600">จำนวนบิลที่ยกเลิก</span>
+                    <span className="font-bold text-rose-700">{data.summary.cancelledCount.toLocaleString()} บิล</span>
+                  </div>
+                </div>
+
+                {/* 2. ยอดก่อนลด (Cancelled) */}
+                <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm hover:shadow-md transition-all flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                        ยอดก่อนลด (บิลยกเลิก)
+                      </span>
+                      <div className="p-2.5 rounded-xl bg-slate-100 text-slate-600">
+                        <ShoppingBag className="w-5 h-5" />
+                      </div>
+                    </div>
+                    <div className="text-3xl sm:text-4xl font-black text-slate-800 tracking-tight">
+                      ฿{money(data.summary.cancelledGrossSales || data.summary.cancelledSales)}
+                    </div>
+                    <p className="mt-1 text-xs text-slate-400">
+                      มูลค่าสินค้าราคาป้ายเต็มของบิลที่ยกเลิก
+                    </p>
+                  </div>
+                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+                    <span className="text-slate-500">สถานะ</span>
+                    <span className="font-bold text-rose-600">ยกเลิกแล้ว</span>
+                  </div>
+                </div>
+
+                {/* 3. ส่วนลดที่ถูกยกเลิก */}
+                <div className="rounded-2xl border border-orange-200 bg-white p-6 shadow-sm hover:shadow-md transition-all flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-xs font-bold uppercase tracking-wider text-orange-600">
+                        ส่วนลดที่ยกเลิก
+                      </span>
+                      <div className="p-2.5 rounded-xl bg-orange-50 text-orange-600">
+                        <Tag className="w-5 h-5" />
+                      </div>
+                    </div>
+                    <div className="text-3xl sm:text-4xl font-black text-orange-600 tracking-tight">
+                      -฿{money(data.summary.cancelledDiscount || 0)}
+                    </div>
+                    <p className="mt-1 text-xs text-slate-400">
+                      ส่วนลดที่ไม่ได้ใช้งานเนื่องจากบิลถูกยกเลิก
+                    </p>
+                  </div>
+                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+                    <span className="text-slate-500">เฉลี่ยต่อบิลยกเลิก</span>
+                    <span className="font-bold text-slate-700">฿{money(data.summary.cancelledCount > 0 ? data.summary.cancelledSales / data.summary.cancelledCount : 0)}</span>
+                  </div>
+                </div>
+              </>
+            ) : selectedStatus === "DROPSHIP" ? (
+              <>
+                {/* 1. ยอดจัดส่งข้ามสาขา */}
+                <div className="rounded-2xl border border-orange-200 bg-orange-50/40 p-6 shadow-sm hover:shadow-md transition-all flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-xs font-bold uppercase tracking-wider text-orange-700">
+                        {scopeLabel ? `ยอดข้ามสาขา (${scopeLabel})` : "ยอดจัดส่งข้ามสาขา (Drop Ship)"}
+                      </span>
+                      <div className="p-2.5 rounded-xl bg-orange-100 text-orange-600">
+                        <Truck className="w-5 h-5" />
+                      </div>
+                    </div>
+                    <div className="text-3xl sm:text-4xl font-black text-orange-700 tracking-tight">
+                      ฿{money(data.summary.dropShipSales)}
+                    </div>
+                    <p className="mt-1 text-xs text-orange-600/90">
+                      ยอดขายที่เปิดโดยสาขาหนึ่งและส่งมอบโดยอีกสาขาหนึ่ง
+                    </p>
+                  </div>
+                  <div className="mt-4 pt-3 border-t border-orange-200 flex items-center justify-between text-xs">
+                    <span className="text-orange-700">จำนวนบิลฝากส่ง</span>
+                    <span className="font-bold text-orange-800">{data.summary.dropShipCount.toLocaleString()} บิล</span>
+                  </div>
+                </div>
+
+                {/* 2. ยอดก่อนลด (จัดส่งข้ามสาขา) */}
+                <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm hover:shadow-md transition-all flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                        ยอดก่อนลด (ข้ามสาขา)
+                      </span>
+                      <div className="p-2.5 rounded-xl bg-slate-100 text-slate-600">
+                        <ShoppingBag className="w-5 h-5" />
+                      </div>
+                    </div>
+                    <div className="text-3xl sm:text-4xl font-black text-slate-800 tracking-tight">
+                      ฿{money(data.summary.dropShipGrossSales || data.summary.dropShipSales)}
+                    </div>
+                    <p className="mt-1 text-xs text-slate-400">
+                      มูลค่าสินค้าราคาป้ายเต็มก่อนหักส่วนลด
+                    </p>
+                  </div>
+                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+                    <span className="text-slate-500">ประเภท</span>
+                    <span className="font-bold text-orange-600">DROP SHIP</span>
+                  </div>
+                </div>
+
+                {/* 3. ส่วนลดรวม (จัดส่งข้ามสาขา) */}
+                <div className="rounded-2xl border border-orange-200 bg-white p-6 shadow-sm hover:shadow-md transition-all flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-xs font-bold uppercase tracking-wider text-orange-600">
+                        ส่วนลดรวม (ข้ามสาขา)
+                      </span>
+                      <div className="p-2.5 rounded-xl bg-orange-50 text-orange-600">
+                        <Tag className="w-5 h-5" />
+                      </div>
+                    </div>
+                    <div className="text-3xl sm:text-4xl font-black text-orange-600 tracking-tight">
+                      -฿{money(data.summary.dropShipDiscount || 0)}
+                    </div>
+                    <p className="mt-1 text-xs text-slate-400">
+                      ส่วนลดพิเศษของบิลจัดส่งข้ามสาขา
+                    </p>
+                  </div>
+                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+                    <span className="text-slate-500">ยอดเฉลี่ยต่อบิล</span>
+                    <span className="font-bold text-slate-700">฿{money(data.summary.dropShipCount > 0 ? data.summary.dropShipSales / data.summary.dropShipCount : 0)}</span>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                {/* 1. ยอดเรียกเก็บลูกค้าทั้งหมด (Completed) */}
+                <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm hover:shadow-md transition-all flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                        {scopeLabel ? `ยอดรับชำระ (${scopeLabel})` : "ยอดรับชำระจากลูกค้าทั้งหมด"}
+                      </span>
+                      <div className="p-2.5 rounded-xl bg-blue-50 text-blue-600">
+                        <CreditCard className="w-5 h-5" />
+                      </div>
+                    </div>
+                    <div className="text-3xl sm:text-4xl font-black text-slate-800 tracking-tight">
+                      ฿{money(data.summary.netSales)}
+                    </div>
+                    <p className="mt-1 text-xs text-slate-400">
+                      {scopeLabel
+                        ? `ยอดรวมรับจริงจากสินค้า${scopeLabel}`
+                        : "ยอดรวมเงินสดและเงินโอนที่รับจริงจากลูกค้า"}
+                    </p>
+                  </div>
+                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+                    <span className="text-slate-500">จำนวนบิลที่รับเงิน</span>
+                    <span className="font-bold text-slate-700">{data.summary.billCount.toLocaleString()} บิล</span>
+                  </div>
+                </div>
+
+                {/* 2. ภาษีมูลค่าเพิ่ม VAT 7% (คลิกเพื่อเปิด Modal แจกแจงแบบไดนามิก) */}
+                <DashboardVatCard
+                  totalVat={data.summary.totalVat}
+                  vatBreakdown={data.vatBreakdown}
+                />
+
+                {/* 3. เงินที่ได้จริงเข้าร้าน (หัก VAT แล้ว) - สว่าง คลีน สะอาดตา */}
+                <div className="rounded-2xl border border-emerald-200 bg-emerald-50/40 p-6 shadow-sm hover:shadow-md transition-all flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-xs font-bold uppercase tracking-wider text-emerald-800">
+                        {scopeLabel ? `เงินเข้าร้าน (${scopeLabel})` : "เงินแท้จริงเข้าร้าน (หัก VAT แล้ว)"}
+                      </span>
+                      <div className="p-2.5 rounded-xl bg-emerald-100 text-emerald-600">
+                        <CheckCircle2 className="w-5 h-5" />
+                      </div>
+                    </div>
+                    <div className="text-3xl sm:text-4xl font-black text-emerald-700 tracking-tight">
+                      ฿{money(data.summary.netSalesBeforeVat)}
+                    </div>
+                    <p className="mt-1 text-xs text-emerald-600/90">
+                      {scopeLabel
+                        ? `รายรับสุทธิของ${scopeLabel} หลังหักภาษี`
+                        : "รายรับสุทธิที่ร้านค้าได้รับจริงเป็นต้นทุนและกำไร"}
+                    </p>
+                  </div>
+                  <div className="mt-4 pt-3 border-t border-emerald-200/60 flex items-center justify-between text-xs">
+                    <span className="text-emerald-700">สถานะเงิน</span>
+                    <span className="font-bold text-emerald-700">รายรับสุทธิร้านค้า</span>
+                  </div>
+                </div>
+              </>
+            )}
 
           </div>
 
-          {/* --- ส่วนที่ 2: สถิติการขายและดำเนินงาน 6 ใบ สะอาดตา ไม่รก (คลิกเพื่อฟิลเตอร์ดูบิลได้) --- */}
+          {/* --- ส่วนที่ 2: สถิติการขายและดำเนินงาน 6 ใบ (ปรับเปลี่ยนตามสถานะ ไม่ล็อค) --- */}
           <DashboardOperationsCards
             summary={data.summary}
             damageSummary={data.damageSummary}
             hasBranchFilter={hasBranchFilter}
+            selectedStatus={selectedStatus}
           />
 
-          {/* แสดงตารางรายการบิลเฉพาะตอนที่ผู้ใช้เลือกฟิลเตอร์สถานะจากดรอปดาวน์เท่านั้น (หน้าจอปกติไม่รก 100%) */}
+          {/* แสดงตารางรายการบิลเฉพาะตอนที่ผู้ใช้เลือกฟิลเตอร์สถานะจากดรอปดาวน์เท่านั้น */}
           {selectedStatus !== "ALL" && (
             <DashboardFilteredOrders
               selectedStatus={selectedStatus}
