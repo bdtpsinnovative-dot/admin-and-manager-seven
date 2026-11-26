@@ -274,6 +274,11 @@ export async function markOrderItemsShipped(orderId: number, itemIds: number[], 
   })
   
   const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { success: false, error: "Unauthorized" }
+
+  const { data: profile } = await supabase.from('profiles').select('role, full_name').eq('user_id', user.id).maybeSingle()
+  const staffRole = profile?.role || 'sale'
+  const staffName = profile?.full_name || (staffRole === 'admin' ? 'Admin' : 'เจ้าหน้าที่')
   
   const { error: itemsError } = await supabase
     .from('order_items')
@@ -300,7 +305,12 @@ export async function markOrderItemsShipped(orderId: number, itemIds: number[], 
       ...(currOrder?.discount_snapshot || {}),
       completed_at: new Date().toISOString(),
       delivered_at: new Date().toISOString(),
-      completed_by_id: user?.id || null
+      completed_by_id: user?.id || null,
+      completed_by_name: staffName,
+      completed_by_role: staffRole,
+      delivered_by_id: user?.id || null,
+      delivered_by_name: staffName,
+      delivered_by_role: staffRole
     }
     await supabase.from('orders').update({ 
       status: 'COMPLETED',
@@ -397,8 +407,10 @@ export async function approveAndCutStock(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { success: false, error: "Unauthorized" }
 
-  const { data: profile } = await supabase.from('profiles').select('role').eq('user_id', user.id).maybeSingle()
+  const { data: profile } = await supabase.from('profiles').select('role, full_name').eq('user_id', user.id).maybeSingle()
   const isAdmin = profile?.role === 'admin'
+  const staffRole = profile?.role || 'sale'
+  const staffName = profile?.full_name || (isAdmin ? 'Admin' : 'พนักงานขาย')
 
   try {
     const { data: order } = await supabase
@@ -587,8 +599,8 @@ export async function approveAndCutStock(
       }
 
       const movementNote = isPreOrderCut
-        ? `ชำระเงินใบขาย (พรีออเดอร์/สต็อกติดลบ บิล: ${finalOrderCode})`
-        : `ชำระเงินและอนุมัติใบขาย (บิล: ${finalOrderCode})`;
+        ? `ชำระเงินใบขาย (พรีออเดอร์/สต็อกติดลบ บิล: ${finalOrderCode} โดย ${staffName} [${staffRole}])`
+        : `ชำระเงินและอนุมัติใบขาย (บิล: ${finalOrderCode} โดย ${staffName} [${staffRole}])`;
 
       await supabase.from('stock_movements').insert({
         product_id_bigint: productId, 
@@ -607,9 +619,17 @@ export async function approveAndCutStock(
     const updatedSnap = {
       ...(order.discount_snapshot || {}),
       paid_at: (order.discount_snapshot as any)?.paid_at || new Date().toISOString(),
+      approved_at: new Date().toISOString(),
+      approved_by_id: user.id,
+      approved_by_name: staffName,
+      approved_by_role: staffRole,
       completed_at: isStorefrontTakeaway ? new Date().toISOString() : ((order.discount_snapshot as any)?.completed_at || null),
       delivered_at: isStorefrontTakeaway ? new Date().toISOString() : null,
-      completed_by_id: user.id
+      completed_by_id: user.id,
+      completed_by_name: isStorefrontTakeaway ? staffName : null,
+      completed_by_role: isStorefrontTakeaway ? staffRole : null,
+      delivered_by_name: isStorefrontTakeaway ? staffName : null,
+      delivered_by_role: isStorefrontTakeaway ? staffRole : null,
     }
 
     if (isStorefrontTakeaway) {
@@ -851,8 +871,10 @@ export async function updateOrderCustomerInfo(orderId: number, data: {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { success: false, error: "Unauthorized" }
 
-  const { data: profile } = await supabase.from('profiles').select('role').eq('user_id', user.id).maybeSingle()
+  const { data: profile } = await supabase.from('profiles').select('role, full_name').eq('user_id', user.id).maybeSingle()
   const isAdmin = profile?.role === 'admin'
+  const staffRole = profile?.role || 'sale'
+  const staffName = profile?.full_name || (isAdmin ? 'Admin' : 'พนักงานขาย')
 
   try {
     const { data: order } = await supabase.from('orders').select('user_id').eq('id', orderId).single()

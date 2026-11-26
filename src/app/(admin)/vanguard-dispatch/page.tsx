@@ -29,7 +29,8 @@ import {
   Search,
   Building2,
   RefreshCw,
-  Phone
+  Phone,
+  ShieldCheck
 } from 'lucide-react'
 import { toast } from 'sonner'
 import PrintDispatchModal from '@/components/PrintDispatchModal'
@@ -542,6 +543,32 @@ export default function AdminVanguardDispatchPage() {
                             <User className="w-3 h-3 text-slate-500" />
                             ผู้เปิดบิล: <strong className="text-slate-900">{order.creator_name || 'ไม่ระบุ'}</strong>
                           </span>
+                          {order.discount_snapshot?.approved_by_name && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200" title={`อนุมัติตัดสต็อกเมื่อ: ${order.discount_snapshot.approved_at ? new Date(order.discount_snapshot.approved_at).toLocaleString('th-TH') : '-'}`}>
+                              <CheckCircle className="w-3 h-3 text-emerald-600" />
+                              อนุมัติรับเงิน: <strong className="text-emerald-950">{order.discount_snapshot.approved_by_name}</strong>
+                              <span className={`px-1 py-0.2 rounded text-[9px] font-bold ${
+                                order.discount_snapshot.approved_by_role === 'admin' 
+                                  ? 'bg-amber-100 text-amber-800' 
+                                  : 'bg-emerald-100 text-emerald-800'
+                              }`}>
+                                {order.discount_snapshot.approved_by_role === 'admin' ? '👑 แอดมิน' : 'เซลล์'}
+                              </span>
+                            </span>
+                          )}
+                          {order.discount_snapshot?.delivered_by_name && order.status === 'COMPLETED' && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-semibold bg-blue-50 text-blue-800 border border-blue-200" title={`ส่งมอบสำเร็จเมื่อ: ${order.discount_snapshot.delivered_at ? new Date(order.discount_snapshot.delivered_at).toLocaleString('th-TH') : '-'}`}>
+                              <Truck className="w-3 h-3 text-blue-600" />
+                              ส่งมอบโดย: <strong className="text-blue-950">{order.discount_snapshot.delivered_by_name}</strong>
+                              <span className={`px-1 py-0.2 rounded text-[9px] font-bold ${
+                                order.discount_snapshot.delivered_by_role === 'admin' 
+                                  ? 'bg-amber-100 text-amber-800' 
+                                  : 'bg-blue-100 text-blue-800'
+                              }`}>
+                                {order.discount_snapshot.delivered_by_role === 'admin' ? '👑 แอดมิน' : 'เซลล์'}
+                              </span>
+                            </span>
+                          )}
                           {order.discount_snapshot?.coupon && (
                             <span className="px-1.5 py-0.5 bg-purple-50 text-purple-700 border border-purple-200 rounded text-[10px] font-bold inline-flex items-center gap-1">
                               🎟️ โค้ด: {order.discount_snapshot.coupon.code} (-฿{Number(order.discount_snapshot.coupon.discount_amount ?? order.discount_snapshot.coupon.discountAmount ?? order.discount_snapshot.coupon.amount ?? 0).toLocaleString()})
@@ -791,6 +818,50 @@ export default function AdminVanguardDispatchPage() {
                               </p>
                             </div>
                           )}
+
+                          {/* 🛡️ บันทึกประวัติผู้ดำเนินการ (Audit Trail - ตรวจสอบได้ว่าใครกดยืนยัน) */}
+                          <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs space-y-1.5 mt-2">
+                            <div className="font-bold text-slate-700 flex items-center justify-between border-b border-slate-200/60 pb-1">
+                              <span className="flex items-center gap-1.5">
+                                <ShieldCheck className="w-3.5 h-3.5 text-slate-500" />
+                                ประวัติผู้ทำรายการ (ใครกดยืนยัน)
+                              </span>
+                              <span className="text-[10px] text-slate-400 font-mono">
+                                {order.status === 'COMPLETED' ? 'ปิดงานแล้ว' : order.status === 'CANCELLED' ? 'ยกเลิกแล้ว' : order.status === 'PROCESSING' ? 'ตัดสต็อกแล้ว' : 'รอชำระเงิน'}
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-slate-600 space-y-1 pt-0.5">
+                              <div>• ผู้เปิดบิล (Quotation): <strong className="text-slate-800">{order.creator_name || 'ไม่ระบุ'}</strong> ({new Date(order.created_at).toLocaleString('th-TH')})</div>
+                              
+                              {order.discount_snapshot?.approved_by_name && (
+                                <div className="text-emerald-700">
+                                  • กดยืนยันรับเงิน & ตัดสต็อกโดย: <strong className="text-emerald-900">{order.discount_snapshot.approved_by_name}</strong>{' '}
+                                  <span className={`px-1 py-0.2 rounded text-[9px] font-bold ${order.discount_snapshot.approved_by_role === 'admin' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
+                                    {order.discount_snapshot.approved_by_role === 'admin' ? '👑 แอดมิน' : 'เซลล์'}
+                                  </span>{' '}
+                                  {order.discount_snapshot.approved_at && `เมื่อ ${new Date(order.discount_snapshot.approved_at).toLocaleString('th-TH')}`}
+                                </div>
+                              )}
+
+                              {order.discount_snapshot?.delivered_by_name && (
+                                <div className="text-blue-700">
+                                  • กดยืนยันส่งมอบสินค้าโดย: <strong className="text-blue-900">{order.discount_snapshot.delivered_by_name}</strong>{' '}
+                                  <span className={`px-1 py-0.2 rounded text-[9px] font-bold ${order.discount_snapshot.delivered_by_role === 'admin' ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-800'}`}>
+                                    {order.discount_snapshot.delivered_by_role === 'admin' ? '👑 แอดมิน' : 'เซลล์'}
+                                  </span>{' '}
+                                  {order.discount_snapshot.delivered_at && `เมื่อ ${new Date(order.discount_snapshot.delivered_at).toLocaleString('th-TH')}`}
+                                </div>
+                              )}
+
+                              {order.discount_snapshot?.cancelled_by_name && (
+                                <div className="text-rose-700">
+                                  • กดยกเลิกบิลโดย: <strong className="text-rose-900">{order.discount_snapshot.cancelled_by_name}</strong>{' '}
+                                  {order.discount_snapshot.cancelled_at && `เมื่อ ${new Date(order.discount_snapshot.cancelled_at).toLocaleString('th-TH')}`}{' '}
+                                  {order.discount_snapshot.cancel_reason && `(เหตุผล: ${order.discount_snapshot.cancel_reason})`}
+                                </div>
+                              )}
+                            </div>
+                          </div>
 
                           {/* Action Buttons */}
                           <div className="space-y-2 pt-2">
