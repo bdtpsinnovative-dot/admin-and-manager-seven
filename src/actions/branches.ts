@@ -38,7 +38,7 @@ export async function createBranch(formData: FormData) {
   // Insert
   const { error } = await supabase
     .from(TABLE)
-    .insert([{ branch_code, branch_name, branch_type, latitude, longitude }])
+    .insert([{ branch_code, branch_name, branch_type, latitude, longitude, is_active: true }])
 
   if (error) return { error: error.message }
 
@@ -108,4 +108,25 @@ export async function updateBranchLocation(id: number, latitude: number, longitu
   revalidatePath('/branches')
   invalidateAdminTags(ADMIN_CACHE_TAGS.BRANCHES, ADMIN_CACHE_TAGS.INVENTORY_META)
   return { success: true }
+}
+
+/**
+ * 5. สลับสถานะเปิด/ปิดสาขา (Active / Inactive)
+ */
+export async function toggleBranchStatus(id: number, is_active: boolean) {
+  const supabase = await createClient()
+
+  const { error } = await supabase
+    .from(TABLE)
+    .update({ is_active })
+    .eq('id', id)
+
+  if (error) {
+    console.error("Toggle Branch Status Error:", error.message)
+    return { error: "ไม่สามารถเปลี่ยนสถานะสาขาได้: " + error.message }
+  }
+
+  revalidatePath('/branches')
+  invalidateAdminTags(ADMIN_CACHE_TAGS.BRANCHES, ADMIN_CACHE_TAGS.INVENTORY_META)
+  return { success: true, message: is_active ? "เปิดให้บริการสาขานี้เรียบร้อย" : "ปิดสาขานี้ชั่วคราวเรียบร้อย" }
 }

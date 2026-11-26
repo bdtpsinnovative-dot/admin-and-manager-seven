@@ -2,12 +2,12 @@
 
 import { useState, useRef, useCallback } from "react"
 import { useRouter } from "next/navigation"
-import { createBranch, deleteBranch, updateBranchType, updateBranchLocation } from "../../../actions/branches"
+import { createBranch, deleteBranch, updateBranchType, updateBranchLocation, toggleBranchStatus } from "../../../actions/branches"
 import dynamic from 'next/dynamic'
 import { 
   Building2, Plus, Store, Factory, MapPin, Navigation, 
   Map, Link as LinkIcon, X, ExternalLink, Edit3, Trash2, Loader2,
-  ChevronDown, ChevronUp
+  ChevronDown, ChevronUp, Power
 } from "lucide-react"
 
 const MapPicker = dynamic(() => import('./MapPicker'), { 
@@ -26,6 +26,7 @@ interface Branch {
   branch_type: 'SHOWROOM' | 'FACTORY'
   latitude: number | null
   longitude: number | null
+  is_active?: boolean
   created_at: string
 }
 
@@ -37,6 +38,7 @@ export default function BranchClient({ initialBranches }: { initialBranches: Bra
   const [updatingId, setUpdatingId] = useState<number | null>(null)
   const [toast, setToast] = useState<{ type: 'ok'|'err'|'warn', title: string, msg: string } | null>(null)
   const [filterType, setFilterType] = useState<'ALL' | 'SHOWROOM' | 'FACTORY'>('ALL')
+  const [filterStatus, setFilterStatus] = useState<'ALL' | 'ACTIVE' | 'CLOSED'>('ALL')
   
   const [isOpenModal, setIsOpenModal] = useState(false)
   const [showMap, setShowMap] = useState(false) 
@@ -176,9 +178,32 @@ export default function BranchClient({ initialBranches }: { initialBranches: Bra
     }
   }
 
+  const handleToggleStatus = async (branch: Branch) => {
+    const nextStatus = branch.is_active === false ? true : false
+    const actionText = nextStatus ? "เปิดให้บริการ" : "ปิดชั่วคราว (ซ่อนจากหน้าเว็บ)"
+    if (!confirm(`คุณต้องการ ${actionText} สาขา "${branch.branch_name}" ใช่หรือไม่?`)) return
+
+    setUpdatingId(branch.id)
+    const res = await toggleBranchStatus(branch.id, nextStatus)
+    setUpdatingId(null)
+
+    if (res.error) {
+      showToast('err', 'ไม่สำเร็จ', res.error)
+    } else {
+      showToast('ok', 'สำเร็จ', res.message || 'เปลี่ยนสถานะเรียบร้อย')
+      router.refresh()
+    }
+  }
+
   const dtFmt = new Intl.DateTimeFormat("th-TH", { dateStyle: "medium", timeStyle: "short" })
   const filteredBranches = initialBranches
     .filter(b => filterType === 'ALL' ? true : b.branch_type === filterType)
+    .filter(b => {
+      if (filterStatus === 'ALL') return true
+      if (filterStatus === 'ACTIVE') return b.is_active !== false
+      if (filterStatus === 'CLOSED') return b.is_active === false
+      return true
+    })
     .sort((a, b) => {
       if (a.branch_type === 'FACTORY' && b.branch_type !== 'FACTORY') return -1
       if (a.branch_type !== 'FACTORY' && b.branch_type === 'FACTORY') return 1
@@ -228,17 +253,36 @@ export default function BranchClient({ initialBranches }: { initialBranches: Bra
       <main className="max-w-6xl mx-auto px-4 md:px-6 py-6">
         <div className="rounded border border-slate-200 bg-white shadow-sm overflow-hidden min-h-[500px]">
           <div className="p-4 border-b border-slate-200 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500">รายการทั้งหมด</h2>
-            <div className="flex bg-slate-100 p-1 rounded">
-              {['ALL', 'SHOWROOM', 'FACTORY'].map((type) => (
-                <button 
-                  key={type}
-                  onClick={() => setFilterType(type as any)}
-                  className={`px-3.5 py-1 text-xs font-semibold rounded transition ${filterType === type ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                >
-                  {type === 'ALL' ? 'ทั้งหมด' : type === 'SHOWROOM' ? 'โชว์รูม' : 'โรงงาน'}
-                </button>
-              ))}
+            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+              รายการสถานที่ทั้งหมด ({filteredBranches.length} แห่ง)
+            </h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex bg-slate-100 p-1 rounded">
+                {[
+                  { key: 'ALL', label: 'สถานะทั้งหมด' },
+                  { key: 'ACTIVE', label: '🟢 เปิดอยู่' },
+                  { key: 'CLOSED', label: '🔴 ปิดสาขา' }
+                ].map(item => (
+                  <button 
+                    key={item.key}
+                    onClick={() => setFilterStatus(item.key as any)}
+                    className={`px-3 py-1 text-xs font-semibold rounded transition ${filterStatus === item.key ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+              <div className="flex bg-slate-100 p-1 rounded">
+                {['ALL', 'SHOWROOM', 'FACTORY'].map((type) => (
+                  <button 
+                    key={type}
+                    onClick={() => setFilterType(type as any)}
+                    className={`px-3.5 py-1 text-xs font-semibold rounded transition ${filterType === type ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                  >
+                    {type === 'ALL' ? 'ทุกประเภท' : type === 'SHOWROOM' ? 'โชว์รูม' : 'โรงงาน'}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -246,32 +290,41 @@ export default function BranchClient({ initialBranches }: { initialBranches: Bra
             <table className="w-full text-left border-collapse text-sm">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-100/50 text-slate-500 font-semibold text-xs">
-                  <th className="px-6 py-3 w-[25%]">ชื่อสถานที่</th>
-                  <th className="px-6 py-3 w-[15%]">รหัส</th>
-                  <th className="px-6 py-3 w-[22%]">ประเภท</th>
+                  <th className="px-6 py-3 w-[22%]">ชื่อสถานที่</th>
+                  <th className="px-4 py-3 w-[10%]">รหัส</th>
+                  <th className="px-4 py-3 w-[14%]">ประเภท</th>
+                  <th className="px-5 py-3 w-[22%]">สถานะสาขา & สวิตช์</th>
                   <th className="px-6 py-3">พิกัดตำแหน่ง</th>
-                  <th className="px-6 py-3 w-[8%] text-right"></th>
+                  <th className="px-4 py-3 w-[6%] text-right"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filteredBranches.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-6 py-16 text-center text-slate-400 italic">ไม่มีข้อมูลสถานที่</td>
+                    <td colSpan={6} className="px-6 py-16 text-center text-slate-400 italic">ไม่มีข้อมูลสถานที่</td>
                   </tr>
                 ) : (
                   filteredBranches.map((r) => {
                     const isMapOpen = expandedMapId === r.id;
+                    const isClosed = r.is_active === false;
                     return (
-                      <tr key={r.id} className="hover:bg-slate-50/50 transition-colors group">
+                      <tr key={r.id} className={`transition-colors group ${isClosed ? 'bg-slate-50/80 opacity-80 hover:bg-slate-100/80' : 'hover:bg-slate-50/50'}`}>
                         {/* 💡 ชื่อสถานที่ขึ้นก่อนเพื่อนเป็นคอลัมน์แรก */}
                         <td className="px-6 py-4">
-                          <div className="font-bold text-slate-800">{r.branch_name}</div>
+                          <div className="flex items-center gap-2">
+                            <div className="font-bold text-slate-800">{r.branch_name}</div>
+                            {isClosed && (
+                              <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-rose-100 text-rose-700">
+                                ปิด
+                              </span>
+                            )}
+                          </div>
                           <div className="text-[11px] text-slate-400 mt-1">สร้างเมื่อ {r.created_at ? dtFmt.format(new Date(r.created_at)) : "-"}</div>
                         </td>
 
-                        <td className="px-6 py-4 font-mono font-bold text-slate-700">{r.branch_code}</td>
+                        <td className="px-4 py-4 font-mono font-bold text-slate-700">{r.branch_code}</td>
                         
-                        <td className="px-6 py-4">
+                        <td className="px-4 py-4">
                           <div className="flex items-center gap-2">
                             {r.branch_type === 'SHOWROOM' ? (
                               <Store className="w-4 h-4 text-blue-600 shrink-0" />
@@ -287,6 +340,34 @@ export default function BranchClient({ initialBranches }: { initialBranches: Bra
                               <option value="SHOWROOM">โชว์รูม</option>
                               <option value="FACTORY">โรงงาน</option>
                             </select>
+                          </div>
+                        </td>
+
+                        {/* 🔘 สถานะสาขา & ปุ่มปิด/เปิดสาขา */}
+                        <td className="px-5 py-4">
+                          <div className="flex flex-col gap-1.5 items-start">
+                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                              !isClosed 
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
+                                : 'bg-rose-50 text-rose-700 border border-rose-200'
+                            }`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${!isClosed ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
+                              {!isClosed ? 'เปิดให้บริการ (Active)' : 'ปิดชั่วคราว (Closed)'}
+                            </span>
+
+                            <button
+                              onClick={() => handleToggleStatus(r)}
+                              disabled={updatingId === r.id}
+                              className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded transition shadow-xs cursor-pointer ${
+                                !isClosed
+                                  ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 hover:border-rose-300'
+                                  : 'bg-[#B8956A] hover:bg-[#A38157] text-white border border-[#B8956A]'
+                              } ${updatingId === r.id ? 'opacity-50 cursor-wait' : ''}`}
+                              title={!isClosed ? "คลิกเพื่อปิดสาขานี้ (ระบบจะซ่อนจากหน้าเว็บ terrahome-studio.com/prop ทันที)" : "คลิกเพื่อเปิดให้บริการสาขานี้"}
+                            >
+                              <Power className={`w-3.5 h-3.5 ${!isClosed ? 'text-rose-500' : 'text-white'}`} />
+                              <span>{!isClosed ? 'กดปิดสาขานี้' : 'กดเปิดสาขานี้'}</span>
+                            </button>
                           </div>
                         </td>
 
