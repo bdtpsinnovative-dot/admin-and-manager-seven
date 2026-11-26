@@ -345,7 +345,7 @@ export default function AdminDispatchMonitorPage() {
       <div className="bg-white rounded-2xl p-6 shadow-xs border border-slate-200/80 space-y-5">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-3.5">
-            <div className="w-12 h-12 bg-indigo-50 border border-indigo-100 rounded-2xl flex items-center justify-center text-indigo-600 shadow-xs">
+            <div className="w-12 h-12 bg-[#B8956A]/10 border border-[#B8956A]/30 rounded-2xl flex items-center justify-center text-[#B8956A] shadow-xs">
               <Truck className="w-6 h-6" />
             </div>
             <div>
@@ -353,7 +353,7 @@ export default function AdminDispatchMonitorPage() {
                 <h1 className="text-xl md:text-2xl font-black text-slate-800 tracking-tight">
                   มอนิเตอร์ค้างส่ง (สำหรับ Admin)
                 </h1>
-                <span className="px-2.5 py-0.5 text-[11px] font-black bg-indigo-600 text-white rounded-full">
+                <span className="px-2.5 py-0.5 text-[11px] font-black bg-gradient-to-r from-[#D4C4A8] to-[#B8956A] text-white rounded-full shadow-xs">
                   Admin Dispatch Control
                 </span>
               </div>
@@ -371,7 +371,7 @@ export default function AdminDispatchMonitorPage() {
             disabled={loading}
             className="self-start md:self-auto py-2.5 px-4 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 text-xs font-bold rounded-xl transition-all flex items-center gap-2 shadow-xs cursor-pointer"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-indigo-600' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-[#B8956A]' : ''}`} />
             รีเฟรชข้อมูล
           </button>
         </div>
@@ -381,7 +381,7 @@ export default function AdminDispatchMonitorPage() {
           {/* 1. ฟิลเตอร์สาขา */}
           <div className="lg:col-span-4 relative">
             <label className="text-[10.5px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1.5">
-              <Building2 className="w-3.5 h-3.5 text-indigo-500" />
+              <Building2 className="w-3.5 h-3.5 text-[#B8956A]" />
               สาขาที่ควบคุม
             </label>
             <div className="relative">
@@ -391,7 +391,7 @@ export default function AdminDispatchMonitorPage() {
                   const val = e.target.value === 'ALL' ? 'ALL' : Number(e.target.value)
                   setSelectedBranch(val)
                 }}
-                className="w-full text-xs font-bold p-2.5 pl-9 pr-8 bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 focus:bg-white text-slate-800 transition-all appearance-none cursor-pointer"
+                className="w-full text-xs font-bold p-2.5 pl-9 pr-8 bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl outline-none focus:border-[#B8956A] focus:bg-white text-slate-800 transition-all appearance-none cursor-pointer"
               >
                 <option value="ALL">🌐 ดูรวมทุกสาขาทั่วประเทศ (All Branches)</option>
                 {branches.map(b => (
@@ -408,14 +408,14 @@ export default function AdminDispatchMonitorPage() {
           {/* 2. ฟิลเตอร์พนักงานขาย */}
           <div className="lg:col-span-4 relative">
             <label className="text-[10.5px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1.5">
-              <User className="w-3.5 h-3.5 text-blue-500" />
+              <User className="w-3.5 h-3.5 text-[#B8956A]" />
               พนักงานขาย / เซลล์
             </label>
             <div className="relative">
               <select
                 value={selectedSeller}
                 onChange={e => setSelectedSeller(e.target.value)}
-                className="w-full text-xs font-bold p-2.5 pl-9 pr-8 bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 focus:bg-white text-slate-800 transition-all appearance-none cursor-pointer"
+                className="w-full text-xs font-bold p-2.5 pl-9 pr-8 bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl outline-none focus:border-[#B8956A] focus:bg-white text-slate-800 transition-all appearance-none cursor-pointer"
               >
                 <option value="ALL">👥 พนักงานขายทุกคน ({uniqueSellers.length} ท่าน)</option>
                 {uniqueSellers.map(s => (
@@ -432,7 +432,7 @@ export default function AdminDispatchMonitorPage() {
           {/* 3. ค้นหาแบบ Real-time */}
           <div className="lg:col-span-4 relative">
             <label className="text-[10.5px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1.5">
-              <Search className="w-3.5 h-3.5 text-emerald-500" />
+              <Search className="w-3.5 h-3.5 text-amber-600" />
               ค้นหาบิล / ลูกค้า / สินค้า
             </label>
             <div className="relative">
@@ -441,7 +441,7 @@ export default function AdminDispatchMonitorPage() {
                 placeholder="เลขที่บิล, ชื่อลูกค้า, เบอร์โทร, SKU..."
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                className="w-full text-xs font-medium p-2.5 pl-9 pr-3 bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 focus:bg-white text-slate-800 transition-all"
+                className="w-full text-xs font-medium p-2.5 pl-9 pr-3 bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl outline-none focus:border-[#B8956A] focus:bg-white text-slate-800 transition-all"
               />
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               {searchQuery && (
@@ -464,20 +464,20 @@ export default function AdminDispatchMonitorPage() {
           onClick={() => setActiveTab('my_tasks')}
           className={`p-4 md:p-5 rounded-2xl border transition-all cursor-pointer ${
             activeTab === 'my_tasks'
-              ? 'bg-blue-600 text-white border-blue-600 shadow-md scale-[1.01]'
-              : 'bg-white text-slate-800 border-slate-200/80 hover:border-blue-300 shadow-xs'
+              ? 'bg-[#B8956A] text-white border-[#B8956A] shadow-md scale-[1.01]'
+              : 'bg-white text-slate-800 border-slate-200/80 hover:border-[#B8956A]/50 shadow-xs'
           }`}
         >
           <div className="flex items-center justify-between mb-2">
-            <span className={`text-xs font-bold ${activeTab === 'my_tasks' ? 'text-blue-100' : 'text-slate-500'}`}>
+            <span className={`text-xs font-bold ${activeTab === 'my_tasks' ? 'text-amber-100' : 'text-slate-500'}`}>
               คลังจัดส่ง (Deliveries)
             </span>
-            <Package className={`w-4 h-4 ${activeTab === 'my_tasks' ? 'text-white' : 'text-blue-500'}`} />
+            <Package className={`w-4 h-4 ${activeTab === 'my_tasks' ? 'text-white' : 'text-[#B8956A]'}`} />
           </div>
           <div className="text-xl md:text-2xl font-black">
             {stats.myTasks.total.toLocaleString()} ฿
           </div>
-          <div className={`text-[11px] font-medium mt-1 ${activeTab === 'my_tasks' ? 'text-blue-100' : 'text-slate-400'}`}>
+          <div className={`text-[11px] font-medium mt-1 ${activeTab === 'my_tasks' ? 'text-amber-100' : 'text-slate-400'}`}>
             พบ {stats.myTasks.count} บิลค้างส่ง
           </div>
         </div>
@@ -567,13 +567,13 @@ export default function AdminDispatchMonitorPage() {
               onClick={() => setActiveTab(tab.key as any)}
               className={`py-2 px-3.5 text-xs font-bold rounded-xl transition-all whitespace-nowrap flex items-center gap-1.5 ${
                 activeTab === tab.key
-                  ? 'bg-indigo-600 text-white shadow-xs'
+                  ? 'bg-[#B8956A] text-white shadow-xs'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
               }`}
             >
               <span>{tab.label}</span>
               <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${
-                activeTab === tab.key ? 'bg-indigo-700 text-white' : 'bg-slate-200 text-slate-700'
+                activeTab === tab.key ? 'bg-[#9E7A50] text-white' : 'bg-slate-200 text-slate-700'
               }`}>
                 {tab.count}
               </span>
@@ -589,7 +589,7 @@ export default function AdminDispatchMonitorPage() {
       {/* 📦 Orders List View */}
       {loading ? (
         <div className="py-24 text-center bg-white rounded-3xl border border-slate-200 shadow-xs flex flex-col items-center justify-center gap-3">
-          <RefreshCw className="w-8 h-8 text-indigo-600 animate-spin" />
+          <RefreshCw className="w-8 h-8 text-[#B8956A] animate-spin" />
           <p className="text-slate-500 font-bold text-sm">กำลังโหลดข้อมูลงานจัดส่งสินค้า...</p>
         </div>
       ) : filteredData.length === 0 ? (
@@ -660,7 +660,7 @@ export default function AdminDispatchMonitorPage() {
                       {/* Sub-info: สาขา, เซลล์, วันที่ */}
                       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1 text-xs text-slate-500 font-medium">
                         <span className="flex items-center gap-1 text-slate-700 font-bold">
-                          <Store className="w-3.5 h-3.5 text-indigo-500" />
+                          <Store className="w-3.5 h-3.5 text-[#B8956A]" />
                           {order.branch_name || 'ไม่ระบุสาขา'}
                         </span>
                         <span className="flex items-center gap-1 text-slate-600">
@@ -802,7 +802,7 @@ export default function AdminDispatchMonitorPage() {
                                 </div>
 
                                 <div className="text-right">
-                                  <div className="font-bold text-indigo-700 flex items-center justify-end gap-1">
+                                  <div className="font-bold text-[#8C6D42] flex items-center justify-end gap-1">
                                     <Store className="w-3.5 h-3.5" />
                                     {fulfillBranchName}
                                   </div>
