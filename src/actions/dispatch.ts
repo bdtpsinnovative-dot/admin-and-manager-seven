@@ -252,6 +252,15 @@ export async function getGroupedDispatches(targetBranchId?: number | 'ALL', targ
     }
   }
 
+  let branchesList: { id: number; branch_name: string }[] = []
+  if (isAdmin) {
+    const { data: bList } = await supabase
+      .from('branches')
+      .select('id, branch_name')
+      .order('id', { ascending: true })
+    if (bList) branchesList = bList
+  }
+
   return {
     success: true,
     currentUser: {
@@ -260,6 +269,7 @@ export async function getGroupedDispatches(targetBranchId?: number | 'ALL', targ
       name: profile?.full_name || 'เจ้าหน้าที่',
       isAdmin
     },
+    branches: branchesList,
     myDispatchOrders: (myDispatchOrders || []).map(formatOrder),
     followUpOrders: (followUpOrders || []).map(formatOrder),
     completedOrders: (completedOrders || []).map(formatOrder),

@@ -95,8 +95,9 @@ export default function AdminVanguardDispatchPage() {
 
   // โหลดรายชื่อสาขาทั้งหมด
   useEffect(() => {
-    getAllBranches().then(b => {
-      if (b && Array.isArray(b)) setBranches(b)
+    getAllBranches().then(res => {
+      const list = Array.isArray(res) ? res : ((res as any)?.data || [])
+      if (list && list.length > 0) setBranches(list)
     })
   }, [])
 
@@ -114,6 +115,9 @@ export default function AdminVanguardDispatchPage() {
         completedTasks: res.completedOrders || [],
         cancelledTasks: res.cancelledOrders || []
       })
+      if ((res as any).branches && (res as any).branches.length > 0) {
+        setBranches((res as any).branches)
+      }
     } else {
       toast.error("โหลดข้อมูลไม่สำเร็จ: " + res.error)
     }
