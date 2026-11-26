@@ -6,7 +6,7 @@ import { cookies } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import { clearPosCache } from '@/actions/pos'
 
-export async function getGroupedDispatches() {
+export async function getGroupedDispatches(targetBranchId?: number | 'ALL', targetUserId?: string | 'ALL') {
   const cookieStore = await cookies()
   const supabase = createServerClient(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!, {
     cookies: { getAll() { return cookieStore.getAll() } }
@@ -25,6 +25,11 @@ export async function getGroupedDispatches() {
   const isAdmin = userRole === 'admin'
   const currentUserId = user.id
 
+  const effectiveBranchId = !isAdmin
+    ? myBranchId
+    : (targetBranchId && targetBranchId !== 'ALL' ? Number(targetBranchId) : null)
+  const isFilterUser = Boolean(targetUserId && targetUserId !== 'ALL')
+
   const { data: hiddenRows, error: hiddenError } = await supabase
     .from('order_hidden_by_users')
     .select('order_id')
@@ -34,13 +39,13 @@ export async function getGroupedDispatches() {
   const hiddenOrderIds = new Set((hiddenRows || []).map(row => Number(row.order_id)))
 
   // 1. งานที่คลังเราต้องจัดส่ง 
-  // ✨ เพิ่ม user_id, profiles:user_id(full_name), latitude, longitude, discount_snapshot, total_amount
-  const { data: myDispatchOrders, error: err1 } = await supabase
+  let q1 = supabase
     .from('orders')
     .select(`
       id, 
       order_code, 
       user_id,
+      branch_id,
       created_at, 
       shipping_name, 
       shipping_phone, 
@@ -51,6 +56,7 @@ export async function getGroupedDispatches() {
       total_amount,
       discount_amount,
       discount_snapshot,
+      branches:branch_id ( id, branch_name ),
       profiles:user_id ( full_name ),
       order_items!inner (
         id, 
@@ -66,18 +72,24 @@ export async function getGroupedDispatches() {
         branches!order_items_fulfill_branch_fk ( branch_name )
       )
     `)
-    .eq('order_items.fulfill_branch_id', myBranchId)
     .in('order_items.item_status', ['PENDING_SHIPMENT', 'SHIPPED'])
     .order('created_at', { ascending: false })
+
+  if (effectiveBranchId !== null) {
+    q1 = q1.eq('order_items.fulfill_branch_id', effectiveBranchId)
+  }
+  if (isFilterUser) {
+    q1 = q1.eq('user_id', targetUserId)
+  }
 
   // 2. บิลที่เราขาย แต่ฝากสาขาอื่นส่ง
-  // ✨ เพิ่ม user_id, profiles:user_id(full_name), latitude, longitude, discount_snapshot, total_amount
-  const { data: followUpOrders, error: err2 } = await supabase
+  let q2 = supabase
     .from('orders')
     .select(`
       id, 
       order_code, 
       user_id,
+      branch_id,
       created_at, 
       shipping_name, 
       shipping_phone, 
@@ -88,6 +100,7 @@ export async function getGroupedDispatches() {
       total_amount,
       discount_amount,
       discount_snapshot,
+      branches:branch_id ( id, branch_name ),
       profiles:user_id ( full_name ),
       order_items!inner (
         id, 
@@ -103,19 +116,24 @@ export async function getGroupedDispatches() {
         branches!order_items_fulfill_branch_fk ( branch_name )
       )
     `)
-    .eq('branch_id', myBranchId)
-    .neq('order_items.fulfill_branch_id', myBranchId)
     .in('order_items.item_status', ['PENDING_SHIPMENT', 'SHIPPED'])
     .order('created_at', { ascending: false })
 
-  // 3. ประวัติบิลที่จัดส่งหรือขายเสร็จสมบูรณ์แล้ว (ดึง 50 รายการล่าสุด)
-  // ✨ เพิ่ม user_id, profiles:user_id(full_name), latitude, longitude, discount_snapshot, total_amount
-  const { data: completedOrders, error: err3 } = await supabase
+  if (effectiveBranchId !== null) {
+    q2 = q2.eq('branch_id', effectiveBranchId).neq('order_items.fulfill_branch_id', effectiveBranchId)
+  }
+  if (isFilterUser) {
+    q2 = q2.eq('user_id', targetUserId)
+  }
+
+  // 3. ประวัติบิลที่จัดส่งหรือขายเสร็จสมบูรณ์แล้ว
+  let q3 = supabase
     .from('orders')
     .select(`
       id, 
       order_code, 
       user_id,
+      branch_id,
       created_at, 
       shipping_name, 
       shipping_phone, 
@@ -126,6 +144,7 @@ export async function getGroupedDispatches() {
       total_amount,
       discount_amount,
       discount_snapshot,
+      branches:branch_id ( id, branch_name ),
       profiles:user_id ( full_name ),
       order_items!inner (
         id, 
@@ -141,18 +160,25 @@ export async function getGroupedDispatches() {
         branches!order_items_fulfill_branch_fk ( branch_name )
       )
     `)
-    .eq('branch_id', myBranchId)
     .eq('status', 'COMPLETED')
     .order('created_at', { ascending: false })
-    .limit(50)
+    .limit(isAdmin ? 100 : 50)
+
+  if (effectiveBranchId !== null) {
+    q3 = q3.eq('branch_id', effectiveBranchId)
+  }
+  if (isFilterUser) {
+    q3 = q3.eq('user_id', targetUserId)
+  }
 
   // 4. บิลที่ถูกยกเลิก (CANCELLED)
-  const { data: cancelledOrders, error: err4 } = await supabase
+  let q4 = supabase
     .from('orders')
     .select(`
       id, 
       order_code, 
       user_id,
+      branch_id,
       created_at, 
       shipping_name, 
       shipping_phone, 
@@ -163,6 +189,7 @@ export async function getGroupedDispatches() {
       total_amount,
       discount_amount,
       discount_snapshot,
+      branches:branch_id ( id, branch_name ),
       profiles:user_id ( full_name ),
       order_items!inner (
         id, 
@@ -178,10 +205,22 @@ export async function getGroupedDispatches() {
         branches!order_items_fulfill_branch_fk ( branch_name )
       )
     `)
-    .eq('branch_id', myBranchId)
     .eq('status', 'CANCELLED')
     .order('created_at', { ascending: false })
-    .limit(50)
+    .limit(isAdmin ? 100 : 50)
+
+  if (effectiveBranchId !== null) {
+    q4 = q4.eq('branch_id', effectiveBranchId)
+  }
+  if (isFilterUser) {
+    q4 = q4.eq('user_id', targetUserId)
+  }
+
+  const [res1, res2, res3, res4] = await Promise.all([q1, q2, q3, q4])
+  const { data: myDispatchOrders, error: err1 } = res1
+  const { data: followUpOrdersRaw, error: err2 } = res2
+  const { data: completedOrders, error: err3 } = res3
+  const { data: cancelledOrders, error: err4 } = res4
 
   if (err1) console.error("Error fetching my tasks:", err1)
   if (err2) console.error("Error fetching follow ups:", err2)
@@ -190,14 +229,24 @@ export async function getGroupedDispatches() {
 
   if (err1 || err2 || err3 || err4) return { success: false, error: "ดึงข้อมูลล้มเหลว" }
 
+  let followUpOrders = followUpOrdersRaw || []
+  if (effectiveBranchId === null) {
+    followUpOrders = followUpOrders.filter((order: any) =>
+      (order.order_items || []).some((item: any) => item.fulfill_branch_id !== order.branch_id)
+    )
+  }
+
   const formatOrder = (order: any) => {
     const creatorProfile = Array.isArray(order.profiles) ? order.profiles[0] : order.profiles
     const creatorName = creatorProfile?.full_name || 'ไม่ระบุผู้สร้าง'
     const isCreator = Boolean(order.user_id && order.user_id === currentUserId)
     const canManage = isAdmin || isCreator
+    const orderBranch = Array.isArray(order.branches) ? order.branches[0] : order.branches
+    const branchName = orderBranch?.branch_name || 'ไม่ระบุสาขา'
     return {
       ...order,
       creator_name: creatorName,
+      branch_name: branchName,
       is_creator: isCreator,
       can_manage: canManage
     }
@@ -263,6 +312,8 @@ export async function markOrderItemsShipped(orderId: number, itemIds: number[], 
   revalidatePath('/sale/vanguard-dispatch')
   revalidatePath('/manager/sales-history')
   revalidatePath('/manager/vanguard-dispatch')
+  revalidatePath('/vanguard-dispatch')
+  revalidatePath('/sales-history')
 
   return { success: true }
 }
@@ -619,6 +670,8 @@ export async function approveAndCutStock(
     revalidatePath('/sale/vanguard-dispatch')
     revalidatePath('/manager/sales-history')
     revalidatePath('/manager/vanguard-dispatch')
+    revalidatePath('/vanguard-dispatch')
+    revalidatePath('/sales-history')
 
     await clearPosCache()
 
@@ -774,6 +827,8 @@ export async function cancelOrder(orderId: number, orderCode: string, items: any
     revalidatePath('/sale/vanguard-dispatch')
     revalidatePath('/manager/sales-history')
     revalidatePath('/manager/vanguard-dispatch')
+    revalidatePath('/vanguard-dispatch')
+    revalidatePath('/sales-history')
 
     await clearPosCache()
 
@@ -825,6 +880,8 @@ export async function updateOrderCustomerInfo(orderId: number, data: {
     revalidatePath('/sale/vanguard-dispatch')
     revalidatePath('/manager/sales-history')
     revalidatePath('/manager/vanguard-dispatch')
+    revalidatePath('/vanguard-dispatch')
+    revalidatePath('/sales-history')
 
     return { success: true }
   } catch (error: any) {

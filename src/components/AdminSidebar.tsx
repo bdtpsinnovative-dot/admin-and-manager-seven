@@ -8,13 +8,14 @@ import {
   MapPin, Tag, LogOut, Users, Receipt,
   BarChart3, History, Package, Settings, Frame,
   Layers, ShieldCheck, AlertTriangle, Scale, Activity,
-  Images, Ticket, SlidersHorizontal, Trash2, PackagePlus
+  Images, Ticket, SlidersHorizontal, Trash2, PackagePlus, Truck
 } from "lucide-react";
 
 // 1. เมนูที่ใช้บ่อย (งานประจำวัน)
 const primaryItems = [
   { name: "Dashboard",       href: "/dashboard?brand=TERRA",    icon: LayoutDashboard },
   { name: "ประวัติการขายหน้าร้าน", href: "/sales-history", icon: History },
+  { name: "มอนิเตอร์ค้างส่ง (Dispatch)", href: "/vanguard-dispatch", icon: Truck },
   // { name: "สต็อกทุกสาขา",   href: "/stock-all",    icon: Package },
   // { name: "ประวัติสต็อก",    href: "/stockmovement",icon: History },
   // { name: "ขายสินค้า (Slab)",href: "/sale_slab",    icon: ShoppingCart },
@@ -92,7 +93,7 @@ export default function AdminSidebar({ user }: { user?: UserData }) {
     visiblePrimary = primaryItems.filter(item => ['/inventory', '/propsfina', '/propsfinatest', '/propsfinatest2', '/props2', '/stock-in'].includes(item.href));
     visibleSecondary = [];
   } else if (safeUser.role === 'data_analyst') {
-    visiblePrimary = primaryItems.filter(item => ['/dashboard', '/sales-history', '/inventory', '/algorithm', '/stock-in'].includes(item.href));
+    visiblePrimary = primaryItems.filter(item => ['/dashboard', '/sales-history', '/vanguard-dispatch', '/inventory', '/algorithm', '/stock-in'].includes(item.href));
     visibleSecondary = secondaryItems.filter(item => ['/balance-check', '/rfid-mismatch', '/stock-audit', '/manager/damage-history', '/filters'].includes(item.href));
   }
 

@@ -7,7 +7,7 @@ import {
   AlertCircle, Calendar, Phone, Plus, Key, Mail, Search,
   CheckCircle, XCircle, Users, Building2, Filter, ChevronDown,
   UserPlus, Eye, EyeOff, LayoutDashboard, History, Box,
-  PackagePlus, Frame, Activity, Images, Tag, Scale,
+  PackagePlus, Truck, Frame, Activity, Images, Tag, Scale,
   AlertTriangle, ShieldCheck, SlidersHorizontal, Settings,
   Layers, Hammer, Armchair, Package, Monitor, DollarSign,
   Lock, Store, BarChart3, FileText, Check, Copy, UserCheck, Sparkles, ExternalLink, Globe
@@ -58,6 +58,7 @@ const PAGE_ITEMS = [
   // 1. เมนูหลัก (งานประจำวัน)
   { href: '/dashboard',              label: 'Dashboard',                 group: 'primary',   Icon: LayoutDashboard },
   { href: '/sales-history',          label: 'ประวัติการขายหน้าร้าน',      group: 'primary',   Icon: History },
+  { href: '/vanguard-dispatch',      label: 'มอนิเตอร์ค้างส่ง (Dispatch)', group: 'primary',   Icon: Truck },
   { href: '/inventory',              label: 'สินค้าทั้งหมด',              group: 'primary',   Icon: Box },
   { href: '/stock-in',               label: 'รับสินค้าเข้า (Stock In)',   group: 'primary',   Icon: PackagePlus },
   { href: '/lots',                   label: 'จัดการลอต',                 group: 'primary',   Icon: Package },
@@ -86,7 +87,7 @@ function getDefaultPagesByRole(role: string): string[] {
   if (role === 'admin') return ALL_PAGE_HREFS
   if (role === 'data_analyst') {
     return [
-      '/dashboard', '/sales-history', '/inventory', '/stock-in', '/algorithm',
+      '/dashboard', '/sales-history', '/vanguard-dispatch', '/inventory', '/stock-in', '/algorithm',
       '/balance-check', '/rfid-mismatch', '/stock-audit', '/manager/damage-history', '/filters'
     ]
   }

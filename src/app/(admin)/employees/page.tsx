@@ -40,7 +40,7 @@ export default async function EmployeesPage() {
     .order('id', { ascending: true });
 
   const ALL_ADMIN_PAGES = [
-    '/dashboard', '/sales-history', '/inventory', '/stock-in', '/lots', '/propsfina', '/propsfinatest', '/propsfinatest2', '/algorithm',
+    '/dashboard', '/sales-history', '/vanguard-dispatch', '/inventory', '/stock-in', '/lots', '/propsfina', '/propsfinatest', '/propsfinatest2', '/algorithm',
     '/web-gallery', '/gallery', '/manager/gallery', '/discounts', '/branches', '/employees', '/balance-check', '/rfid-mismatch',
     '/stock-audit', '/manager/damage-history', '/filters', '/app-management', '/backup'
   ];
@@ -49,7 +49,7 @@ export default async function EmployeesPage() {
     if (role === 'admin') return ALL_ADMIN_PAGES;
     if (role === 'data_analyst') {
       return [
-        '/dashboard', '/sales-history', '/inventory', '/stock-in', '/algorithm',
+        '/dashboard', '/sales-history', '/vanguard-dispatch', '/inventory', '/stock-in', '/algorithm',
         '/balance-check', '/rfid-mismatch', '/stock-audit', '/manager/damage-history', '/filters'
       ];
     }
