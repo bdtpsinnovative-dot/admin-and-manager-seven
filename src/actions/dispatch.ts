@@ -716,7 +716,8 @@ export async function cancelOrder(orderId: number, orderCode: string, items: any
     .eq('user_id', user.id)
     .maybeSingle()
   const isAdmin = profile?.role === 'admin'
-  const staffName = profile?.full_name || 'เจ้าหน้าที่'
+  const staffRole = profile?.role || 'sale'
+  const staffName = profile?.full_name || (isAdmin ? 'Admin' : 'เจ้าหน้าที่')
 
   try {
     const { data: orderToCancel } = await supabase
@@ -828,6 +829,7 @@ export async function cancelOrder(orderId: number, orderCode: string, items: any
       cancel_reason: cancelReason?.trim() || null,
       cancelled_at: new Date().toISOString(),
       cancelled_by_name: staffName,
+      cancelled_by_role: staffRole,
       cancelled_by_id: user.id
     }
 
@@ -877,7 +879,7 @@ export async function updateOrderCustomerInfo(orderId: number, data: {
   const staffName = profile?.full_name || (isAdmin ? 'Admin' : 'พนักงานขาย')
 
   try {
-    const { data: order } = await supabase.from('orders').select('user_id').eq('id', orderId).single()
+    const { data: order } = await supabase.from('orders').select('user_id, discount_snapshot').eq('id', orderId).single()
     if (!order) return { success: false, error: "ไม่พบข้อมูลออเดอร์นี้ในระบบ" }
 
     if (!isAdmin && order.user_id && order.user_id !== user.id) {
@@ -887,12 +889,20 @@ export async function updateOrderCustomerInfo(orderId: number, data: {
       }
     }
 
+    const updatedSnap = {
+      ...(order.discount_snapshot || {}),
+      address_updated_by_name: staffName,
+      address_updated_by_role: staffRole,
+      address_updated_at: new Date().toISOString()
+    }
+
     const { error } = await supabase
       .from('orders')
       .update({
         shipping_name: data.shipping_name?.trim() || null,
         shipping_phone: data.shipping_phone?.trim() || null,
         shipping_address: data.shipping_address?.trim() || null,
+        discount_snapshot: updatedSnap
       })
       .eq('id', orderId)
 

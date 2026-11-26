@@ -434,6 +434,19 @@ export default function SaleDispatchMonitorPage() {
                               </span>
                             </span>
                           )}
+                          {order.status === 'CANCELLED' && order.discount_snapshot?.cancelled_by_name && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-semibold bg-rose-50 text-rose-800 border border-rose-200" title={`ยกเลิกเมื่อ: ${order.discount_snapshot.cancelled_at ? new Date(order.discount_snapshot.cancelled_at).toLocaleString('th-TH') : '-'}`}>
+                              <XCircle className="w-3 h-3 text-rose-600" />
+                              ยกเลิกโดย: <strong className="text-rose-950">{order.discount_snapshot.cancelled_by_name}</strong>
+                              <span className={`px-1 py-0.2 rounded text-[9px] font-bold ${
+                                order.discount_snapshot.cancelled_by_role === 'admin' 
+                                  ? 'bg-amber-100 text-amber-800' 
+                                  : 'bg-rose-100 text-rose-800'
+                              }`}>
+                                {order.discount_snapshot.cancelled_by_role === 'admin' ? '👑 แอดมิน' : 'เซลล์'}
+                              </span>
+                            </span>
+                          )}
                           {order.discount_snapshot?.coupon && (
                             <span className="px-1.5 py-0.5 bg-purple-50 text-purple-700 border border-purple-200 rounded text-[10px] font-bold inline-flex items-center gap-1">
                               🎟️ โค้ด: {order.discount_snapshot.coupon.code} (-฿{Number(order.discount_snapshot.coupon.discount_amount ?? order.discount_snapshot.coupon.discountAmount ?? order.discount_snapshot.coupon.amount ?? 0).toLocaleString()})
@@ -719,8 +732,31 @@ export default function SaleDispatchMonitorPage() {
                               {order.discount_snapshot?.cancelled_by_name && (
                                 <div className="text-rose-700">
                                   • กดยกเลิกบิลโดย: <strong className="text-rose-900">{order.discount_snapshot.cancelled_by_name}</strong>{' '}
+                                  <span className={`px-1 py-0.2 rounded text-[9px] font-bold ${order.discount_snapshot.cancelled_by_role === 'admin' ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-800'}`}>
+                                    {order.discount_snapshot.cancelled_by_role === 'admin' ? '👑 แอดมิน' : 'เซลล์'}
+                                  </span>{' '}
                                   {order.discount_snapshot.cancelled_at && `เมื่อ ${new Date(order.discount_snapshot.cancelled_at).toLocaleString('th-TH')}`}{' '}
                                   {order.discount_snapshot.cancel_reason && `(เหตุผล: ${order.discount_snapshot.cancel_reason})`}
+                                </div>
+                              )}
+
+                              {order.discount_snapshot?.address_updated_by_name && (
+                                <div className="text-amber-700">
+                                  • แก้ไขที่อยู่จัดส่งโดย: <strong className="text-amber-900">{order.discount_snapshot.address_updated_by_name}</strong>{' '}
+                                  <span className={`px-1 py-0.2 rounded text-[9px] font-bold ${order.discount_snapshot.address_updated_by_role === 'admin' ? 'bg-amber-100 text-amber-800' : 'bg-amber-100 text-amber-800'}`}>
+                                    {order.discount_snapshot.address_updated_by_role === 'admin' ? '👑 แอดมิน' : 'เซลล์'}
+                                  </span>{' '}
+                                  {order.discount_snapshot.address_updated_at && `เมื่อ ${new Date(order.discount_snapshot.address_updated_at).toLocaleString('th-TH')}`}
+                                </div>
+                              )}
+
+                              {order.discount_snapshot?.slip_uploaded_by_name && (
+                                <div className="text-slate-600">
+                                  • แนบสลิปโดย: <strong className="text-slate-900">{order.discount_snapshot.slip_uploaded_by_name}</strong>{' '}
+                                  <span className={`px-1 py-0.2 rounded text-[9px] font-bold ${order.discount_snapshot.slip_uploaded_by_role === 'admin' ? 'bg-amber-100 text-amber-800' : 'bg-slate-200 text-slate-800'}`}>
+                                    {order.discount_snapshot.slip_uploaded_by_role === 'admin' ? '👑 แอดมิน' : 'เซลล์'}
+                                  </span>{' '}
+                                  {order.discount_snapshot.slip_uploaded_at && `เมื่อ ${new Date(order.discount_snapshot.slip_uploaded_at).toLocaleString('th-TH')}`}
                                 </div>
                               )}
                             </div>

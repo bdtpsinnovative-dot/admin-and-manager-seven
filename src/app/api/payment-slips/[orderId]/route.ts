@@ -24,10 +24,10 @@ async function getOrderAccess(
   orderId: number,
 ) {
   const [{ data: profile }, { data: order }] = await Promise.all([
-    supabase.from('profiles').select('role, branch_id').eq('user_id', userId).single(),
+    supabase.from('profiles').select('role, branch_id, full_name').eq('user_id', userId).single(),
     supabase
       .from('orders')
-      .select('id, status, branch_id, order_items(fulfill_branch_id)')
+      .select('id, status, branch_id, discount_snapshot, order_items(fulfill_branch_id)')
       .eq('id', orderId)
       .single(),
   ])
@@ -144,6 +144,16 @@ export async function POST(
       console.error('Create slip thumbnail failed:', thumbnailError)
     }
 
+    const staffRole = profile?.role || 'sale'
+    const staffName = profile?.full_name || (staffRole === 'admin' ? 'Admin' : 'พนักงาน')
+    const updatedSnap = {
+      ...((order as any).discount_snapshot || {}),
+      slip_uploaded_by_name: staffName,
+      slip_uploaded_by_role: staffRole,
+      slip_uploaded_at: new Date().toISOString()
+    }
+    await supabase.from('orders').update({ discount_snapshot: updatedSnap }).eq('id', orderId)
+
     return NextResponse.json({
       success: true,
       url: `/api/payment-slips/${orderId}?v=${Date.now()}`,
@@ -189,6 +199,17 @@ export async function DELETE(
     if (!thumbnailResponse.ok && thumbnailResponse.status !== 404) {
       console.error('R2 slip thumbnail delete failed:', thumbnailResponse.status)
     }
+
+    const staffRole = profile?.role || 'sale'
+    const staffName = profile?.full_name || (staffRole === 'admin' ? 'Admin' : 'พนักงาน')
+    const updatedSnap = {
+      ...((order as any).discount_snapshot || {}),
+      slip_deleted_by_name: staffName,
+      slip_deleted_by_role: staffRole,
+      slip_deleted_at: new Date().toISOString()
+    }
+    await supabase.from('orders').update({ discount_snapshot: updatedSnap }).eq('id', orderId)
+
     return NextResponse.json({ success: true })
   } catch (error) {
     return NextResponse.json(
