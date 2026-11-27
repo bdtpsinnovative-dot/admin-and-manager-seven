@@ -3,6 +3,7 @@
 import { createClient } from "../lib/supabase/server"; // ✅ ใช้ตัวกลางที่ปลอดภัย
 import { revalidatePath } from "next/cache";
 import { revalidateZenslabCache } from "../lib/revalidateZenslab";
+import { revalidateTerraCache } from "../lib/revalidateTerra";
 
 const TABLE_DISCOUNTS = 'discounts'
 const TABLE_RULES = 'discount_rules'
@@ -78,7 +79,10 @@ export async function createDiscount(formData: FormData) {
   }
 
   revalidatePath('/discounts')
-  await revalidateZenslabCache({ scope: 'discounts' })
+  await Promise.allSettled([
+    revalidateZenslabCache({ scope: 'discounts' }),
+    revalidateTerraCache({ scope: 'discounts' }),
+  ])
   return { success: true }
 }
 
@@ -92,7 +96,10 @@ export async function toggleDiscountStatus(id: number, currentStatus: boolean) {
 
   if (error) return { error: error.message }
   revalidatePath('/discounts')
-  await revalidateZenslabCache({ scope: 'discounts' })
+  await Promise.allSettled([
+    revalidateZenslabCache({ scope: 'discounts' }),
+    revalidateTerraCache({ scope: 'discounts' }),
+  ])
 }
 
 // 3. ลบส่วนลด
@@ -102,7 +109,10 @@ export async function deleteDiscount(id: number) {
   const { error } = await supabase.from(TABLE_DISCOUNTS).delete().eq('id', id)
   if (error) return { error: error.message }
   revalidatePath('/discounts')
-  await revalidateZenslabCache({ scope: 'discounts' })
+  await Promise.allSettled([
+    revalidateZenslabCache({ scope: 'discounts' }),
+    revalidateTerraCache({ scope: 'discounts' }),
+  ])
 }
 
 // 4. แก้ไขส่วนลด
@@ -167,7 +177,10 @@ export async function updateDiscount(formData: FormData) {
   }
 
   revalidatePath('/discounts')
-  await revalidateZenslabCache({ scope: 'discounts' })
+  await Promise.allSettled([
+    revalidateZenslabCache({ scope: 'discounts' }),
+    revalidateTerraCache({ scope: 'discounts' }),
+  ])
   return { success: true }
 }
 
@@ -181,6 +194,9 @@ export async function removeDiscountRule(ruleId: number) {
 
   if (error) return { error: error.message }
   revalidatePath('/discounts')
-  await revalidateZenslabCache({ scope: 'discounts' })
+  await Promise.allSettled([
+    revalidateZenslabCache({ scope: 'discounts' }),
+    revalidateTerraCache({ scope: 'discounts' }),
+  ])
   return { success: true }
 }

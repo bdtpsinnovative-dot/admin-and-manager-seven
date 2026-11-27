@@ -88,6 +88,7 @@ import {
 const R2_BASE = "https://pub-258bd10e7e8c4a7690a74c54cfbdef93.r2.dev/";
 
 import VoucherModal, { isVoucherItemUsable } from "./VoucherModal";
+import RevalidateTerraButton from "@/components/RevalidateTerraButton";
 
 
 export interface TerraBatchGroup {
@@ -4513,6 +4514,9 @@ export default function DiscountHubClient({
 
           {/* Action Rail & Channel Switcher */}
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 shrink-0">
+            {/* Quick Purge Terra Web Cache Button */}
+            <RevalidateTerraButton scope="discounts" label="ล้างแคชเว็บ Terra" />
+
             {/* Tactile Channel Switcher */}
             <div className="flex items-center p-1 bg-slate-100 rounded-xl border border-slate-200/80">
               <button

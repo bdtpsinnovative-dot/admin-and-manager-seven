@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { revalidatePath, unstable_cache } from "next/cache";
 import { ADMIN_CACHE_TAGS, ADMIN_CACHE_TTL, invalidateAdminTags } from "@/lib/admin-cache";
+import { revalidateTerraCache } from "@/lib/revalidateTerra";
 
 /* =============================================================================
    TYPES
@@ -491,6 +492,7 @@ export async function createTerraPromotion(data: {
     }
 
     revalidatePath("/discounts");
+    await revalidateTerraCache({ scope: 'promotions' });
     invalidateAdminTags(ADMIN_CACHE_TAGS.PROMOTIONS);
     return { success: true, promotion: inserted };
   } catch (err: any) {
@@ -720,6 +722,7 @@ export async function createBatchPartnerCoupons(params: BatchPartnerCouponParams
     } catch {}
 
     revalidatePath("/discounts");
+    await revalidateTerraCache({ scope: 'promotions' });
     invalidateAdminTags(ADMIN_CACHE_TAGS.PROMOTIONS);
     return {
       success: true,
@@ -888,6 +891,7 @@ export async function updatePartnerCoupon(params: UpdatePartnerCouponParams) {
     }
 
     revalidatePath("/discounts");
+    await revalidateTerraCache({ scope: 'promotions' });
     invalidateAdminTags(ADMIN_CACHE_TAGS.PROMOTIONS);
     return { success: true };
   } catch (err: any) {
@@ -963,6 +967,7 @@ export async function updateTerraPromotion(
     }
 
     revalidatePath("/discounts");
+    await revalidateTerraCache({ scope: 'promotions' });
     invalidateAdminTags(ADMIN_CACHE_TAGS.PROMOTIONS);
     return { success: true };
   } catch (err: any) {
@@ -982,6 +987,7 @@ export async function toggleTerraPromotion(id: string, currentStatus: boolean) {
 
     if (error) throw error;
     revalidatePath("/discounts");
+    await revalidateTerraCache({ scope: 'promotions' });
     invalidateAdminTags(ADMIN_CACHE_TAGS.PROMOTIONS);
     return { success: true, nextStatus: !currentStatus };
   } catch (err: any) {
@@ -1022,6 +1028,7 @@ export async function toggleBatchTerraPromotion(batchId: string, currentStatus: 
     } catch {}
 
     revalidatePath("/discounts");
+    await revalidateTerraCache({ scope: 'promotions' });
     invalidateAdminTags(ADMIN_CACHE_TAGS.PROMOTIONS);
     return { success: true, nextStatus };
   } catch (err: any) {
@@ -1056,6 +1063,7 @@ export async function deleteBatchTerraPromotions(batchId: string) {
     } catch {}
 
     revalidatePath("/discounts");
+    await revalidateTerraCache({ scope: 'promotions' });
     invalidateAdminTags(ADMIN_CACHE_TAGS.PROMOTIONS);
     return { success: true };
   } catch (err: any) {
@@ -1073,6 +1081,7 @@ export async function deleteTerraPromotion(id: string) {
 
     if (error) throw error;
     revalidatePath("/discounts");
+    await revalidateTerraCache({ scope: 'promotions' });
     invalidateAdminTags(ADMIN_CACHE_TAGS.PROMOTIONS);
     return { success: true };
   } catch (err: any) {
